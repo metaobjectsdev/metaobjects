@@ -1,0 +1,20 @@
+name: hook-refusal-rolls-back
+description: >
+  A hook runs in the write's transaction, so its refusal undoes the write. The README's
+  `afterUpdatePurchaseRequest` hook refuses a title of `REFUSE` as `title_refused` after the row
+  is written: the answer is 409 with that code, and the row keeps its title.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/purchase_requests/1
+    body: { title: "REFUSE" }
+    expect:
+      status: 409
+      body: { error: "title_refused" }
+  - id: r2
+    method: GET
+    path: /api/purchase_requests/1
+    expect:
+      status: 200
+      body:
+        row: { id: 1, title: "Laptop" }

@@ -1,0 +1,21 @@
+name: declared-permission-is-asked
+description: >
+  A transition that declares `@permission` asks for that name, not the derived one. `reopen`
+  declares `purchasing.reopen`: the derived name `acme::purchasing.PurchaseRequest.reopen` is not
+  enough, and the declared one moves the rejected request 4 back to `draft`.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/4/reopen
+    headers: { x-actor: "ann", x-grants: "acme::purchasing.PurchaseRequest.reopen" }
+    expect:
+      status: 403
+      body: { error: "forbidden" }
+  - id: r2
+    method: POST
+    path: /api/purchase_requests/4/reopen
+    headers: { x-actor: "ann", x-grants: "purchasing.reopen" }
+    expect:
+      status: 200
+      body:
+        row: { id: 4, status: "draft" }

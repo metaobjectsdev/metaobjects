@@ -24,11 +24,13 @@ guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the s
 persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
 each package's derived list, get, create, update and delete, every write in one transaction with the
 declared write rules, behind a thin Fastify transport (`service-routes`) that answers the shared API
-tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). Transitions,
-declared operations, the policy, the bodies and events interfaces, and the checks that enforce these
-rules at run time are later work. A lifecycle in a project
-that wires none will be advised by `verify` once that check lands; today the flat routes enforce
-nothing and `verify` says nothing about it. Every flat generator writes byte-identical code for
+tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). It also writes
+a command per transition and a shell per declared command and query, and enforces at run time what
+this page declares: the permission point, the state check, the guarded update, `state_managed` and
+the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
+later 1.3.0 work. A lifecycle in a project that wires no service generator will be advised by
+`verify` once that check lands; until then the flat routes enforce nothing and `verify` says
+nothing about it. Every flat generator writes byte-identical code for
 a model with this vocabulary and the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
@@ -239,9 +241,9 @@ setting behaves as it does today.
 
 | Setting | Values | When absent | Effect |
 |---|---|---|---|
-| `rules.permissions.names` | `derive`, `advise`, `require` | `derive` | `derive` accepts derived permission names. `advise` warns about each one. `require` fails `verify` on each one. |
+| `rules.permissions.names` | `derive`, `advise`, `require` | `derive` | `derive` accepts derived permission names. `advise` warns about each one. `require` fails `verify` on each one, and the TypeScript service generator refuses to generate such a point, naming the permission it would derive. |
 | `rules.lifecycle.commands` | `unclaimed`, `all`, `none` | `unclaimed` | Which transitions derive a command of their own, and so are permission points: those no declared command claims, every one, or none. A command claims a transition for its target entity and every entity extending it. |
-| `rules.lifecycle.create` | `initial`, `any` | `initial` | **No effect yet.** Whether a create may start a row in a state other than the initial one. It is read and validated, and nothing acts on it until the service shells land. |
+| `rules.lifecycle.create` | `initial`, `any` | `initial` | Whether a create may start a row in a state other than the initial one. Under `initial` the generated service fills an omitted state with the initial one and answers a different one 409 `state_managed`; under `any` it accepts any state of the lifecycle. The TypeScript service acts on it; a port whose service has not landed has nothing to act on. |
 | `verify.lifecycle.unreachable` | `warn`, `error`, `off` | `warn` | The severity of the two reachability checks. `off` skips them. |
 
 ```json
@@ -349,8 +351,9 @@ directory in either layout.
 - `<pkg path>/service/<operation>.ts`: one function per operation, `(deps, ...args, opts) =>
   OpResult`. Each concrete entity with a writable table and a single-field key gets five:
   `list<Plural>`, `get<Entity>`, `create<Entity>`, `update<Entity>` and `delete<Entity>`.
-- `<pkg path>/service/index.ts`: `ServiceDeps` (the database), the `<Pkg>Service` interface,
-  `create<Pkg>Service(deps)` that binds the operations to it, and each entity's wire mapper.
+- `<pkg path>/service/index.ts`: `ServiceDeps` (the database, and the hand-written pieces below),
+  the `<Pkg>Service` interface, `create<Pkg>Service(deps)` that binds the operations to it, and
+  each entity's wire mapper.
 
 Every write runs in one transaction, in ADR-0067's order: load the row under a row lock (`not_found`
 when there is none), validate the input and stamp what the model declares (ADR-0045: `@autoSet`,
@@ -389,9 +392,64 @@ Both import the entity module (`entity`, for the table and the allowlists) and t
 `codegen/runtime/` as they do for the routes. The service lane of the shared API tests runs the
 corpus the flat routes pass against the service behind this transport, in both layouts.
 
+### Transitions, declared operations and what you write by hand
+
+The service also writes what the rules on this page declare:
+
+- `<pkg path>/service/<transition><Entity>.ts` for each transition that derives a command (by
+  `rules.lifecycle.commands`), mounted at `POST <collection>/{id}/<transition>`.
+- `<pkg path>/service/<operation>.ts` for each declared command and query, mounted at its
+  `binding.rest` method and path, or at the derived path (`<collection>/{id}/<operation>` when it
+  addresses a row, `<collection>/<operation>` when it does not; a query is a `GET`, a command a
+  `POST`). Two routes on one method and path are refused when the transport is generated.
+
+Each one runs ADR-0066 §6's checks in this order, in one transaction (a query in the read scope):
+load the row (`not_found`), validate the input, the permission point (403 `forbidden`), the state
+check (409 `invalid_transition`), the hand-written body, the guarded update (409
+`invalid_transition` or `transition_condition_failed` when it matches no row), and the event hook.
+The generic update refuses a different value of a lifecycle field (409 `state_managed`) and lets
+the same value through. Under `rules.lifecycle.create: initial` a create starts in the initial
+state, so an omitted state is filled and another is `state_managed`.
+
+What you write is passed to `create<Pkg>Service(deps)`; there is no base class to extend.
+`index.ts` types each piece:
+
+| In `deps` | Type | What it is |
+|---|---|---|
+| `policy` | `<Pkg>Policy<A>` | `allows(permission, actor, row, input, tx)`: a refusal is 403 `forbidden`. Required when the package has a permission point. `<Pkg>Permission` lists every name it is asked about. |
+| `bodies` | `<Pkg>Bodies<A>` | One per declared operation. A command with `@transitions` returns the move to make, or `"none"`; `ctx.refuse(code)` answers one of its `@errors` (409). Required when the package declares an operation. |
+| `hooks` | `<Pkg>Hooks<A>` | Optional `before`/`after` hooks on each derived create, update and delete. A before hook may return a replacement input. |
+| `events` | `<Pkg>Events<A>` | Optional `onWrite(event, ctx)`, told about every create, update, delete, transition and command, in its transaction, with the actor. An outbox, a history table or an audit log is written here. |
+
+Every hook, body and event runs in the write's transaction (`ctx.tx`), and any of them may refuse
+with `ctx.refuse(code)`, which answers 409 with that code and rolls the whole write back. A code the
+API contract reserves (`not_found`, `forbidden`, `validation`, ...) is not accepted.
+
+The actor is a type you define, `A`. A caller passes it per call as `opts.actor`, and the service
+hands it to the policy, the bodies, the hooks and the event hook without looking inside it. The
+Fastify transport takes a `getActor(request)` resolver of yours:
+
+```ts
+const service = createPurchasingService<Actor>({
+  db,
+  policy: { allows: (permission, actor) => actor?.grants.includes(permission) ?? false },
+  bodies: {
+    decide: (input, ctx) => (input.approve ? "approve" : "reject"),
+    requestTotals: async (ctx) => totalsOf(ctx.tx),
+  },
+  events: { onWrite: (event, ctx) => writeAudit(ctx.tx, event) },
+});
+await app.register(purchasingServiceRoutes, { service, getActor: (req) => actorFromSession(req) });
+```
+
+The shared API tests' `fixtures/api-contract-conformance/rules/` corpus runs a model with a
+lifecycle, a declared command and query, permission points and declared errors against the
+generated service, under the default settings and under `rules.lifecycle.create: any` and
+`rules.lifecycle.commands: all` and `none`. Its README specifies the hand-written pieces, so every
+port's lane implements the same ones.
+
 Not covered yet, and still served by the flat generators: write-through entities, single-table (TPH)
-hierarchies, many-to-many traversal, projections and reports. Transitions and declared operations
-come with the policy, bodies and events interfaces.
+hierarchies, many-to-many traversal, projections and reports.
 
 ## Requirements can claim operations and transitions
 

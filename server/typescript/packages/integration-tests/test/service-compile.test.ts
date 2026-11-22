@@ -1,4 +1,5 @@
-// The service tier's compile gate (ADR-0067 layers 4 and 5): the shared fitness corpus, generated
+// The service tier's compile gate (ADR-0067 layers 4 and 5): the shared fitness corpus and the
+// api-contract rules corpus, each generated
 // with the entity module, the contract types, the service and its Fastify transport, compiled with
 // the real compiler in both profiles, every dialect and both output layouts.
 //
@@ -27,9 +28,13 @@ mkdirSync(GEN_TMP, { recursive: true });
 
 const CORPUS = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..", "fixtures", "persistence-conformance", "canonical", "meta.fitness.json");
 
-async function loadCorpus(): Promise<MetaRoot> {
-  const result = await loadUris([pathToFileURL(CORPUS).href]);
-  if (result.errors.length > 0) throw new Error(`${CORPUS} did not load: ${result.errors.map((e) => e.message).join("; ")}`);
+// The rules corpus (ADR-0066): a lifecycle with conditions, derived and declared commands, a
+// query, permission points and declared errors, which the fitness corpus does not carry.
+const RULES = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..", "fixtures", "api-contract-conformance", "rules", "meta.json");
+
+async function loadCorpus(path: string = CORPUS): Promise<MetaRoot> {
+  const result = await loadUris([pathToFileURL(path).href]);
+  if (result.errors.length > 0) throw new Error(`${path} did not load: ${result.errors.map((e) => e.message).join("; ")}`);
   return result.root;
 }
 
@@ -68,12 +73,22 @@ function emittedTs(dir: string): string[] {
   return out.sort();
 }
 
-describe("service compile gate — the shared fitness corpus", () => {
+const CORPORA = [
+  { label: "the shared fitness corpus", path: CORPUS, pkg: "fitness", present: ["fitness/service/createProgram.ts"] },
+  {
+    label: "the rules corpus",
+    path: RULES,
+    pkg: "acme/purchasing",
+    present: ["acme/purchasing/service/submitPurchaseRequest.ts", "acme/purchasing/service/decide.ts", "acme/purchasing/service/requestTotals.ts"],
+  },
+] as const;
+
+for (const corpus of CORPORA) describe(`service compile gate — ${corpus.label}`, () => {
   for (const layout of ["flat", "package"] as const satisfies readonly OutputLayout[]) {
     for (const dialect of ["postgres", "sqlite", "mysql"] as const) {
       for (const [profile, options] of PROFILES) {
         test(`${layout} / ${dialect} [${profile}]: the service and its transport compile with zero diagnostics`, async () => {
-          const root = await loadCorpus();
+          const root = await loadCorpus(corpus.path);
           const dir = mkdtempSync(join(GEN_TMP, `service-compile-${layout}-${dialect}-`));
           try {
             await runGen({
@@ -91,9 +106,9 @@ describe("service compile gate — the shared fitness corpus", () => {
             const files = emittedTs(dir);
             const rel = files.map((f) => f.slice(dir.length + 1).split("\\").join("/"));
             // The tier is present by name, so the gate cannot pass on an empty service.
-            expect(rel).toContain("fitness/service/index.ts");
-            expect(rel).toContain("fitness/service/createProgram.ts");
-            expect(rel).toContain("fitness/transport/fastify.ts");
+            expect(rel).toContain(`${corpus.pkg}/service/index.ts`);
+            for (const p of corpus.present) expect(rel).toContain(p);
+            expect(rel).toContain(`${corpus.pkg}/transport/fastify.ts`);
             writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }));
             const program = ts.createProgram(files, { ...options, noEmit: true });
             const diagnostics = ts.getPreEmitDiagnostics(program).map((d) => {

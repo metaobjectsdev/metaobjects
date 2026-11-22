@@ -1,0 +1,21 @@
+name: create-in-any-state
+description: >
+  Under `rules.lifecycle.create: any`, a create may name any state of the lifecycle: the row is
+  written `approved`. Omitted, the state is the column's default, the enum's `@default`.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests
+    body: { title: "Phone", amountCents: 50000, status: "approved" }
+    expect:
+      status: 201
+      body:
+        row: { id: 6, title: "Phone", status: "approved" }
+  - id: r2
+    method: POST
+    path: /api/purchase_requests
+    body: { title: "Tablet", amountCents: 20000 }
+    expect:
+      status: 201
+      body:
+        row: { id: 7, status: "draft" }

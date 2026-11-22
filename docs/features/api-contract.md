@@ -87,6 +87,18 @@ every field. The TS mounts can restrict the update to one verb with
 |---|---|---|
 | `GET` | `/<apiPrefix>/_meta` | Serves the loaded model's shape (entities, fields, types, validators, layouts) as JSON — a separate contract, see [`docs/features/metadata-api.md`](metadata-api.md) |
 
+#### Operations and transitions (ADR-0066)
+
+A generated service (ADR-0067) adds the routes of a model's rules: `POST
+/<apiPrefix>/<entity>/{id}/<transition>` for each transition that derives a command, and each
+declared command or query at its `binding.rest` method and path or its derived one. They answer
+four codes of their own: 403 `forbidden` (the policy refused), 409 `invalid_transition` (the row
+is in no `@from` state), 409 `transition_condition_failed` (the `@condition` did not hold) and 409
+`state_managed` (a write named a lifecycle field). A declared business error is 409 with its code.
+Each is `{ "error": "<code>" }`. The rules are [business-rules.md](business-rules.md); the
+`rules/` sub-corpus pins the answers, generated lane, TypeScript only until each port's 1.3.0
+service work.
+
 #### The `<entity>` segment
 
 `<entity>` is the **entity name** `snake_case`d and then pluralized. One rule, the

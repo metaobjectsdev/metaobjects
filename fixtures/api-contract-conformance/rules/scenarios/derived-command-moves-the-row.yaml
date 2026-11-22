@@ -1,0 +1,23 @@
+name: derived-command-moves-the-row
+description: >
+  A transition no declared command claims derives a command, `POST <collection>/{id}/<transition>`,
+  whose permission point asks for the derived name `<package>.<Entity>.<transition>`. Holding it,
+  the draft request 1 moves to `submitted`; the answer is the written row, and the event hook is
+  told about the move in the same transaction (one audit entry).
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/1/submit
+    headers: { x-actor: "ann", x-grants: "acme::purchasing.PurchaseRequest.submit" }
+    expect:
+      status: 200
+      body:
+        row: { id: 1, title: "Laptop", status: "submitted" }
+  - id: r2
+    method: GET
+    path: /api/audit_entries
+    expect:
+      status: 200
+      body:
+        equals:
+          - { id: 1, kind: "transition", detail: "PurchaseRequest 1 submit draft->submitted by ann" }

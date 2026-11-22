@@ -7,7 +7,10 @@ import { renderServiceFiles } from "../templates/service-file.js";
  * The service layer (ADR-0067 §1, layer 4): one module per metadata package, one file per
  * operation, and `create<Pkg>Service(deps)`. Each covered entity gets its derived list, get,
  * create, update and delete; every write runs in one transaction with the declared write rules
- * (ADR-0045). Hand-written code calls the service; a transport (`serviceRoutesFile()`) mounts it.
+ * (ADR-0045). Each transition that derives a command (`rules.lifecycle.commands`) and each declared
+ * command and query gets its shell, which runs ADR-0066 §6's checks around the hand-written body.
+ * The policy, bodies, hooks and event hook are passed in `deps`, through the interfaces the index
+ * declares. Hand-written code calls the service; a transport (`serviceRoutesFile()`) mounts it.
  *
  * SQLite needs an async Drizzle driver (libsql): the emitted `Db` type is `BaseSQLiteDatabase<"async", …>`,
  * so a sync driver (better-sqlite3, bun:sqlite) fails to type-check instead of failing at run time.

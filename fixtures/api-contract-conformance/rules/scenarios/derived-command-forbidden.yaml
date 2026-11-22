@@ -1,0 +1,32 @@
+name: derived-command-forbidden
+description: >
+  The permission point is asked after the row is loaded and before anything is written. An actor
+  without the derived permission, or no actor at all, is answered 403 `forbidden`, and the row
+  keeps its state. A missing row is `not_found` before the policy is asked.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/1/submit
+    headers: { x-actor: "bob", x-grants: "purchasing.decide" }
+    expect:
+      status: 403
+      body: { error: "forbidden" }
+  - id: r2
+    method: POST
+    path: /api/purchase_requests/1/submit
+    expect:
+      status: 403
+      body: { error: "forbidden" }
+  - id: r3
+    method: POST
+    path: /api/purchase_requests/99/submit
+    expect:
+      status: 404
+      body: { error: "not_found" }
+  - id: r4
+    method: GET
+    path: /api/purchase_requests/1
+    expect:
+      status: 200
+      body:
+        row: { id: 1, status: "draft" }

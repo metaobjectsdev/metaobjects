@@ -57,7 +57,7 @@ fixtures/api-contract-conformance/
 ```
 
 Beside the 34 core scenarios above sit twelve **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (128 scenarios in all, 162 with the
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (145 scenarios in all, 179 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
@@ -74,6 +74,7 @@ core):
 | `api-settings/` | 8 | the `api` block in the sub-corpus's own `.metaobjects/config.json`: `api.pagination` (default 2, max 4) — a list with no `limit` answers the default page, `offset` and `withCount=1` page past it, `limit` at the cap is served, one above it is `400 {"error": "limit_too_large", "maxLimit": 4}` and a negative one is `400 pagination.invalid_value`, while `limit=0` is an empty page — and `api.unknownFields: drop`, under which an undeclared body key is ignored rather than refused | generated only |
 | `list-query/` | 21 | the REST standard's list handling against a real store, over a 60-row seed: `?search` ignores case and `like` does not, `filter[or]` / `filter[and]`, the nesting cap, a bare field refused, a leading `%` refused, value formats refused, a default page of 50, paging past 50, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and `constraint_violation` refusals. The parse itself is pinned with no server by `fixtures/list-query-conformance/`. TypeScript only until each port's 1.3.0 REST-standard work | generated only |
 | `duration/` | 2 | `field.duration` is a canonical ISO-8601 span on the wire under `"wire": { "durations": "iso" }`: write, read, refuse, and filter and sort as a span on every engine. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |
+| `rules/` | 17 | ADR-0066 through a generated service: a derived transition command and its derived permission name, a declared `@permission`, 403 `forbidden`, the three 409 codes (`invalid_transition`, `transition_condition_failed`, `state_managed` on update and create), a declared command and its declared error, a `@public` command and query, a claimed transition with no command of its own, and a hook's and the event hook's refusal rolling the write back; `settings/` runs `rules.lifecycle.create: any` and `rules.lifecycle.commands: all` and `none` over the same model | generated only, TypeScript only until each port's 1.3.0 service work |
 
 `meta.json` declares a single canonical `Author` entity in the `acme::blog`
 package:

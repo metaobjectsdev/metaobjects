@@ -1,0 +1,30 @@
+name: declared-error-rolls-back
+description: >
+  A body refusing with one of its `@errors` is answered 409 with that code. The README's `decide`
+  body refuses a rejection without a note as `note_required`; the request keeps its state. A
+  command on a row in no state of its `@transitions`' `@from` is `invalid_transition` before the
+  body runs.
+requests:
+  - id: r1
+    method: PUT
+    path: /api/purchase-requests/2/decision
+    headers: { x-actor: "rita", x-grants: "purchasing.decide" }
+    body: { approve: false }
+    expect:
+      status: 409
+      body: { error: "note_required" }
+  - id: r2
+    method: GET
+    path: /api/purchase_requests/2
+    expect:
+      status: 200
+      body:
+        row: { id: 2, status: "submitted" }
+  - id: r3
+    method: PUT
+    path: /api/purchase-requests/5/decision
+    headers: { x-actor: "rita", x-grants: "purchasing.decide" }
+    body: { approve: true }
+    expect:
+      status: 409
+      body: { error: "invalid_transition" }

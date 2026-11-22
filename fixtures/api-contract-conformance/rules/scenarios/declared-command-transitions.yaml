@@ -1,0 +1,32 @@
+name: declared-command-transitions
+description: >
+  A declared command bound to `PUT /purchase-requests/{id}/decision` takes its input with the key
+  from the path, asks for its declared permission, and its body picks the move. Approving request
+  2 (amount 30000, limit 50000) moves it to `approved`, and the answer is the row as the command
+  left it. Rejecting request 3 with a note moves it to `rejected`.
+requests:
+  - id: r1
+    method: PUT
+    path: /api/purchase-requests/2/decision
+    headers: { x-actor: "rita", x-grants: "purchasing.decide" }
+    body: { approve: true }
+    expect:
+      status: 200
+      body:
+        row: { id: 2, status: "approved" }
+  - id: r2
+    method: PUT
+    path: /api/purchase-requests/3/decision
+    headers: { x-actor: "rita", x-grants: "purchasing.decide" }
+    body: { approve: false, note: "too large" }
+    expect:
+      status: 200
+      body:
+        row: { id: 3, status: "rejected" }
+  - id: r3
+    method: PUT
+    path: /api/purchase-requests/2/decision
+    body: { approve: true }
+    expect:
+      status: 403
+      body: { error: "forbidden" }

@@ -148,11 +148,13 @@ These calls are recorded here:
   It is still not meant to be extended, and its generated header says so.
 - **ADR-0066's four settings stay** (`rules.permissions.names`, `rules.lifecycle.commands`,
   `rules.lifecycle.create` and `verify.lifecycle.unreachable`). They decide what the model derives,
-  which every port must agree on, so they are not generator options. The service generators read
-  `rules.lifecycle.commands` and `rules.lifecycle.create`; until they land, `rules.lifecycle.create`
-  is read and validated and has no effect (ADR-0066 §5). What reads each key: `rules.permissions.names`
-  and `verify.lifecycle.unreachable` are read by the `verify` rules gate today, and the service
-  generators will read `rules.lifecycle.commands` (the derived commands) and `rules.lifecycle.create`.
+  which every port must agree on, so they are not generator options. What reads each key:
+  `rules.permissions.names` and `verify.lifecycle.unreachable` are read by the `verify` rules gate,
+  and the service generators read `rules.lifecycle.commands` (the derived commands),
+  `rules.lifecycle.create` (whether a create may start outside the initial state) and
+  `rules.permissions.names` (`require` refuses to generate a point with no `@permission`). The
+  TypeScript service is the first to read them; a port's service that has not landed has nothing
+  to act on.
 
 ### 5. Choosing layers
 

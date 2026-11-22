@@ -1,0 +1,21 @@
+name: create-starts-in-initial-state
+description: >
+  Under the default `rules.lifecycle.create: initial`, a create starts the lifecycle in its
+  initial state (the enum's `@default`): omitted, the row is `draft`; naming another state is 409
+  `state_managed`, and no row is written.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests
+    body: { title: "Phone", amountCents: 50000, status: "approved" }
+    expect:
+      status: 409
+      body: { error: "state_managed" }
+  - id: r2
+    method: POST
+    path: /api/purchase_requests
+    body: { title: "Phone", amountCents: 50000 }
+    expect:
+      status: 201
+      body:
+        row: { id: 6, title: "Phone", status: "draft" }

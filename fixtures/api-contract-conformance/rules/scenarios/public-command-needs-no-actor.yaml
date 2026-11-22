@@ -1,0 +1,18 @@
+name: public-command-needs-no-actor
+description: >
+  A `@public` transition skips the policy: with no actor at all, `cancel` moves the submitted
+  request 2 to `cancelled`. Its `@from` lists two states, and a third is still refused.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/2/cancel
+    expect:
+      status: 200
+      body:
+        row: { id: 2, status: "cancelled" }
+  - id: r2
+    method: POST
+    path: /api/purchase_requests/5/cancel
+    expect:
+      status: 409
+      body: { error: "invalid_transition" }
