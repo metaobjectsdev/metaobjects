@@ -360,6 +360,10 @@ savepoint inside it. A refusal rolls the transaction back. A query opens no writ
 An operation answers an `OpResult`: the value, or a failure carrying the code and the HTTP status
 the [API contract](api-contract.md) gives it, so every transport maps it the same way.
 
+On SQLite the service needs an async Drizzle driver such as libsql: `ServiceDeps.db` is typed
+`BaseSQLiteDatabase<"async", …>`, so a sync driver (better-sqlite3, bun:sqlite) fails to type-check,
+because a write awaits inside its transaction callback. The flat generators still accept both.
+
 `serviceRoutesFile()` (stable name `service-routes`, layer `api`, Fastify) writes the thin
 transport (layer 5) beside it, `<pkg path>/transport/fastify.ts`: one plugin per package,
 registered with the service it calls. Each route parses the request, calls one operation and

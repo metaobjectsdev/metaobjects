@@ -758,7 +758,8 @@ one transaction with the declared write rules) and `service/index.ts` with the `
 interface and `create<Pkg>Service(deps)`. `serviceRoutesFile()` (stable name `service-routes`)
 writes `<pkg path>/transport/fastify.ts`, the routes that call it. Both need `entity` and
 `contract-types` in the same target. Neither is scaffolded; add them to `generators` or `meta eject`
-them. See [Business rules](../features/business-rules.md#the-service-layer-typescript).
+them. On SQLite the service needs an async Drizzle driver such as libsql (`Db` is
+`BaseSQLiteDatabase<"async", …>`). See [Business rules](../features/business-rules.md#the-service-layer-typescript).
 
 ### Prove it works
 

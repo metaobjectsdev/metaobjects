@@ -243,9 +243,10 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
   const timestampWire = w.use("timestampWire", runtime);
   const withWire = w.use("withWire", runtime);
   const type = serviceTypeName(pkg.package);
-  const { import: dbImport, alias: dbAlias } = dbTypeBlock(ctx.dialect);
+  const { import: dbImport, alias: dbAlias } = dbTypeBlock(ctx.dialect, { asyncOnly: true });
 
-  // The dialect's Drizzle base type, the same one the queries generator types `db` with.
+  // The dialect's Drizzle base type, the queries generator's, except that SQLite is async-only:
+  // a write awaits inside its transaction callback, which a sync driver (better-sqlite3, bun:sqlite) rejects.
   const dbModule = /from "([^"]+)"/.exec(dbImport)![1]!;
   for (const t of /import type \{ ([^}]+) \}/.exec(dbImport)![1]!.split(",").map((s) => s.trim())) w.useType(t, dbModule);
   w.line(dbAlias);

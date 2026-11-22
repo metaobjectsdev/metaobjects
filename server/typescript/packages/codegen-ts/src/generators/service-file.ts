@@ -9,6 +9,9 @@ import { renderServiceFiles } from "../templates/service-file.js";
  * create, update and delete; every write runs in one transaction with the declared write rules
  * (ADR-0045). Hand-written code calls the service; a transport (`serviceRoutesFile()`) mounts it.
  *
+ * SQLite needs an async Drizzle driver (libsql): the emitted `Db` type is `BaseSQLiteDatabase<"async", …>`,
+ * so a sync driver (better-sqlite3, bun:sqlite) fails to type-check instead of failing at run time.
+ *
  * Imports the entity module (the Drizzle table and allowlists, `entityFile()`) and the contract
  * types (`contractTypes()`), so list both. The built-in twin of `src/reference/service.ts`
  * (ADR-0034 scaffold-and-own); the reference-byte-identical gate holds the two to the same output.
