@@ -19,8 +19,9 @@ Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in T
 writes its own names and create and update records. In TypeScript, layers 4 and 5 have started:
 `service` writes each package's derived list, get, create, update and delete in one transaction with
 the declared write rules, and `service-routes` the thin Fastify transport over it, with
-`service-routes-hono` its Hono twin (the `service` layer label of §5.6). The same generators now write ADR-0066's transitions and declared operations,
-with the policy, bodies, hooks and events interfaces, and enforce the rules at run time. The other
+`service-routes-hono` its Hono twin (the `service` layer label of §5.6). The same generators now
+write ADR-0066's transitions and declared operations, with the policy, bodies, hooks and events
+interfaces, and enforce the rules at run time. The other
 ports' shells and the per-package choice of generators are later work. ADR-0066's vocabulary is
 inert at run time in any port whose service generator has not landed.
 

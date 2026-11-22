@@ -24,10 +24,10 @@ guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the s
 persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
 each package's derived list, get, create, update and delete, every write in one transaction with the
 declared write rules, behind a thin Fastify transport (`service-routes`) or Hono transport
-(`service-routes-hono`) that answers the shared API tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). It also writes
-a command per transition and a shell per declared command and query, and enforces at run time what
-this page declares: the permission point, the state check, the guarded update, `state_managed` and
-the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
+(`service-routes-hono`) that answers the shared API tests as the flat routes do (see
+[The service layer](#the-service-layer-typescript)). It also writes a command per transition and a
+shell per declared command and query, and enforces at run time what this page declares: the
+permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
 later 1.3.0 work. A lifecycle in a project that wires no service generator will be advised by
 `verify` once that check lands; until then the flat routes enforce nothing and `verify` says
 nothing about it. Every flat generator writes byte-identical code for
@@ -408,10 +408,9 @@ Both import the entity module (`entity`, for the table and the allowlists) and t
 (`contract-types`), written to the same target, and `@metaobjectsdev/runtime-ts`'s `service` and
 `service/fastify` (or `service/hono`) entries; `meta eject service`, `meta eject service-routes` and
 `meta eject service-routes-hono` copy that source into `codegen/runtime/` as they do for the routes.
-The service lanes of the shared API tests run the corpora the flat routes pass against the service
-behind each transport, in both layouts: the root corpus, `rules/`, `list-query/`, `api-settings/`,
-`enum-default/`, `jsonb/`, and `duration/` on every engine the routes lane runs (D1 with
-`interactiveTransactions: false`).
+The shared API tests run the service behind each transport over a subset of the corpora the flat
+routes pass; the subset and its engines are listed in the
+[API contract README](../../fixtures/api-contract-conformance/README.md#ts-lanes-illustrative-detail).
 
 ### Transitions, declared operations and what you write by hand
 

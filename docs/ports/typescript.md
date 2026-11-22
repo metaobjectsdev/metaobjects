@@ -762,9 +762,9 @@ around a hand-written body; the policy, bodies, hooks and event hook are passed 
 routes that call it, with a `getActor(request)` option for the app's actor.
 `serviceRoutesHonoFile()` (stable name `service-routes-hono`) writes the same routes for Hono,
 `<pkg path>/transport/hono.ts`, with `getActor(c)`. Each needs `entity` and `contract-types` in the
-same target. Neither is scaffolded; add them to `generators` or `meta eject`
-them. On SQLite the service takes a sync or an async Drizzle driver. A store that holds no
-transaction across application code (Cloudflare D1) takes `serviceFile({ interactiveTransactions: false })`.
+same target. None is scaffolded; add them to `generators` or `meta eject` them. On SQLite the
+service takes a sync or an async Drizzle driver. A store that holds no transaction across
+application code (Cloudflare D1) takes `serviceFile({ interactiveTransactions: false })`.
 See [Business rules](../features/business-rules.md#the-service-layer-typescript).
 
 ### Prove it works

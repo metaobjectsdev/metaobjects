@@ -29,8 +29,8 @@ operations module (and the value object only an operation reaches) does.
 The service generators (ADR-0067 layers 4 and 5) are the enforcing shells, so they also CHANGE
 files they write for `without/`: TypeScript's `service` adds a file per derived transition command
 and per declared operation and changes the package index (its policy, bodies and interfaces) and
-the lifecycle entity's create and update (which check its state), and `service-routes` changes the
-transport (the new routes). The test pins both lists, and every other file stays byte-identical.
+the lifecycle entity's create and update (which check its state), and `service-routes` and `service-routes-hono` change their
+transports (the new routes). The test pins both lists, and every other file stays byte-identical.
 
 A generator that started reading an operation or a transition by accident would emit
 something half-built; these tests are what notice:
