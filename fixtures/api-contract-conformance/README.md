@@ -270,8 +270,9 @@ against a Postgres testcontainer over HTTP, and by service lanes beside the seco
    Hono transport (layer 5). The `list-query/`, `api-settings/`, `enum-default/`, `jsonb/`
    and `duration/` corpora, the root corpus and `rules/` run on them, in both output layouts,
    on every engine the generated-routes lane runs for the corpus. D1 generates its service
-   with `interactiveTransactions: false`. The `projection/`, `report/`, `tph/`, `m2m/`,
-   `write-through/`, `secret-fields/` and `decimal/` corpora stay on the generated-routes lane.
+   with `interactiveTransactions: false`. The `projection/`, `report/` (Postgres, MySQL, SQLite
+   and D1), `write-through/`, `tph/`, `m2m/`, `decimal/` and `secret-fields/` corpora run on
+   both service lanes too.
 
 Both lanes live in `server/typescript/packages/integration-tests/test/` and are
 run by the same `cd server/typescript/packages/integration-tests && bun test`
