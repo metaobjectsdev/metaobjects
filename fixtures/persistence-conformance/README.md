@@ -377,7 +377,7 @@ three-valued logic says. It carries `engines: [postgres, mysql]`, so the Postgre
 runners run it; the MySQL run covers the read-back in the Kysely and Drizzle drivers. The
 TypeScript runner drives `ObjectManager.guardedUpdate` there. C#, Java and Kotlin defer it
 by name, with the 1.3.0 row that builds each one's guarded update (L-CS-2, L-JV-2, L-KT-2),
-and run it once that lands. Python defers it by name on Postgres (L-PY-2).
+and run it once that lands. Python defers it by name (L-PY-2).
 
 ### `op: relate` — relationship traversal (M:N)
 

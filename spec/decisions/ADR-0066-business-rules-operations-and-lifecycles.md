@@ -300,7 +300,7 @@ a condition with a field compared with a field, `not`, `coalesce` and an int-bac
 TypeScript runtime implements it as `ObjectManager.guardedUpdate` on every bundled
 `PersistenceDriver`. The scenario runs on Postgres and MySQL (`engines: [postgres, mysql]`); the C#,
 Java and Kotlin runners defer it by name until each port builds its own guarded update in 1.3.0, and
-the Python runner defers it on Postgres.
+the Python runner defers it by name.
 
 ### 7. Events and invariants in 1.3.0
 
