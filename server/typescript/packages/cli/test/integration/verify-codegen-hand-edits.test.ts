@@ -15,7 +15,12 @@
  * not — the split exists so this question is answerable on a machine that did not
  * generate the output.
  */
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, setDefaultTimeout } from "bun:test";
+
+// Each test drives several in-process `meta gen` / `meta verify` runs over a real tree, which
+// is well inside a second on an idle machine and was overrunning Bun's 5 s default on a loaded
+// one, failing a different test each run. The budget is for the whole sequence.
+setDefaultTimeout(30_000);
 import {
   cpSync,
   mkdtempSync,

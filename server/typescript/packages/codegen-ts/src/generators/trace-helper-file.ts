@@ -14,7 +14,10 @@ import { type Generator, type GeneratorFactory, perEntity } from "../generator.j
 import {
   TRACE_HELPER_STABLE_NAME,
   extendsTraceAnchor,
+  LLM_CALL_SUPPORT_FILE,
+  renderLlmCallSupport,
   renderTraceHelper,
+  traceHelperCallsLlm,
   traceAnchorNodes,
 } from "../templates/trace-helper.js";
 
@@ -39,7 +42,11 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       if (!extendsTraceAnchor(entity, anchors)) return [];
       const path = `${dirPrefix}${entity.name}.trace.ts`;
       const content = renderTraceHelper(entity, ctx, path);
-      return content === undefined ? [] : [{ path, content }];
+      if (content === undefined) return [];
+      // A call<Entity> imports the call loop from a module beside it. Every helper that
+      // needs it emits the same bytes at the same path, and the runner keeps one copy.
+      if (!traceHelperCallsLlm(entity)) return [{ path, content }];
+      return [{ path, content }, { path: `${dirPrefix}${LLM_CALL_SUPPORT_FILE}`, content: renderLlmCallSupport() }];
     }),
   };
   if (opts?.target) {

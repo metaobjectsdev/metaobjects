@@ -2,6 +2,12 @@
 
 > **Note (2026-05-21):** This doc predates the H1 monorepo migration and the 2026-05-15 canonical-format change. Pending a deeper rewrite: the JSON examples below still use the OLD `{ "<type>": { "subType": "..." } }` form (current canonical is fused-key `{ "<type>.<subType>": {...} }`), and the `.meta/memory/` directory layout is now `.metaobjects/memory/`. The `@forge*` attribute names and the memory record types (`decision`, `principle`, `convention`, `glossary`, `failure`) are still accurate. See git history for full original wording.
 
+> **Where this vocabulary lives.** `@metaobjectsdev/sdk` ships and registers it: `forgeTypesProvider`
+> (`src/forge-types.ts`) for a provider list, `registerForgeTypes(registry)` for a registry you build
+> yourself. "Forge" is only the name of the vocabulary and its `@forge*` prefix. The empty, private
+> `@metaobjectsdev/forge` package that once reserved the name was removed in 1.3.0; nothing here
+> depends on it.
+
 This doc describes how `@metaobjectsdev/sdk` extends the [metaobjects metamodel](../metadata/METAMODEL.md) with provenance attributes and descriptive memory types. If you're authoring memory `.json` files for an SDK-driven project, read this *and* `METAMODEL.md`.
 
 > **For agentic assistants:** the metaobjects rules in METAMODEL.md apply unchanged here — attribute uniqueness, inline-vs-child equivalence, `extends`/overlay semantics, package paths. This doc only adds the memory-specific names.

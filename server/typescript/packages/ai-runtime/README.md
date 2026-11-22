@@ -4,13 +4,15 @@ LLM call loop + typed-trace recorder adapters for MetaObjects — a provider-neu
 
 Part of the [MetaObjects](https://github.com/metaobjectsdev/metaobjects) monorepo.
 
-## Install
+## Not published since 1.3.0
 
-```bash
-npm install @metaobjectsdev/ai-runtime
-```
+This package is `private` and is no longer released. Its last published version, 1.2.3, stays
+on npm. The generated `call<Entity>` trace helpers used to import its call loop; since 1.3.0
+the `trace-helper` generator writes that loop into the project as `llm-call.ts`, so generated
+code needs no package for it ([ADR-0024](../../../../spec/decisions/ADR-0024-ai-trace-scope-and-llm-caller-boundary.md)
+Amendment 2). What remains here is reference source: copy what you need.
 
-## What it provides
+## What it holds
 
 - **`LlmClient`** — a provider-neutral seam you implement (or adapt) for your LLM vendor; no vendor SDK is bundled.
 - **`callLlm`** — the call bridge that invokes your client and records a typed trace of each call (request/response/cost).

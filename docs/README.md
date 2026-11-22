@@ -30,6 +30,7 @@ docs/
 │   ├── templates-and-payloads.md
 │   ├── loaders.md
 │   ├── migrations-and-drift.md
+│   ├── schema-snapshot-format.md    # the expected schema as JSON: what `meta schema --as json` prints and migrate commits
 │   ├── migrations/                  # per-version migration guides (start at upgrading-1.0-to-1.1.md for 1.0.x → 1.1)
 │   ├── api-contract.md          # cross-port REST contract (the universal browser client speaks it)
 │   ├── abstracts-and-inheritance.md # abstract: true + extends: — author-side shape reuse

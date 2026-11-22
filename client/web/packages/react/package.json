@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./image-upload": {
+      "bun": "./src/image-upload.tsx",
+      "types": "./dist/image-upload.d.ts",
+      "default": "./dist/image-upload.js"
+    },
     "./form.css": "./form.css"
   },
   "files": [
@@ -47,16 +52,19 @@
     "access": "public"
   },
   "dependencies": {
-    "@metaobjectsdev/runtime-web": "workspace:*",
-    "react-easy-crop": "^6.2.3"
+    "@metaobjectsdev/runtime-web": "workspace:*"
   },
   "peerDependencies": {
     "@hookform/resolvers": ">=3.0.0 <6.0.0",
     "react": ">=18.0.0 <20.0.0",
+    "react-easy-crop": ">=6.2.3 <7.0.0",
     "react-hook-form": ">=7.0.0 <8.0.0",
     "zod": ">=3.23.0 <5.0.0"
   },
   "peerDependenciesMeta": {
+    "react-easy-crop": {
+      "optional": true
+    },
     "zod": {
       "optional": true
     }
@@ -70,6 +78,7 @@
     "jsdom": "^29.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-easy-crop": "^6.2.3",
     "react-hook-form": "^7.54.0",
     "typescript": "^5.6.0",
     "zod": "^4.4.3"

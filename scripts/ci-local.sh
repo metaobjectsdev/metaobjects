@@ -770,7 +770,7 @@ gate_ts_unit() {
   # codegen packages, sdk (which owns the agent-context conformance corpus), ai-runtime,
   # conformance and docs-site never ran in CI. That is how a red agent-context corpus
   # could reach `main` — and how this very lane's own new tests would have been ungated.
-  # ~2s for all seven. `forge` has no tests; `integration-tests` has its own ts-slow lane.
+  # ~2s for all seven. `integration-tests` has its own ts-slow lane.
   for p in metadata render runtime-ts \
            codegen-ts-tanstack codegen-ts-react codegen-ts-angular \
            sdk ai-runtime conformance docs-site; do

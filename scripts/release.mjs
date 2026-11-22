@@ -7,7 +7,7 @@
 //   bun run release <version> --preflight-only   # run PHASE 0 and stop
 //
 // --preflight-only is NOT --dry-run. --dry-run still runs Phase 1, which writes the
-// new version into all 14 package.json files, rebuilds, and regenerates bun.lock —
+// new version into every package.json of the lockstep set, rebuilds, and regenerates bun.lock —
 // nothing reverts that, and this repo carries a scar from a corrupting version bump.
 // --preflight-only returns before any of it, so it is the safe way to exercise a
 // preflight change.
