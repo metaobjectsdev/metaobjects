@@ -171,7 +171,11 @@ never disagree about what was generated. A target whose `generators` is empty wr
 nothing and says so. With no `metaobjects.config.yaml` at all, `gen` and `verify --codegen`
 fail with exit 2 and write nothing: there is no list to run. `routes` needs `entity` and
 `filter-allowlist` beside it (the router imports both), and `metaobjects gen` warns when one
-is missing.
+is missing. A `packages` or `entities` limit on either one is refused when it leaves out an
+object the routed objects import: for `filter-allowlist`, the routed objects; for `entity`, the
+routed objects and the models they import (the abstract base each `extends`, the value objects
+they reference, their M:N targets, and the concrete subtypes of a routed discriminator base). An
+abstract or sourceless object that `routes` writes no router for needs neither.
 
 The 1.0 form `metaobjects gen <metadata_dir> --out <dir> --generators <names>` is not read:
 the metadata directory is `metadata` and each output directory is a target's `outDir`.
@@ -429,8 +433,10 @@ A declared name wins over the pluralizer. Either one is snake_cased with an acro
 split, so `FAQs` becomes `faqs`, not `fa_qs`. The router, the API docs, the M:N routes and the
 collision check all read one function, `collection_segment`. The same name also gives the
 reverse finders: `@collectionName: CaseHistory` on an object turns
-`find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A project that sets
-neither keeps every route and finder name it has today. The shared cases are in
+`find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A reference whose
+`@fields` names a member of a flattened value object (`address.countryId`) takes that member's
+flat key in `<fk>`, so the finder is `find_plans_by_address_country`, as TypeScript names it. A
+project that sets neither keeps every route and finder name it has today. The shared cases are in
 `fixtures/naming-conformance/collection-segments.json`.
 
 ### Page size and undeclared body keys: the `api` block

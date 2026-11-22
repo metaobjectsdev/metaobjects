@@ -123,9 +123,9 @@ those primitives cannot be read, so it is refused rather than written without it
 `CodeWriter` and `PyWriter` (`server/python/src/metaobjects/codegen/writer/`) are exported as
 `metaobjects.codegen.writer` and listed in `eject.engineSurface.python`. Python lays out at
 **88 columns** with a four-space indent and a trailing comma in broken lists. Its runner is
-`server/python/tests/codegen/test_writer_conformance.py`. The `output-prompt`, `report-export` and
-`filter-allowlist` generators write through it and no longer call `ruff`. Every other Python
-generator still types its own layout: `tests/codegen/layout_ratchet/allowlist.json` lists those
+`server/python/tests/codegen/test_writer_conformance.py`. The `entity` model, `output-prompt`,
+`report-export` and `filter-allowlist` generators write through it and no longer call `ruff`. Every
+other Python generator still types its own layout: `tests/codegen/layout_ratchet/allowlist.json` lists those
 files, the layout check (`tests/codegen/test_layout_ratchet.py`) fails on any new one, and an entry
 is removed when its generator converts, so the list only shrinks. The dialect contract is in
 [`spec/code-writer.md`](../code-writer.md).
