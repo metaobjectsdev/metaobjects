@@ -372,9 +372,10 @@ def _emit(
 
 
 def _resolve(path: str, stack: list[Any]) -> Any:
-    """Mustache lookup: first segment walks the context stack innermost→outermost;
-    remaining segments descend into the resolved value. Implicit iterator
-    ``{{.}}`` returns the top of the stack."""
+    """Mustache lookup, as mustache.js does it: the WHOLE (possibly dotted) name is tried
+    against each context from the innermost outward, and the first context on which the full
+    path resolves wins. A context that has the first segment but not the rest is skipped, not
+    a stop. Implicit iterator ``{{.}}`` returns the top of the stack."""
     return _resolve_found(path, stack)[1]
 
 
@@ -385,18 +386,28 @@ def _resolve_found(path: str, stack: list[Any]) -> tuple[bool, Any]:
     if path == ".":
         return True, (stack[-1] if stack else None)
     segs = path.split(".")
-    found, current = _lookup(stack, segs[0])
-    for seg in segs[1:]:
-        if not found or current is None:
-            return False, None
-        found, current = _lookup([current], seg)
-    return found, current
-
-
-def _lookup(stack: list[Any], name: str) -> tuple[bool, Any]:
     for ctx in reversed(stack):
-        if isinstance(ctx, dict) and name in ctx:
-            return True, ctx[name]
+        found, value = _walk(ctx, segs)
+        if found:
+            return True, value
+    return False, None
+
+
+def _walk(ctx: Any, segs: list[str]) -> tuple[bool, Any]:
+    current = ctx
+    for seg in segs:
+        found, current = _property(current, seg)
+        if not found:
+            return False, None
+    return True, current
+
+
+def _property(value: Any, name: str) -> tuple[bool, Any]:
+    """One property read, as JavaScript finds it: a mapping's key, or a list's ``length``."""
+    if isinstance(value, dict):
+        return (True, value[name]) if name in value else (False, None)
+    if isinstance(value, list) and name == "length":
+        return True, len(value)
     return False, None
 
 

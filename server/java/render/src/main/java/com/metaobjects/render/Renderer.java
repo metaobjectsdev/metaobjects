@@ -232,11 +232,36 @@ public final class Renderer {
 
         @Override
         public Writer execute(Writer writer, List<Object> scopes) {
-            if (!returnThis && oh.find(name, scopes) instanceof AbsentWrapper) {
+            if (!returnThis && oh.find(name, scopes) instanceof AbsentWrapper && !presentWholePath(scopes)) {
                 throw new RenderException(
                     "render verify failed: " + Verify.ERR_VAR_NOT_ON_PAYLOAD + " (" + name + ")");
             }
             return super.execute(writer, scopes);
+        }
+
+        /**
+         * The reference check (TypeScript on mustache.js) tries the WHOLE dotted name against each
+         * context from the innermost outward, and reads a list's {@code length} as a property. The
+         * engine's own lookup stops at the first context holding the first segment, so without this
+         * a name TypeScript renders (a shadowed prefix, {@code items.length}) would raise here.
+         */
+        private boolean presentWholePath(List<Object> scopes) {
+            int dot = name.lastIndexOf('.');
+            for (int i = scopes.size() - 1; i >= 0; i--) {
+                List<Object> one = java.util.Collections.singletonList(scopes.get(i));
+                if (!(oh.find(name, one) instanceof AbsentWrapper)) return true;
+                if (dot > 0 && "length".equals(name.substring(dot + 1))) {
+                    com.github.mustachejava.util.Wrapper w = oh.find(name.substring(0, dot), one);
+                    if (w instanceof AbsentWrapper) continue;
+                    try {
+                        Object v = w.call(one);
+                        if (v instanceof java.util.Collection<?> || (v != null && v.getClass().isArray())) return true;
+                    } catch (com.github.mustachejava.util.GuardException e) {
+                        // not resolvable on this context; try the next one out
+                    }
+                }
+            }
+            return false;
         }
     }
 }

@@ -27,6 +27,24 @@ public class RendererTest {
         assertEquals("- a\n- b\n- c\n", new Renderer().render(req));
     }
 
+    @Test
+    public void namesTheReferenceResolvesDoNotRaiseAsMissing() {
+        // The missing-variable check follows the reference (TypeScript on mustache.js): a dotted
+        // name is tried whole against each context, and a list's length is a property. What the
+        // engine then prints for these is a separate, open parity question, so only the absence of
+        // ERR_VAR_NOT_ON_PAYLOAD is pinned here.
+        var shadowed = new RenderRequest(
+            "{{#items}}[{{a.b}}]{{/items}}", null,
+            Map.of("a", Map.of("b", 1), "items", List.of(Map.of("a", Map.of("c", 2)))),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        new Renderer().render(shadowed);
+
+        var length = new RenderRequest(
+            "count: {{items.length}}", null, Map.of("items", List.of(1, 2, 3)),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        new Renderer().render(length);
+    }
+
     /** A value object's generated record, as a template's payload (ADR-0056). */
     public record Tag(String label) {}
     public record Profile(String bio, Integer count, List<Tag> tags, Tag sponsor) {}

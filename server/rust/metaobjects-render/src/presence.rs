@@ -10,7 +10,8 @@
 //!   section over an absent name is legal and is simply falsy.
 //! - A name resolves against the context stack from the innermost context outwards. A
 //!   dotted name is tried whole against each context in turn, and is present when its last
-//!   segment exists on the value its leading segments reach.
+//!   segment exists on the value its leading segments reach. A list's `length` is present,
+//!   as it is to a JavaScript property read.
 //! - A `null` value is present (it renders empty). `.` is always present.
 //! - Only what would render is checked: the body of a falsy section and of a truthy
 //!   inverted section is skipped, and a list section checks its body once per element.
@@ -104,13 +105,19 @@ fn lookup<'a>(name: &str, stack: &[&'a Value]) -> Option<&'a Value> {
 }
 
 fn resolve<'a>(context: &'a Value, segments: &[&str]) -> Option<&'a Value> {
-    segments
-        .iter()
-        .try_fold(context, |value, segment| property(value, segment))
+    segments.iter().try_fold(context, |value, segment| {
+        property(value, segment).or_else(|| {
+            let items = value.as_array().filter(|_| *segment == LENGTH)?;
+            Some(if items.is_empty() { &LENGTH_ZERO } else { &LENGTH_NONZERO })
+        })
+    })
 }
 
+/// The list property JavaScript exposes and the reference check therefore treats as present.
+const LENGTH: &str = "length";
+
 /// One property of a JSON value, as a JavaScript property read would find it: an object's
-/// key, or a list's index.
+/// key, or a list's index. (A list's `length` is handled by `resolve`.)
 fn property<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     match value {
         Value::Object(map) => map.get(key),
@@ -118,6 +125,12 @@ fn property<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
         _ => None,
     }
 }
+
+/// Placeholders for a list's `length`, which is a property in JavaScript and so is present to the
+/// reference check. The value is never rendered; only presence and truthiness matter, so an empty
+/// list's length stands as falsy and any other as a truthy `true`.
+static LENGTH_ZERO: Value = Value::Bool(false);
+static LENGTH_NONZERO: Value = Value::Bool(true);
 
 /// Mustache truthiness as the reference engine reads it: `false`, `null`, `0`, `""` and an
 /// empty list are falsy.
@@ -162,6 +175,8 @@ mod tests {
         assert_eq!(missing("{{#nope}}{{gone}}{{/nope}}", &payload), None);
         assert_eq!(missing("{{#flag}}{{gone}}{{/flag}}", &payload), None);
         assert_eq!(missing("{{#items}}{{gone}}{{/items}}", &payload), None);
+        assert_eq!(missing("{{items.length}}", &payload), None);
+        assert_eq!(missing("{{#items.length}}{{gone}}{{/items.length}}", &payload), None);
         assert_eq!(
             missing("{{^nope}}{{gone}}{{/nope}}", &payload),
             Some("gone".to_string())

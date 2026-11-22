@@ -186,24 +186,45 @@ public static class Renderer
         _ => false,
     };
 
-    /// <summary>Mustache's name lookup: the first segment is searched from the innermost context outward,
-    /// the rest walk down from it. Absent at any step is a miss; a null part-way is a present null.</summary>
+    /// <summary>Mustache's name lookup, as mustache.js does it: the WHOLE (possibly dotted) name is
+    /// tried against each context from the innermost outward, and the first context on which the full
+    /// path resolves wins. A context that has the first segment but not the rest is skipped, not a
+    /// stop; a path that descends through a null does not resolve there.</summary>
     private static bool TryResolve(List<object?> stack, string name, out object? value)
     {
         value = null;
         if (name == ".") { value = stack[^1]; return true; }
         string[] segs = name.Split('.');
-        bool hit = false;
-        object? current = null;
-        for (int i = stack.Count - 1; i >= 0 && !hit; i--)
-            hit = PayloadAccessors.TryLookup(stack[i], segs[0], out current);
-        if (!hit) return false;
-        for (int s = 1; s < segs.Length; s++)
+        for (int i = stack.Count - 1; i >= 0; i--)
         {
-            if (current is null) { value = null; return true; }
-            if (!PayloadAccessors.TryLookup(current, segs[s], out current)) return false;
+            if (TryWalk(stack[i], segs, out value)) return true;
         }
-        value = current;
+        value = null;
+        return false;
+    }
+
+    private static bool TryWalk(object? ctx, string[] segs, out object? value)
+    {
+        value = ctx;
+        foreach (string seg in segs)
+        {
+            if (!TryProperty(value, seg, out value)) return false;
+        }
         return true;
     }
+
+    // One property read, as JavaScript finds it: a payload member, or a list's `length`.
+    private static bool TryProperty(object? ctx, string key, out object? value)
+    {
+        if (PayloadAccessors.TryLookup(ctx, key, out value)) return true;
+        if (key == LengthProperty && ctx is System.Collections.ICollection list
+            and not System.Collections.IDictionary)
+        {
+            value = list.Count;
+            return true;
+        }
+        return false;
+    }
+
+    private const string LengthProperty = "length";
 }
