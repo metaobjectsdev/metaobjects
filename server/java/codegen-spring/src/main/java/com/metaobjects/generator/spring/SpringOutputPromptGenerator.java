@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.FindInbound;
 import com.metaobjects.generator.spring.OutputFormatSpecEmitter;
 import com.metaobjects.generator.spring.SpringNaming;
@@ -131,40 +132,46 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         String rootName = SpringNaming.splitFqn(payloadVo.getName())[1];
         String specLiteral = OutputFormatSpecEmitter.specLiteral(payloadVo, template, rootName);
 
-        StringBuilder src = new StringBuilder();
-        src.append("// GENERATED — DO NOT EDIT — response-format fragment for template.prompt `")
-           .append(template.getName()).append("`\n");
-        src.append(SpringNaming.packageHeader(outPkg));
-        src.append("import com.metaobjects.render.prompt.OutputFormatSpec;\n");
-        src.append("import com.metaobjects.render.prompt.OutputFormatRenderer;\n");
-        src.append("import com.metaobjects.render.prompt.PromptField;\n");
-        src.append("import com.metaobjects.render.prompt.PromptOverrides;\n");
-        src.append("import com.metaobjects.render.prompt.PromptStyle;\n");
-        src.append("import com.metaobjects.render.extract.FieldKind;\n");
-        src.append("import com.metaobjects.render.extract.Format;\n");
-        src.append("\n");
-        src.append("/** Response-format prompt fragment for the `")
-           .append(templateShort).append("` template.prompt. */\n");
-        src.append("public final class ").append(promptClass).append(" {\n\n");
-        src.append("    private static final OutputFormatSpec SPEC =\n");
-        src.append("        ").append(specLiteral).append(";\n\n");
-        src.append("    private ").append(promptClass).append("() { /* no instances */ }\n\n");
-        src.append("    /** The output-format instruction fragment (\"produce your answer like this\"). */\n");
-        src.append("    public static String renderFormat() {\n");
-        src.append("        return OutputFormatRenderer.render(SPEC, PromptOverrides.none());\n");
-        src.append("    }\n\n");
-        src.append("    public static String renderFormat(PromptOverrides overrides) {\n");
-        src.append("        return OutputFormatRenderer.render(SPEC, overrides);\n");
-        src.append("    }\n");
-        src.append("}\n");
+        SpringJavaWriter w = new SpringJavaWriter();
+        w.header("// GENERATED — DO NOT EDIT — response-format fragment for template.prompt `" + template.getName() + "`");
+        if (!outPkg.isEmpty()) w.packageName(outPkg);
+        for (String fqn : List.of("com.metaobjects.render.prompt.OutputFormatSpec",
+                "com.metaobjects.render.prompt.OutputFormatRenderer", "com.metaobjects.render.prompt.PromptField",
+                "com.metaobjects.render.prompt.PromptOverrides", "com.metaobjects.render.prompt.PromptStyle",
+                "com.metaobjects.render.extract.FieldKind", "com.metaobjects.render.extract.Format")) {
+            w.use(fqn);
+        }
+        w.line("/** Response-format prompt fragment for the `" + templateShort + "` template.prompt. */");
+        try (var cls = w.block("public final class " + promptClass + " {")) {
+            w.line("private static final OutputFormatSpec SPEC =");
+            w.deeper(1, () -> w.line(specLiteral + ";"));
+            w.blank();
+            w.line("private " + promptClass + "() { /* no instances */ }");
+            w.blank();
+            writeRenderFormat(w);
+        }
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(promptClass + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + promptClass + ".java for template " + template.getName() + ": " + e, e);
         }
+    }
+
+    /** The two {@code renderFormat} overloads, with and without caller overrides. */
+    protected void writeRenderFormat(SpringJavaWriter w) {
+        w.text("""
+            /** The output-format instruction fragment ("produce your answer like this"). */
+            public static String renderFormat() {
+                return OutputFormatRenderer.render(SPEC, PromptOverrides.none());
+            }
+
+            public static String renderFormat(PromptOverrides overrides) {
+                return OutputFormatRenderer.render(SPEC, overrides);
+            }
+            """);
     }
 
     /**

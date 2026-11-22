@@ -146,6 +146,18 @@ is removed when its generator converts, so the list only shrinks. The dialect co
 - Five writers must agree, which the shared corpus checks, as the repository already does for
   everything else that must match across ports.
 
+## Amendment (2026-11-21, Java): the Java writers
+
+Every Java generator writes through the code writer. `JavaWriter` (`codegen-base`,
+`com.metaobjects.generator.writer`) is the dialect the object and direct generators use, and
+`SpringJavaWriter` (`codegen-spring`) extends it with the two layouts Spring source needs: a
+continuation line two indents deeper, and an indented `case` body. Decisions 1 to 7 apply
+unchanged. Java lays out at **120 columns** with a four-space indent and no trailing comma in
+broken lists. The dialect contract is in [`spec/code-writer.md`](../code-writer.md), the Java
+dialect section. The layout ratchet (`LayoutRatchetTest`, `codegen-base`, with its allowlist at
+`codegen-base/src/test/resources/layout-ratchet/allowlist.json`) holds an empty `unconverted`
+section: no Java generator source types layout by hand.
+
 ## Amendment (2026-11-21, C#): the C# writer
 
 The C# port has its writer, `CsWriter` (`server/csharp/MetaObjects.Codegen/Writer/CsWriter.cs`), and

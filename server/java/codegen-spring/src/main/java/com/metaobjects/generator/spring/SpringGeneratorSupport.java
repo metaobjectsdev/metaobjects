@@ -1,5 +1,7 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.writer.CodeWriter;
+
 // Eject note (ADR-0034, JVM eject design): `mvn metaobjects:eject` copies this class beside
 // every generator that imports it and renames its package. These siblings stay in
 // com.metaobjects.generator.spring, so an explicit import, not same-package bare-name
@@ -404,7 +406,7 @@ public final class SpringGeneratorSupport {
      * Java DTO-record component type for {@code field} owned by {@code owner}. A
      * {@code field.enum} is typed as the value-constrained nested Java {@code enum}
      * ({@link SpringTypeMapper#enumTypeName}, single or {@code List<Enum>}) whose declaration
-     * {@code SpringDtoGenerator.collectEnumDecls} emits inside the record body — parity with the other ports and
+     * {@code SpringDtoGenerator.writeEnumDecls} writes inside the record body — parity with the other ports and
      * with {@link SpringValueObjectGenerator}. Other scalars delegate to {@link SpringTypeMapper};
      * array fields ({@code isArray=true}) are wrapped as {@code List<elementType>} (the wrapped
      * element type so an omitted JSON element deserialises to {@code null}).
@@ -760,10 +762,10 @@ public final class SpringGeneratorSupport {
      * reads it as a class-level rule; {@code @JsonIgnore} keeps it off the wire). Null-safe in
      * the DB CHECK sense (SQL NULL = Java null; "" is not null). A validator whose referenced
      * field is missing is skipped. NOT added to the PATCH body: a partial body cannot see the
-     * merged row, so the DB CHECK stays the enforcement there.
+     * merged row, so the DB CHECK stays the enforcement there. Written at the writer's current
+     * indent, each member after a blank line.
      */
-    public static List<String> crossFieldValidationMembers(MetaObject entity, List<MetaField> components) {
-        List<String> out = new ArrayList<>();
+    public static void writeCrossFieldValidationMembers(CodeWriter w, MetaObject entity, List<MetaField> components) {
         java.util.Set<String> used = new java.util.HashSet<>();
         for (Map.Entry<MetaValidator, String> rule : crossFieldRules(
                 entity, components, f -> "this." + SpringNaming.recordComponentName(f.getName()))) {
@@ -773,16 +775,16 @@ public final class SpringGeneratorSupport {
             String base = id.length() == 0 ? "CrossField" : Character.toUpperCase(id.charAt(0)) + id.substring(1);
             String method = "is" + base + "Valid";
             for (int n = 2; !used.add(method); n++) method = "is" + base + n + "Valid";
-            out.add("\n    /** Cross-field validator " + v.getName().replace("*/", "* /")
-                + " (class-level Bean Validation; the DB CHECK enforces the PATCH path). */\n"
-                + "    @com.fasterxml.jackson.annotation.JsonIgnore\n"
-                + "    @AssertTrue(message = \"validator " + escapeJavaString(v.getName()) + " violated\")\n"
-                + "    @SuppressWarnings(\"unchecked\")\n"
-                + "    public boolean " + method + "() {\n"
-                + "        return " + rule.getValue() + ";\n"
-                + "    }\n");
+            w.blank();
+            w.line("/** Cross-field validator " + v.getName().replace("*/", "* /")
+                + " (class-level Bean Validation; the DB CHECK enforces the PATCH path). */");
+            w.line("@com.fasterxml.jackson.annotation.JsonIgnore");
+            w.line("@AssertTrue(message = \"validator " + escapeJavaString(v.getName()) + " violated\")");
+            w.line("@SuppressWarnings(\"unchecked\")");
+            try (CodeWriter.Block m = w.block("public boolean " + method + "() {")) {
+                w.line("return " + rule.getValue() + ";");
+            }
         }
-        return out;
     }
 
     /**
@@ -1115,18 +1117,39 @@ public final class SpringGeneratorSupport {
     }
 
     /**
-     * The imports {@link #decimalJsonAnnotations} needs: the two Jackson annotations and the two
+     * The imports (qualified names) {@link #decimalJsonAnnotations} needs: the two Jackson annotations and the two
      * runtime classes they name (imported, so the ejected runtime package is what the output
      * names).
      */
-    public static String decimalAnnotationImports(String runtimePackage, WireFormat wire) {
-        String out = wire.decimalsAsString()
-            ? "import com.fasterxml.jackson.databind.annotation.JsonSerialize;\n"
-              + "import " + runtimePackage + ".CanonicalDecimalSerializer;\n" : "";
-        return "import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n"
-            + out
-            + "import " + runtimePackage + ".CanonicalDecimalDeserializer;\n"
-            + "import " + runtimePackage + ".DeclaredDecimal;\n";
+    public static List<String> decimalAnnotationImports(String runtimePackage, WireFormat wire) {
+        List<String> out = new ArrayList<>();
+        out.add("com.fasterxml.jackson.databind.annotation.JsonDeserialize");
+        if (wire.decimalsAsString()) {
+            out.add("com.fasterxml.jackson.databind.annotation.JsonSerialize");
+            out.add(runtimePackage + ".CanonicalDecimalSerializer");
+        }
+        out.add(runtimePackage + ".CanonicalDecimalDeserializer");
+        out.add(runtimePackage + ".DeclaredDecimal");
+        return out;
+    }
+
+    /**
+     * One record component declaration, as a DTO or value-object record writes it: the validation
+     * annotations, the decimal and duration wire bindings, the {@code @JsonProperty} pin of an
+     * escaped name, then {@code type component}.
+     */
+    public static String recordComponentDeclaration(String annotations, String type, String component,
+                                                    MetaField<?> field, String runtimePackage, WireFormat wire) {
+        List<String> parts = new ArrayList<>();
+        if (!annotations.isEmpty()) parts.add(annotations);
+        String decimalJson = decimalJsonAnnotations(type, runtimePackage, field, wire);
+        if (!decimalJson.isEmpty()) parts.add(decimalJson);
+        String durationJson = durationJsonAnnotations(type, wire);
+        if (!durationJson.isEmpty()) parts.add(durationJson);
+        String jsonName = SpringNaming.jsonPropertyAnnotation(field.getName());
+        if (!jsonName.isEmpty()) parts.add(jsonName);
+        parts.add(type + " " + component);
+        return String.join(" ", parts);
     }
 
     /** The element type string of a duration component (see {@link #durationJsonAnnotations}). */
@@ -1156,13 +1179,15 @@ public final class SpringGeneratorSupport {
     }
 
     /**
-     * The imports {@link #durationJsonAnnotations} needs beyond {@code JsonDeserialize} (which the
+     * The imports (qualified names) {@link #durationJsonAnnotations} needs beyond {@code JsonDeserialize} (which the
      * caller imports once for every reason it is used): {@code JsonSerialize} unless
      * {@code serializeImported}, and the two runtime classes.
      */
-    public static String durationAnnotationImports(String runtimePackage, boolean serializeImported) {
-        return (serializeImported ? "" : "import com.fasterxml.jackson.databind.annotation.JsonSerialize;\n")
-            + "import " + runtimePackage + ".CanonicalDurationDeserializer;\n"
-            + "import " + runtimePackage + ".CanonicalDurationSerializer;\n";
+    public static List<String> durationAnnotationImports(String runtimePackage, boolean serializeImported) {
+        List<String> out = new ArrayList<>();
+        if (!serializeImported) out.add("com.fasterxml.jackson.databind.annotation.JsonSerialize");
+        out.add(runtimePackage + ".CanonicalDurationDeserializer");
+        out.add(runtimePackage + ".CanonicalDurationSerializer");
+        return out;
     }
 }

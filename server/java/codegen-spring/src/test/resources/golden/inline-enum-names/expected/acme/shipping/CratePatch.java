@@ -11,7 +11,6 @@ import java.util.Set;
 
 /** GENERATED — presence-tracked partial-update (PATCH) shape for Crate. Do not hand-edit; regenerated from metadata. */
 public final class CratePatch {
-
     private final Map<String, Object> assigned;
 
     private CratePatch(Map<String, Object> assigned) { this.assigned = assigned; }

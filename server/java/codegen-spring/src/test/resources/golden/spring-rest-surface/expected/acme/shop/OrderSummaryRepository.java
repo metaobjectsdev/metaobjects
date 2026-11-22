@@ -12,7 +12,6 @@ import java.util.Optional;
  * implement. Its controller answers every write verb with 405.</p>
  */
 public interface OrderSummaryRepository {
-
     /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */
     record SortClause(String field, String direction) {}
 

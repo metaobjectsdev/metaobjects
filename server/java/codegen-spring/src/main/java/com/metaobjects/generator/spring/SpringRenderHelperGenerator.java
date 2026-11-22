@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringNaming;
 
 import com.metaobjects.MetaData;
@@ -196,7 +197,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
 
         boolean isEmail = TemplateConstants.KIND_EMAIL.equalsIgnoreCase(kindOf(template));
 
-        StringBuilder body = new StringBuilder();
+        java.util.function.Consumer<SpringJavaWriter> renderMethod;
         if (isEmail) {
             String subjectRef = attrPresent(template, TemplateConstants.ATTR_SUBJECT_REF)
                 ? attr(template, TemplateConstants.ATTR_SUBJECT_REF) : null;
@@ -220,27 +221,8 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
                 gateRef(template.getName(), textBodyRef, provider, fields);
             }
 
-            body.append("    public static com.metaobjects.render.EmailDocument render(")
-                .append(payloadClass).append(" payload, com.metaobjects.render.Provider provider) {\n");
-            body.append("        com.metaobjects.render.Renderer r = new com.metaobjects.render.Renderer();\n");
-            body.append("        return new com.metaobjects.render.EmailDocument(\n");
-            body.append("            r.render(new com.metaobjects.render.RenderRequest(\n")
-                .append("                null, ").append(quote(subjectRef))
-                .append(", payload, provider, \"text\",\n")
-                .append("                ").append(fieldTreeLiteral).append(", null)),\n");
-            body.append("            r.render(new com.metaobjects.render.RenderRequest(\n")
-                .append("                null, ").append(quote(htmlBodyRef))
-                .append(", payload, provider, \"html\",\n")
-                .append("                ").append(fieldTreeLiteral).append(", null)),\n");
-            if (textBodyRef != null) {
-                body.append("            r.render(new com.metaobjects.render.RenderRequest(\n")
-                    .append("                null, ").append(quote(textBodyRef))
-                    .append(", payload, provider, \"text\",\n")
-                    .append("                ").append(fieldTreeLiteral).append(", null)));\n");
-            } else {
-                body.append("            null);\n");
-            }
-            body.append("    }\n");
+            final String sRef = subjectRef, hRef = htmlBodyRef, tRef = textBodyRef;
+            renderMethod = out -> writeEmailRender(out, payloadClass, sRef, hRef, tRef, fieldTreeLiteral);
         } else {
             String textRef = attrPresent(template, TemplateConstants.ATTR_TEXT_REF)
                 ? attr(template, TemplateConstants.ATTR_TEXT_REF) : null;
@@ -254,37 +236,70 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
             // BUILD-TIME drift gate.
             gateRef(template.getName(), textRef, provider, fields);
 
-            body.append("    public static String render(")
-                .append(payloadClass).append(" payload, com.metaobjects.render.Provider provider) {\n");
-            body.append("        return new com.metaobjects.render.Renderer().render(new com.metaobjects.render.RenderRequest(\n");
-            body.append("            null, ").append(quote(textRef)).append(", payload, provider, ")
-                .append(quote(format)).append(",\n");
-            body.append("            ").append(fieldTreeLiteral).append(", ")
-                .append(maxChars == null ? "null" : maxChars.toString()).append("));\n");
-            body.append("    }\n");
+            renderMethod = out -> writeDocumentRender(out, payloadClass, textRef, format, maxChars, fieldTreeLiteral);
         }
 
-        StringBuilder src = new StringBuilder();
-        src.append("// GENERATED — DO NOT EDIT — render helper for template.")
-           .append(template.getSubType()).append(" `")
-           .append(template.getName()).append("`\n");
-        src.append(SpringNaming.packageHeader(outPkg));
-        src.append("/** Typed render helper for the `").append(templateShort)
-           .append("` template.").append(template.getSubType())
-           .append(". Wraps the render() engine; the payload field tree is\n")
-           .append(" *  baked into the RenderRequest so render()'s runtime drift check matches the\n")
-           .append(" *  build-time gate enforced when this file was generated. */\n");
-        src.append("public final class ").append(helperClass).append(" {\n\n");
-        src.append("    private ").append(helperClass).append("() { /* no instances */ }\n\n");
-        src.append(body);
-        src.append("}\n");
+        SpringJavaWriter w = new SpringJavaWriter();
+        w.header("// GENERATED — DO NOT EDIT — render helper for template." + template.getSubType()
+            + " `" + template.getName() + "`");
+        if (!outPkg.isEmpty()) w.packageName(outPkg);
+        w.line("/** Typed render helper for the `" + templateShort + "` template." + template.getSubType()
+            + ". Wraps the render() engine; the payload field tree is");
+        w.line(" *  baked into the RenderRequest so render()'s runtime drift check matches the");
+        w.line(" *  build-time gate enforced when this file was generated. */");
+        try (var cls = w.block("public final class " + helperClass + " {")) {
+            w.line("private " + helperClass + "() { /* no instances */ }");
+            w.blank();
+            renderMethod.accept(w);
+        }
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(helperClass + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + helperClass + ".java for template " + template.getName() + ": " + e, e);
+        }
+    }
+
+    /** The email shape: one {@code RenderRequest} per part, assembled into an {@code EmailDocument}. */
+    protected void writeEmailRender(SpringJavaWriter w, String payloadClass, String subjectRef,
+                                    String htmlBodyRef, String textBodyRef, String fieldTreeLiteral) {
+        try (var m = w.block("public static com.metaobjects.render.EmailDocument render("
+                + payloadClass + " payload, com.metaobjects.render.Provider provider) {")) {
+            w.line("com.metaobjects.render.Renderer r = new com.metaobjects.render.Renderer();");
+            w.line("return new com.metaobjects.render.EmailDocument(");
+            w.deeper(1, () -> {
+                writePartRequest(w, subjectRef, "text", fieldTreeLiteral, ",");
+                writePartRequest(w, htmlBodyRef, "html", fieldTreeLiteral, ",");
+                if (textBodyRef != null) {
+                    writePartRequest(w, textBodyRef, "text", fieldTreeLiteral, ");");
+                } else {
+                    w.line("null);");
+                }
+            });
+        }
+    }
+
+    /** One email part: {@code r.render(new RenderRequest(...))} followed by {@code tail}. */
+    protected void writePartRequest(SpringJavaWriter w, String ref, String format, String fieldTreeLiteral, String tail) {
+        w.line("r.render(new com.metaobjects.render.RenderRequest(");
+        w.deeper(1, () -> {
+            w.line("null, " + quote(ref) + ", payload, provider, \"" + format + "\",");
+            w.line(fieldTreeLiteral + ", null))" + tail);
+        });
+    }
+
+    /** The document shape (also every prompt): one {@code RenderRequest} returning the rendered text. */
+    protected void writeDocumentRender(SpringJavaWriter w, String payloadClass, String textRef, String format,
+                                       Integer maxChars, String fieldTreeLiteral) {
+        try (var m = w.block("public static String render(" + payloadClass
+                + " payload, com.metaobjects.render.Provider provider) {")) {
+            w.line("return new com.metaobjects.render.Renderer().render(new com.metaobjects.render.RenderRequest(");
+            w.deeper(1, () -> {
+                w.line("null, " + quote(textRef) + ", payload, provider, " + quote(format) + ",");
+                w.line(fieldTreeLiteral + ", " + (maxChars == null ? "null" : maxChars.toString()) + "));");
+            });
         }
     }
 

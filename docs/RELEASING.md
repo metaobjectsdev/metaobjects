@@ -929,7 +929,7 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
    that happens to share the number.)
    Then assert the excluded modules are in sync: `scripts/check-pom-versions.sh`
    (also enforced on every push by `.githooks/pre-push` and by `scripts/ci-local.sh`).
-2. **Validate locally:** `cd server/java && mvn -q clean install -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed).
+2. **Validate locally:** `cd server/java && mvn -q clean verify -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed). Use `verify`, not `install`: installing writes this unreleased version into the shared `~/.m2` ([RELEASING-java.md](RELEASING-java.md#3-local-smoke-build)).
 3. **Deploy — ONE of two routes, never both** (a second deploy of a published version fails
    with `Component … already exists`): push a `java-v<maven-version>` tag, and
    `publish-java.yml` runs the deploy below in CI with the signing secrets (how `8.0.4`

@@ -103,6 +103,28 @@ here.**
   TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
   decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
   scenario can now send a body that is not JSON with `rawBody`.
+- **Java: the Spring controller generator writes through the code writer (ADR-0063).**
+  `SpringControllerGenerator` writes through `SpringJavaWriter`, a `JavaWriter` that adds the two
+  layouts Spring source uses and a block does not: a continuation line (two indents deeper) and an
+  indented `case` body. Every member of the generated controller comes from its own protected
+  `write*` method, so an owned copy changes one handler by overriding one method; the `append*`
+  helpers that took a `StringBuilder` are gone. The shared validator members and the decimal and
+  duration import lists in `SpringGeneratorSupport` are written through the writer too
+  (`writeCrossFieldValidationMembers`; `decimalAnnotationImports` and `durationAnnotationImports`
+  now return qualified names). A generated controller changes in two layout details only, checked
+  on 1,512 controllers from every fixture model: its imports are sorted, and the blank line after
+  `public class ... {` is gone.
+
+  The DTO, value-object and shared-enum generators follow (`SpringDtoGenerator`,
+  `SpringValueObjectGenerator`, `Fr019SharedEnum`). A record, patch class, stamping helper and
+  enum declaration each come from a protected method, and the string-returning helpers they used
+  are replaced by writer ones: `SpringTypeMapper.enumDeclaration` by `writeEnumDeclaration`,
+  `SpringRecordBuilder.members` by `writeMembers` (with `applies` to ask first), and an owned DTO
+  generator customizes every file it writes by overriding `newWriter`. Their output changes in
+  layout only, checked on every fixture model in two wire and API configurations: sorted imports
+  with no blank between groups, no blank line after `public final class ...Patch {` or a doubled
+  one in a patch with no settable fields, no trailing indent on the blank lines of a nested enum,
+  and no leading blank line in a file with no package.
 - **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
   `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
   port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle
@@ -111,6 +133,28 @@ here.**
   - `filterAllowlist`: it then serves `filter[...]`, `filter[or]` / `filter[and]` and `?search`
     and refuses what the Drizzle mount refuses, with the same bodies;
   - `pagination`: the `api.pagination` page size.
+
+  The names, repository and report-export generators follow (`SpringNamesGenerator`,
+  `SpringRepositoryGenerator`, `SpringReportExportGenerator`), each finder, constant block and
+  writer section from its own protected method; the one layout change in their output is that
+  the blank line after the class or interface opener is gone. So does the output-parser generator
+  (`SpringOutputParserGenerator`), whose `StringBuilder` seams (`emitMapperMethods`, `emitMapper`,
+  `appendMapperHelpers`) now take the writer, and whose parsers gain a blank line after the
+  leading `// GENERATED` comment besides sorted imports. The filter-allowlist, response-format and
+  render-helper generators follow: the allowlist output is unchanged, and the other two gain the
+  same blank after the leading comment, sorted imports and no blank after the class opener.
+  `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it. The LLM-trace
+  helper and the `requirement-tests` generator follow with the same layout changes, and the
+  witness-key collision error now lists its colliding pairs on one line, separated by `; `.
+  In `codegen-base`, the entity extractor (`ExtractorCodeGenerator`, whose `write*` seams now take
+  a `JavaWriter`, and whose `writeHeader` no longer takes the extractor name or writes the class
+  opener) and the generated `ObjectClassBindingProvider` move to the writer too, with sorted imports
+  and no blank after the class opener; the older object code writers take their indentation unit
+  from `WriterOptions` (`JAVA`, and the new two-space `DIRECT`) instead of a typed string. Every
+  Java generator now writes through the code writer, so the layout ratchet's `unconverted` list
+  is empty. `CodeWriter`, `JavaWriter`, `WriterOptions` and `SpringJavaWriter` join the Java
+  engine surface (`eject.engineSurface.java.engine`), so an ejected generator imports them from
+  the package rather than copying them.
 
   With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
   `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
