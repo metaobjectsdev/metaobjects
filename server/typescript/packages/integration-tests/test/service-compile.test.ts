@@ -1,13 +1,13 @@
 // The service tier's compile gate (ADR-0067 layers 4 and 5): the shared fitness corpus and the
 // api-contract rules corpus, each generated (and the fitness corpus again without interactive
 // transactions, on SQLite)
-// with the entity module, the contract types, the service and its Fastify transport, compiled with
+// with the entity module, the contract types, the service and its Fastify and Hono transports, compiled with
 // the real compiler in both profiles, every dialect and both output layouts.
 //
 // A separate gate from codegen-ts's `codegen-compile-conformance.test.ts`, which keeps its program
 // to drizzle and zod: a service imports the entity module's allowlists and
-// `@metaobjectsdev/runtime-ts`, and its transport imports fastify, so its program has to resolve
-// all three, which this package does. Behaviour is gated by the api-contract service
+// `@metaobjectsdev/runtime-ts`, and its transports import fastify and hono, so its program has to resolve
+// all of them, which this package does. Behaviour is gated by the api-contract service
 // lane (`integration-tests/test/api-contract-service.test.ts`); this asks only whether what it
 // runs BUILDS, which bun, running the emitted files unchecked, never asks.
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
@@ -16,14 +16,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 import { loadUris, type MetaRoot } from "@metaobjectsdev/metadata";
-import { contractTypes, entityFile, serviceFile, serviceRoutesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { contractTypes, entityFile, serviceFile, serviceRoutesFile, serviceRoutesHonoFile } from "@metaobjectsdev/codegen-ts/generators";
 import { runGen, defineConfig, type OutputLayout } from "@metaobjectsdev/codegen-ts";
 import { rmSync } from "node:fs";
 
 setDefaultTimeout(120_000);
 
 // Inside the package tree, so the emitted imports resolve through this package's node_modules
-// (drizzle-orm, zod, fastify and the workspace's runtime-ts), as the generated api-contract lanes do.
+// (drizzle-orm, zod, fastify, hono and the workspace's runtime-ts), as the generated api-contract lanes do.
 const GEN_TMP = join(dirname(fileURLToPath(import.meta.url)), "..", ".gen-tmp");
 mkdirSync(GEN_TMP, { recursive: true });
 
@@ -116,6 +116,7 @@ for (const corpus of CORPORA) describe(`service compile gate — ${corpus.label}
                   contractTypes(),
                   serviceFile("interactiveTransactions" in corpus ? { interactiveTransactions: corpus.interactiveTransactions } : undefined),
                   serviceRoutesFile(),
+                  serviceRoutesHonoFile(),
                 ],
               }),
               metadata: root,
@@ -127,6 +128,7 @@ for (const corpus of CORPORA) describe(`service compile gate — ${corpus.label}
             expect(rel).toContain(`${corpus.pkg}/service/index.ts`);
             for (const p of corpus.present) expect(rel).toContain(p);
             expect(rel).toContain(`${corpus.pkg}/transport/fastify.ts`);
+            expect(rel).toContain(`${corpus.pkg}/transport/hono.ts`);
             writeFileSync(join(dir, "package.json"), JSON.stringify({ type: "module" }));
             const program = ts.createProgram(files, { ...options, noEmit: true });
             const diagnostics = ts.getPreEmitDiagnostics(program).map((d) => {

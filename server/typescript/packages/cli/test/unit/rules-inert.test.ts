@@ -123,6 +123,7 @@ const SERVICE_LAYER: Record<string, { added: string[]; changed: string[] }> = {
     ],
   },
   "service-routes": { added: [], changed: ["src/generated/acme/purchasing/transport/fastify.ts"] },
+  "service-routes-hono": { added: [], changed: ["src/generated/acme/purchasing/transport/hono.ts"] },
 };
 
 let withRules: MetaRoot;

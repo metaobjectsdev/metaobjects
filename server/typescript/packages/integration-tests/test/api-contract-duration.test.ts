@@ -21,9 +21,10 @@ import type { ReportSeed } from "../src/api-contract-report-generated-server.ts"
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";
 import { OUTPUT_LAYOUTS, postgresFor, type OutputLayout } from "../src/output-layout.ts";
 import type { RunningPg } from "../src/postgres-container.ts";
+import { API_LANES, laneLabel, type ApiLane } from "../src/api-lane.ts";
 
 /** Which output layout a lane generates in, and where its Postgres databases come from. */
-interface Lane { layout: OutputLayout; startPg: (() => Promise<RunningPg>) | undefined }
+interface Lane { layout: OutputLayout; startPg: (() => Promise<RunningPg>) | undefined; api: ApiLane }
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_DURATION_DIR, "seed.json"), "utf8")) as ReportSeed;
 const META_PATH = join(API_CONTRACT_DURATION_DIR, "meta.json");
@@ -50,14 +51,14 @@ async function withServer(engine: CorpusEngine, lane: Lane, fn: (baseUrl: string
   if (engine === "postgres") {
     const pg = await lane.startPg!();
     try {
-      const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, pg.connectionUri, lane.layout);
+      const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, pg.connectionUri, lane.layout, lane.api);
       try { await server.applySeed(SEED); await fn(server.baseUrl); } finally { await server.close(); }
     } finally {
       await pg.stop();
     }
     return;
   }
-  const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, engine === "mysql" ? mysqlContainer!.url : undefined, lane.layout);
+  const server = await startGeneratedCorpusServer(DURATION, engine, META_PATH, engine === "mysql" ? mysqlContainer!.url : undefined, lane.layout, lane.api);
   try { await server.applySeed(SEED); await fn(server.baseUrl); } finally { await server.close(); }
 }
 
@@ -65,8 +66,8 @@ const scenarios = loadScenarios(API_CONTRACT_DURATION_SCENARIOS_DIR);
 
 test("the duration corpus has scenarios", () => { expect(scenarios.length).toBeGreaterThan(0); });
 
-for (const layout of OUTPUT_LAYOUTS) for (const engine of ENGINES) describe(`api contract duration — GENERATED routes on ${engine} [${layout}]`, () => {
-  const lane: Lane = { layout, startPg: engine === "postgres" ? postgresFor(layout) : undefined };
+for (const api of API_LANES) for (const layout of OUTPUT_LAYOUTS) for (const engine of ENGINES) describe(`api contract duration — ${laneLabel(api)} on ${engine} [${layout}]`, () => {
+  const lane: Lane = { layout, startPg: engine === "postgres" ? postgresFor(layout) : undefined, api };
   for (const scenario of scenarios) {
     if (scenario.engines !== undefined && !scenario.engines.includes(engine)) continue;
     test(scenario.name, async () => {

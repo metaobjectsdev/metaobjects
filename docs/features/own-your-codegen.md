@@ -398,6 +398,7 @@ calls it copies the adapter's source too:
 | `entity` | `entity.ts` | `drizzle-fastify/filter-allowlist.ts` — the `FilterAllowlist` / `SortAllowlist` types the entity module's allowlists are typed by |
 | `service` | `service.ts` | `service/index.ts` — the store mechanics the generated service modules call (transaction, row lock, write-rule stamping), and `service/rules.ts`, the business-rules mechanics it re-exports |
 | `service-routes` | `service-routes.ts` | `service/fastify.ts` — the request and reply helpers the generated Fastify transport imports |
+| `service-routes-hono` | `service-routes-hono.ts` | `service/hono.ts` — the same helpers for the generated Hono transport, plus the Hono route guard and the shared list-query parser it reaches |
 
 The ejected generators point their output at that copy
 (`import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index.js"`), so

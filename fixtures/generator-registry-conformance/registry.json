@@ -132,6 +132,13 @@
       "eject": "full",
       "ports": ["typescript"]
     },
+    "service-routes-hono": {
+      "concept": "The `service-routes` transport on Hono: the same routes over the service layer (ADR-0067 layer 5), mounted on a Hono app, answering the shared REST contract the same way. TYPESCRIPT ONLY by design, as `routes-hono` is: Hono is a TypeScript framework.",
+      "tier": "native",
+      "layer": "api",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
     "prompt-render": {
       "concept": "Per-template.prompt render handle over the render engine, aggregated into one module. TYPESCRIPT ONLY by design: the other four ports emit a prompt's render helper from `render-helper` (see its note) rather than a second generator.",
       "tier": "native",

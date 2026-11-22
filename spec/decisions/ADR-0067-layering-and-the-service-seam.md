@@ -18,8 +18,8 @@ and every generator below is a helper.
 Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in TypeScript, and C#
 writes its own names and create and update records. In TypeScript, layers 4 and 5 have started:
 `service` writes each package's derived list, get, create, update and delete in one transaction with
-the declared write rules, and `service-routes` the thin Fastify transport over it (the `service`
-layer label of §5.6). The same generators now write ADR-0066's transitions and declared operations,
+the declared write rules, and `service-routes` the thin Fastify transport over it, with
+`service-routes-hono` its Hono twin (the `service` layer label of §5.6). The same generators now write ADR-0066's transitions and declared operations,
 with the policy, bodies, hooks and events interfaces, and enforce the rules at run time. The other
 ports' shells and the per-package choice of generators are later work. ADR-0066's vocabulary is
 inert at run time in any port whose service generator has not landed.
@@ -104,7 +104,7 @@ shell's private state and could call around it.
 | Mapping (2) | Drizzle tables | EF Core entities and `AppDbContext` | none generated | Exposed `Table` objects | none generated | none: row types derive sqlx `FromRow` |
 | Data access (3) | query functions taking `db` | none: the context is the data layer | a generated repository implementation on `ObjectManagerDB`, with the guarded update as a method | Exposed repository functions | a generated repository over the abstract `ObjectManager`, implemented by `ObjectManagerDb` | generated repository functions on sqlx, with the guarded update |
 | Service (4) | a function per operation; `createXService(deps)` | `sealed class XService`, constructor-injected `IXPolicy`, `IXBodies`, `IXEvents`; `services.AddX()` | `@Service` class implementing a generated `XOperations`; constructor injection of `XPolicy` and `XBodies`; `@Transactional` per operation | `class XService(db, policy, bodies, events)`; each operation in `transaction {}`; returns a sealed `OpResult` | a module per package, a function per operation taking an `OpContext`; bodies and policy as `Protocol`s | `struct XService<P, B, E>` over generated traits `XPolicy`, `XBodies`, `XEvents`; each operation takes the transaction and returns `Result<T, XError>` |
-| Transport (5) | Fastify routes | minimal-API route groups | Spring MVC controllers | Spring controllers | FastAPI router with `Depends` | an axum router |
+| Transport (5) | Fastify routes, or Hono routes | minimal-API route groups | Spring MVC controllers | Spring controllers | FastAPI router with `Depends` | an axum router |
 
 **Rust gets layered generators like every other port** (ruled 2026-11-20); it is not exempt. The
 Rust column above is the shape its generators are written to.
