@@ -31,7 +31,8 @@ here.**
 - **The empty `@metaobjectsdev/forge` package is removed.** It was private, exported nothing and
   had no importer. The forge vocabulary (`decision`, `principle`, `convention`, `glossary`,
   `failure` and the `@forge*` attributes) is unchanged: `@metaobjectsdev/sdk` ships it as
-  `forgeTypesProvider`, and `FORGE-METADATA.md` now says so.
+  `forgeTypesProvider`, and `FORGE-METADATA.md` now says so. The "The TypeScript forge provider"
+  section of `docs/features/extending-with-providers.md` is removed; that doc no longer names it.
 - **cli: `meta schema` prints the expected schema, read-only.** `meta schema --dialect
   postgres|sqlite|d1` prints the `CREATE` statements `meta migrate` would write for an empty
   database, views included; `--as json` prints the neutral JSON document instead, the format
