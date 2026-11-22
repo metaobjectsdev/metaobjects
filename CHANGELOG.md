@@ -175,7 +175,7 @@ here.**
 - **openapi: the document describes `?search`, `filter[or]` and `filter[and]`.** A list whose row
   has a text field the search matches takes a `search` parameter naming those fields, and a list
   with any filter takes the two combinators as `deepObject` parameters whose description gives the
-  grammar and the nesting cap. Item `GET` and `DELETE` now list the `400 invalid_id` answer the routes
+  grammar and the nesting cap. Item `GET`, `PATCH`, `PUT` and `DELETE` now list the `400 invalid_id` answer the routes
   already gave. A project that wires `openApiFile()` sees `openapi.json` change on the next
   `meta gen`; the contract corpus goldens move with it. A new contract case, `list-query`, documents
   the list-query model, and the list-query lane now holds every exchange to it as the other

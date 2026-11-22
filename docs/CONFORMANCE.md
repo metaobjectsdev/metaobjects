@@ -498,10 +498,10 @@ All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
 scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
-### `fixtures/persistence-conformance/` (67 — 55 query + 12 migration)
+### `fixtures/persistence-conformance/` (68 — 56 query + 12 migration)
 
 - `migrations/*` (12) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (55) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `queries/*` (56) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
 **Engines beyond Postgres (FR-044 reports, decimals).** The twenty-four `queries/report-*.yaml`
 scenarios also run on SQLite and MySQL 8.4 in every port, and on D1's local runtime in

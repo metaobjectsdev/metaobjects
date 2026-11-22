@@ -298,8 +298,8 @@ That scenario is `fixtures/persistence-conformance/queries/guarded-update.yaml` 
 guardedUpdate`): the state guard, a failing condition, a missing row, the second of two moves, and
 a condition with a field compared with a field, `not`, `coalesce` and an int-backed state. The
 TypeScript runtime implements it as `ObjectManager.guardedUpdate` on every bundled
-`PersistenceDriver` and runs the scenario; the C#, Java, Kotlin and Python runners defer it by name
-until each port builds its own guarded update in 1.3.0.
+`PersistenceDriver`. The scenario runs on Postgres only (it carries no `engines:` key); the C#, Java,
+Kotlin and Python runners defer it by name until each port builds its own guarded update in 1.3.0.
 
 ### 7. Events and invariants in 1.3.0
 
