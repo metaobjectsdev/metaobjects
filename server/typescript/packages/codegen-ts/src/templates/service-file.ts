@@ -177,12 +177,17 @@ function sourcesOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderConte
  */
 function addressedOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderContext, runtime: string): { table: string; cond: () => string } {
   const table = w.use(ctx.collectionName(e.storage.name), modulesOf(path, e.storage, ctx).entity);
-  const cond = (): string => {
-    const key = `${w.use("keyCondition", runtime)}(${table}, ${str(e.keyField)}, id)`;
-    const scope = scopeExpr(w, e, table, runtime);
-    return scope === undefined ? key : `${w.use("scoped", runtime)}(${key}, ${scope})`;
-  };
-  return { table, cond };
+  return { table, cond: () => addressedCond(w, e, table, table, runtime) };
+}
+
+/**
+ * The key condition of a keyed operation on `on` (a table or a read view), scoped to the single-table
+ * subtype's discriminator on `scopeTable` (the storage table).
+ */
+function addressedCond(w: TsWriter, e: ServiceEntity, on: string, scopeTable: string, runtime: string): string {
+  const key = `${w.use("keyCondition", runtime)}(${on}, ${str(e.keyField)}, id)`;
+  const scope = scopeExpr(w, e, scopeTable, runtime);
+  return scope === undefined ? key : `${w.use("scoped", runtime)}(${key}, ${scope})`;
 }
 
 /** The row type of an entity's operations: its contract type, or a report's row type from its entity module. */
@@ -228,10 +233,7 @@ function renderOperation(
   const keyField = str(e.keyField);
   const id = "id: number | string";
   const scope = scopeExpr(w, e, table, runtime);
-  const addressed = (on: string) => {
-    const cond = `${w.use("keyCondition", runtime)}(${on}, ${keyField}, id)`;
-    return scope === undefined ? cond : `${w.use("scoped", runtime)}(${cond}, ${scope})`;
-  };
+  const addressed = (on: string) => addressedCond(w, e, on, table, runtime);
   const readOnly = e.kind !== "entity";
 
   if (op === "list" && readOnly) {
