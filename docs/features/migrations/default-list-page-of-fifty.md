@@ -19,8 +19,8 @@ shipped) sees no change: its `defaultLimit` and `maxLimit` apply as before.
 
 The generated TanStack list hooks are not affected: the grid hook always sends a `limit`.
 
-**An owned runtime copy** (`meta eject runtime`) keeps the behaviour of the copy you took. Take a
-fresh copy with `meta eject runtime --force` to get the default, or change `pageLimit` in your
+**An owned runtime copy** (copied by `meta eject routes` or `meta eject routes-hono`) keeps the behaviour of the copy you took. Take a
+fresh copy with `meta eject routes --force` (or `routes-hono`) to get the default, or change `pageLimit` in your
 copy's `drizzle-fastify/list-params.ts`.
 
 To keep a larger default page, set it:
