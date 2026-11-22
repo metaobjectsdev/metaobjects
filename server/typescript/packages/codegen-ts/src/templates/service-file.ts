@@ -28,6 +28,8 @@ import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 import {
   fastifyTransportPath,
+  honoTransportPath,
+  serviceHonoRoutesName,
   runtimeSpecifierFrom,
   serviceFactoryName,
   serviceTypeName,
@@ -751,6 +753,26 @@ function refuseRouteCollisions(routes: readonly MountedRoute[]): void {
   }
 }
 
+/** Every route a transport of package `pkg` mounts, before the API prefix. */
+function transportRoutes(pkg: ServicePackage): MountedRoute[] {
+  const mounted: MountedRoute[] = [];
+  for (const e of pkg.entities) {
+    const base = restPath(e.obj);
+    const item = `${base}/:id`;
+    mounted.push(
+      { method: "GET", path: base, what: `${e.obj.name} list` },
+      { method: "GET", path: item, what: `${e.obj.name} get` },
+      { method: "POST", path: base, what: `${e.obj.name} create` },
+      { method: "PATCH", path: item, what: `${e.obj.name} update` },
+      { method: "PUT", path: item, what: `${e.obj.name} update` },
+      { method: "DELETE", path: item, what: `${e.obj.name} delete` },
+    );
+    for (const c of e.commands) mounted.push({ method: "POST", path: `${item}/${c.transition.name}`, what: `transition ${e.obj.name}.${c.transition.name}` });
+  }
+  for (const op of pkg.operations) mounted.push({ method: op.method, path: op.path, what: `operation ${op.name}` });
+  return mounted;
+}
+
 /** The thin Fastify transport of package `pkg`: parse, resolve the actor, call the service, send what it answered. */
 export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext): ServiceFile {
   const path = fastifyTransportPath(pkg.package);
@@ -769,22 +791,7 @@ export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext):
   const type = w.useType(serviceTypeName(pkg.package), serviceIndex);
   const routes = serviceRoutesName(pkg.package);
 
-  const mounted: MountedRoute[] = [];
-  for (const e of pkg.entities) {
-    const base = restPath(e.obj);
-    const item = `${base}/:id`;
-    mounted.push(
-      { method: "GET", path: base, what: `${e.obj.name} list` },
-      { method: "GET", path: item, what: `${e.obj.name} get` },
-      { method: "POST", path: base, what: `${e.obj.name} create` },
-      { method: "PATCH", path: item, what: `${e.obj.name} update` },
-      { method: "PUT", path: item, what: `${e.obj.name} update` },
-      { method: "DELETE", path: item, what: `${e.obj.name} delete` },
-    );
-    for (const c of e.commands) mounted.push({ method: "POST", path: `${item}/${c.transition.name}`, what: `transition ${e.obj.name}.${c.transition.name}` });
-  }
-  for (const op of pkg.operations) mounted.push({ method: op.method, path: op.path, what: `operation ${op.name}` });
-  refuseRouteCollisions(mounted);
+  refuseRouteCollisions(transportRoutes(pkg));
 
   w.doc("What the routes need: the service they call, and who is calling.");
   w.block(`export interface ${type}RoutesOptions<A = unknown> {`, () => {
@@ -860,4 +867,146 @@ export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext):
     }
   });
   return { path, content: w.toString() };
+}
+
+/** The thin Hono transport of package `pkg`: the Fastify transport's routes, on a Hono app. */
+export function renderHonoTransport(pkg: ServicePackage, ctx: RenderContext): ServiceFile {
+  const path = honoTransportPath(pkg.package);
+  const w = new TsWriter();
+  const label = pkg.package === "" ? "the model's root package" : `package ${pkg.package}`;
+  header(w, `${label} — Hono transport (ADR-0067 layer 5)`);
+  const runtime = runtimeSpecifierFrom(path, "service-hono", ctx);
+  const serviceRuntime = runtimeSpecifierFrom(path, "service", ctx);
+  const serviceIndex = contractSpecifier(path, servicePath(pkg.package, SERVICE_INDEX_FILE), ctx.extStyle);
+  const hono = w.useType("Hono", "hono");
+  const context = w.useType("Context", "hono");
+  const send = w.use("sendOpResult", runtime);
+  const guard = w.use("guardRoute", runtime);
+  const readBody = w.use("readBody", runtime);
+  const parseQuery = w.use("parseListQueryString", runtime);
+  const rawQuery = w.use("rawQueryOf", runtime);
+  const type = w.useType(serviceTypeName(pkg.package), serviceIndex);
+  const routes = serviceHonoRoutesName(pkg.package);
+  const prefix = ctx.apiPrefix ?? "";
+  const at = (p: string) => str(`${prefix}${p}`);
+
+  refuseRouteCollisions(transportRoutes(pkg));
+
+  w.doc("What the routes need: the service they call, and who is calling.");
+  w.block(`export interface ${type}HonoRoutesOptions<A = unknown> {`, () => {
+    w.line(`readonly service: ${type}<A>;`);
+    w.doc(
+      "Who a request is for (ADR-0067 §7): the app's own resolver, from its own authentication. The",
+      "service never looks inside the actor; it hands it to the policy, the bodies, the hooks and the",
+      "event hook. Absent, every operation runs with no actor, which a policy may refuse.",
+    );
+    w.line(`readonly getActor?: (c: ${context}) => A | undefined | Promise<A | undefined>;`);
+  });
+  w.blank();
+  w.doc(
+    `Mount the REST routes of ${label} on \`app\`. Each route reads the request, resolves the actor,`,
+    "calls one operation of the service and answers what it answered; it holds no rules. Call it",
+    `with the service: \`${routes}(app, { service, getActor })\`.`,
+  );
+  w.block(`export function ${routes}<A = unknown>(app: ${hono}<any, any, any>, opts: ${type}HonoRoutesOptions<A>): void {`, () => {
+    w.line("const { service } = opts;");
+    w.line(`const actorOf = async (c: ${context}): Promise<${w.useType("OpOptions", serviceRuntime)}<A>> => ({ actor: (await opts.getActor?.(c)) as A | undefined });`);
+    // Hono tries routes in the order they are added, where Fastify's router prefers a fixed path
+    // segment to a parameter wherever two paths differ. So the routes are added in that order,
+    // `/requests/totals` before `/requests/:id`, and answer as the Fastify transport's do.
+    const routes: Array<{ path: string; emit: () => void }> = [];
+    const route = (path: string, emit: () => void) => routes.push({ path, emit });
+    for (const e of pkg.entities) {
+      const mods = modulesOf(path, e.obj, ctx);
+      const create = w.useType(`${e.obj.name}Create`, mods.contract);
+      const patch = w.useType(`${e.obj.name}Patch`, mods.contract);
+      const toWire = w.use(wireMapperName(e.obj.name), serviceIndex);
+      const o = e.operations;
+      const base = at(restPath(e.obj));
+      const item = at(`${restPath(e.obj)}/:id`);
+      const id = `c.req.param("id") ?? ""`;
+      const basePath = restPath(e.obj);
+      const itemPath = `${basePath}/:id`;
+      route(basePath, () => {
+        w.block(`app.get(${base}, ${guard}(async (c) => {`, () => {
+          w.line(`const result = await service.${o.list}(${parseQuery}(${rawQuery}(c.req.url)), await actorOf(c));`);
+          w.line(
+            `return ${send}(c, result, 200, (page) => (page.total === undefined ? page.rows.map(${toWire}) : { rows: page.rows.map(${toWire}), total: page.total }));`,
+          );
+        }, "}));");
+        w.block(`app.post(${base}, ${guard}(async (c) => {`, () => {
+          w.line(`const read = await ${readBody}(c);`);
+          w.line("if (!read.ok) return read.response;");
+          w.line(`return ${send}(c, await service.${o.create}(read.body as ${create}, await actorOf(c)), 201, ${toWire});`);
+        }, "}));");
+      });
+      route(itemPath, () => {
+        w.line(`app.get(${item}, ${guard}(async (c) => ${send}(c, await service.${o.get}(${id}, await actorOf(c)), 200, ${toWire})));`);
+        w.line("// The update is reachable by PATCH and by PUT, as in every port.");
+        for (const verb of ["patch", "put"]) {
+          w.block(`app.${verb}(${item}, ${guard}(async (c) => {`, () => {
+            w.line(`const read = await ${readBody}(c);`);
+            w.line("if (!read.ok) return read.response;");
+            w.line(`return ${send}(c, await service.${o.update}(${id}, read.body as ${patch}, await actorOf(c)), 200, ${toWire});`);
+          }, "}));");
+        }
+        w.line(`app.delete(${item}, ${guard}(async (c) => ${send}(c, await service.${o.delete}(${id}, await actorOf(c)), 204)));`);
+      });
+      for (const c of e.commands) {
+        const path = `${itemPath}/${c.transition.name}`;
+        route(path, () =>
+          w.line(`app.post(${at(path)}, ${guard}(async (c) => ${send}(c, await service.${c.fn}(${id}, await actorOf(c)), 200, ${toWire})));`),
+        );
+      }
+    }
+    for (const op of pkg.operations) {
+      const key = op.keyed ? op.target!.keyField : undefined;
+      const fromGet = op.method === "GET" || op.method === "DELETE";
+      const readsBody = op.input !== undefined && !fromGet;
+      const args = [
+        ...(key === undefined ? [] : [`c.req.param(${str(key)}) ?? ""`]),
+        ...(op.input !== undefined ? [`(${fromGet ? "c.req.query()" : "read.body ?? {}"}) as never`] : []),
+        ...(op.kind === "query" && op.many ? [`${parseQuery}(${rawQuery}(c.req.url))`] : []),
+        "await actorOf(c)",
+      ];
+      const result = `await service.${op.name}(${args.join(", ")})`;
+      const wire = outputIsTargetRow(op) ? `, ${w.use(wireMapperName(op.target!.obj.name), serviceIndex)}` : "";
+      const status = op.output === undefined && op.kind === "command" ? "204" : "200";
+      const head = `app.${op.method.toLowerCase()}(${at(op.path)}, ${guard}(async (c) => `;
+      route(op.path, () => {
+        if (!readsBody) {
+          w.line(`${head}${send}(c, ${result}, ${status}${wire})));`);
+          return;
+        }
+        w.block(`${head}{`, () => {
+          w.line(`const read = await ${readBody}(c);`);
+          w.line("if (!read.ok) return read.response;");
+          w.line(`return ${send}(c, ${result}, ${status}${wire});`);
+        }, "}));");
+      });
+    }
+    for (const r of [...routes].sort((a, b) => fixedFirst(a.path, b.path))) r.emit();
+  });
+  return { path, content: w.toString() };
+}
+
+/**
+ * Order two route paths so that, wherever two of them could match one request, the one with a
+ * fixed segment comes first, as Fastify's router prefers it: at the first segment where they
+ * differ, a parameter sorts after any fixed text, and two fixed segments compare as text. A
+ * total order, so the emitted file is the same on every run.
+ */
+function fixedFirst(a: string, b: string): number {
+  const sa = a.split("/");
+  const sb = b.split("/");
+  for (let i = 0; i < Math.min(sa.length, sb.length); i++) {
+    const x = sa[i]!;
+    const y = sb[i]!;
+    if (x === y) continue;
+    const px = x.startsWith(":");
+    const py = y.startsWith(":");
+    if (px !== py) return px ? 1 : -1;
+    return x < y ? -1 : 1;
+  }
+  return sa.length - sb.length;
 }

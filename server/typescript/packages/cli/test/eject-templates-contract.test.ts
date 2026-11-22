@@ -307,6 +307,7 @@ const OWNED_OPTIONS: Record<string, unknown> = {
   "routes-hono": { runtimeImport: HTTP_RUNTIME_PACKAGE },
   service: { runtimeImport: HTTP_RUNTIME_PACKAGE },
   "service-routes": { runtimeImport: HTTP_RUNTIME_PACKAGE },
+  "service-routes-hono": { runtimeImport: HTTP_RUNTIME_PACKAGE },
 };
 
 type Factory = (opts?: unknown) => Generator;

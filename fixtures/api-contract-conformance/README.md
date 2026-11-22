@@ -251,7 +251,7 @@ same per-port integration-tests lane of `scripts/ci-local.sh` — no separate op
 ### TS lanes (illustrative detail)
 
 On the TypeScript port the corpus is driven by **two** lanes, both
-against a Postgres testcontainer over HTTP:
+against a Postgres testcontainer over HTTP, and by service lanes beside the second (item 3):
 
 1. **Hand-rolled reference lane** (`test/api-contract.test.ts`) — a server the
    integration-tests package wires up directly. It is the stable reference
@@ -265,6 +265,13 @@ against a Postgres testcontainer over HTTP:
    over HTTP, so the deployed artifact — not a re-implementation — is what gets
    verified. (Building this lane surfaced and fixed real divergences between the
    generated routes / `drizzle-fastify` mount and the contract.)
+3. **Service lanes** (`test/api-contract-service.test.ts`, `src/api-lane.ts`) — the
+   generated service (ADR-0067 layer 4) behind its thin Fastify transport, and behind its
+   Hono transport (layer 5). The `list-query/`, `api-settings/`, `enum-default/`, `jsonb/`
+   and `duration/` corpora, the root corpus and `rules/` run on them, in both output layouts,
+   on every engine the generated-routes lane runs for the corpus. D1 generates its service
+   with `interactiveTransactions: false`. The `projection/`, `report/`, `tph/`, `m2m/`,
+   `write-through/`, `secret-fields/` and `decimal/` corpora stay on the generated-routes lane.
 
 Both lanes live in `server/typescript/packages/integration-tests/test/` and are
 run by the same `cd server/typescript/packages/integration-tests && bun test`

@@ -48,6 +48,8 @@ export const HTTP_RUNTIME_MODULES = {
   // What the service layer's thin Fastify transport (ADR-0067 layer 5) imports: its own entry, so
   // the flat routes' adapter is untouched.
   "service-fastify": { subpath: "service/fastify", file: "service/fastify" },
+  // Its Hono twin, so a Hono app imports no Fastify.
+  "service-hono": { subpath: "service/hono", file: "service/hono" },
 } as const;
 
 export type HttpRuntimeModule = keyof typeof HTTP_RUNTIME_MODULES;

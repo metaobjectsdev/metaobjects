@@ -20,6 +20,19 @@ here.**
   `--no-name-lint` and `--no-deprecation-lint`, or by `META_NO_OVERLAY_LINT=1`,
   `META_NO_NAME_LINT=1` and `META_NO_DEPRECATION_LINT=1`. C# runs the shared
   `fixtures/model-lint-conformance/` corpus.
+
+- **codegen-ts: `service-routes-hono`, the service's Hono transport (ADR-0067 layer 5).**
+  `serviceRoutesHonoFile()` writes `<pkg path>/transport/hono.ts`, the same routes as the Fastify
+  transport, as `<pkg>ServiceHonoRoutes(app, { service, getActor })`, with the actor read by
+  `getActor(c)`. It imports the new `@metaobjectsdev/runtime-ts/service/hono` entry, and `meta eject
+  service-routes-hono` copies that source. A fixed path segment is added before a parameter wherever
+  two routes could match one request, so `GET <collection>/<query>` is not taken for
+  `GET <collection>/{id}`, as Fastify's router already decides.
+- **The service is held to more of the shared API tests.** Its lanes, on Fastify and on Hono, now
+  run the `list-query/`, `api-settings/`, `enum-default/`, `jsonb/` and `duration/` corpora beside the
+  root and `rules/` corpora, on every engine the routes lane runs, D1 included through
+  `interactiveTransactions: false`. The service compile gate compiles both transports.
+
 - **runtime-ts: the generated service keeps its rollback guarantee on a sync SQLite driver.** On
   bun:sqlite and better-sqlite3, Drizzle's `transaction()` commits when its callback returns, so a
   service write that awaited inside it committed at its first `await`: a hook's or a body's refusal

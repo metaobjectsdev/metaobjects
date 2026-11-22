@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { API_CONTRACT_RULES_DIR, API_CONTRACT_RULES_SCENARIOS_DIR, API_CONTRACT_RULES_SETTINGS_DIR } from "../src/paths.ts";
 import { loadScenarios, runScenario } from "../src/api-contract-scenario.ts";
 import { OUTPUT_LAYOUTS, postgresFor } from "../src/output-layout.ts";
+import { laneLabel } from "../src/api-lane.ts";
 import { startGeneratedRulesServer, type GeneratedRulesServerHandle, type RulesSeed } from "../src/api-contract-rules-generated-server.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_RULES_DIR, "seed.json"), "utf8")) as RulesSeed;
@@ -25,7 +26,7 @@ const runs: Array<{ label: string; configDir: string; scenariosDir: string }> = 
     .map((v) => ({ label: `settings/${v}`, configDir: join(API_CONTRACT_RULES_SETTINGS_DIR, v), scenariosDir: join(API_CONTRACT_RULES_SETTINGS_DIR, v, "scenarios") })),
 ];
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract rules — GENERATED service lane [${layout}]`, () => {
+for (const lane of ["service", "service-hono"] as const) for (const layout of OUTPUT_LAYOUTS) describe(`api contract rules — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const run of runs) {
     for (const scenario of loadScenarios(run.scenariosDir)) {
@@ -33,7 +34,7 @@ for (const layout of OUTPUT_LAYOUTS) describe(`api contract rules — GENERATED 
         const pg = await startDb();
         let server: GeneratedRulesServerHandle | null = null;
         try {
-          server = await startGeneratedRulesServer(pg.connectionUri, META_PATH, run.configDir, layout);
+          server = await startGeneratedRulesServer(pg.connectionUri, META_PATH, run.configDir, layout, lane);
           await server.applySeed(SEED);
           await runScenario(scenario, server.baseUrl);
         } finally {

@@ -353,6 +353,21 @@ export function fastifyTransportPath(pkg: string): string {
   return dir === "" ? `${TRANSPORT_DIR}/${FASTIFY_TRANSPORT_FILE}` : `${dir}/${TRANSPORT_DIR}/${FASTIFY_TRANSPORT_FILE}`;
 }
 
+/** The function that mounts package `pkg`'s service routes on a Hono app: `<type, first letter lowered>HonoRoutes`. */
+export function serviceHonoRoutesName(pkg: string): string {
+  const type = serviceTypeName(pkg);
+  return `${type.charAt(0).toLowerCase()}${type.slice(1)}HonoRoutes`;
+}
+
+/** The Hono transport's file in {@link TRANSPORT_DIR}. */
+export const HONO_TRANSPORT_FILE = "hono.ts";
+
+/** Where package `pkg`'s Hono transport goes, relative to the target's outDir. */
+export function honoTransportPath(pkg: string): string {
+  const dir = packageToPath(pkg);
+  return dir === "" ? `${TRANSPORT_DIR}/${HONO_TRANSPORT_FILE}` : `${dir}/${TRANSPORT_DIR}/${HONO_TRANSPORT_FILE}`;
+}
+
 /**
  * The import specifier of a runtime module, as seen from the generated file at `fromFile`
  * (relative to the target's outDir). The service and transport files sit one folder below their
