@@ -27,7 +27,7 @@ import type { Collection, LoadMemoryOptions } from "@metaobjectsdev/sdk";
  */
 export function collectionLoadOptions(
   collection: Collection,
-): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries" | "physicalNaming" | "wireFormat" | "enumDefaults" | "apiPagination" | "apiUnknownFields">> {
+): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries" | "physicalNaming" | "wireFormat" | "enumDefaults" | "apiPagination" | "apiUnknownFields" | "rulesSettings">> {
   return {
     files: collection.files,
     fileIds: collection.fileIds,
@@ -44,6 +44,7 @@ export function collectionLoadOptions(
     enumDefaults: collection.enumDefaults ?? DEFAULT_ENUM_DEFAULTS,
     apiPagination: collection.apiPagination,
     apiUnknownFields: collection.apiUnknownFields,
+    rulesSettings: collection.rulesSettings,
     // The collection's migrate settings (`migrate.conventions`, `migrate.checks`) are not load
     // options: they reach the expected-schema builds through `schemaBuildOptions`.
   };

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schemas/acme/stockroom/Part.update.schema.json",
+  "title": "Part.update",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "sku": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "tool",
+        "part",
+        "kit"
+      ]
+    },
+    "stock": {
+      "type": "integer",
+      "format": "int32"
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    }
+  }
+}

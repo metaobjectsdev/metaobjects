@@ -526,7 +526,7 @@ FLAGS:
                         codegen scaffold, no config. Pair with --refresh-docs to update
                         an existing project after upgrading.
   --server <lang>       Declare a server language for the agent context (repeatable):
-                        typescript | java | kotlin | csharp | python
+                        typescript | java | kotlin | csharp | python | rust
                         ('node' is accepted as an alias for typescript; an unknown
                         value is refused, never dropped)
   --client <fw>         Declare a client framework for the agent context (repeatable):
@@ -557,7 +557,7 @@ USAGE:
   meta agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [flags]
 
 FLAGS:
-  --server <lang>       Server language (repeatable): typescript|java|kotlin|csharp|python
+  --server <lang>       Server language (repeatable): typescript|java|kotlin|csharp|python|rust
   --client <fw>         Client framework (repeatable): react|tanstack|angular
   --out <dir>           Output directory (default: current directory)
   --no-skills           Skip the skills scaffold

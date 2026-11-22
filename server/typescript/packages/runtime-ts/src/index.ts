@@ -3,12 +3,12 @@ export type { ObjectManagerOptions, ReadOpts, WriteOpts } from "./object-manager
 
 export type {
   PersistenceDriver, Dialect, Row, PrimitiveValue,
-  WhereClause, OrderBy,
+  WhereClause, OrderBy, CompareOp, Operand,
   SelectSpec, CountSpec, InsertSpec, InsertManySpec,
   UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec,
 } from "./persistence-driver.js";
 
-export type { Filter, FilterValue, QueryOpts } from "./query-builder.js";
+export type { Filter, FilterValue, QueryOpts, TransitionGuard } from "./query-builder.js";
 
 export type { FieldViewSpec, EntityViewSpec } from "./view.js";
 

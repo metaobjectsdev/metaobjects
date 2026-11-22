@@ -1,4 +1,4 @@
-export const SERVER_LANGS = ["typescript", "java", "kotlin", "csharp", "python"] as const;
+export const SERVER_LANGS = ["typescript", "java", "kotlin", "csharp", "python", "rust"] as const;
 export type ServerLang = (typeof SERVER_LANGS)[number];
 
 export const CLIENT_FRAMEWORKS = ["react", "tanstack", "angular"] as const;

@@ -1,4 +1,4 @@
-import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, ExprNode, MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_IDENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
@@ -12,6 +12,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
 import { intValueMapOf } from "./type-coercer.js";
+import { compileCondition } from "./condition.js";
 import type {
   Dialect, WhereClause, OrderBy, PrimitiveValue, Row,
   SelectSpec, InsertSpec, UpdateSpec, DeleteSpec, CountSpec, TableTarget,
@@ -351,6 +352,44 @@ export function buildUpdateSpec(
     where: byIdWhere(entity, id, scope, strategy),
     returning: listFieldNames(entity).map((f) => resolveColumnName(getField(entity, f), strategy)),
   };
+}
+
+/**
+ * A lifecycle transition's write (ADR-0066 §6 step 5): set `field` to `to` where the key matches,
+ * `field` is one of `from`, and `condition` (the transition's `@condition`) holds. `from`, `to` and
+ * every condition literal are the member SYMBOLS; each is stored in its column's form.
+ */
+export interface TransitionGuard {
+  field: string;
+  from: readonly string[];
+  to: string;
+  condition?: ExprNode;
+}
+
+/**
+ * The one statement a guarded update makes: `UPDATE … SET <field> = :to WHERE <key> = :id AND
+ * <field> IN (:from) [AND <condition>]`, TPH-scoped like any by-id write. `values` is the coerced
+ * write of `{ [field]: to }`. No row back means the guard matched nothing.
+ */
+export function buildGuardedUpdateSpec(
+  entity: MetaData, values: Row, id: unknown, guard: TransitionGuard,
+  strategy: ColumnNamingStrategy = DEFAULT_COLUMN_NAMING_STRATEGY,
+  scope?: DiscriminatorScope,
+  dialect?: Dialect,
+): UpdateSpec {
+  const base = buildUpdateSpec(entity, values, id, strategy, scope);
+  const state = getField(entity, guard.field);
+  const clauses: WhereClause[] = [
+    base.where,
+    { kind: "in", column: resolveColumnName(state, strategy), values: guard.from.map((s) => encodeFilterValue(state, s, dialect)) },
+  ];
+  if (guard.condition !== undefined) {
+    clauses.push(compileCondition(guard.condition, {
+      column: (f) => resolveColumnName(getField(entity, f), strategy),
+      encode: (f, v) => encodeFilterValue(getField(entity, f), v, dialect),
+    }));
+  }
+  return { ...base, where: { kind: "and", clauses }, key: base.where };
 }
 
 export function buildDeleteSpec(

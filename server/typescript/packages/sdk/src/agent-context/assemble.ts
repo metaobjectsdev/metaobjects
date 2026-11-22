@@ -53,7 +53,7 @@ function stackLine(stack: Stack): string {
 const NO_STACK_LOOP =
   "No server language is declared for this project, so this file names no generate step. " +
   "Declare it and refresh: `meta init --docs-only --refresh-docs --server " +
-  "<typescript|java|kotlin|csharp|python>`.\n\n";
+  "<typescript|java|kotlin|csharp|python|rust>`.\n\n";
 
 /**
  * The working loop's generate steps, one fragment per declared server

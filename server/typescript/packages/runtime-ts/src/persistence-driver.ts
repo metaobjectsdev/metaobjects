@@ -16,7 +16,23 @@ export type WhereClause =
   | { kind: "ilike"; column: string; pattern: string }
   | { kind: "isNull"; column: string; not: boolean }
   | { kind: "and"; clauses: WhereClause[] }
-  | { kind: "or"; clauses: WhereClause[] };
+  | { kind: "or"; clauses: WhereClause[] }
+  /** SQL NOT: three-valued, so NOT of an unknown (a comparison with NULL) stays unknown and matches nothing. */
+  | { kind: "not"; clause: WhereClause }
+  /** A comparison of two operands, either of which may be a column, a literal or a coalesce. A
+   *  transition's `@condition` compiles to these (ADR-0066 §6); a NULL operand matches nothing. */
+  | { kind: "compare"; op: CompareOp; left: Operand; right: Operand }
+  /** IS [NOT] NULL over any operand (a column alone is `isNull`). */
+  | { kind: "nullTest"; operand: Operand; not: boolean };
+
+/** The six comparisons a `compare` clause makes. */
+export type CompareOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
+
+/** One side of a `compare`: a column, a bound literal, or the first non-null of several operands. */
+export type Operand =
+  | { column: string }
+  | { value: PrimitiveValue | null }
+  | { coalesce: Operand[] };
 
 export interface OrderBy {
   column: string;
@@ -70,6 +86,13 @@ export interface UpdateSpec extends TableTarget {
   values: Row;
   where: WhereClause;
   returning: string[];
+  /**
+   * A write whose `where` no longer matches the row it wrote (a guarded update moves the state
+   * its own guard tests) names the key alone here. A dialect without RETURNING (MySQL) then
+   * answers no row when the statement changed none, and otherwise reads the row back by this
+   * clause instead of by `where`.
+   */
+  key?: WhereClause;
 }
 
 export interface UpdateManySpec extends TableTarget {

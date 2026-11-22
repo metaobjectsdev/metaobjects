@@ -11,6 +11,7 @@ import { DEFAULT_PHYSICAL_NAMING, type PhysicalNaming } from "../naming.js";
 import { DEFAULT_WIRE_FORMAT, type WireFormat } from "../wire.js";
 import { DEFAULT_ENUM_DEFAULTS, type EnumDefaults } from "../enum-length.js";
 import type { ApiPagination, UnknownFieldsMode } from "../api-pagination.js";
+import { DEFAULT_RULES_SETTINGS, type RulesSettings } from "../rules-settings.js";
 import { PACKAGE_SEPARATOR } from "./structural.js";
 import { lookupCanonical } from "../naming-refs.js";
 
@@ -47,6 +48,13 @@ export class MetaRoot extends MetaData {
    * `apiUnknownFieldsOf`. Undefined when the project declares none (the default, `reject`).
    */
   apiUnknownFields: UnknownFieldsMode | undefined = undefined;
+
+  /**
+   * The project's business-rules settings (`rules` and `verify.lifecycle` in
+   * `.metaobjects/config.json`, ADR-0066 §5), set by the project-aware load and read through
+   * `rulesSettingsOfModel`. A tree loaded with no project has the defaults.
+   */
+  rulesSettings: RulesSettings = DEFAULT_RULES_SETTINGS;
 
   /** Object entities defined at this root level. */
   objects(): MetaObject[] {

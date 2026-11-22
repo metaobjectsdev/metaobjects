@@ -35,7 +35,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 17 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 67 (55 query + 12 migration) | all 67; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query; the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 68 (56 query + 12 migration) | all 68; the 24 `report-*` and the `-15` decimal scenarios also on SQLite, MySQL and D1, `decimal-exact` and `guarded-update` also on MySQL (a scenario's `engines:` key is exact) | 55 query (migrations TS-only, ADR-0015; `guarded-update` deferred to L-JV-2); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (via Exposed; `guarded-update` deferred to L-KT-2); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (`guarded-update` deferred to L-CS-2); the `report-*` and `engines:` scenarios also on SQLite and MySQL | 55 query (pg8000; `guarded-update` deferred to L-PY-2); the `report-*` and `engines:` scenarios also on SQLite (`sqlite3`) and MySQL (PyMySQL) |
 | [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 161 (34 core + 14 tph + 9 m2m + 6 jsonb + 2 write-through + 4 secret-fields + 2 enum-default + 12 projection + 37 report + 11 decimal + 2 duration + 8 api-settings + 20 list-query) | ✓ (Fastify reference + generated lane); `report/`, `decimal/` and `duration/` also on SQLite, MySQL and D1; `list-query/` is TypeScript-only until each port's 1.3.0 REST-standard work | ✓ (embedded HTTP + JDBC); `report/`, `decimal/` and `duration/` generated controllers over OMDB on Postgres, SQLite and MySQL | ✓ (embedded HTTP + Exposed); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (Kestrel + Npgsql); `report/`, `decimal/` and `duration/` also on SQLite and MySQL | ✓ (FastAPI + pg8000); `report/`, `decimal/` and `duration/` also on SQLite and MySQL |
 | [`fixtures/decimal-wire/`](../fixtures/decimal-wire/) | 1 vector file (format, parse, filter operand, 15-digit read) | ✓ (`runtime-ts` and the generated helper) | ✓ (`CanonicalDecimal`) | ✓ (the generated wire file) | ✓ (`DecimalWire`) | ✓ (`decimal_wire`) |
 | [`fixtures/duration-wire/`](../fixtures/duration-wire/) | 1 vector file: the `wire` vectors (parse, precision, refused) every port passes, and the `codecs` groups (Postgres text read and write, stored microseconds) each port passes only for the codecs it has | ✓ (`metadata` / `runtime-ts` and the generated helper) | ✓ | ✓ | ✓ | ✓ |
@@ -51,7 +51,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
-| [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 5 | ✓ (the emitter is TS-owned) | — | — | — | — |
+| [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 6 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/list-query-conformance/`](../fixtures/list-query-conformance/) (how a list route reads its query string: filter tree, search, sort, page, or the named 400) | 95 cases | ✓ (reference; the source of the expected answers) | planned (R-JV) | planned (R-KT) | planned (R-CS) | planned (R-PY) |
 | [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | planned | planned |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
@@ -69,7 +69,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/codegen-noop/`](../fixtures/codegen-noop/) (vocabulary with no lowering yet: FR-044 reporting, what is lowered and what stays inert; ADR-0066 business rules, inert everywhere) | 2 model pairs (`reporting/` and `rules/`, each `with` vs `without`) | ✓ (codegen + migrate) | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — |
 | [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) (ADR-0063 — the code writer generators write through) | 68 cases (31 core + 10 TypeScript + 9 Java + 6 C# + 12 Python) | ✓ (the first writer; core and TypeScript dialect) | ✓ (core and Java dialect; `JavaWriter` in `codegen-base`) | — (writer not built yet) | ✓ (core and C# dialect) | ✓ (core and Python dialect) |
-| [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 19 cases (14 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
+| [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 22 cases (17 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — |
 | [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the `explorer.json` data spine: `meta export --effective` + `meta verify --format json` + the generated-file manifest in, one explorer document out) | 1 case (`shop`) | ✓ (the builder is TypeScript, and reads only port-neutral inputs) | — | — | — | — |
 
 **Rust (ADR-0065) is not a column yet.** The sixth port runs these corpora
@@ -498,15 +498,15 @@ All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
 scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.
 
-### `fixtures/persistence-conformance/` (67 — 55 query + 12 migration)
+### `fixtures/persistence-conformance/` (68 — 56 query + 12 migration)
 
 - `migrations/*` (12) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (55) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `queries/*` (56) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
 **Engines beyond Postgres (FR-044 reports, decimals).** The twenty-four `queries/report-*.yaml`
 scenarios also run on SQLite and MySQL 8.4 in every port, and on D1's local runtime in
 TypeScript (no cloud account). A scenario that declares `engines:` runs on exactly those engines
-(`decimal-exact-15` on all four, `decimal-exact` on Postgres and MySQL). Java reads SQLite
+(`decimal-exact-15` on all four, `decimal-exact` and `guarded-update` on Postgres and MySQL). Java reads SQLite
 through OMDB's `SQLiteDriver`, and Python through `SqliteDriver` (`sqlite3`) and `MySqlDriver`
 (PyMySQL). Each engine executes an artifact
 TypeScript produced (`canonical/schema.sqlite.sql` from `meta migrate --dialect sqlite`;
@@ -860,7 +860,7 @@ JSON and verify payload feeds it unchanged.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 578 + yaml 19 + verify 45
-+ render 21 + persistence 67 + api-contract 161 + source-resolution 28 + scope 10 +
++ render 21 + persistence 68 + api-contract 161 + source-resolution 28 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
 `cube-model` corpus, `explorer-conformance` and `list-query-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider

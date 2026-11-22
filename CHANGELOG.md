@@ -111,6 +111,53 @@ here.**
   because a newer MetaObjects may have written it, but each one is now named once on standard error
   with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
   `naming`, `wire` and the rest) is refused as before.
+- **sdk: the static agent files, built once for every port (ADR-0033 Amendment 1).** The
+  assembler now also runs at build time, once per stack a port's own command serves: each server
+  language alone and Java with Kotlin, each with no client, React, React with TanStack or
+  Angular. The result is committed at `agent-context-shipped/` (a manifest plus each distinct file
+  once, by content hash), for each port's package to embed and its `agent-docs` command to copy,
+  so a non-TypeScript project gets its agent files with no Node. `agent-context-shipped/README.md`
+  is the contract; `buildShippedAgentContext()` and `materializeShippedStack()` are exported, and
+  `shipped.test.ts` fails when the tree is stale or a stack differs from what `meta agent-docs`
+  writes. The ports' own commands land in their own rows; until then they still redirect.
+- **sdk, cli: Rust is an agent-context server language.** `--server rust` (alias `rs`) is
+  accepted, and a `Cargo.toml` at the project root is detected as Rust. A Rust project's
+  always-on file gives the `cargo meta gen` loop and the `cargo meta verify` step, and a `rust`
+  case joins `fixtures/agent-context-conformance`. Libraries list Rust among their ports, checked
+  against the copy the Rust crate embeds.
+- **codegen-ts: the rules names layer (ADR-0067 layer 0).** A new generator, `rules-names`
+  (`rulesNamesFile()`, ejectable), writes one `rules.names.ts` per metadata package that declares
+  a lifecycle or an operation: each lifecycle's states, initial and terminal states and
+  transitions, the commands derived from unclaimed transitions, the declared operations, every
+  permission the package asks about and the business errors its commands declare, as `as const`
+  values with literal-union types. The derivations move into `@metaobjectsdev/metadata`
+  (`derivedCommandsOf`, `operationPermission`, `commandPermission`, `claimedTransitions`, ...), and
+  `meta verify`'s rules gate now calls the same functions, so a constant and a verify message
+  cannot disagree. The loaded root carries the `rules` settings (`rulesSettings`). C# ships its own
+  `rules-names`; the other ports add theirs with their rules-layer work. No existing generator's output
+  moves (`fixtures/codegen-noop/rules`).
+- **codegen-ts: the contract types layer (ADR-0067 layer 1).** A new generator, `contract-types`
+  (`contractTypes()`, ejectable), writes the shapes a caller and a service exchange with no
+  persistence mapping: `<Entity>.contract.ts` (the read schema and type, the create and update
+  schemas, the typed create and patch), `<Projection>.contract.ts` (the read shape), the value
+  modules they reach, `<pkg path>/operations.contract.ts` (each declared operation's input, output
+  and errors) and `errors.contract.ts` (the wire codes, their statuses and the error bodies). Each
+  module imports `zod` only. The field schemas are the entity generator's own renderers, and an
+  entity's contract read type is held equal to the entity file's on every dialect. C# writes the create and
+  update records with its own `contract-types`. No existing generator's output moves.
+- **runtime-ts: the guarded update (ADR-0066 §6 step 5), and the shared scenario that holds every
+  store driver to it.** `ObjectManager.guardedUpdate(entity, id, { field, from, to, condition? })`
+  makes a lifecycle transition's write in one statement — `UPDATE … SET <state> = :to WHERE <key>
+  = :id AND <state> IN (:from) [AND <condition>]`, TPH-scoped — and answers the row, or `null`
+  when the guard matched nothing. The `@condition` (attr.expression's CHECK subset) compiles to
+  the driver contract, which gains three `WhereClause` kinds: `compare` (two operands, each a
+  column, a literal or a `coalesce`), `nullTest` over any operand, and `not`. A driver an adopter
+  wrote must handle them; the bundled Kysely, Drizzle and in-memory drivers do, the in-memory one
+  with SQL's three-valued logic. Guard symbols must be members of the state enum, and each symbol
+  and condition literal is stored in its column's form (an int-backed enum as its integer). The
+  persistence corpus gains `op: guardedUpdate` and `queries/guarded-update.yaml`; TypeScript runs
+  it on Postgres and MySQL, and C#, Java, Kotlin and Python defer it by name until each builds its
+  own.
 - **The REST standard's list handling is part of the cross-port contract.** `?search`,
   `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
   filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and
@@ -126,6 +173,14 @@ here.**
   TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
   decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
   scenario can now send a body that is not JSON with `rawBody`.
+- **openapi: the document describes `?search`, `filter[or]` and `filter[and]`.** A list whose row
+  has a text field the search matches takes a `search` parameter naming those fields, and a list
+  with any filter takes the two combinators as `deepObject` parameters whose description gives the
+  grammar and the nesting cap. Item `GET`, `PATCH`, `PUT` and `DELETE` now list the `400 invalid_id` answer the routes
+  already gave. A project that wires `openApiFile()` sees `openapi.json` change on the next
+  `meta gen`; the contract corpus goldens move with it. A new contract case, `list-query`, documents
+  the list-query model, and the list-query lane now holds every exchange to it as the other
+  generated lanes do; the check no longer exempts `search` and the combinators.
 - **Java: the Spring controller generator writes through the code writer (ADR-0063).**
   `SpringControllerGenerator` writes through `SpringJavaWriter`, a `JavaWriter` that adds the two
   layouts Spring source uses and a block does not: a continuation line (two indents deeper) and an

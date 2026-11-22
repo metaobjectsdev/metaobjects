@@ -12,7 +12,9 @@ object Scenarios {
      * blocks it. Every other scenario under `queries/` runs, so a new fixture auto-runs or
      * auto-fails, forcing a deliberate entry here.
      */
-    val DEFERRED: Map<String, String> = emptyMap()
+    val DEFERRED: Map<String, String> = mapOf(
+        "guarded-update" to "op: guardedUpdate: the Kotlin guarded update is not built yet (1.3.0 row L-KT-2)",
+    )
 
     data class SortSpec(val field: String, val dir: String)
 

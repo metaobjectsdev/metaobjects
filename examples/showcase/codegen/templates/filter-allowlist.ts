@@ -18,6 +18,7 @@ import {
   FIELD_ATTR_LOCAL_TIME,
   opsForField,
 } from "@metaobjectsdev/metadata";
+import { FILTER_OP_LIKE } from "@metaobjectsdev/metadata/constants";
 import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 import { credentialFieldNames, isFilterableField, isSortableField, declaredSortDefaultOrder } from "./filter-shared.js";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
@@ -107,6 +108,15 @@ function valueShape(f: MetaField): FilterRuleValueShape {
     if (members !== undefined && members.length > 0) return { enumValues: members };
   }
   return {};
+}
+
+/**
+ * Whether `?search` matches this filterable field: the runtime's `searchFields` over the rule
+ * this field generates. A text rule (`subType` "string") with no `format` and `like` in its
+ * band; a uuid or other formatted string and an int-backed enum take no text match.
+ */
+export function isSearchField(f: MetaField): boolean {
+  return filterSubTypeFor(f.subType) === "string" && valueShape(f).format === undefined && opsForField(f).includes(FILTER_OP_LIKE);
 }
 
 /** The optional members of a rule beyond `ops` / `subType` / `leadingWildcard`. */
