@@ -277,8 +277,9 @@ export function knownFieldsLine(entity: MetaObject, indent: string, root?: MetaD
 /**
  * The `pagination` option of a list mount: the project's page size (`api.pagination` in
  * `.metaobjects/config.json`), or nothing when the project declares none, which keeps the output
- * byte-identical and the route unbounded, as before. `root` is the loaded root the setting is
- * read from (`ctx.loadedRoot`); without one the object's own root answers.
+ * byte-identical; the mount then answers 50 rows when `limit` is absent and has no ceiling
+ * (`DEFAULT_PAGE_LIMIT`). `root` is the loaded root the setting is read from (`ctx.loadedRoot`);
+ * without one the object's own root answers.
  */
 export function paginationLine(entity: MetaObject, indent: string, root?: MetaData): string {
   const page = apiPaginationOf(root ?? entity);

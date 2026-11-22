@@ -428,7 +428,7 @@ describe("init() --force config preservation", () => {
     expect(reloaded.pending_in_git).toBe(false);
     expect(reloaded.confidence_thresholds.pending_promote).toBe(0.95);
     expect(reloaded.sources).toEqual([{ package: "@acme/entities" }]);
-    // An existing project keeps its unbounded lists: --force must not add a page size.
+    // An existing project keeps its page settings: --force must not add a maximum page size.
     expect(reloaded.api).toBeUndefined();
   });
 

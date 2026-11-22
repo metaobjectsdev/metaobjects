@@ -622,10 +622,12 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
   // New-project defaults, each written as its own visible setting (a project that predates
   // a setting keeps the behaviour it had, because the key is absent there): every foreign key
   // gets an index, a hand edit to a generated file fails `meta verify --codegen`, and every
-  // generated list route has a page size. They are written here and not into DEFAULT_CONFIG:
-  // the merge below must not add them to an existing project on `--force` (a page size added
-  // on upgrade would truncate a client that reads a whole list). `unknownFields` is written out
-  // at its default, so the choice is visible where a project would change it.
+  // generated list route refuses a `?limit=` above 1000. They are written here and not into
+  // DEFAULT_CONFIG: the merge below must not add them to an existing project on `--force` (a
+  // maximum added on upgrade would refuse a client that asks for a large page; with no block a
+  // list already answers 50 rows when `limit` is absent). `pagination.defaultLimit` and
+  // `unknownFields` are written out at their defaults, so the choice is visible where a project
+  // would change it.
   // MySQL writes no `migrate` block at all: MetaObjects does not own MySQL schema, and InnoDB
   // indexes every foreign key itself.
   const freshConfig = ConfigSchema.parse({

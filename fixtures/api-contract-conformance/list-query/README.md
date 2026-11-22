@@ -27,6 +27,9 @@ boundary sits inside the table. Four names differ only in case and position, so 
   - a page bound that is not a non-negative integer is `pagination.invalid_value`.
 
   An unknown parameter such as a cache-buster is ignored.
+- **The default page is 50:** with no `limit` (the corpus sets no `api.pagination`), a list
+  answers rows 1 to 50, `offset=50` answers 51 to 60, `limit=60` answers all 60 (no maximum
+  without the setting), and `withCount=1` answers 50 rows with `total: 60`.
 - **Paging past 50:**
   - `limit=51` answers 51 rows;
   - `limit=5&offset=51` answers rows 52 to 56;

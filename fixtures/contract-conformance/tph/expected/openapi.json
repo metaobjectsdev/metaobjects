@@ -242,9 +242,11 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Rows per page. Absent, the server answers 50.",
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "default": 50
             }
           },
           {
@@ -599,9 +601,11 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Rows per page. Absent, the server answers 50.",
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "default": 50
             }
           },
           {
@@ -1164,9 +1168,11 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Rows per page. Absent, the server answers 50.",
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "default": 50
             }
           },
           {
@@ -1701,9 +1707,11 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Rows per page. Absent, the server answers 50.",
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "default": 50
             }
           },
           {

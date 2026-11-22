@@ -132,7 +132,7 @@ export interface CrudRoutesOptions extends WireOptions {
   /**
    * The list page size (`api.pagination` in `.metaobjects/config.json`): a list with no `limit`
    * returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
-   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent → no default and no ceiling.
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
    */
   pagination?: PageSize;
 }
@@ -233,13 +233,13 @@ export function mountListRoute(opts: VerbOptions): void {
         if (combinedWhere) { q = q.where(combinedWhere); where = combinedWhere; }
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
         const limit = pageLimit(parsed.limit, opts.pagination);
-        if (limit !== undefined) q = q.limit(limit);
+        q = q.limit(limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
         // No allowlists configured. Only limit/offset.
         const limit = pageLimit(parsePageBound(qsParsed, "limit"), opts.pagination);
         const offset = parsePageBound(qsParsed, "offset");
-        if (limit  !== undefined) q = q.limit(limit);
+        q = q.limit(limit);
         if (offset !== undefined) q = q.offset(offset);
       }
 

@@ -91,7 +91,7 @@ export interface CrudRoutesOptions {
   /**
    * The list page size (`api.pagination` in `.metaobjects/config.json`): a list with no
    * `limit` returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
-   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent: no default and no ceiling.
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
    */
   pagination?: PageSize;
 }
@@ -143,7 +143,7 @@ export function mountListRoute(opts: SingleVerbOptions): void {
 
     const om = await opts.om();
     let query: ListQuery;
-    let limit: number | undefined;
+    let limit: number;
     try {
       query = opts.filterAllowlist !== undefined
         ? parseListQuery({
@@ -160,7 +160,7 @@ export function mountListRoute(opts: SingleVerbOptions): void {
     }
 
     const readOpts: { limit?: number; offset?: number; orderBy?: [string, "asc" | "desc"] | [string, "asc" | "desc"][] } = {};
-    if (limit !== undefined) readOpts.limit = limit;
+    readOpts.limit = limit;
     if (query.offset !== undefined) readOpts.offset = query.offset;
     // No `?sort`: the key, ascending, so a page holds the same rows on every engine, as the
     // Drizzle mounts order by `id`.

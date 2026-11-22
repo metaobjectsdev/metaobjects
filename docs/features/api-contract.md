@@ -308,15 +308,16 @@ each handler they register instead; an `HTTPException` is rethrown to your
   traversal route (`GET /<source>/{id}/<relation>`) takes no `limit` or `offset` in any port
   and is not paged by the setting: it answers the whole related set, as it always has.
 
-  **Without the setting nothing changes, and the default is per port.** With `limit` omitted,
-  the TypeScript mounts and the C# routes return **every** matching row, while the Java, Kotlin
-  and Python controllers return the first **50**, and no port caps an explicit `limit` on an
-  entity (`limit=100000` is honoured as asked). That is the behaviour every existing project
-  has, so the setting is opt-in: adding a cap on upgrade would silently truncate a client that
-  reads a whole list. Each port's verify advises (rule `unbounded-list-pages`, never a failure)
-  when a routes generator is wired and the project sets no page size: `meta verify`,
-  `metaobjects verify`, `mvn metaobjects:verify` (Java and Kotlin) and `dotnet meta verify
-  --codegen` (C# knows its generator list only when it runs it).
+  **Without the setting a list still pages: 50 rows, and no maximum.** With `limit` omitted, a
+  list answers the first **50** matching rows (`list-query/default-page-of-fifty`, over a 60-row
+  seed), and no port caps an explicit `limit` on an entity (`limit=100000` is honoured as asked).
+  The Java, Kotlin and Python controllers have always answered 50; the TypeScript mounts did so
+  from 1.3.0 (before, they returned **every** matching row), and the C# routes still return every
+  row until the same change lands there. A client that read a whole list with no `limit` now gets
+  the first page: send `limit`, or page with `offset` and `withCount=1`. `meta verify` no longer
+  advises `unbounded-list-pages`; `metaobjects verify`, `mvn metaobjects:verify` (Java and Kotlin)
+  and `dotnet meta verify --codegen` still name a wired routes generator with no page size (never
+  a failure).
 
   **Every port reads it:** the TypeScript Fastify and Hono routes, the C# minimal-API routes, the
   Java and Kotlin Spring controllers and the Python FastAPI routers, packaged and ejected (an owned

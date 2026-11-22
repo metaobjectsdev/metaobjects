@@ -1,0 +1,37 @@
+name: default-page-of-fifty
+description: >
+  A list with no `limit`, in a project that sets no `api.pagination`, answers the first 50 rows:
+  the default page size of every port. The seed has 60 rows, so a port that returns the whole
+  table answers 60. An explicit `limit` above 50 is served as asked (there is no maximum without
+  the setting), and `withCount=1` still counts every row.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?sort=id:asc"
+    expect:
+      status: 200
+      body:
+        length: 50
+  - id: r2
+    method: GET
+    path: "/api/parts?offset=50&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [51, 52, 53, 54, 55, 56, 57, 58, 59, 60]
+  - id: r3
+    method: GET
+    path: "/api/parts?limit=60&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        length: 60
+  - id: r4
+    method: GET
+    path: "/api/parts?withCount=1"
+    expect:
+      status: 200
+      body:
+        envelope: true
+        rowsLength: 50
+        total: 60
