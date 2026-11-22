@@ -23,11 +23,11 @@ entity's create and update records ([C# port](../ports/csharp.md)). The TypeScri
 guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
 persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
 each package's derived list, get, create, update and delete, every write in one transaction with the
-declared write rules, behind a thin Fastify transport (`service-routes`) that answers the shared API
-tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). It also writes
-a command per transition and a shell per declared command and query, and enforces at run time what
-this page declares: the permission point, the state check, the guarded update, `state_managed` and
-the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
+declared write rules, behind a thin Fastify transport (`service-routes`) or Hono transport
+(`service-routes-hono`) that answers the shared API tests as the flat routes do (see
+[The service layer](#the-service-layer-typescript)). It also writes a command per transition and a
+shell per declared command and query, and enforces at run time what this page declares: the
+permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
 later 1.3.0 work. A lifecycle in a project that wires no service generator will be advised by
 `verify` once that check lands; until then the flat routes enforce nothing and `verify` says
 nothing about it. Every flat generator writes byte-identical code for
@@ -385,7 +385,9 @@ package, the command and the option; queries are generated as usual.
 `serviceRoutesFile()` (stable name `service-routes`, layer `api`, Fastify) writes the thin
 transport (layer 5) beside it, `<pkg path>/transport/fastify.ts`: one plugin per package,
 registered with the service it calls. Each route parses the request, calls one operation and
-sends what it answered; it holds no rules and no database handle.
+sends what it answered; it holds no rules and no database handle. `serviceRoutesHonoFile()`
+(stable name `service-routes-hono`) writes the same routes for Hono, `<pkg path>/transport/hono.ts`,
+as one function per package that adds them to your app: `shopServiceHonoRoutes(app, { service })`.
 
 ```ts
 import { createShopService } from "./generated/acme/shop/service/index.js";
@@ -404,9 +406,11 @@ await withWriteTransaction(db, async (tx) => {
 
 Both import the entity module (`entity`, for the table and the allowlists) and the contract types
 (`contract-types`), written to the same target, and `@metaobjectsdev/runtime-ts`'s `service` and
-`service/fastify` entries; `meta eject service` and `meta eject service-routes` copy that source into
-`codegen/runtime/` as they do for the routes. The service lane of the shared API tests runs the
-corpus the flat routes pass against the service behind this transport, in both layouts.
+`service/fastify` (or `service/hono`) entries; `meta eject service`, `meta eject service-routes` and
+`meta eject service-routes-hono` copy that source into `codegen/runtime/` as they do for the routes.
+The shared API tests run the service behind each transport over a subset of the corpora the flat
+routes pass; the subset and its engines are listed in the
+[API contract README](../../fixtures/api-contract-conformance/README.md#ts-lanes-illustrative-detail).
 
 ### Transitions, declared operations and what you write by hand
 
@@ -443,7 +447,8 @@ API contract reserves (`not_found`, `forbidden`, `validation`, ...) is not accep
 
 The actor is a type you define, `A`. A caller passes it per call as `opts.actor`, and the service
 hands it to the policy, the bodies, the hooks and the event hook without looking inside it. The
-Fastify transport takes a `getActor(request)` resolver of yours:
+Fastify transport takes a `getActor(request)` resolver of yours, and the Hono transport a
+`getActor(c)`:
 
 ```ts
 const service = createPurchasingService<Actor>({
@@ -456,6 +461,8 @@ const service = createPurchasingService<Actor>({
   events: { onWrite: (event, ctx) => writeAudit(ctx.tx, event) },
 });
 await app.register(purchasingServiceRoutes, { service, getActor: (req) => actorFromSession(req) });
+// or, on Hono:
+purchasingServiceHonoRoutes(app, { service, getActor: (c) => actorFromSession(c) });
 ```
 
 The shared API tests' `fixtures/api-contract-conformance/rules/` corpus runs a model with a

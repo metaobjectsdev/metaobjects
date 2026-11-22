@@ -35,7 +35,7 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 | `model` | entity, names, rules-names, contract-types, barrel, dto, value-object | app shape |
 | `persistence` | queries, prisma-schema, db-context, repository, exposed-table, relations, stored-proc | app shape |
 | `service` | service | app shape: the operations a route, a job or an agent tool calls (ADR-0067 §5.6) |
-| `api` | routes, routes-hono, service-routes, filter-allowlist, validator, spring-config, contract-schema, openapi | app shape |
+| `api` | routes, routes-hono, service-routes, service-routes-hono, filter-allowlist, validator, spring-config, contract-schema, openapi | app shape |
 | `client` | form, hooks, grid, grid-hook, client, commands | app shape |
 | `docs` | docs, api-docs, requirements, agent-docs, metamodel-docs, docs-site, plantuml, html-docs, ai-docs | declared in the project's generator list like any other; nothing is generated that the list does not declare (ADR-0034 Amendment 9) |
 | `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable, json-schema, mustache | `meta gen --list --probe` |
@@ -138,7 +138,8 @@ mapping; C# so far writes the create and update records). Each other port adds i
 Two names are **TypeScript only for now**: `service`, layer 4 (one module per package, a
 function per operation, each write in one transaction with the declared write rules), and
 `service-routes`, its thin Fastify transport (layer 5). Each other port adds itself with its own
-service-layer work.
+service-layer work. `service-routes-hono`, its Hono transport, is **TypeScript only by design**,
+as `routes-hono` is: Hono is a TypeScript framework.
 
 ## Changing the surface
 

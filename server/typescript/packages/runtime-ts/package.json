@@ -36,6 +36,11 @@
       "types": "./dist/service/fastify.d.ts",
       "default": "./dist/service/fastify.js"
     },
+    "./service/hono": {
+      "bun": "./src/service/hono.ts",
+      "types": "./dist/service/hono.d.ts",
+      "default": "./dist/service/hono.js"
+    },
     "./hono": {
       "bun": "./src/hono/index.ts",
       "types": "./dist/hono/index.d.ts",

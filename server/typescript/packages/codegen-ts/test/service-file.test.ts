@@ -6,9 +6,9 @@ import { describe, expect, test } from "bun:test";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { InMemoryStringSource, loadUris, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
-import { contractTypes, entityFile, queriesFile, serviceFile, serviceRoutesFile } from "../src/generators/index.js";
+import { contractTypes, entityFile, queriesFile, serviceFile, serviceRoutesFile, serviceRoutesHonoFile } from "../src/generators/index.js";
 import { defineConfig, runGen, type OutputLayout } from "../src/index.js";
-import { serviceModelOf, serviceRoutesName, serviceTypeName } from "../src/service-walk.js";
+import { serviceHonoRoutesName, serviceModelOf, serviceRoutesName, serviceTypeName } from "../src/service-walk.js";
 import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 import type { Generator } from "../src/generator.js";
 
@@ -102,6 +102,7 @@ describe("service generators — what they write", () => {
     expect(serviceTypeName("acme::purchase_orders")).toBe("PurchaseOrdersService");
     expect(serviceTypeName("")).toBe("ModelService");
     expect(serviceRoutesName("acme::purchasing")).toBe("purchasingServiceRoutes");
+    expect(serviceHonoRoutesName("acme::purchasing")).toBe("purchasingServiceHonoRoutes");
   });
 
   test("a model with no store-backed entity gets no file, and a project that lists none sees no change", async () => {
@@ -134,6 +135,31 @@ describe("service generators — what they write", () => {
         importBase: "@acme/model",
       }),
     ).rejects.toThrow(/service: write it to the entity module's target/);
+  });
+});
+
+describe("service-routes-hono — the service's Hono transport", () => {
+  const hono = (): Generator[] => [entityFile(), contractTypes(), serviceFile(), serviceRoutesHonoFile()];
+
+  test("writes transport/hono.ts beside the service, in each layout, and no Fastify transport", async () => {
+    const root = await load("acme::shop", [entity("Order")]);
+    for (const layout of ["package", "flat"] as const) {
+      const paths = servicePaths(await gen(root, hono(), layout)).filter((p) => p.includes("/transport/"));
+      expect(paths).toEqual(["acme/shop/transport/hono.ts"]);
+    }
+  });
+
+  test("mounts the package's service on a Hono app through the runtime's service/hono helpers", async () => {
+    const root = await load("acme::shop", [entity("Order")]);
+    const file = (await gen(root, hono()))["acme/shop/transport/hono.ts"]!;
+    expect(file).toContain("export function shopServiceHonoRoutes");
+    expect(file).toContain('from "@metaobjectsdev/runtime-ts/service/hono";');
+  });
+
+  test("both transports can be written for one service", async () => {
+    const root = await load("acme::shop", [entity("Order")]);
+    const paths = servicePaths(await gen(root, [...tier(), serviceRoutesHonoFile()])).filter((p) => p.includes("/transport/"));
+    expect(paths).toEqual(["acme/shop/transport/fastify.ts", "acme/shop/transport/hono.ts"]);
   });
 });
 
