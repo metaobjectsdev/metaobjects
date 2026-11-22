@@ -120,8 +120,8 @@ here.**
   modules they reach, `<pkg path>/operations.contract.ts` (each declared operation's input, output
   and errors) and `errors.contract.ts` (the wire codes, their statuses and the error bodies). Each
   module imports `zod` only. The field schemas are the entity generator's own renderers, and an
-  entity's contract read type is held equal to the entity file's on every dialect. TypeScript only
-  for now. No existing generator's output moves.
+  entity's contract read type is held equal to the entity file's on every dialect. C# writes the create and
+  update records with its own `contract-types`. No existing generator's output moves.
 - **runtime-ts: the guarded update (ADR-0066 §6 step 5), and the shared scenario that holds every
   store driver to it.** `ObjectManager.guardedUpdate(entity, id, { field, from, to, condition? })`
   makes a lifecycle transition's write in one statement — `UPDATE … SET <state> = :to WHERE <key>

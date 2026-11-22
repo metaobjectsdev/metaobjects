@@ -122,11 +122,12 @@ port that adopts either name adds itself to that entry's `ports`; the name is th
 shared like the others. (`payload` was one until ADR-0056 removed it: a value
 object's type now comes from the value-object generator, so the template tier declares none.)
 
-One name is **TypeScript-only for now**: `rules-names`, the first rules layer of ADR-0067 (the
-names of a package's lifecycle states, transitions, commands, operations, permissions and
-business errors). Each other port adds itself to its `ports` with its own rules-layer work.
-So is `contract-types`, ADR-0067 layer 1 (the read, create and update shapes, the operations'
-inputs and outputs, and the wire error bodies, with no persistence mapping), on the same terms.
+Two names are **TypeScript and C# only for now**: `rules-names`, the first rules layer of
+ADR-0067 (the names of a package's lifecycle states, transitions, commands, operations,
+permissions and business errors), and `contract-types`, layer 1 (the read, create and update
+shapes, the operations' inputs and outputs, and the wire error bodies, with no persistence
+mapping; C# so far writes the create and update records). Each other port adds itself to their
+`ports` with its own rules-layer work.
 
 ## Changing the surface
 
