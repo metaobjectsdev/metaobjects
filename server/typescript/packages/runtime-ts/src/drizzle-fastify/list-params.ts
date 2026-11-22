@@ -4,6 +4,8 @@
  * OPTIONAL peer): the ObjectManager mount must not pull it in.
  */
 
+import { DEFAULT_PAGE_LIMIT } from "@metaobjectsdev/metadata";
+
 export class FilterParseError extends Error {
   constructor(public readonly code: string, message: string, public readonly details?: Record<string, unknown>) {
     super(message);
@@ -65,10 +67,11 @@ export const ERROR_CODE_LIMIT_TOO_LARGE = "limit_too_large";
 /**
  * The `limit` a list route applies: the caller's, else the default page size, and a caller's
  * above the maximum is refused with `400 { "error": "limit_too_large", "maxLimit": N }`. Without
- * a page size the caller's `limit` (or none) passes through unchanged, as before.
+ * a page size a list with no `limit` answers {@link DEFAULT_PAGE_LIMIT} rows (50, as in every
+ * port) and a caller's `limit` is served as asked: there is no maximum to refuse it against.
  */
-export function pageLimit(limit: number | undefined, pageSize: PageSize | undefined): number | undefined {
-  if (pageSize === undefined) return limit;
+export function pageLimit(limit: number | undefined, pageSize: PageSize | undefined): number {
+  if (pageSize === undefined) return limit ?? DEFAULT_PAGE_LIMIT;
   if (limit === undefined) return pageSize.defaultLimit;
   if (limit > pageSize.maxLimit) {
     throw new FilterParseError(

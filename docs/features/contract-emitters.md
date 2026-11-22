@@ -164,8 +164,9 @@ It also states what the routes do beyond the happy path:
 
 - **Page size.** When the project sets `api.pagination`, a list's `limit` carries that `default` and
   `maximum`, and the description names the `limit_too_large` answer. Without the setting `limit`
-  states neither, because the server serves what it always did. A report keeps its own row cap and
-  states neither either.
+  carries `default: 50` and no `maximum`, because the server answers 50 rows and has no ceiling
+  ([api-contract.md](api-contract.md#sort--pagination)). A report keeps its own row cap and states
+  neither.
 - **Undeclared body keys.** A create, `PUT` or `PATCH` body description says an undeclared key is
   refused with `400 unknown_fields` (the default) or dropped under `api.unknownFields: drop`.
   The shapes stay open: the server still drops a declared key a client may not set, such as the

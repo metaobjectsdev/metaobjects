@@ -1,6 +1,7 @@
 // The page size of a generated list route: `api.pagination` in .metaobjects/config.json,
 // carried on the loaded root beside the naming rules and read through `apiPaginationOf`.
-// A project without the block has none, and its routes behave as they always have.
+// A project without the block still pages: a list with no `limit` answers DEFAULT_PAGE_LIMIT rows,
+// the same default in every port, and no maximum is enforced.
 
 import type { MetaData } from "./shared/meta-data.js";
 
@@ -10,8 +11,14 @@ export const API_KEY_PAGINATION = "pagination";
 export const PAGINATION_KEY_DEFAULT_LIMIT = "defaultLimit";
 export const PAGINATION_KEY_MAX_LIMIT = "maxLimit";
 
+/**
+ * The rows a list with no `limit` answers when the project sets no `api.pagination`: the same 50
+ * in every port. Without the block there is no maximum, so an explicit `limit` is served as asked.
+ */
+export const DEFAULT_PAGE_LIMIT = 50;
+
 /** What `meta init` writes for a new project. */
-export const INIT_DEFAULT_LIMIT = 50;
+export const INIT_DEFAULT_LIMIT = DEFAULT_PAGE_LIMIT;
 export const INIT_MAX_LIMIT = 1000;
 
 /**

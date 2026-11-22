@@ -415,3 +415,46 @@ describe("mountReadOnlyCrudRoutes — report row cap", () => {
     }
   }
 });
+
+describe("mountReadOnlyCrudRoutes — default page without api.pagination", () => {
+  let fastify: FastifyInstance;
+  let client: ReturnType<typeof createClient>;
+
+  beforeAll(async () => {
+    client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE sales (id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)`);
+    await client.execute(`CREATE VIEW v_totals AS SELECT id, amount FROM sales`);
+    for (let i = 1; i <= 55; i++) await client.execute(`INSERT INTO sales (id, amount) VALUES (${i}, ${i * 10})`);
+    fastify = Fastify();
+    mountReadOnlyCrudRoutes({
+      fastify,
+      path: "/totals",
+      db: drizzle(client),
+      view: sqliteView("v_totals", {
+        id: integer("id").notNull(),
+        amount: integer("amount").notNull(),
+      }).existing(),
+      filterAllowlist: {},
+      sortAllowlist: { id: { defaultOrder: "asc" } },
+      dialect: "sqlite",
+    });
+    await fastify.ready();
+  });
+
+  afterAll(async () => {
+    await fastify.close();
+    client.close();
+  });
+
+  test("no ?limit= answers 50 rows, not the whole view", async () => {
+    const res = await fastify.inject({ method: "GET", url: "/totals" });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toHaveLength(50);
+  });
+
+  test("a large ?limit= answers every row: no maximum without the setting", async () => {
+    const res = await fastify.inject({ method: "GET", url: "/totals?limit=100000" });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toHaveLength(55);
+  });
+});

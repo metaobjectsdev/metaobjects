@@ -24,7 +24,7 @@ export function applyNearestNaming(root: MetaRoot, startDir: string): MetaRoot {
   // `enums.maxLength` sizes an enum column, so a corpus that sets it gets the schema it pins.
   root.enumDefaults = enumDefaultsFromConfig(config);
   // `api.pagination` gives generated list routes a page size; a corpus without it keeps the
-  // unbounded lists every other corpus is written against.
+  // default page of 50 with no maximum that every other corpus is written against.
   const page = apiPaginationFromConfig(config);
   if (page !== undefined) root.apiPagination = page;
   const unknownFields = apiUnknownFieldsFromConfig(config);

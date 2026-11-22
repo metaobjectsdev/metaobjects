@@ -16,6 +16,7 @@
 import { flatSurfaceFields } from "../flattened.js";
 import {
   type ApiPagination,
+  DEFAULT_PAGE_LIMIT,
   apiPaginationOf,
   apiUnknownFieldsOf,
   type MetaField,
@@ -207,22 +208,28 @@ function sortParameter(obj: MetaObject, excludeField: string | undefined, root: 
 
 /**
  * The page parameters. A project that sets `api.pagination` serves `defaultLimit` rows when `limit`
- * is absent and refuses a `limit` above `maxLimit`, so the document says both. A report keeps its
- * own row cap (a generator option the model does not hold), so it states neither.
+ * is absent and refuses a `limit` above `maxLimit`, so the document says both; one that sets none
+ * serves `DEFAULT_PAGE_LIMIT` (50) and has no maximum. A report keeps its own row cap (a generator
+ * option the model does not hold), so it states neither.
  */
-function pageParameters(minLimit: number, page: ApiPagination | undefined): JsonSchema[] {
+function pageParameters(minLimit: number, page: ApiPagination | undefined, report: boolean): JsonSchema[] {
+  const defaultLimit = page?.defaultLimit ?? DEFAULT_PAGE_LIMIT;
   const limit: JsonSchema = {
     type: "integer",
     minimum: minLimit,
-    ...(page !== undefined && { maximum: page.maxLimit, default: page.defaultLimit }),
+    ...(!report && page !== undefined && { maximum: page.maxLimit }),
+    ...(!report && { default: defaultLimit }),
   };
+  const description = report
+    ? undefined
+    : page !== undefined
+      ? `Rows per page. Absent, the server answers ${page.defaultLimit}; above ${page.maxLimit} it answers 400 limit_too_large.`
+      : `Rows per page. Absent, the server answers ${defaultLimit}.`;
   return [
     {
       name: "limit",
       in: "query",
-      ...(page !== undefined && {
-        description: `Rows per page. Absent, the server answers ${page.defaultLimit}; above ${page.maxLimit} it answers 400 limit_too_large.`,
-      }),
+      ...(description !== undefined && { description }),
       schema: limit,
     },
     { name: "offset", in: "query", schema: { type: "integer", minimum: 0 } },
@@ -291,7 +298,7 @@ function listOperation(r: ResourceOps): JsonSchema {
     ...filterParameters(filterable),
     ...listQueryParameters(filterable),
     ...sortParameter(row, r.excludeField, r.root),
-    ...pageParameters(r.report ? 1 : 0, r.report ? undefined : apiPaginationOf(r.root)),
+    ...pageParameters(r.report ? 1 : 0, r.report ? undefined : apiPaginationOf(r.root), r.report),
     ...(r.reportExport ? [{ name: "format", in: "query", schema: { type: "string", enum: ["csv", "json", "xml"] } }] : []),
   ];
   r.refs.listed.add(row);

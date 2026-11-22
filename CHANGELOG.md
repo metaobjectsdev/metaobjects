@@ -10,6 +10,14 @@ here.**
 
 ## [Unreleased]
 
+- **runtime-ts: a list with no `limit` answers 50 rows (breaking).** A generated entity or
+  projection list in a project that sets no `api.pagination` returned every matching row when the
+  request carried no `limit`; it now answers the first 50, the default of every port. An explicit
+  `limit` is still served as asked (no maximum without the setting), and a project that sets
+  `api.pagination` is unchanged. The OpenAPI document states the default, the `meta verify`
+  advisory `unbounded-list-pages` is retired, and the shared `list-query/default-page-of-fifty`
+  scenario pins it over a 60-row seed. Check any client that reads a whole list without a `limit`:
+  [docs/features/migrations/default-list-page-of-fifty.md](docs/features/migrations/default-list-page-of-fifty.md).
 - **codegen-ts: the trace helper's call loop is written into the project, and
   `@metaobjectsdev/ai-runtime` is no longer published.** The `trace-helper` generator now writes
   `llm-call.ts` (the `LlmClient` seam and `runLlmCall`) beside the `<Entity>.trace.ts` modules,
