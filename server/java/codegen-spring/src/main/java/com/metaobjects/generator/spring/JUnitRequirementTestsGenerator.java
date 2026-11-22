@@ -324,7 +324,7 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
                 if (rendered != null) {
                     for (String i : rendered.imports()) w.verbatimImport(i);
                     // The renderer's source is project code: written line by line as it gave it.
-                    for (String line : rendered.source().stripTrailing().split("\n", -1)) {
+                    for (String line : rendered.source().stripTrailing().split("\r\n|\r|\n", -1)) {
                         if (line.isEmpty()) w.blank();
                         else w.line(line);
                     }

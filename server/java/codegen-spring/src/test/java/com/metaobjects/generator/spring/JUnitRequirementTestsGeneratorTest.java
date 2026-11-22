@@ -672,6 +672,24 @@ public class JUnitRequirementTestsGeneratorTest {
         }
     }
 
+    /** Replaces every test with one whose source uses Windows line endings. */
+    public static class CrlfSourceRenderer implements RequirementTestRenderer {
+        @Override
+        public RenderedTest render(RequirementTestArgs args) {
+            return new RenderedTest(List.of("org.junit.jupiter.api.Assertions"),
+                "@Test\r\nvoid " + args.identity().witnessKey() + "() {\r\n    Assertions.assertTrue(true);\r\n}\r\n");
+        }
+    }
+
+    @Test
+    public void aRendererSourceWithWindowsLineEndingsGeneratesWithLineFeedsOnly() throws Exception {
+        Path out = run(loadDir(workedExampleInput()), Map.of("renderer", CrlfSourceRenderer.class.getName()));
+        String test = read(out, "Requirements_acme_shop_Test.java");
+        assertFalse("no CR reaches the file", test.indexOf('\r') >= 0);
+        assertTrue(test, test.contains("    @Test\n    void req_acme_shop_Orders_Recorded__object_entity() {\n        Assertions.assertTrue(true);\n    }\n"));
+        compile(out, Map.of(WITNESS_CLASS, WITNESS_NONE));
+    }
+
     // ---------------------------------------------------------------- the uncovered warning
 
     /** A level 3 requirement {@code parent} holding a level 3 child, both excluded by the default filter. */
