@@ -156,7 +156,8 @@ here.**
   with SQL's three-valued logic. Guard symbols must be members of the state enum, and each symbol
   and condition literal is stored in its column's form (an int-backed enum as its integer). The
   persistence corpus gains `op: guardedUpdate` and `queries/guarded-update.yaml`; TypeScript runs
-  it, and C#, Java, Kotlin and Python defer it by name until each builds its own.
+  it on Postgres and MySQL, and C#, Java and Kotlin defer it by name until each builds its own
+  (Python defers it on Postgres).
 - **The REST standard's list handling is part of the cross-port contract.** `?search`,
   `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
   filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and

@@ -1,4 +1,5 @@
 name: guarded-update
+engines: [postgres, mysql]
 description: |
   The guarded update (ADR-0066 §6 step 5, §8): the store-neutral write a lifecycle transition
   makes. One statement sets the state field to `to` where the key matches, the state is one of
