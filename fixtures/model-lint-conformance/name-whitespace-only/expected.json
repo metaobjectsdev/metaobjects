@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_NAME_SURROUNDING_WHITESPACE",
+      "path": "acme::app::Account.\"  \"",
+      "message": "field.string name \"  \" has leading or trailing whitespace, which is almost certainly unintended — rename it, and pin @column if the physical column must keep its name. The whitespace is carried into every identifier, column and wire key derived from the name."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::Match.team_fk",
+      "message": "references (@references) deprecated field.string acme::app::Team.code"
+    }
+  ]
+}

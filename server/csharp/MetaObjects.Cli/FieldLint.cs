@@ -45,12 +45,9 @@ public static class FieldLint
     /// <summary>Opt-out environment variable, beside <c>--no-field-lint</c> (Node <c>meta</c> parity).</summary>
     public const string EnvOptOut = "META_NO_FIELD_LINT";
 
-    private const string KeyName = "name";
     private const string KeyPackage = "package";
     private const string KeyChildren = "children";
     private const char TypeSubTypeSeparator = '.';
-    /// <summary>The YAML authoring sugar for <c>isArray: true</c> — a suffix on the wrapper key.</summary>
-    private const string ArraySuffix = "[]";
 
     /// <summary>One advisory finding: its code, the node's address, and the message.</summary>
     public sealed record Finding(string Code, string Path, string Message);
@@ -118,24 +115,24 @@ public static class FieldLint
     {
         var findings = new List<Finding>();
         var normalized = content.Length > 0 && content[0] == '﻿' ? content[1..] : content;
-        var parsed = format == MetaDataFormat.Yaml ? ParseYaml(normalized) : ParseJson(normalized);
+        var parsed = format == MetaDataFormat.Yaml ? RawDocument.ParseYaml(normalized) : RawDocument.ParseJson(normalized);
         if (parsed is not List<KeyValuePair<string, object?>> document) return findings;
 
         // JSON fuses the subtype onto the root key; sigil-free YAML may write the bare type.
-        var rootBody = Get(document, $"{TYPE_METADATA}{TypeSubTypeSeparator}{SUBTYPE_ROOT}") ?? Get(document, TYPE_METADATA);
+        var rootBody = RawDocument.Get(document, $"{TYPE_METADATA}{TypeSubTypeSeparator}{SUBTYPE_ROOT}") ?? RawDocument.Get(document, TYPE_METADATA);
         if (rootBody is not List<KeyValuePair<string, object?>> root) return findings;
-        var rootPkg = Get(root, KeyPackage) as string ?? "";
-        if (Get(root, KeyChildren) is not List<object?> children) return findings;
+        var rootPkg = RawDocument.Get(root, KeyPackage) as string ?? "";
+        if (RawDocument.Get(root, KeyChildren) is not List<object?> children) return findings;
 
         foreach (var child in children)
         {
             if (child is not List<KeyValuePair<string, object?>> wrapper) continue;
             foreach (var (wrapperKey, bodyValue) in wrapper)
             {
-                if (WrapperType(wrapperKey) != TYPE_OBJECT) continue;
+                if (RawDocument.WrapperType(wrapperKey) != TYPE_OBJECT) continue;
                 if (bodyValue is not List<KeyValuePair<string, object?>> body) continue;
-                var name = DeclaredName(body);
-                if (name is null || Get(body, KeyChildren) is not List<object?> members) continue;
+                var name = RawDocument.DeclaredName(body);
+                if (name is null || RawDocument.Get(body, KeyChildren) is not List<object?> members) continue;
 
                 // Insertion-ordered, so findings come out in document order.
                 var order = new List<string>();
@@ -145,8 +142,8 @@ public static class FieldLint
                     if (member is not List<KeyValuePair<string, object?>> memberWrapper) continue;
                     foreach (var (memberKey, memberBody) in memberWrapper)
                     {
-                        if (WrapperType(memberKey) != TYPE_FIELD) continue;
-                        var fieldName = DeclaredName(memberBody);
+                        if (RawDocument.WrapperType(memberKey) != TYPE_FIELD) continue;
+                        var fieldName = RawDocument.DeclaredName(memberBody);
                         if (fieldName is null) continue;
                         if (!counts.TryGetValue(fieldName, out var seen)) order.Add(fieldName);
                         counts[fieldName] = seen + 1;
@@ -155,12 +152,7 @@ public static class FieldLint
 
                 // The resolution key the parser gives a root-level node: its own `package`
                 // (a `::`-prefixed one is relative to the root's), else the root's.
-                var ownPkg = Get(body, KeyPackage) as string;
-                var pkg = string.IsNullOrEmpty(ownPkg)
-                    ? rootPkg
-                    : rootPkg.Trim() != "" && ownPkg.StartsWith(PACKAGE_SEPARATOR, StringComparison.Ordinal)
-                        ? rootPkg + ownPkg
-                        : ownPkg;
+                var pkg = RawDocument.ResolvePackage(rootPkg, RawDocument.Get(body, KeyPackage) as string);
                 var address = pkg != "" ? $"{pkg}{PACKAGE_SEPARATOR}{name}" : name;
                 foreach (var fieldName in order)
                 {
@@ -228,61 +220,4 @@ public static class FieldLint
         stderr.WriteLine($"dotnet meta verify — fields: {findings.Count} authoring warning(s) (advisory — does not fail the build):");
         foreach (var f in findings) stderr.WriteLine($"  {f.Code} [{f.Path}]: {f.Message}");
     }
-
-    // -- raw document model ---------------------------------------------------
-    // A mapping is an ORDERED list of pairs, a sequence a List<object?>, a scalar a string.
-
-    private static object? Get(List<KeyValuePair<string, object?>> mapping, string key)
-    {
-        foreach (var (k, v) in mapping)
-            if (k == key) return v;
-        return null;
-    }
-
-    /// <summary>The TYPE segment of a wrapper key: <c>field.string[]</c> and bare <c>field</c> are both <c>field</c>.</summary>
-    private static string WrapperType(string key)
-    {
-        var dot = key.IndexOf(TypeSubTypeSeparator);
-        var head = dot < 0 ? key : key[..dot];
-        return head.EndsWith(ArraySuffix, StringComparison.Ordinal) ? head[..^ArraySuffix.Length] : head;
-    }
-
-    /// <summary>A node's declared name: the body's <c>name</c>, or the body itself when YAML wrote a scalar.</summary>
-    private static string? DeclaredName(object? body)
-    {
-        var name = body is List<KeyValuePair<string, object?>> mapping ? Get(mapping, KeyName) : body;
-        return name is string s && s != "" ? s : null;
-    }
-
-    private static object? ParseJson(string text)
-    {
-        using var doc = JsonDocument.Parse(text);
-        return FromJson(doc.RootElement);
-    }
-
-    private static object? FromJson(JsonElement element) => element.ValueKind switch
-    {
-        JsonValueKind.Object => element.EnumerateObject()
-            .Select(p => new KeyValuePair<string, object?>(p.Name, FromJson(p.Value))).ToList(),
-        JsonValueKind.Array => element.EnumerateArray().Select(FromJson).ToList(),
-        JsonValueKind.String => element.GetString(),
-        _ => null,
-    };
-
-    private static object? ParseYaml(string text)
-    {
-        var stream = new YamlStream();
-        stream.Load(new StringReader(text));
-        return stream.Documents.Count == 0 ? null : FromYaml(stream.Documents[0].RootNode);
-    }
-
-    private static object? FromYaml(YamlNode node) => node switch
-    {
-        YamlMappingNode mapping => mapping.Children
-            .Where(p => p.Key is YamlScalarNode)
-            .Select(p => new KeyValuePair<string, object?>(((YamlScalarNode)p.Key).Value ?? "", FromYaml(p.Value))).ToList(),
-        YamlSequenceNode sequence => sequence.Children.Select(FromYaml).ToList(),
-        YamlScalarNode scalar => scalar.Value,
-        _ => null,
-    };
 }

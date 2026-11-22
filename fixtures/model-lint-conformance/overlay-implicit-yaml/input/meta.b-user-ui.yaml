@@ -1,0 +1,7 @@
+metadata:
+  package: acme::app
+  children:
+    - object.entity:
+        name: User
+        children:
+          - field.string: displayName

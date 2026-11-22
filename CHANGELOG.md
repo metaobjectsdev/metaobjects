@@ -10,6 +10,17 @@ here.**
 
 ## [Unreleased]
 
+- **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
+
+- **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
+  (`WARN_OVERLAY_IMPLICIT`), the node-name lint (`WARN_NAME_SURROUNDING_WHITESPACE`,
+  `WARN_NAME_INTERNAL_WHITESPACE`) and the deprecated-reference lint (`WARN_DEPRECATED_REFERENCE`)
+  now print on every `dotnet meta verify`, as they do in Node `meta verify`, before the field lint.
+  They are advisory, never change the exit code, and are muted by `--no-overlay-lint`,
+  `--no-name-lint` and `--no-deprecation-lint`, or by `META_NO_OVERLAY_LINT=1`,
+  `META_NO_NAME_LINT=1` and `META_NO_DEPRECATION_LINT=1`. C# runs the shared
+  `fixtures/model-lint-conformance/` corpus.
+
 - **codegen-ts: `service-routes-hono`, the service's Hono transport (ADR-0067 layer 5).**
   `serviceRoutesHonoFile()` writes `<pkg path>/transport/hono.ts`, the same routes as the Fastify
   transport, as `<pkg>ServiceHonoRoutes(app, { service, getActor })`, with the actor read by

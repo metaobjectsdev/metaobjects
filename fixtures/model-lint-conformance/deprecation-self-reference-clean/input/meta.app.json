@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Category",
+          "@deprecated": "categories are flat now",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "parentId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "parent_fk",
+                "@fields": [
+                  "parentId"
+                ],
+                "@references": "Category"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
