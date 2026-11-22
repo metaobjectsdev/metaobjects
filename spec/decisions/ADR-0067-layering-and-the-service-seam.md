@@ -138,11 +138,24 @@ These calls are recorded here:
   (ADR-0066 O5). Queries open no write transaction and call no hooks.
 - **Stores without interactive transactions.** A store whose driver cannot hold a transaction
   across application code (Cloudflare D1 is one) is declared with an option on the TypeScript
-  service generator. Under it the generator refuses hooks and events with
-  `ERR_STORE_NO_INTERACTIVE_TX`, naming the package and the option. There is no storage kit.
+  service generator, `serviceFile({ interactiveTransactions: false })`. There is no storage kit.
+  Under it the service opens no transaction, so the generator writes what needs none and refuses
+  what does:
 
-  The option and the code `ERR_STORE_NO_INTERACTIVE_TX` are designed here and land with the
-  TypeScript service generator; nothing in 1.3.0 reads or reports them yet.
+  - Each derived write is its one statement, after the load and the checks. A transition is its
+    guarded update, which holds without a transaction (ADR-0066 §6 step 7). Queries are generated
+    as usual.
+  - The hook interfaces, the event hook and their `deps` slots are not generated. Each would run in
+    the write's transaction, so a hook's refusal or an event handler's rows could not be undone with
+    the write. Leaving them out is the refusal: there is nothing to wire that could not keep its
+    guarantee. The "always generated" rule above holds for every store that has the transaction.
+  - A package that declares a command fails generation with `ERR_STORE_NO_INTERACTIVE_TX`, naming the
+    package, the command and the option. A command's body runs in its write's transaction, and a
+    refusal after the body wrote must undo the write.
+
+  A sync SQLite driver (bun:sqlite, better-sqlite3) is not such a store. The runtime drives its
+  transaction with statements (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`, one at a time per handle),
+  so the full service runs on it.
 - **Kotlin** returns a sealed result for declared business errors, and the transport maps it.
   The result type is fixed as designed: a project that wants exceptions ejects the generator.
 - **Java's** generated `@Service` class is not `final`, so Spring's transaction proxy works.

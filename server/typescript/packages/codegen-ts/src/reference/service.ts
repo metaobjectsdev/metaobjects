@@ -47,6 +47,14 @@ export interface ServiceFileOpts {
   runtimeImport?: string;
   /** Named output target. It must be the entity module's target. */
   target?: string;
+  /**
+   * False for a store that cannot hold a transaction across application code (Cloudflare D1).
+   * The service then opens no transaction: each derived write is its one statement, and a
+   * transition is its guarded update, which holds on its own. There are no hooks and no event
+   * hook, which would run inside the write's transaction, and a package that declares a command is
+   * refused with `ERR_STORE_NO_INTERACTIVE_TX` (ADR-0067 §4). Default true.
+   */
+  interactiveTransactions?: boolean;
 }
 
 export function serviceFile(opts?: ServiceFileOpts): Generator {
@@ -59,7 +67,8 @@ export function serviceFile(opts?: ServiceFileOpts): Generator {
       const runtimeImport =
         opts?.runtimeImport ?? (ctx.renderContext && ownedRuntimeImport(ctx.projectRoot ?? ".", ctx.renderContext.selfTarget.outDir));
       const rc = serviceRenderContext(ctx, "service", runtimeImport);
-      return model.flatMap((pkg) => renderServiceFiles(pkg, rc));
+      const interactiveTransactions = opts?.interactiveTransactions !== false;
+      return model.flatMap((pkg) => renderServiceFiles({ ...pkg, interactiveTransactions }, rc));
     },
   };
   if (opts?.filter) generator.filter = opts.filter;

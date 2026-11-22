@@ -12,8 +12,9 @@ import { renderServiceFiles } from "../templates/service-file.js";
  * The policy, bodies, hooks and event hook are passed in `deps`, through the interfaces the index
  * declares. Hand-written code calls the service; a transport (`serviceRoutesFile()`) mounts it.
  *
- * SQLite needs an async Drizzle driver (libsql): the emitted `Db` type is `BaseSQLiteDatabase<"async", …>`,
- * so a sync driver (better-sqlite3, bun:sqlite) fails to type-check instead of failing at run time.
+ * SQLite takes a sync or an async Drizzle driver: the runtime drives a sync driver's transaction
+ * (bun:sqlite, better-sqlite3) with statements. For Cloudflare D1, which holds no transaction across
+ * application code, pass `interactiveTransactions: false`.
  *
  * Imports the entity module (the Drizzle table and allowlists, `entityFile()`) and the contract
  * types (`contractTypes()`), so list both. The built-in twin of `src/reference/service.ts`
@@ -28,6 +29,14 @@ export interface ServiceFileOpts {
   runtimeImport?: string;
   /** Named output target. It must be the entity module's target. */
   target?: string;
+  /**
+   * False for a store that cannot hold a transaction across application code (Cloudflare D1).
+   * The service then opens no transaction: each derived write is its one statement, and a
+   * transition is its guarded update, which holds on its own. There are no hooks and no event
+   * hook, which would run inside the write's transaction, and a package that declares a command is
+   * refused with `ERR_STORE_NO_INTERACTIVE_TX` (ADR-0067 §4). Default true.
+   */
+  interactiveTransactions?: boolean;
 }
 
 export function serviceFile(opts?: ServiceFileOpts): Generator {
@@ -38,7 +47,8 @@ export function serviceFile(opts?: ServiceFileOpts): Generator {
       const model = serviceModelOf(ctx.loadedRoot, { matches });
       if (model.length === 0) return [];
       const rc = serviceRenderContext(ctx, "service", opts?.runtimeImport);
-      return model.flatMap((pkg) => renderServiceFiles(pkg, rc));
+      const interactiveTransactions = opts?.interactiveTransactions !== false;
+      return model.flatMap((pkg) => renderServiceFiles({ ...pkg, interactiveTransactions }, rc));
     },
   };
   if (opts?.filter) generator.filter = opts.filter;

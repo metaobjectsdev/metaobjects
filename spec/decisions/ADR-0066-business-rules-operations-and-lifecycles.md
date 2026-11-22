@@ -286,7 +286,14 @@ service generator will be told so by `verify`, as an advisory, once that check l
 routes enforce nothing. This is what the shells are held to:
 
 1. Load the row: 404 when it is absent.
-2. Call the permission point: 403 `forbidden` when the policy refuses.
+2. Validate the operation's `@inputRef` input, when it has one (400 `validation`), then call the
+   permission point: 403 `forbidden` when the policy refuses. The input is validated first because
+   the policy is handed it, so it can decide on what was asked as well as on the row. The cost is
+   stated, not hidden: a caller the policy would refuse can get a 400 with the validation detail
+   before it would get the 403. That detail describes the declared input's shape, which the
+   contract types already publish, as step 1's 404 already tells such a caller whether the row
+   exists. An app that must answer neither to an unauthorised caller refuses it before the service
+   is called, in its actor resolver or transport.
 3. Check that the row's state is in the `@from` of a transition the operation may make: 409
    `invalid_transition`.
 4. Run the hand-written body, when the operation has one. It returns one of its declared

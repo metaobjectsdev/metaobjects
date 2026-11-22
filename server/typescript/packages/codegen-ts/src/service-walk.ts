@@ -149,6 +149,11 @@ export interface ServicePackage {
   readonly permissions: readonly string[];
   /** The settings the model was loaded with (`rules.lifecycle.create` decides a create's states). */
   readonly settings: RulesSettings;
+  /**
+   * False when the store cannot hold a transaction across application code (Cloudflare D1): the
+   * service generator's `interactiveTransactions` option, not the model's. Absent: true.
+   */
+  readonly interactiveTransactions?: boolean;
 }
 
 export interface ServiceWalkOpts {

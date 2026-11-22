@@ -355,17 +355,32 @@ directory in either layout.
   the `<Pkg>Service` interface, `create<Pkg>Service(deps)` that binds the operations to it, and
   each entity's wire mapper.
 
-Every write runs in one transaction, in ADR-0067's order: load the row under a row lock (`not_found`
-when there is none), validate the input and stamp what the model declares (ADR-0045: `@autoSet`,
-write-once fields, server-owned and unknown keys), then write it. A caller that runs several
-operations atomically passes its own transaction as `opts.tx`, and each operation runs in a
-savepoint inside it. A refusal rolls the transaction back. A query opens no write transaction.
-An operation answers an `OpResult`: the value, or a failure carrying the code and the HTTP status
-the [API contract](api-contract.md) gives it, so every transport maps it the same way.
+By default every write runs in one transaction (Cloudflare D1 is the exception, below), in
+ADR-0067's order: load the row under a row lock (`not_found` when there is none), validate the input
+and stamp what the model declares (ADR-0045: `@autoSet`, write-once fields, server-owned and unknown
+keys), then write it. A caller that runs several operations atomically passes its own transaction as
+`opts.tx`, and each operation runs in a savepoint inside it. A refusal rolls the transaction back. A
+query opens no write transaction. An operation answers an `OpResult`: the value, or a failure
+carrying the code and the HTTP status the [API contract](api-contract.md) gives it, so every
+transport maps it the same way.
 
-On SQLite the service needs an async Drizzle driver such as libsql: `ServiceDeps.db` is typed
-`BaseSQLiteDatabase<"async", …>`, so a sync driver (better-sqlite3, bun:sqlite) fails to type-check,
-because a write awaits inside its transaction callback. The flat generators still accept both.
+On SQLite the service takes a sync or an async Drizzle driver, as the flat generators do. An async
+one (libsql) runs Drizzle's own transaction. A sync one (bun:sqlite, better-sqlite3) cannot: its
+`transaction()` commits when its callback returns, at the first `await`. So the runtime drives the
+transaction with statements (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`) and runs one at a time on each
+database handle, since SQLite has one writer; a read waits for the transaction in flight. A job that
+runs several operations atomically on any driver opens the transaction with
+`withWriteTransaction(db, async (tx) => ...)` from `@metaobjectsdev/runtime-ts/service` and passes
+`tx` as each operation's `opts.tx`. On a sync driver every operation inside must be passed that
+`tx`: one that is not waits for the transaction it is inside, and never runs.
+
+Cloudflare D1 holds no transaction across application code: it refuses the `BEGIN` the service
+opens. Generate its service with `serviceFile({ interactiveTransactions: false })` (ADR-0067 §4).
+That service opens no transaction. Each derived write is its one statement after the load and the
+checks, and a transition is its guarded update, which needs no transaction to hold. There are no
+`<Pkg>Hooks` and no `<Pkg>Events`, since a hook's refusal could not undo the write it followed. A
+package that declares a command fails generation with `ERR_STORE_NO_INTERACTIVE_TX`, naming the
+package, the command and the option; queries are generated as usual.
 
 `serviceRoutesFile()` (stable name `service-routes`, layer `api`, Fastify) writes the thin
 transport (layer 5) beside it, `<pkg path>/transport/fastify.ts`: one plugin per package,
@@ -375,12 +390,13 @@ sends what it answered; it holds no rules and no database handle.
 ```ts
 import { createShopService } from "./generated/acme/shop/service/index.js";
 import { shopServiceRoutes } from "./generated/acme/shop/transport/fastify.js";
+import { withWriteTransaction } from "@metaobjectsdev/runtime-ts/service";
 
 const service = createShopService({ db });
 await app.register(shopServiceRoutes, { service });
 
-// A job calls the same operations, here two in one transaction:
-await db.transaction(async (tx) => {
+// A job calls the same operations, here two in one transaction (on any driver):
+await withWriteTransaction(db, async (tx) => {
   await service.createOrder({ title: "first" }, { tx });
   await service.createOrder({ title: "second" }, { tx });
 });
@@ -403,7 +419,7 @@ The service also writes what the rules on this page declare:
   addresses a row, `<collection>/<operation>` when it does not; a query is a `GET`, a command a
   `POST`). Two routes on one method and path are refused when the transport is generated.
 
-Each one runs ADR-0066 §6's checks in this order, in one transaction (a query in the read scope):
+Each one runs ADR-0066 §6's checks in this order, in one transaction unless the store has none (a query in the read scope):
 load the row (`not_found`), validate the input, the permission point (403 `forbidden`), the state
 check (409 `invalid_transition`), the hand-written body, the guarded update (409
 `invalid_transition` or `transition_condition_failed` when it matches no row), and the event hook.
@@ -421,7 +437,7 @@ What you write is passed to `create<Pkg>Service(deps)`; there is no base class t
 | `hooks` | `<Pkg>Hooks<A>` | Optional `before`/`after` hooks on each derived create, update and delete. A before hook may return a replacement input. |
 | `events` | `<Pkg>Events<A>` | Optional `onWrite(event, ctx)`, told about every create, update, delete, transition and command, in its transaction, with the actor. An outbox, a history table or an audit log is written here. |
 
-Every hook, body and event runs in the write's transaction (`ctx.tx`), and any of them may refuse
+By default every hook, body and event runs in the write's transaction (`ctx.tx`), and any of them may refuse
 with `ctx.refuse(code)`, which answers 409 with that code and rolls the whole write back. A code the
 API contract reserves (`not_found`, `forbidden`, `validation`, ...) is not accepted.
 

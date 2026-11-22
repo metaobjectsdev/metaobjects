@@ -10,6 +10,25 @@ here.**
 
 ## [Unreleased]
 
+- **runtime-ts: the generated service keeps its rollback guarantee on a sync SQLite driver.** On
+  bun:sqlite and better-sqlite3, Drizzle's `transaction()` commits when its callback returns, so a
+  service write that awaited inside it committed at its first `await`: a hook's or a body's refusal
+  answered 409 over a row that stayed. The service now drives those drivers' transaction itself
+  (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`, one at a time per handle, a savepoint inside a caller's
+  transaction), and a read outside a transaction waits for the one in flight. The generated `Db`
+  type on SQLite accepts a sync driver again, as the flat queries module does. New
+  `withWriteTransaction(db, fn)` runs several operations atomically on any driver; on a sync
+  driver, pass its `tx` to each one inside it.
+- **codegen-ts: `serviceFile({ interactiveTransactions: false })` for a store that holds no
+  transaction across application code (Cloudflare D1; ADR-0067 §4).** The service opens no
+  transaction: each derived write is its one statement and a transition is its guarded update.
+  It has no hooks and no event hook, and a package that declares a command fails generation with
+  `ERR_STORE_NO_INTERACTIVE_TX`, naming the package, the command and the option. Queries are
+  generated. Run end to end on Miniflare's local D1.
+- **ADR-0066 §6 states that input validation precedes the permission point.** The policy is handed
+  the validated input, so an operation's `@inputRef` input is checked first; a caller the policy
+  would refuse can see a 400 with validation detail before the 403. An app that must answer
+  neither refuses that caller in its actor resolver or transport.
 - **codegen-ts: the service layer, part 2 — the rules run (ADR-0066 §6, ADR-0067 §4 and §7).** The
   `service` generator now writes a command per transition that derives one (`POST
   <collection>/{id}/<transition>`) and a shell per declared command and query, at its binding or
