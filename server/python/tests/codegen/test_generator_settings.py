@@ -201,6 +201,50 @@ def test_an_unlimited_generator_does_not_count_objects_it_writes_nothing_for(
     assert "remote_router" not in stems and "base_router" not in stems
 
 
+def _sales_with_common_base(root: Path, *, order_extends_base: bool) -> None:
+    meta = root / "metaobjects"
+    (meta / "meta.hr.json").unlink()
+    order = _value("Order")["object.entity"]
+    if order_extends_base:
+        order["extends"] = "acme::common::Base"
+    (meta / "meta.sales.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::sales", "children": [
+            {"object.entity": order}, _value("Invoice"),
+        ]}}),
+        encoding="utf-8",
+    )
+    (meta / "meta.common.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::common", "children": [
+            {"object.entity": {"name": "Base", "abstract": True, "children": [
+                {"field.string": {"name": "label"}},
+            ]}},
+        ]}}),
+        encoding="utf-8",
+    )
+
+
+def test_an_abstract_base_no_routed_object_extends_is_not_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    _sales_with_common_base(tmp_path, order_extends_base=False)
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    assert {"order_router", "invoice_router"} <= _stems(out)
+
+
+def test_the_abstract_base_a_routed_object_extends_is_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    _sales_with_common_base(tmp_path, order_extends_base=True)
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    err = capsys.readouterr().err
+    assert "'routes' requires 'entity', which is limited away from ['Base']" in err
+    assert not out.exists() or not _stems(out)
+
+
 def test_limiting_a_generator_and_the_one_it_requires_to_the_same_entity_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

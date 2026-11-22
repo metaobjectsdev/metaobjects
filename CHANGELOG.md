@@ -212,7 +212,9 @@ here.**
   `metaobjects gen` refused a config that limits `filter-allowlist` (or `entity`) to some packages
   while `routes` is left unlimited, whenever another package held an abstract or sourceless object,
   saying `routes` covered it. `routes` writes nothing for those objects, so only the objects it
-  routes count now.
+  routes count now. A routed object's model still imports the abstract base it `extends`, the value
+  objects its fields reference and its M:N targets, so limiting `entity` away from one of those is
+  still refused.
 - **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
   error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
   project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`

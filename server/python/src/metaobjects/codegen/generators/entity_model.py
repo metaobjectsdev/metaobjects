@@ -1047,6 +1047,43 @@ def module_scope(entity: MetaObject, config: GenConfig) -> ModuleScope:
     return ModuleScope(config.output_layout, pkg_of(entity))
 
 
+def model_imports(entity: MetaObject, object_index: dict[str, MetaObject]) -> list[MetaObject]:
+    """The objects whose model modules *entity*'s own model module imports: its ``extends``
+    base, the value object each ``field.object`` / ``field.map`` ``@objectRef`` binds, and its
+    M:N targets. The same three sources :meth:`EntityModelGenerator.render_entity_model`
+    collects imports from."""
+    found: list[MetaObject] = []
+    if entity.super_data is not None:
+        found.append(entity.super_data)
+    # ADR-0039 SANCTIONED OWN — the model declares only its own fields; an inherited one is
+    # imported by the base's module, which the closure reaches through the base.
+    for f in entity.own_fields():
+        if f.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+            target = object_ref_target(f)
+            if target is not None:
+                found.append(target)
+    for d in resolve_m2m_descriptors(entity, object_index):
+        target = object_index.get(f"{d.target_package}::{d.target_entity}")
+        if target is not None:
+            found.append(target)
+    return found
+
+
+def model_import_closure(entity: MetaObject, objects: list[MetaObject]) -> list[MetaObject]:
+    """*entity* and every object whose model module its model module imports, directly or
+    through another model module it imports."""
+    index = build_object_index(objects)
+    seen: dict[int, MetaObject] = {}
+    pending = [entity]
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen[id(current)] = current
+        pending.extend(model_imports(current, index))
+    return list(seen.values())
+
+
 class EntityModelGenerator:
     """``object.*`` → a Pydantic v2 model module per object.
 
