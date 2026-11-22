@@ -10,6 +10,14 @@ here.**
 
 ## [Unreleased]
 
+- **The install-size budget rises to 51.7 MB, by ruling.** Installing `@metaobjectsdev/cli` now
+  measures 51.5 MB against a 51.0 MB budget. The growth since #622 (the service generator and the
+  1.3.0 codegen and runtime work) was measured late because hosted CI does not run `ts-slow`.
+  Declaration maps stay, so go-to-definition still reaches the shipped source.
+  `scripts/check-install-size.mjs` now accepts a raise only when the newest `history` entry in
+  `scripts/install-size-budget.json` records it with its reason and ruling. It also reads
+  `origin/main` when a checkout has no local `main`; before this, such a checkout skipped the
+  never-rises rule entirely.
 - **codegen-ts: the service layer, part 1 (ADR-0067 layers 4 and 5).** Two new generators, neither
   scaffolded. `service` (the new `service` layer label, shared by every port's catalog) writes one
   module per metadata package: a function per derived list, get, create, update and delete of each
