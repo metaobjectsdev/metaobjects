@@ -394,8 +394,9 @@ async function emit(
 /**
  * The one difference an owned copy's output is allowed: it imports the HTTP adapter the
  * adopter owns in `codegen/runtime/`, where packaged output imports the package. The
- * formatter orders a package import and a relative one differently, so the import block
- * is compared as a set of statements and everything after it exactly.
+ * formatter orders a package import and a relative one differently, and the longer relative
+ * path can wrap a named-import list across lines, so the import block is compared as a set of
+ * statements with their whitespace collapsed, and everything after it exactly.
  */
 function adapterNeutral(source: string): string {
   const adapter = "@@ADAPTER@@";
@@ -404,7 +405,9 @@ function adapterNeutral(source: string): string {
     .replace(new RegExp(`${HTTP_RUNTIME_PACKAGE}(?:/[\\w-]+)+`, "g"), adapter)
     .replace(new RegExp(`(?:\\.\\./)+${OWNED_RUNTIME_DIR}/[\\w-]+/[\\w-]+`, "g"), adapter);
   const IMPORT = /^import [^;]*;\n/gm;
-  return [...(moved.match(IMPORT) ?? [])].sort().join("") + moved.replace(IMPORT, "");
+  const oneLine = (stmt: string): string =>
+    `${stmt.replace(/\s+/g, " ").replace(/\{ /g, "{ ").replace(/,? \}/g, " }").trim()}\n`;
+  return [...(moved.match(IMPORT) ?? [])].map(oneLine).sort().join("") + moved.replace(IMPORT, "");
 }
 
 describe("eject contract — depth", () => {
