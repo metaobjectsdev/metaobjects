@@ -209,6 +209,8 @@ export interface ServicePackage {
    * service generator's `interactiveTransactions` option, not the model's. Absent: true.
    */
   readonly interactiveTransactions?: boolean;
+  /** A served report's row cap: the service generator's `reportMaxRows` option. Absent: 10000, the same in every port. */
+  readonly reportMaxRows?: number;
 }
 
 export interface ServiceWalkOpts {
@@ -252,7 +254,7 @@ function relationsOf(obj: MetaObject, relationMap: RelationMap, root: MetaData):
   for (const e of relationMap.get(obj.name) ?? []) {
     if (e.junction === undefined || e.sourceJoinField === undefined || e.targetJoinField === undefined) continue;
     const target = tphStorageObject(e.target);
-    const plan = declaresTphDiscriminator(target) ? tphPlan(target, root as never) : null;
+    const plan = declaresTphDiscriminator(e.target) ? tphPlan(e.target, root as never) : null;
     const pin = tphDiscriminatorPin(e.target);
     out.push({
       fn: `${toCamelCase(e.name)}Of${obj.name}`,
@@ -261,7 +263,7 @@ function relationsOf(obj: MetaObject, relationMap: RelationMap, root: MetaData):
       sourceJoinField: e.sourceJoinField,
       targetJoinField: e.targetJoinField,
       target,
-      targetObjects: plan === null ? [target] : [target, ...plan.subtypes.map((st) => st.entity)],
+      targetObjects: plan === null ? [e.target] : [e.target, ...plan.subtypes.map((st) => st.entity)],
       targetDiscriminator: pin === undefined ? undefined : { field: pin.fieldName, value: pin.value },
       symmetric: e.symmetric === true,
     });

@@ -164,17 +164,29 @@ describe("service-routes-hono — the service's Hono transport", () => {
 });
 
 describe("service walk — which entities get the derived operations", () => {
-  test("over the fitness corpus: concrete, store-backed, single-key entities only", async () => {
+  test("over the fitness corpus: every object the flat routes serve, single-key where keyed", async () => {
     const result = await loadUris([pathToFileURL(FITNESS).href]);
     expect(result.errors).toEqual([]);
-    const covered = serviceModelOf(result.root).flatMap((p) => p.entities.map((e) => e.obj.name));
-    expect(covered).toContain("Program");
+    const entities = serviceModelOf(result.root).flatMap((p) => p.entities);
+    const byName = new Map(entities.map((e) => [e.obj.name, e]));
+    expect(byName.has("Program")).toBe(true);
     // A concrete entity that inherits its fields from an abstract one.
-    expect(covered).toContain("Gadget");
+    expect(byName.has("Gadget")).toBe(true);
     // The abstract level has no table of its own.
-    expect(covered).not.toContain("Labeled");
-    // A single-table hierarchy, its base and its subtypes, is later service work.
-    for (const tph of ["Auth", "BridgeAuth", "CouponAuth", "PermitAuth", "ReferralAuth"]) expect(covered).not.toContain(tph);
+    expect(byName.has("Labeled")).toBe(false);
+    // A single-table hierarchy: the base is polymorphic and read-only (the union has no single
+    // writable shape), each concrete subtype has the five operations on the base table, scoped to
+    // its discriminator value, at the base path plus its segment (FR-017).
+    expect(byName.get("Auth")?.verbs).toEqual(["list", "get"]);
+    const bridge = byName.get("BridgeAuth")!;
+    expect(bridge.verbs).toEqual(["list", "get", "create", "update", "delete"]);
+    expect(bridge.storage.name).toBe("Auth");
+    expect(bridge.path).toBe("/auths/bridge");
+    expect(bridge.discriminator).toEqual({ field: "type", value: "Bridge" });
+    // A served report has a list and no key.
+    const report = byName.get("FitnessTotals")!;
+    expect(report.kind).toBe("report");
+    expect(report.verbs).toEqual(["list"]);
   });
 });
 

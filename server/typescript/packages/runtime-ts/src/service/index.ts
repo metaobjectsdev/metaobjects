@@ -380,6 +380,11 @@ export async function listRows(db: Drizzle, src: Drizzle, query: ListQueryInput,
   return { rows, total: countRow?.c ?? 0 };
 }
 
+/** `cond`, and `scope` when there is one: a single-table subtype's row is addressed within its own rows. */
+export function scoped(cond: SQL, scope: SQL | undefined): SQL {
+  return scope === undefined ? cond : and(cond, scope)!;
+}
+
 /** The condition a single-table subtype's rows meet: its discriminator `field` holds `value`. */
 export function scopeCondition(table: Drizzle, field: string, value: string): SQL {
   return eq(table[field], value);

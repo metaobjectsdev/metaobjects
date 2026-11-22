@@ -36,10 +36,10 @@ export function methodNotAllowed(method: string, resource: "projection" | "repor
  * the count was asked for; with an export spec and an export format asked (`?format=`), the rows
  * rendered in that format as a download named after `path`'s last segment.
  */
-export function sendListPage(
+export function sendListPage<T>(
   reply: FastifyReply,
-  result: OpResult<ReadOnlyPage>,
-  toWire: (row: Record<string, unknown>) => unknown,
+  result: OpResult<ReadOnlyPage<T>>,
+  toWire: (row: T) => unknown,
   exportOf?: { readonly spec: ReportExportSpec; readonly path: string },
 ): FastifyReply {
   if (!result.ok) return reply.code(result.status).send(result.error);

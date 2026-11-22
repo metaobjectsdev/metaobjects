@@ -52,10 +52,10 @@ export function methodNotAllowed(c: Context, resource: "projection" | "report"):
  * the count was asked for; with an export spec and an export format asked (`?format=`), the rows
  * rendered in that format as a download named after `path`'s last segment.
  */
-export function sendListPage(
+export function sendListPage<T>(
   c: Context,
-  result: OpResult<ReadOnlyPage>,
-  toWire: (row: Record<string, unknown>) => unknown,
+  result: OpResult<ReadOnlyPage<T>>,
+  toWire: (row: T) => unknown,
   exportOf?: { readonly spec: ReportExportSpec; readonly path: string },
 ): Response {
   if (!result.ok) return c.json(result.error, result.status as ContentfulStatusCode);

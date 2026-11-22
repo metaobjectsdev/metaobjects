@@ -52,8 +52,8 @@ export interface ReadOnlySpec {
 }
 
 /** A page of a read-only object: its rows, the count when asked (`withCount`), and the export format when one was asked. */
-export interface ReadOnlyPage {
-  readonly rows: Record<string, unknown>[];
+export interface ReadOnlyPage<T = Record<string, unknown>> {
+  readonly rows: T[];
   readonly total?: number;
   /** Set when the query asked for an export (`?format=`): the transport renders the rows in it. */
   readonly format?: ExportFormat;
