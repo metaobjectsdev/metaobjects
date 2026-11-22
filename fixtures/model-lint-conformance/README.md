@@ -14,8 +14,8 @@ All are warnings and never a load error, and none reaches an exit code. The rule
 applies are in [`docs/features/cli.md`](../../docs/features/cli.md). This corpus is the
 shared source of truth for the codes, the addresses and the message text.
 
-Runners today: TypeScript (the reference, `packages/cli/test/model-lint-conformance.test.ts`)
-and Python (`tests/conformance/test_model_lint_conformance.py`).
+Runners today: TypeScript (the reference, `server/typescript/packages/cli/test/model-lint-conformance.test.ts`)
+and C# (`server/csharp/MetaObjects.Cli.Tests/ModelLintConformanceTests.cs`).
 
 ## Fixture format
 

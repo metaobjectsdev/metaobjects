@@ -299,8 +299,8 @@ metaobjects/
 ├── README.md                       # you are here
 ├── CLAUDE.md                       # project instructions for Claude
 ├── spec/                           # canonical metamodel docs, ADRs, roadmap
-├── fixtures/                       # 25 cross-language conformance corpora — the oracle
-│   ├── conformance/                # metamodel (loader + serializer + navigation), 410 fixtures
+├── fixtures/                       # cross-language conformance corpora — the oracle (counted in docs/CONFORMANCE.md)
+│   ├── conformance/                # metamodel (loader + serializer + navigation)
 │   ├── yaml-conformance/           # YAML authoring desugar
 │   ├── render-conformance/         # FR-004 byte-identical render oracle
 │   ├── verify-conformance/         # FR-004 template-drift gate
