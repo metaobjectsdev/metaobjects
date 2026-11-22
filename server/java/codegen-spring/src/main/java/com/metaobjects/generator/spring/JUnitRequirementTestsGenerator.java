@@ -312,7 +312,7 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
 
     private static String testClass(String testPackage, String name, String witnesses, String witnessClass,
                                     List<Planned> tests, RequirementTestRenderer renderer) {
-        SpringJavaWriter w = new SpringJavaWriter();
+        RendererImportsWriter w = new RendererImportsWriter();
         w.header(GENERATED_HEADER, "// The witnesses are project-owned, in " + commentText(witnessClass) + ".");
         w.packageName(testPackage);
         w.use("org.junit.jupiter.api.Test");
@@ -322,10 +322,7 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
                 w.blank();
                 RenderedTest rendered = renderer == null ? null : renderer.render(p.args());
                 if (rendered != null) {
-                    for (String i : rendered.imports()) {
-                        if (i.startsWith("static ")) w.useStatic(i.substring("static ".length()).trim());
-                        else w.use(i);
-                    }
+                    for (String i : rendered.imports()) w.verbatimImport(i);
                     // The renderer's source is project code: written line by line as it gave it.
                     for (String line : rendered.source().stripTrailing().split("\n", -1)) {
                         if (line.isEmpty()) w.blank();
@@ -337,6 +334,26 @@ public class JUnitRequirementTestsGenerator extends FileEmittingGenerator implem
             }
         }
         return w.toString();
+    }
+
+    /**
+     * A writer that also prints a project renderer's imports exactly as given, in the same
+     * sorted groups as its own: the renderer owns its names, so a wildcard or a static member
+     * two classes share is not a conflict here.
+     */
+    private static final class RendererImportsWriter extends SpringJavaWriter {
+        private static final String STATIC = "static ";
+
+        void verbatimImport(String name) {
+            String trimmed = name.trim();
+            if (trimmed.startsWith(STATIC)) staticImports.add(trimmed.substring(STATIC.length()).trim());
+            else imports.add(trimmed);
+        }
+
+        @Override
+        protected boolean needsImport(String qualifiedName) {
+            return true;
+        }
     }
 
     /** The default rendering of one test: its comments, then a {@code @Test} calling the witness. */
