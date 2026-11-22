@@ -90,7 +90,7 @@ for f in server/typescript/packages/*/package.json client/web/packages/*/package
 done
 ```
 
-`forge` / `conformance` are `private` (never publish). Confirm each candidate is
+`conformance` and `ai-runtime` are `private` (never publish). Confirm each candidate is
 actually on npm (`npm view <pkg> dist-tags`). Patch bump unless a public API
 changed; this repo bumps the whole set in lockstep.
 

@@ -23,7 +23,7 @@ there's no per-PR record of what is releasable.
    - Each PR adds a changeset file (`bunx changeset`) declaring bump level +
      human summary; a bot nags (non-blocking) if missing.
    - Configure a **`fixed` (lockstep) group** containing every publish candidate
-     so they bump together — matching today's lockstep. `forge` / `conformance`
+     so they bump together — matching today's lockstep. `conformance` / `ai-runtime`
      (private) and the independently-versioned `*-angular` packages stay out.
    - A GitHub Action maintains a **"Version Packages" PR** that consumes changesets
      → bumps versions + writes `CHANGELOG.md`. **Merging that PR is the approval gate.**

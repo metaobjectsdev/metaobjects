@@ -497,7 +497,7 @@ diff explained.
 ## Procedure
 
 Run everything from the repo root unless noted. Bump the publish-candidate set only
-(not the private root, not forge/conformance) — enumerate it (see "What gets published").
+(not the private root, not conformance/ai-runtime) — enumerate it (see "What gets published").
 
 ### 0. Build fresh — the stale-`dist` trap
 `bun publish` does NOT rebuild, `dist/` is gitignored, and `main` points at `dist/`,
