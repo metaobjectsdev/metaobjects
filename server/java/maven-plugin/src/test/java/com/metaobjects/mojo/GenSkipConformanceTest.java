@@ -38,6 +38,9 @@ public class GenSkipConformanceTest {
 
     private static final Path CASES = Path.of("../../../fixtures/codegen-skip-conformance/cases.json");
 
+    /** The case that also configures a {@code template} generator and a docs page. */
+    private static final String DOCS_CASE = "template-and-docs-rerun";
+
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
@@ -80,6 +83,7 @@ public class GenSkipConformanceTest {
     private boolean lax;
     private String ci;
     private boolean verifyFull;   // -Dmetaobjects.verify.full=true, the verify spelling of --force
+    private boolean docs;         // also configure a template generator and a docs page
 
     @Before
     public void setUp() throws IOException {
@@ -116,7 +120,15 @@ public class GenSkipConformanceTest {
         GeneratorParam g = new GeneratorParam();
         g.setClassname(FixtureGenerator.class.getName());
         g.setArgs(Map.of(GeneratorBase.ARG_OUTPUTDIR, "gen", "templatesDir", "tpl", "content", content));
-        return List.of(g);
+        if (!docs) return List.of(g);
+        GeneratorParam note = new GeneratorParam();
+        note.setClassname(com.metaobjects.generator.template.TemplateScopeGenerator.class.getName());
+        note.setArgs(Map.of(GeneratorBase.ARG_OUTPUTDIR, "gen", "templatesDir", project.resolve("tpl").toString(),
+                "template", "note", "scope", "perEntity", "outputPattern", "notes/{Name}.txt"));
+        GeneratorParam apiDocs = new GeneratorParam();
+        apiDocs.setClassname(com.metaobjects.generator.apidocs.JavaApiDocsGenerator.class.getName());
+        apiDocs.setArgs(Map.of(GeneratorBase.ARG_OUTPUTDIR, "docs"));
+        return List.of(g, note, apiDocs);
     }
 
     private void gen(boolean force) throws Exception {
@@ -333,7 +345,7 @@ public class GenSkipConformanceTest {
                     }
                 }
             }
-            case "force", "ci" -> { }
+            case "force", "ci", DOCS_CASE -> { }
             case "failed-run" -> {
                 Path f = project.resolve("metaobjects/meta.shop.json");
                 String original = Files.readString(f);
@@ -370,6 +382,7 @@ public class GenSkipConformanceTest {
         tearDown();
         setUp0();
         if (id.equals("uncacheable-generator")) FixtureGenerator.cacheable = false;
+        docs = id.equals(DOCS_CASE);
         FixtureGenerator.extra = project.resolve("lookup.txt");
         gen(false);
         assertTrue(id + ": the first run writes", FixtureGenerator.runs == 1);
@@ -407,6 +420,36 @@ public class GenSkipConformanceTest {
             assertFalse("the write run removed the legacy manifest", Files.exists(gs.resolve(".hashes.json")));
             assertTrue("and left package manifests", Files.isRegularFile(gs.resolve(".hashes/.root.json")));
         }
+        if (id.equals(DOCS_CASE)) {
+            // The template output and the docs page were written, and a forced render rewrites none.
+            assertEquals("Gizmo\n", Files.readString(project.resolve("gen/notes/Gizmo.txt")));
+            assertFalse("the docs page was written", snapshot(project.resolve("docs")).isEmpty());
+            List<String> snapshotBefore = watched();
+            Thread.sleep(20);
+            gen(true);
+            assertEquals(id + ": a forced run over unchanged inputs rewrote a file", snapshotBefore, watched());
+        }
+        docs = false;
+    }
+
+    private List<String> watched() throws IOException {
+        List<String> out = new ArrayList<>();
+        out.addAll(snapshot(project.resolve("gen")));
+        out.addAll(snapshot(project.resolve("docs")));
+        out.addAll(snapshot(project.resolve(".metaobjects/.gen-state/.hashes")));
+        return out;
+    }
+
+    /** Every file under {@code dir}: its path, bytes and modification time, in path order. */
+    private static List<String> snapshot(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return List.of();
+        try (var walk = Files.walk(dir)) {
+            List<String> out = new ArrayList<>();
+            for (Path p : walk.filter(Files::isRegularFile).sorted().toList()) {
+                out.add(p + "|" + Files.readString(p) + "|" + Files.getLastModifiedTime(p).toMillis());
+            }
+            return out;
+        }
     }
 
     private void setUp0() throws IOException {
@@ -436,6 +479,7 @@ public class GenSkipConformanceTest {
                 """);
         Files.createDirectories(project.resolve("tpl"));
         Files.writeString(project.resolve("tpl/a.mustache"), "template a");
+        Files.writeString(project.resolve("tpl/note.mustache"), "{{name}}\n");
         Files.createDirectories(project.resolve("codegen"));
         Files.writeString(project.resolve("codegen/Gen.java"), "class Gen {}");
         Files.writeString(project.resolve("lookup.txt"), "lookup");

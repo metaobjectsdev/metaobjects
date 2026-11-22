@@ -1,0 +1,11 @@
+name: and-inside-or
+description: >
+  An `and` nested inside an `or` branch: (tool and stock 0) or id 1.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[or][0][and][0][category][eq]=tool&filter[or][0][and][1][stock][eq]=0&filter[or][1][id][eq]=1&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [1, 30, 60]

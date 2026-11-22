@@ -1,16 +1,16 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runGen, defineConfig } from "../src/index.js";
 import { barrel } from "../src/generators/barrel.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "ai-codegen-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("ai-codegen-"); });
+afterEach(() => { removeTree(tmp); });
 
 // ---------------------------------------------------------------------------
 // Inline model: abstract LlmCallBase with representative field types

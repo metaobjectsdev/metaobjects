@@ -12,6 +12,7 @@ import { renderEntityFile } from "../src/templates/entity-file.js";
 import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
+import { makeScratchDir } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures/field-map.yaml");
 
@@ -63,10 +64,9 @@ describe("field.map loader validation", () => {
       - field.string: { name: kind }
 `;
     const loader = new MetaDataLoader();
-    const { writeFileSync, mkdtempSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
+    const { writeFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "fieldmap-"));
+    const dir = makeScratchDir("fieldmap-");
     const f = join(dir, "m.yaml");
     writeFileSync(f, yaml);
     return loader.load([new FileSource(f)]);

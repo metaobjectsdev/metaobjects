@@ -1,0 +1,118 @@
+{{{generatedMarker}}}
+
+# Schema
+
+{{#physical}}
+The physical shape of the `{{{dialect}}}` database this model generates. Read it before writing a query, a migration, or anything that names a table or a column.
+{{/physical}}
+{{^physical}}
+The tables, columns and keys this model declares. Read it before writing a query, a migration, or anything that names a table or a column. SQL types, defaults, indexes, checks, constraint names and referential actions are not on this page: the migration files carry them.
+{{/physical}}
+
+- The **DDL is not repeated here.** The migration files are the DDL, they are generated, and they are what runs — this page describes the schema they produce.
+- Change the schema by changing the **metadata** and running `meta migrate`. Never hand-apply SQL to a live database: it drifts from the migration history and collides at the next migrate.
+- `Field` and `Declared` are the METADATA names. Edit those; the column name follows.
+
+{{#descriptionNudge}}
+> **Nothing in this model declares a `description`.** The tables and columns below are named but not explained. Adding `description` to an entity or a field is the single highest-value change to this page: it is what tells a reader *which* of two plausible columns to use, and it is the same text `meta migrate` emits as a `COMMENT ON`, so it lands in the database too.
+
+{{/descriptionNudge}}
+{{#hasTables}}
+## Tables
+
+{{#tables}}
+### {{{heading}}}
+
+{{#tableDeclaredBy}}
+Declared by `{{{.}}}`.
+{{/tableDeclaredBy}}
+{{#tableDescription}}
+
+> {{{.}}}
+{{/tableDescription}}
+
+{{#physical}}
+| Column | Field | Declared | SQL type | Null | Default | Key |
+|---|---|---|---|---|---|---|
+{{/physical}}
+{{^physical}}
+| Column | Field | Declared | Null | Key |
+|---|---|---|---|---|
+{{/physical}}
+{{#columns}}
+| `{{{name}}}` | {{{fieldCell}}} | {{{declaredCell}}} |{{#physical}} {{{sqlTypeCell}}} |{{/physical}} {{{nullCell}}} |{{#physical}} {{{defaultCell}}} |{{/physical}} {{{keyCell}}} |
+{{/columns}}
+{{#hasDescribed}}
+
+{{#described}}
+- `{{{name}}}` — {{{text}}}
+{{/described}}
+{{/hasDescribed}}
+{{#hasIndexes}}
+
+**Indexes**
+
+{{#indexes}}
+- {{{.}}}
+{{/indexes}}
+{{/hasIndexes}}
+{{#hasForeignKeys}}
+
+**Foreign keys**
+
+{{#foreignKeys}}
+- {{{.}}}
+{{/foreignKeys}}
+{{/hasForeignKeys}}
+{{#hasChecks}}
+
+**Checks**
+
+{{#checks}}
+- {{{.}}}
+{{/checks}}
+{{/hasChecks}}
+
+{{/tables}}
+{{/hasTables}}
+{{#hasViews}}
+## Views
+
+A view is generated from its projection's `origin.*` children{{#hasReportView}} or its report's dimensions and measures{{/hasReportView}} — it is derived, never hand-written. Editing the view SQL directly is drift the tool cannot see.
+
+{{#views}}
+### {{{heading}}}
+
+{{#viewDeclaredBy}}
+Declared by `{{{.}}}`.
+{{/viewDeclaredBy}}
+{{#hasLineage}}
+
+| Column | Lineage |
+|---|---|
+{{#lineage}}
+| `{{{column}}}` | {{{text}}} |
+{{/lineage}}
+{{/hasLineage}}
+
+{{/views}}
+{{/hasViews}}
+{{#hasRelationships}}
+## Relationships
+
+{{#relationships}}
+- {{{.}}}
+{{/relationships}}
+
+{{/hasRelationships}}
+{{#hasEnums}}
+## Enums
+
+Members are the values the wire and the generated types use.{{#physical}} Whether the DATABASE also refuses a value outside the set is that table's **Checks** above — an `@isArray` enum carries none, and neither does a view column.{{/physical}}
+
+| Field | Members | Storage |
+|---|---|---|
+{{#enums}}
+| `{{{field}}}` | {{{members}}} | {{{storage}}} |
+{{/enums}}
+{{/hasEnums}}

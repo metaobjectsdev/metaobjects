@@ -77,8 +77,9 @@ rm -f "$bad"
 tmp="$(mktemp -d "${DEV_SCRATCH:-${TMPDIR:-/tmp}}/ci-lane-selection.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 git init -q -b main "$tmp/repo" || { echo "FAIL: cannot create a throwaway repository" >&2; exit 1; }
-mkdir -p "$tmp/repo/scripts" "$tmp/repo/server/python" "$tmp/repo/server/typescript" "$tmp/repo/docs"
+mkdir -p "$tmp/repo/scripts/lib" "$tmp/repo/server/python" "$tmp/repo/server/typescript" "$tmp/repo/docs"
 cp scripts/ci-local.sh scripts/ci-select-lanes.sh scripts/ci-lane-map.txt scripts/ci-affected-ports.sh "$tmp/repo/scripts/"
+cp scripts/lib/maven-private-repo.sh "$tmp/repo/scripts/lib/"
 echo a > "$tmp/repo/server/python/a.py"; echo a > "$tmp/repo/server/typescript/a.ts"; echo a > "$tmp/repo/docs/a.md"
 git -C "$tmp/repo" add -A
 git -C "$tmp/repo" -c user.name=t -c user.email=t@example.invalid commit -q -m base

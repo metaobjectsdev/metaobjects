@@ -16,17 +16,7 @@
 //   bun test test/golden/package-layout.test.ts
 
 import { describe, it, expect } from "bun:test";
-import {
-  mkdtempSync,
-  rmSync,
-  readFileSync,
-  existsSync,
-  writeFileSync,
-  mkdirSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, relative, dirname } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { namesFile } from "../../src/generators/index.js";
@@ -37,6 +27,7 @@ import { routesFile } from "../../src/generators/routes-file.js";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "../fixtures/packaged-shape.json");
 const SNAP = join(import.meta.dir, "__snapshots__/package");
@@ -68,7 +59,7 @@ const metadataRoot = loadResult.root;
 
 describe("golden output — package layout placement + import gate", () => {
   it("generates correct file placement and imports — sqlite / outputLayout:package", async () => {
-    const tmp = mkdtempSync(join(tmpdir(), "codegen-golden-pkg-"));
+    const tmp = makeScratchDir("codegen-golden-pkg-");
     try {
       const result = await runGen({
         config: defineConfig({
@@ -119,7 +110,7 @@ describe("golden output — package layout placement + import gate", () => {
         expect(snapFiles).toEqual(writtenFiles);
       }
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removeTree(tmp);
     }
   });
 });

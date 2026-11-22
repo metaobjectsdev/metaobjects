@@ -5,14 +5,14 @@
 // and that the abstract bases emit no instance table.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { barrel } from "../../src/generators/barrel.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 function findRepoRoot(start: string): string {
   let dir = start;
@@ -35,7 +35,7 @@ async function loadSharedFixture(): Promise<MetaRoot> {
 }
 
 async function gen(root: MetaRoot): Promise<Record<string, string>> {
-  const tmp = mkdtempSync(join(tmpdir(), "inh-conf-"));
+  const tmp = makeScratchDir("inh-conf-");
   try {
     await runGen({
       config: defineConfig({
@@ -51,7 +51,7 @@ async function gen(root: MetaRoot): Promise<Record<string, string>> {
     for (const name of readdirSync(tmp)) if (name.endsWith(".ts")) files[name] = readFileSync(join(tmp, name), "utf-8");
     return files;
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    removeTree(tmp);
   }
 }
 

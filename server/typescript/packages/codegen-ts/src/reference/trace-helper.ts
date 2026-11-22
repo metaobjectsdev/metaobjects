@@ -9,14 +9,16 @@
 // targets:       the `ai` library's LLM-call trace. The emitted module calls
 //                `@metaobjectsdev/runtime-ts` (ObjectManager, the trace row builders),
 //                `@metaobjectsdev/render` (extract, render) and, for a renderable prompt,
-//                `@metaobjectsdev/ai-runtime` (runLlmCall).
+//                the call loop in `llm-call.ts`, which this generator writes beside it.
 // use-when:      an entity extends a library's trace anchor (the `ai` library's
 //                `LlmCallBase`) and nests a `template.prompt` with @payloadRef and
 //                @responseRef, and you want a typed `record<Entity>` — plus `call<Entity>`
 //                when the prompt carries @textRef — instead of hand-wiring extract +
 //                buildLlmCallRow + persist at every call site.
 // emits:         <target>/<Entity>.trace.ts per concrete trace entity whose nested prompt
-//                names both value objects; nothing for an entity that does not.
+//                names both value objects; nothing for an entity that does not. Plus one
+//                <target>/llm-call.ts (`runLlmCall`, the `LlmClient` seam) when any helper
+//                has a `call<Entity>`.
 // customize:     which entities get a helper (the two gates below), the output directory
 //                (`outDir`) and the file name. The module BODY comes from
 //                `renderTraceHelper`, which `meta eject` copies beside this file
@@ -33,7 +35,10 @@ import type { MetaData } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "@metaobjectsdev/codegen-ts/engine";
 import {
   extendsTraceAnchor,
+  LLM_CALL_SUPPORT_FILE,
+  renderLlmCallSupport,
   renderTraceHelper,
+  traceHelperCallsLlm,
   traceAnchorNodes,
 } from "../templates/trace-helper.js";
 
@@ -58,7 +63,11 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       if (!extendsTraceAnchor(entity, anchors)) return [];
       const path = `${dirPrefix}${entity.name}.trace.ts`;
       const content = renderTraceHelper(entity, ctx, path);
-      return content === undefined ? [] : [{ path, content }];
+      if (content === undefined) return [];
+      // A call<Entity> imports the call loop from a module beside it. Every helper that
+      // needs it emits the same bytes at the same path, and the runner keeps one copy.
+      if (!traceHelperCallsLlm(entity)) return [{ path, content }];
+      return [{ path, content }, { path: `${dirPrefix}${LLM_CALL_SUPPORT_FILE}`, content: renderLlmCallSupport() }];
     }),
   };
   if (opts?.target) {

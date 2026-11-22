@@ -63,9 +63,11 @@ The written record, however, was not silent:
    operator or an attribute-gated variant); pinning `like` sensitive today
    forecloses nothing. The reverse pin would: an insensitive `like` makes
    case-sensitive matching inexpressible over the wire, permanently.
-4. **The TS-only `?search` extension remains deliberately case-insensitive**
-   (ILIKE on Postgres; SQLite native LIKE). It is a human search box, not the
-   contract's `like` operator, and is documented as a TS-only extension.
+4. **The `?search` parameter remains deliberately case-insensitive**
+   (ILIKE on Postgres; SQLite native LIKE; `LOWER()` on MySQL). It is a human search
+   box, not the contract's `like` operator. It was a TS-only extension until
+   [ADR-0068](ADR-0068-list-query-cross-port-contract.md) made it part of the cross-port
+   list contract; the case-insensitivity is unchanged by that.
 5. **The corpora gate the distinction.** Both fixtures now carry
    case-mismatched probes (a `Foundations` / `foundations lab` seed pair in
    the persistence corpus; lowercase `a%` / `a_an%` probes against the

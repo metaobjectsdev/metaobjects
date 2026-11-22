@@ -8,12 +8,12 @@ import { buildApiModel } from "../src/generators/api-model.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { routesFileHono } from "../src/generators/routes-file-hono.js";
 import { runRoutesExpose } from "../src/ui-tier-gate.js";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { apiDocsFile } from "../src/generators/api-docs-file.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const ENTITY = (name: string, table: string) => ({
   "object.entity": {
@@ -209,7 +209,7 @@ describe("a routes generator's filter also removes a read-only surface it does n
 describe("through meta gen: the written api pages list only the mounted verbs", () => {
   async function pages(generators: Parameters<typeof defineConfig>[0]["generators"]) {
     const root = await loadRoot();
-    const tmp = mkdtempSync(join(tmpdir(), "api-docs-expose-"));
+    const tmp = makeScratchDir("api-docs-expose-");
     try {
       const { warnings } = await runGen({
         config: defineConfig({
@@ -219,7 +219,7 @@ describe("through meta gen: the written api pages list only the mounted verbs", 
         metadata: root, projectRoot: tmp,
       });
       return { product: readFileSync(join(tmp, "docs", "api", "acme", "shop", "Product.md"), "utf8"), warnings };
-    } finally { rmSync(tmp, { recursive: true, force: true }); }
+    } finally { removeTree(tmp); }
   }
 
   test("expose omitting create/update/delete: write routes are not documented; default is unchanged", async () => {

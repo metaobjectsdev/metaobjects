@@ -17,7 +17,7 @@
 //     resolves it via `resolveObjectRef` when (and only when) the payload's own name is shared.
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
@@ -25,6 +25,7 @@ import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { outputParser } from "../src/generators/output-parser-file.js";
 import { extractor } from "../src/generators/extractor-file.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const CORPUS = resolve(
   import.meta.dir,
@@ -33,7 +34,7 @@ const CORPUS = resolve(
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 async function loadCorpusRoot() {

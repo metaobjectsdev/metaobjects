@@ -19,8 +19,7 @@
 // This test exists because nothing compared the two emitters. Each was internally
 // consistent and separately tested, which is precisely how the divergence survived.
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -29,6 +28,7 @@ import { runGen } from "../src/runner.js";
 import { namesFile } from "../src/generators/index.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { defineConfig } from "../src/metaobjects-config.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const META = JSON.stringify({
   "metadata.root": {
@@ -50,7 +50,7 @@ const META = JSON.stringify({
 });
 
 async function bothNames(includeNames = false): Promise<{ codegen: string[]; migrate: string[] }> {
-  const repo = mkdtempSync(join(tmpdir(), "chk-parity-"));
+  const repo = makeScratchDir("chk-parity-");
   try {
     mkdirSync(join(repo, "metaobjects"), { recursive: true });
     const fixture = join(repo, "metaobjects", "meta.chk.json");
@@ -103,7 +103,7 @@ async function bothNames(includeNames = false): Promise<{ codegen: string[]; mig
 
     return { codegen, migrate };
   } finally {
-    rmSync(repo, { recursive: true, force: true });
+    removeTree(repo);
   }
 }
 

@@ -17,6 +17,12 @@ The Postgres dialect is the identity on both value hooks: pg8000 already speaks 
 has the column types Postgres has (a SQLite boolean is ``0``/``1``, its date and uuid are
 ``TEXT``; a MySQL ``TIME`` arrives as a ``timedelta``, its ``SUM`` of an integer as a
 ``Decimal``), so the declared type is the only authority on what a value means.
+
+A primitive array (``isArray`` on a scalar field: strings, numbers, an int-backed enum's
+integers) is a native ``text[]`` / ``integer[]`` on Postgres. SQLite and MySQL have no array
+type, so the TypeScript-owned schema gives the column ``TEXT`` / ``JSON`` and the value is a
+JSON array: each element is bound as the JSON form of what the scalar binds, and read back
+element by element through the scalar decode.
 """
 from __future__ import annotations
 
@@ -165,8 +171,46 @@ def _as_int(value: Any) -> Any:
     return value
 
 
+def _json_array_text(values: list[Any], element: Any) -> str:
+    """A primitive array as the JSON text a SQLite ``TEXT`` / MySQL ``JSON`` column holds.
+
+    ``element`` binds one member. What it returns is written as JSON: a number stays a
+    number (an int-backed enum's ``[5,0]``), anything else the engine stores as text stays
+    the same text."""
+    out: list[Any] = []
+    for v in values:
+        if v is None or isinstance(v, (bool, int, float, str)):
+            out.append(v)
+            continue
+        if isinstance(v, _decimal.Decimal):
+            out.append(str(v))
+            continue
+        bound = element(v)
+        out.append(bound if isinstance(bound, (bool, int, float, str)) else str(bound))
+    return _json.dumps(out)
+
+
 def _decode_storage_value(field: MetaField, value: Any) -> Any:
-    """Decode a SQLite / MySQL value by the field's declared subtype."""
+    """Decode a SQLite / MySQL value by the field's declared subtype.
+
+    A primitive array arrives as its JSON text (MySQL may already hand back the parsed
+    list); each element is decoded as the scalar would be."""
+    if value is None:
+        return None
+    if field.resolved_is_array() and field.sub_type not in (
+        fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP,
+    ):
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8")
+        if isinstance(value, str):
+            value = _json.loads(value)
+        if isinstance(value, list):
+            return [_decode_storage_scalar(field, v) for v in value]
+        return value
+    return _decode_storage_scalar(field, value)
+
+
+def _decode_storage_scalar(field: MetaField, value: Any) -> Any:
     if value is None:
         return None
     sub = field.sub_type
@@ -267,6 +311,10 @@ class SqliteDialect(Dialect):
         return "0 = 1"
 
     def encode_param(self, value: Any) -> Any:
+        if isinstance(value, list):
+            # A primitive array column is TEXT holding a JSON array. A filter's `in` list never
+            # reaches here: it is expanded to one placeholder per element.
+            return _json_array_text(value, self.encode_param)
         if isinstance(value, bool):
             return int(value)
         if isinstance(value, _uuid.UUID):
@@ -315,6 +363,10 @@ class MySqlDialect(Dialect):
         return f"{quoted_column} LIKE BINARY {self.placeholder}", [pattern]
 
     def encode_param(self, value: Any) -> Any:
+        if isinstance(value, list):
+            # A primitive array column is JSON. A filter's `in` list never reaches here: it is
+            # expanded to one placeholder per element.
+            return _json_array_text(value, self._json_element)
         if isinstance(value, _uuid.UUID):
             return str(value)
         if isinstance(value, _dt.datetime) and value.tzinfo is not None:
@@ -327,6 +379,14 @@ class MySqlDialect(Dialect):
             # otherwise bind a timedelta as a TIME literal.
             return to_stored_micros(value)
         return value
+
+    def _json_element(self, value: Any) -> Any:
+        # Inside JSON a DATETIME is text, so an instant is written the way SQLite stores one.
+        if isinstance(value, _dt.datetime):
+            return _timestamp_text(value)
+        if isinstance(value, _dt.date):
+            return value.isoformat()
+        return self.encode_param(value)
 
     def decode_value(self, field: MetaField, value: Any) -> Any:
         return _decode_storage_value(field, value)

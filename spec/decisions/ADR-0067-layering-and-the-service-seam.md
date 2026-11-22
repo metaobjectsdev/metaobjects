@@ -15,8 +15,14 @@ It amends ADR-0045 (§6). It depends on the line between core and helpers: ADR-0
 Amendment 3, as ADR-0066 §8 restates it. The core is the contracts and the conformance kits,
 and every generator below is a helper.
 
-Nothing in this ADR is generated yet. The layer generators, the service shells and the
-per-package choice of generators are later work. ADR-0066's vocabulary is inert until they land.
+Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in TypeScript, and C#
+writes its own names and create and update records. In TypeScript, layers 4 and 5 have started:
+`service` writes each package's derived list, get, create, update and delete in one transaction with
+the declared write rules, and `service-routes` the thin Fastify transport over it (the `service`
+layer label of §5.6). The same generators now write ADR-0066's transitions and declared operations,
+with the policy, bodies, hooks and events interfaces, and enforce the rules at run time. The other
+ports' shells and the per-package choice of generators are later work. ADR-0066's vocabulary is
+inert at run time in any port whose service generator has not landed.
 
 **Experimental.** The vocabulary this design generates from is experimental (ADR-0066 Status,
 `docs/compatibility-policy.md`): it may change in a MINOR, including removals and renames, until
@@ -132,22 +138,37 @@ These calls are recorded here:
   (ADR-0066 O5). Queries open no write transaction and call no hooks.
 - **Stores without interactive transactions.** A store whose driver cannot hold a transaction
   across application code (Cloudflare D1 is one) is declared with an option on the TypeScript
-  service generator. Under it the generator refuses hooks and events with
-  `ERR_STORE_NO_INTERACTIVE_TX`, naming the package and the option. There is no storage kit.
+  service generator, `serviceFile({ interactiveTransactions: false })`. There is no storage kit.
+  Under it the service opens no transaction, so the generator writes what needs none and refuses
+  what does:
 
-  The option and the code `ERR_STORE_NO_INTERACTIVE_TX` are designed here and land with the
-  TypeScript service generator; nothing in 1.3.0 reads or reports them yet.
+  - Each derived write is its one statement, after the load and the checks. A transition is its
+    guarded update, which holds without a transaction (ADR-0066 §6 step 7). Queries are generated
+    as usual.
+  - The hook interfaces, the event hook and their `deps` slots are not generated. Each would run in
+    the write's transaction, so a hook's refusal or an event handler's rows could not be undone with
+    the write. Leaving them out is the refusal: there is nothing to wire that could not keep its
+    guarantee. The "always generated" rule above holds for every store that has the transaction.
+  - A package that declares a command fails generation with `ERR_STORE_NO_INTERACTIVE_TX`, naming the
+    package, the command and the option. A command's body runs in its write's transaction, and a
+    refusal after the body wrote must undo the write.
+
+  A sync SQLite driver (bun:sqlite, better-sqlite3) is not such a store. The runtime drives its
+  transaction with statements (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`, one at a time per handle),
+  so the full service runs on it.
 - **Kotlin** returns a sealed result for declared business errors, and the transport maps it.
   The result type is fixed as designed: a project that wants exceptions ejects the generator.
 - **Java's** generated `@Service` class is not `final`, so Spring's transaction proxy works.
   It is still not meant to be extended, and its generated header says so.
 - **ADR-0066's four settings stay** (`rules.permissions.names`, `rules.lifecycle.commands`,
   `rules.lifecycle.create` and `verify.lifecycle.unreachable`). They decide what the model derives,
-  which every port must agree on, so they are not generator options. The service generators read
-  `rules.lifecycle.commands` and `rules.lifecycle.create`; until they land, `rules.lifecycle.create`
-  is read and validated and has no effect (ADR-0066 §5). What reads each key: `rules.permissions.names`
-  and `verify.lifecycle.unreachable` are read by the `verify` rules gate today, and the service
-  generators will read `rules.lifecycle.commands` (the derived commands) and `rules.lifecycle.create`.
+  which every port must agree on, so they are not generator options. What reads each key:
+  `rules.permissions.names` and `verify.lifecycle.unreachable` are read by the `verify` rules gate,
+  and the service generators read `rules.lifecycle.commands` (the derived commands),
+  `rules.lifecycle.create` (whether a create may start outside the initial state) and
+  `rules.permissions.names` (`require` refuses to generate a point with no `@permission`). The
+  TypeScript service is the first to read them; a port's service that has not landed has nothing
+  to act on.
 
 ### 5. Choosing layers
 

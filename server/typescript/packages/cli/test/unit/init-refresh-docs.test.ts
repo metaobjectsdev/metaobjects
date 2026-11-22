@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { init, initCommand } from "../../src/commands/init.js";
+import { hashContents } from "@metaobjectsdev/sdk";
 
 let cwd: string;
 beforeEach(() => {
@@ -53,9 +54,30 @@ describe("init --refresh-docs", () => {
 
   test("refresh overwrites AGENTS.md when it is unmodified since last scaffold", async () => {
     await init({ cwd });
+    // Stand in for an older scaffold: different bytes, recorded in the manifest as ours.
+    const agents = join(cwd, ".metaobjects", "AGENTS.md");
+    const manifestPath = join(cwd, ".metaobjects", ".agent-context.json");
+    const fresh = readFileSync(agents, "utf8");
+    writeFileSync(agents, "an older scaffold\n", "utf8");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { files: Record<string, string> };
+    manifest.files[".metaobjects/AGENTS.md"] = hashContents("an older scaffold\n");
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+
     const result = await init({ cwd, refreshDocs: true });
     expect(result.created).toContain(".metaobjects/AGENTS.md");
+    expect(readFileSync(agents, "utf8")).toBe(fresh);
     expect(existsSync(join(cwd, ".metaobjects", "AGENTS.md.new"))).toBe(false);
+  });
+
+  test("a refresh that changes nothing rewrites no file, the manifest included", async () => {
+    await init({ cwd });
+    const watched = [join(cwd, ".metaobjects", "AGENTS.md"), join(cwd, ".metaobjects", ".agent-context.json")];
+    const before = watched.map((f) => statSync(f).mtimeMs);
+    await new Promise((r) => setTimeout(r, 20));
+    const result = await init({ cwd, refreshDocs: true });
+    expect(watched.map((f) => statSync(f).mtimeMs)).toEqual(before);
+    expect(result.created).not.toContain(".metaobjects/AGENTS.md");
+    expect(result.created).not.toContain(".metaobjects/.agent-context.json");
   });
 
   test("--refresh-docs works on a fresh repo too (full init runs)", async () => {

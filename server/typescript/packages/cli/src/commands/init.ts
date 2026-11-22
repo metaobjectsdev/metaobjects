@@ -341,6 +341,8 @@ async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefin
 async function writeUnlessDryRun(cwd: string, dryRun: boolean, path: string, contents: string): Promise<void> {
   if (dryRun) return;
   const abs = join(cwd, path);
+  // Identical bytes are left alone: a rewrite would only move the timestamp.
+  if (existsSyncWrap(abs) && readFileSyncWrap(abs, "utf8") === contents) return;
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, contents, "utf8");
 }
@@ -442,11 +444,14 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
       `${c.path} appears hand-edited; refreshed version ${verbed(dryRun, "written")} to ${c.newPath}`,
     );
   }
-  await writeUnlessDryRun(
-    opts.cwd, dryRun, AGENT_CONTEXT_MANIFEST_PATH,
-    JSON.stringify(decision.manifest, null, 2) + "\n",
-  );
-  result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
+  // The manifest is rewritten only when its text changed, so a refresh that changed
+  // nothing leaves every file, the manifest included, exactly as it was.
+  const manifestText = JSON.stringify(decision.manifest, null, 2) + "\n";
+  const manifestAbs = join(opts.cwd, AGENT_CONTEXT_MANIFEST_PATH);
+  if (!existsSyncWrap(manifestAbs) || readFileSyncWrap(manifestAbs, "utf8") !== manifestText) {
+    await writeUnlessDryRun(opts.cwd, dryRun, AGENT_CONTEXT_MANIFEST_PATH, manifestText);
+    result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
+  }
 
   // A fragment this stack no longer assembles. `prunes` are ones we wrote that nobody has
   // touched — deleting is exactly as safe as the overwrite the same hash predicate already
@@ -617,10 +622,12 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
   // New-project defaults, each written as its own visible setting (a project that predates
   // a setting keeps the behaviour it had, because the key is absent there): every foreign key
   // gets an index, a hand edit to a generated file fails `meta verify --codegen`, and every
-  // generated list route has a page size. They are written here and not into DEFAULT_CONFIG:
-  // the merge below must not add them to an existing project on `--force` (a page size added
-  // on upgrade would truncate a client that reads a whole list). `unknownFields` is written out
-  // at its default, so the choice is visible where a project would change it.
+  // generated list route refuses a `?limit=` above 1000. They are written here and not into
+  // DEFAULT_CONFIG: the merge below must not add them to an existing project on `--force` (a
+  // maximum added on upgrade would refuse a client that asks for a large page; with no block a
+  // list already answers 50 rows when `limit` is absent). `pagination.defaultLimit` and
+  // `unknownFields` are written out at their defaults, so the choice is visible where a project
+  // would change it.
   // MySQL writes no `migrate` block at all: MetaObjects does not own MySQL schema, and InnoDB
   // indexes every foreign key itself.
   const freshConfig = ConfigSchema.parse({
@@ -1116,7 +1123,10 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         // Report the refresh, not a scaffold. `result.refreshedDocsOnly` (not `flags.refreshDocs`)
         // because --refresh-docs on an uninitialized repo falls through to a full init, which
         // genuinely DID scaffold and must still say so.
-        log.info(`Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
+        // `created` lists only what was written: an unchanged file is never rewritten.
+        log.info(result.created.length === 0
+          ? "The MetaObjects agent context is already current: no file changed."
+          : `Refreshed the MetaObjects agent context in place (${result.created.length} files): .metaobjects/AGENTS.md + the metaobjects-* skills.`);
         log.info("Your metadata, .metaobjects/config.json, codegen/generators/ and metaobjects.config.ts were left untouched.");
         for (const w of result.warnings) log.warn(w);
       } else if (flags.configOnly) {

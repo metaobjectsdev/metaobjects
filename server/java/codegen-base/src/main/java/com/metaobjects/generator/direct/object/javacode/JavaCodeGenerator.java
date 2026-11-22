@@ -1,5 +1,6 @@
 package com.metaobjects.generator.direct.object.javacode;
 
+import com.metaobjects.generator.writer.WriterOptions;
 import com.metaobjects.generator.GeneratorIOException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;
@@ -41,7 +42,7 @@ public class JavaCodeGenerator extends BaseObjectCodeGenerator {
                 .withNameSuffix(getNameSuffix())
                 .addArrayMethods(addArrayMethods())
                 .addKeyMethods(addKeyMethods())
-                .withIndentor("    ");
+                .withIndentor(WriterOptions.JAVA.indent());
     }
 
     @Override

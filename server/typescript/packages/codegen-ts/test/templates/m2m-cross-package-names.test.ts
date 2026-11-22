@@ -18,14 +18,14 @@
 // import specifier resolves to.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync } from "node:fs";
 import { join, dirname, resolve as resolvePath } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../../src/index.js";
 import { namesFile } from "../../src/generators/index.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { routesFile } from "../../src/generators/routes-file.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 // Article (shop::blog) <—many:many—> Label (shop::tags), through ArticleLabel
 // (shop::tags) — junction AND target both in a DIFFERENT package from the source, so
@@ -72,7 +72,7 @@ async function loadRoot() {
 describe("renderRoutesFile — cross-package M:N names imports resolve to the right directory (B1)", () => {
   test("Article.routes.ts's <Junction>Names / <Target>Names imports point at files that actually exist on disk", async () => {
     const root = await loadRoot();
-    const tmp = mkdtempSync(join(tmpdir(), "codegen-m2m-xpkg-"));
+    const tmp = makeScratchDir("codegen-m2m-xpkg-");
     try {
       const result = await runGen({
         config: defineConfig({
@@ -116,7 +116,7 @@ describe("renderRoutesFile — cross-package M:N names imports resolve to the ri
       expect(content).not.toContain('from "./ArticleLabel.names.js"');
       expect(content).not.toContain('from "./Label.names.js"');
     } finally {
-      rmSync(tmp, { recursive: true, force: true });
+      removeTree(tmp);
     }
   });
 });

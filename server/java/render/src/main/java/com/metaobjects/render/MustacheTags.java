@@ -125,6 +125,43 @@ final class MustacheTags {
         return tags.stream().filter(t -> t.kind() == Kind.PARTIAL).map(Tag::value).findFirst().orElse(null);
     }
 
+    /**
+     * {@code text} with the line of every STANDALONE comment removed: the indentation before
+     * it, the comment, and the line break after it (or nothing, at the end of the text).
+     *
+     * <p>The Mustache spec treats a comment alone on its line like any other standalone tag.
+     * mustache.java strips sections, inverted sections and partials that way but leaves a
+     * comment's line break behind, so a template with a comment on its own line rendered one
+     * blank line more in Java than in every other port. Doing the strip here, before the
+     * library parses, is what makes a shared template render the same bytes in Java.
+     */
+    static String withoutStandaloneComments(String text) throws SyntaxException {
+        List<Tag> tags = scan(text);
+        StringBuilder sb = new StringBuilder(text.length());
+        int pos = 0;
+        for (Tag tag : tags) {
+            if (tag.kind() != Kind.COMMENT) continue;
+            int lineStart = tag.start();
+            while (lineStart > 0 && (text.charAt(lineStart - 1) == ' ' || text.charAt(lineStart - 1) == '\t')) lineStart--;
+            if (lineStart > 0 && text.charAt(lineStart - 1) != '\n') continue;
+            int lineEnd = tag.end();
+            while (lineEnd < text.length() && (text.charAt(lineEnd) == ' ' || text.charAt(lineEnd) == '\t')) lineEnd++;
+            if (lineEnd < text.length()) {
+                if (text.charAt(lineEnd) == '\n') {
+                    lineEnd++;
+                } else if (text.charAt(lineEnd) == '\r' && lineEnd + 1 < text.length() && text.charAt(lineEnd + 1) == '\n') {
+                    lineEnd += 2;
+                } else {
+                    continue;
+                }
+            }
+            if (lineStart < pos) continue;
+            sb.append(text, pos, lineStart);
+            pos = lineEnd;
+        }
+        return sb.append(text, pos, text.length()).toString();
+    }
+
     /** {@code text} with every comment cut out: what a tag-presence check may scan. */
     static String withoutComments(String text, List<Tag> tags) {
         StringBuilder sb = new StringBuilder(text.length());

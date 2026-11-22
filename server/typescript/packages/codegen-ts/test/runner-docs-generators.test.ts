@@ -3,8 +3,7 @@
 // a run that lists one with no `docs` target is refused by name; and the model and api pages
 // in one target link to each other from facts the runner reads off the declared list.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { runGen } from "../src/runner.js";
 import { DEFAULT_DOCS_DIR, defineConfig, resolveGenerators } from "../src/metaobjects-config.js";
@@ -13,16 +12,17 @@ import { agentDocsFile, apiDocsFile, docsFile, metamodelDocsFile, requirementsFi
 import type { AgentSchemaInput } from "../src/generators/agent-schema-input.js";
 import { MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 let tmp: string;
 let root: MetaRoot;
 beforeEach(async () => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-docs-gen-"));
+  tmp = makeScratchDir("codegen-docs-gen-");
   root = (await new MetaDataLoader().load([new FileSource(FIXTURE)])).root;
 });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+afterEach(() => { removeTree(tmp); });
 
 function filesUnder(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -71,7 +71,7 @@ describe("documentation generators under meta gen (ADR-0034 Amendment 9)", () =>
   test("with only one of the two listed, neither links to pages nothing writes", async () => {
     await runGen({ config: base([docsFile()]), metadata: root, projectRoot: tmp });
     expect(readFileSync(join(tmp, "docs", "demo", "Post.md"), "utf8")).not.toContain("api/demo/Post.md");
-    rmSync(join(tmp, "docs"), { recursive: true, force: true });
+    removeTree(join(tmp, "docs"));
     await runGen({ config: base([apiDocsFile()]), metadata: root, projectRoot: tmp });
     expect(readFileSync(join(tmp, "docs", "api", "demo", "Post.md"), "utf8")).not.toContain("../../demo/Post.md");
   });

@@ -1,7 +1,7 @@
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { quoteIdent, type SqlDialect } from "../sql-dialect.js";
 import { sql, eq, and, count } from "drizzle-orm";
-import qs from "qs";
+import { parseListQueryString } from "./list-query.js";
 import { parseFilterParams, parsePageBound, pageLimit, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError, type PageSize } from "./filter-parser.js";
 import {
   ReportExportError, assertExportWithinCap, exportContentDisposition, exportWithCountError, isExportCountFlag,
@@ -65,7 +65,8 @@ export interface MountReadOnlyOptions extends WireOptions {
    * The list page size of a projection (`api.pagination` in `.metaobjects/config.json`; ignored
    * for a report, which has `reportMaxRows`, and for a raw view, which pages to at most 1000).
    * A list with no `limit` returns `defaultLimit` rows; a `limit` above `maxLimit` answers
-   * `400 { "error": "limit_too_large", "maxLimit": N }`.
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns
+   * 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
    */
   readonly pagination?: PageSize;
   /**
@@ -194,7 +195,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         const url = req.raw.url ?? "";
         const qIdx = url.indexOf("?");
         const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-        const parsed = qs.parse(queryString) as Record<string, unknown>;
+        const parsed = parseListQueryString(queryString);
         // A bound that is not an integer in range is a 400, not silently clamped.
         const reportPage = isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
         const limitVal = reportPage?.limit ?? parsePageBound(parsed, "limit", RAW_VIEW_MAX_LIMIT) ?? RAW_VIEW_MAX_LIMIT;
@@ -214,7 +215,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       const url = req.raw.url ?? "";
       const qIdx = url.indexOf("?");
       const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-      const parsed = qs.parse(queryString) as Record<string, unknown>;
+      const parsed = parseListQueryString(queryString);
       const withCount = isTruthyFlag(parsed["withCount"]);
       // Export mode: the selector is validated before any query runs, and the export cap governs.
       const format = exportSpec ? readExportFormat(parsed, exportSpec) : undefined;

@@ -45,7 +45,7 @@ export const TIER_ORDER = [
   "runtime-web",
   "codegen-ts-react", "codegen-ts-tanstack", "react",
   "tanstack",
-  "cli", "ai-runtime",
+  "cli",
 ];
 
 /** Every workspace package: `{ dir, pkg, short }`, dir repo-relative. */

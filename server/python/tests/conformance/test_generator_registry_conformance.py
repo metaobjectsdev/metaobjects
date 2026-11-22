@@ -94,10 +94,10 @@ def test_registry_layers_agree_with_manifest() -> None:
     assert not mismatches, "layer disagreement vs manifest:\n  " + "\n  ".join(mismatches)
 
 
-def test_every_manifest_entry_declares_one_of_the_six_layers() -> None:
+def test_every_manifest_entry_declares_one_of_the_seven_layers() -> None:
     # The closed set, spelled out rather than imported from the code: importing the
     # port's own tuple would make the gate agree with whatever the code says.
-    allowed = {"model", "persistence", "api", "client", "docs", "capability"}
+    allowed = {"model", "persistence", "service", "api", "client", "docs", "capability"}
     manifest = json.loads(_find_manifest().read_text())
     bad = sorted(
         f"{name}={spec.get('layer')!r}"

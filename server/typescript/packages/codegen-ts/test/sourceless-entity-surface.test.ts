@@ -20,7 +20,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -30,6 +30,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import { isSourcelessEntity } from "../src/index.js";
 import type { GenContext } from "../src/generator.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -172,7 +173,7 @@ describe("sourceless entity (identity, no source): the wire contract without a t
       expect(order).not.toContain("pgTable(");
       expect(order).not.toContain("$table");
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -184,7 +185,7 @@ describe("sourceless entity (identity, no source): the wire contract without a t
       expect(item).not.toContain("UpdateSchema");
       expect(item).not.toContain("FilterAllowlist");
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 
@@ -196,7 +197,7 @@ describe("sourceless entity (identity, no source): the wire contract without a t
       writeFileSync(join(dir, "order-repository.ts"), REPOSITORY);
       expect(compile(dir, [...files.keys(), "order-repository.ts"])).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });

@@ -8,7 +8,6 @@ import java.util.List;
  * route reads {@link #MAX_ROWS}; the shared {@link ReportExportWriter} writes the bytes.
  */
 public final class CustomerStatusTotalsExport {
-
     private CustomerStatusTotalsExport() {}
 
     /** The most rows one export answers; one more is 400 export_too_large. */

@@ -24,6 +24,7 @@ import {
   inArray as drzInArray,
   isNull as drzIsNull,
   isNotNull as drzIsNotNull,
+  not as drzNot,
   asc as drzAsc,
   desc as drzDesc,
   count as drzCount,
@@ -33,6 +34,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { extractRowCount } from "../drizzle-fastify/util.js";
+import { likePatternToGlob } from "../drizzle-fastify/list-query.js";
 import type {
   PersistenceDriver,
   SelectSpec,
@@ -43,7 +45,7 @@ import type {
   UpdateManySpec,
   DeleteSpec,
   DeleteManySpec,
-  WhereClause, PrimitiveValue,
+  WhereClause, PrimitiveValue, CompareOp, Operand,
   Row,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
@@ -197,7 +199,7 @@ function makeDrizzleDriver(
 
   function applyWhere(qb: AnyTable, where: WhereClause | undefined, table: AnyTable): unknown {
     if (!where) return undefined;
-    return buildExpression(where, columnMap(table));
+    return buildExpression(where, columnMap(table), dialect);
   }
 
   function applyOrder(qb: AnyDrizzleDB, orderBy: SelectSpec["orderBy"], table: AnyTable): AnyDrizzleDB {
@@ -332,10 +334,12 @@ function makeDrizzleDriver(
         const w = applyWhere(table, spec.where, table);
         if (w !== undefined) q = q.where(w);
         if (dialect === "mysql") {
-          await q;
+          const changed = extractRowCount(await q);
+          if (spec.key !== undefined && changed === 0) return null;
           const selectArg = buildSelectMap(table, spec.returning);
           let s = db.select(selectArg).from(table);
-          if (w !== undefined) s = s.where(w);
+          const readBack = spec.key === undefined ? w : applyWhere(table, spec.key, table);
+          if (readBack !== undefined) s = s.where(readBack);
           const found = ((await s.limit(1)) as Row[])[0];
           return found ? toDbKeyedRow(table, jsKeyedFromSelect(found, selectArg)) : null;
         }
@@ -428,7 +432,15 @@ function jsKeyedFromSelect(row: Row, _selectMap: Record<string, AnyColumn>): Row
 }
 
 
-function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>): unknown {
+const DRIZZLE_COMPARE = { eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const satisfies Record<CompareOp, string>;
+
+function drizzleOperand(o: Operand, cols: Map<string, AnyColumn>): SQL | AnyColumn {
+  if ("column" in o) return cols.get(o.column);
+  if ("value" in o) return sql`${o.value}`;
+  return sql`COALESCE(${sql.join(o.coalesce.map((x) => sql`${drizzleOperand(x, cols)}`), sql`, `)})`;
+}
+
+function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>, dialect: "sqlite" | "postgres" | "mysql"): unknown {
   switch (w.kind) {
     case "eq": {
       const c = cols.get(w.column);
@@ -442,19 +454,38 @@ function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>): unknown 
     case "gte": return drzGte(cols.get(w.column), w.value);
     case "lt": return drzLt(cols.get(w.column), w.value);
     case "lte": return drzLte(cols.get(w.column), w.value);
-    case "like": return drzLike(cols.get(w.column), w.pattern);
+    // `like` is case-SENSITIVE SQL LIKE on every engine (ADR-0049): SQLite's LIKE folds ASCII
+    // case, so it is GLOB over the translated pattern; MySQL's follows the column's collation,
+    // so the pattern carries a binary one.
+    case "like": {
+      const c = cols.get(w.column);
+      if (dialect === "sqlite") return sql`${c} GLOB ${likePatternToGlob(w.pattern)}`;
+      if (dialect === "mysql") return sql`${c} LIKE ${w.pattern} COLLATE utf8mb4_bin`;
+      return drzLike(c, w.pattern);
+    }
+    // Case-insensitive: Postgres ILIKE, SQLite's native LIKE, MySQL with both sides folded.
+    case "ilike": {
+      const c = cols.get(w.column);
+      if (dialect === "postgres") return sql`${c} ILIKE ${w.pattern}`;
+      if (dialect === "mysql") return sql`LOWER(${c}) LIKE LOWER(${w.pattern})`;
+      return drzLike(c, w.pattern);
+    }
     case "in": return drzInArray(cols.get(w.column), w.values);
     case "isNull": return w.not ? drzIsNotNull(cols.get(w.column)) : drzIsNull(cols.get(w.column));
     case "and": {
       // drzAnd is typed as accepting SQLWrapper; our recursive return is
       // structurally compatible but typed as unknown. Cast at the boundary.
-      const parts = w.clauses.map((c) => buildExpression(c, cols)) as SQL[];
+      const parts = w.clauses.map((c) => buildExpression(c, cols, dialect)) as SQL[];
       return drzAnd(...parts);
     }
     case "or": {
-      const parts = w.clauses.map((c) => buildExpression(c, cols)) as SQL[];
+      const parts = w.clauses.map((c) => buildExpression(c, cols, dialect)) as SQL[];
       return drzOr(...parts);
     }
+    case "not": return drzNot(buildExpression(w.clause, cols, dialect) as SQL);
+    case "compare":
+      return sql`${drizzleOperand(w.left, cols)} ${sql.raw(DRIZZLE_COMPARE[w.op])} ${drizzleOperand(w.right, cols)}`;
+    case "nullTest": return sql`${drizzleOperand(w.operand, cols)} ${sql.raw(w.not ? "IS NOT NULL" : "IS NULL")}`;
     default: {
       const exhaustive: never = w;
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);

@@ -37,6 +37,21 @@ describe("planScaffold", () => {
     expect(d.conflicts).toEqual([]);
   });
 
+  test("a file already holding the assembled bytes is recorded, never rewritten", () => {
+    const prior: Manifest = { version: 1, servers: ["typescript"], clients: ["react"], files: { ".metaobjects/AGENTS.md": hashContents("always-on v2") } };
+    const d = planScaffold({ stack, assembled: [files[0]!], prior, readCurrent: () => "always-on v2", generatedBy: "0.9.0" });
+    expect(d.writes).toEqual([]);
+    expect(d.conflicts).toEqual([]);
+    expect(d.manifest.files[".metaobjects/AGENTS.md"]).toBe(hashContents("always-on v2"));
+  });
+
+  test("an untracked file that already holds the assembled bytes is no conflict", () => {
+    const d = planScaffold({ stack, assembled: [files[0]!], prior: undefined, readCurrent: () => "always-on v2", generatedBy: "0.9.0" });
+    expect(d.conflicts).toEqual([]);
+    expect(d.writes).toEqual([]);
+    expect(d.manifest.files[".metaobjects/AGENTS.md"]).toBe(hashContents("always-on v2"));
+  });
+
   test("hand-edited file (on-disk differs from prior hash) → .new conflict + keep original", () => {
     const prior: Manifest = { version: 1, servers: ["typescript"], clients: ["react"], files: { ".metaobjects/AGENTS.md": hashContents("always-on v1") } };
     const d = planScaffold({

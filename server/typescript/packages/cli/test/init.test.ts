@@ -428,7 +428,7 @@ describe("init() --force config preservation", () => {
     expect(reloaded.pending_in_git).toBe(false);
     expect(reloaded.confidence_thresholds.pending_promote).toBe(0.95);
     expect(reloaded.sources).toEqual([{ package: "@acme/entities" }]);
-    // An existing project keeps its unbounded lists: --force must not add a page size.
+    // An existing project keeps its page settings: --force must not add a maximum page size.
     expect(reloaded.api).toBeUndefined();
   });
 
@@ -871,9 +871,10 @@ describe("initCommand --refresh-docs output (does what it says)", () => {
     expect(out).not.toContain('"type": "module"');
     expect(out).not.toContain("meta migrate --from-db");
 
-    // It should say what it DID do.
-    expect(out).toContain("Refreshed");
-    expect(out).toContain(".metaobjects/AGENTS.md");
+    // It should say what it DID do. Straight after init the scaffold is current, so the
+    // refresh writes nothing and says so (a refresh that changes a file names it, which
+    // init-refresh-docs.test.ts covers).
+    expect(out).toContain("already current: no file changed");
 
     // And the claim has to be true: nothing else moved.
     expect(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8")).toBe(configBefore);

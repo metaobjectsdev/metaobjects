@@ -20,6 +20,18 @@ the two models produce the same output everywhere:
   lists the `api`, `operation`, `binding` and `transition` nodes as well. Its other output
   is byte-identical, and its payload gains only lines of those four types.
 
+The generators of the rules layers themselves (ADR-0067) are the other exception: reading this
+vocabulary is their job. Each adds only files of its own for `with/`, and moves none of what it
+writes for `without/`. Today those are TypeScript's `rules-names`, which writes nothing for
+`without/`, and `contract-types`, whose entity contracts do not depend on the vocabulary and whose
+operations module (and the value object only an operation reaches) does.
+
+The service generators (ADR-0067 layers 4 and 5) are the enforcing shells, so they also CHANGE
+files they write for `without/`: TypeScript's `service` adds a file per derived transition command
+and per declared operation and changes the package index (its policy, bodies and interfaces) and
+the lifecycle entity's create and update (which check its state), and `service-routes` changes the
+transport (the new routes). The test pins both lists, and every other file stays byte-identical.
+
 A generator that started reading an operation or a transition by accident would emit
 something half-built; these tests are what notice:
 

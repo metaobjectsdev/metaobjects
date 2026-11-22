@@ -13,8 +13,9 @@
 //
 // Both drivers are OPTIONAL peers imported lazily. PGlite is ~22 MB of WASM and must
 // not land in the node_modules of every adopter who only ever runs `meta gen`; the
-// install hints mirror `buildKyselyFromUrl`'s. `cli` already depends on
-// `@libsql/kysely-libsql` outright, so only a direct embedder can miss that one.
+// install hints mirror `buildKyselyFromUrl`'s. `@libsql/kysely-libsql` is an optional
+// peer of `cli` too (it left the default install; `meta init` adds the driver), so any
+// project that never added it gets the install hint below rather than a crash.
 import { Kysely } from "kysely";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

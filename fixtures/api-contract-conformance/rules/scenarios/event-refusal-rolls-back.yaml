@@ -1,0 +1,26 @@
+name: event-refusal-rolls-back
+description: >
+  The event hook runs last, in the same transaction as the move. The README's event hook refuses
+  any write by the actor `no-audit` as `audit_unavailable`: the transition is answered 409 with
+  that code and undone, and no audit entry is kept.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/1/submit
+    headers: { x-actor: "no-audit", x-grants: "acme::purchasing.PurchaseRequest.submit" }
+    expect:
+      status: 409
+      body: { error: "audit_unavailable" }
+  - id: r2
+    method: GET
+    path: /api/purchase_requests/1
+    expect:
+      status: 200
+      body:
+        row: { id: 1, status: "draft" }
+  - id: r3
+    method: GET
+    path: /api/audit_entries
+    expect:
+      status: 200
+      body: { length: 0 }

@@ -60,9 +60,17 @@ export interface QueryScenario {
   readonly queries: ReadonlyArray<QuerySpec>;
 }
 
+/** The guard of an `op: guardedUpdate`: state field, from-states, to-state, optional condition. */
+export interface GuardSpec {
+  readonly field: string;
+  readonly from: readonly string[];
+  readonly to: string;
+  readonly condition: unknown;
+}
+
 export interface QuerySpec {
   readonly name: string;
-  readonly op: "list" | "get" | "count" | "relate" | "create" | "update" | "delete" | "roundtrip";
+  readonly op: "list" | "get" | "count" | "relate" | "create" | "update" | "delete" | "roundtrip" | "guardedUpdate";
   readonly entity: string;
   readonly by: Record<string, unknown> | null;
   /**
@@ -94,6 +102,13 @@ export interface QuerySpec {
    * object); `expect` is the wire-normalized read-back form.
    */
   readonly insert: Record<string, unknown> | null;
+  /**
+   * For `op: guardedUpdate` (ADR-0066 §6 step 5): the transition's write. `field` is the state
+   * field, `from` the states the row must be in, `to` the state written, and `condition` an
+   * optional `@condition` expression node over the entity's field names. Requires `by: { id }`;
+   * `expect` is whether a row matched the guard (true or false).
+   */
+  readonly guard: GuardSpec | null;
   /**
    * Either `{ field: { op: value } }` (each top-level key is a field name) or
    * `{ and: [filter, filter, ...] }` (compose by AND). Mixed forms are
@@ -175,6 +190,7 @@ export function loadQuery(yamlPath: string): QueryScenario {
       expectError: q["expect-error"] === true,
       relation: q.relation ?? null,
       insert: (q.insert as Record<string, unknown> | undefined) ?? null,
+      guard: parseGuard(q.guard, yamlPath),
       filter: (q.filter as Record<string, unknown> | undefined) ?? null,
       sort: q.sort
         ? q.sort.map((s) => ({ field: s.field ?? "", dir: (s.dir as "asc" | "desc") ?? "asc" }))
@@ -187,6 +203,17 @@ export function loadQuery(yamlPath: string): QueryScenario {
 }
 
 // ---------- helpers ----------
+
+function parseGuard(raw: unknown, path: string): GuardSpec | null {
+  if (raw === undefined || raw === null) return null;
+  const g = raw as Record<string, unknown>;
+  const from = g["from"];
+  if (typeof g["field"] !== "string" || typeof g["to"] !== "string" || !Array.isArray(from) || from.length === 0
+    || !from.every((f) => typeof f === "string")) {
+    throw new Error(`${path}: 'guard' needs a string 'field', a non-empty string list 'from' and a string 'to'`);
+  }
+  return { field: g["field"], from: from as string[], to: g["to"], condition: g["condition"] ?? null };
+}
 
 function listYaml(dir: string): string[] {
   return readdirSync(dir)
@@ -249,6 +276,7 @@ interface QueryYaml {
     "expect-error"?: boolean;
     relation?: string;
     insert?: unknown;
+    guard?: unknown;
     filter?: unknown;
     sort?: { field?: string; dir?: string }[];
     limit?: number;

@@ -1,0 +1,11 @@
+name: or-two-branches
+description: >
+  `filter[or][i]` matches a row that satisfies any branch.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[or][0][id][eq]=3&filter[or][1][stock][eq]=9&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [3, 9, 19, 29, 39, 49, 59]

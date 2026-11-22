@@ -35,12 +35,12 @@ public enum GeneratorTier
 }
 
 /// <summary>
-/// The six layers a generator can belong to — the axis an adopter SELECTS BY, gated
+/// The seven layers a generator can belong to — the axis an adopter SELECTS BY, gated
 /// cross-port against <c>fixtures/generator-registry-conformance/registry.json</c>
 /// exactly as <see cref="GeneratorTier"/> is.
 /// </summary>
 /// <remarks>
-/// Six, not ten. An earlier draft split <c>Capability</c> four ways, each with ONE
+/// Seven, not ten: the six below plus <c>Service</c>, the shells of ADR-0067 layer 4. An earlier draft split <c>Capability</c> four ways, each with ONE
 /// member — a layer with one member does no grouping work. The first four layers are
 /// app-shape decisions a builder makes; <c>Capability</c> holds the ones the MODEL has
 /// already made (you declared a <c>template.prompt</c>), which is why they are found by
@@ -52,6 +52,8 @@ public enum GeneratorLayer
     Model,
     /// <summary>Query helpers, DbContext, repositories, table objects.</summary>
     Persistence,
+    /// <summary>The service shells that enforce the declared rules (ADR-0067 layer 4).</summary>
+    Service,
     /// <summary>HTTP surface: routes, filter allowlists, validators, wiring.</summary>
     Api,
     /// <summary>Browser tier: forms, hooks, grids.</summary>

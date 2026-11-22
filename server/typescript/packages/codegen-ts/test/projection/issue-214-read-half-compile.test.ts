@@ -9,7 +9,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobjectsdev/metadata";
@@ -22,6 +22,7 @@ import { entityFile as refEntityFile } from "../../src/reference/entity.js";
 import { queriesFile as refQueriesFile } from "../../src/reference/queries.js";
 import type { GenContext } from "../../src/generator.js";
 import type { Dialect } from "../../src/metaobjects-config.js";
+import { removeTree } from "../../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -170,7 +171,7 @@ describe("#214 — the generated read-half output type-checks (verbatimModuleSyn
         const messages = diagnostics.map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
         expect(messages).toEqual([]);
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        removeTree(dir);
       }
     });
   }

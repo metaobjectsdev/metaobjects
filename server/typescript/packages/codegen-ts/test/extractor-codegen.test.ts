@@ -12,7 +12,7 @@
 
 import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
@@ -23,6 +23,7 @@ import { makeRenderContext } from "../src/render-context.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { GenContext } from "../src/generator.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -126,7 +127,7 @@ declare module "@metaobjectsdev/render" {
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 async function loadRoot(children: unknown[]) {

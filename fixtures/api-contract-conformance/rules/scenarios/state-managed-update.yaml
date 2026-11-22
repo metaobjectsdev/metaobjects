@@ -1,0 +1,21 @@
+name: state-managed-update
+description: >
+  A lifecycle field is moved only by a transition. The generic update naming a different state is
+  409 `state_managed` and writes nothing; naming the state the row already has is not a move, and
+  the rest of the update is written.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/purchase_requests/1
+    body: { status: "approved", title: "Laptop Pro" }
+    expect:
+      status: 409
+      body: { error: "state_managed" }
+  - id: r2
+    method: PATCH
+    path: /api/purchase_requests/1
+    body: { status: "draft", title: "Laptop Pro" }
+    expect:
+      status: 200
+      body:
+        row: { id: 1, title: "Laptop Pro", status: "draft" }

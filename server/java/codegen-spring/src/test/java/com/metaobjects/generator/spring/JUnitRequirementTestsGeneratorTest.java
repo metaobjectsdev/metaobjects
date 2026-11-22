@@ -649,6 +649,47 @@ public class JUnitRequirementTestsGeneratorTest {
         assertEquals("2714aa3925a47959aa5e48ae39d80ed203fd4e2caa046a90aab9e04691d9881a", recorded.identity().digest());
     }
 
+    /** Replaces every test with one whose imports share simple names: wildcards and same-named statics. */
+    public static class SharedNameImportsRenderer implements RequirementTestRenderer {
+        @Override
+        public RenderedTest render(RequirementTestArgs args) {
+            return new RenderedTest(
+                List.of("java.util.*", "java.io.*", "static java.lang.Math.max", "static java.lang.Integer.max",
+                    "java.util.*", "org.junit.jupiter.api.Assertions"),
+                "@Test\nvoid " + args.identity().witnessKey() + "() {\n    Assertions.assertTrue(true);\n}");
+        }
+    }
+
+    @Test
+    public void aRendererMayImportWildcardsAndSameNamedStaticMembersAndEachPrintsOnce() throws Exception {
+        Path out = run(loadDir(workedExampleInput()), Map.of("renderer", SharedNameImportsRenderer.class.getName()));
+        String test = read(out, "Requirements_acme_shop_Test.java");
+        for (String line : List.of("import java.util.*;", "import java.io.*;", "import static java.lang.Math.max;",
+                "import static java.lang.Integer.max;", "import org.junit.jupiter.api.Assertions;")) {
+            int first = test.indexOf(line + "\n");
+            assertTrue(line + " is printed: " + test, first >= 0);
+            assertEquals(line + " is printed once", -1, test.indexOf(line + "\n", first + 1));
+        }
+    }
+
+    /** Replaces every test with one whose source uses Windows line endings. */
+    public static class CrlfSourceRenderer implements RequirementTestRenderer {
+        @Override
+        public RenderedTest render(RequirementTestArgs args) {
+            return new RenderedTest(List.of("org.junit.jupiter.api.Assertions"),
+                "@Test\r\nvoid " + args.identity().witnessKey() + "() {\r\n    Assertions.assertTrue(true);\r\n}\r\n");
+        }
+    }
+
+    @Test
+    public void aRendererSourceWithWindowsLineEndingsGeneratesWithLineFeedsOnly() throws Exception {
+        Path out = run(loadDir(workedExampleInput()), Map.of("renderer", CrlfSourceRenderer.class.getName()));
+        String test = read(out, "Requirements_acme_shop_Test.java");
+        assertFalse("no CR reaches the file", test.indexOf('\r') >= 0);
+        assertTrue(test, test.contains("    @Test\n    void req_acme_shop_Orders_Recorded__object_entity() {\n        Assertions.assertTrue(true);\n    }\n"));
+        compile(out, Map.of(WITNESS_CLASS, WITNESS_NONE));
+    }
+
     // ---------------------------------------------------------------- the uncovered warning
 
     /** A level 3 requirement {@code parent} holding a level 3 child, both excluded by the default filter. */

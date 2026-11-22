@@ -14,8 +14,7 @@
 // zero-source object of ANY subtype gets neither.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
@@ -25,13 +24,14 @@ import { queriesFile } from "../src/generators/queries-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { queriesFile as refQueriesFile } from "../src/reference/queries.js";
 import { routesFile as refRoutesFile } from "../src/reference/routes.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let tmp: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-sourceless-"));
+  tmp = makeScratchDir("codegen-sourceless-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTree(tmp);
 });
 
 async function loadRoot(children: unknown[]) {
@@ -187,7 +187,7 @@ describe("#248 R2 — sourceless objects get no DB-bound artifacts", () => {
     const mixedOut = tmp;
     await runGen({ config: genConfig(mixedOut), metadata: mixedRoot });
 
-    const soloDir = mkdtempSync(join(tmpdir(), "codegen-sourceless-solo-"));
+    const soloDir = makeScratchDir("codegen-sourceless-solo-");
     try {
       const soloRoot = await loadRoot([ORDER]);
       await runGen({ config: genConfig(soloDir), metadata: soloRoot });
@@ -198,7 +198,7 @@ describe("#248 R2 — sourceless objects get no DB-bound artifacts", () => {
         expect(mixed).toBe(solo);
       }
     } finally {
-      rmSync(soloDir, { recursive: true, force: true });
+      removeTree(soloDir);
     }
   });
 

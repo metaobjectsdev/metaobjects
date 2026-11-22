@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.SpringNaming;
 
 import com.metaobjects.MetaData;
@@ -507,7 +508,7 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
      * one blank line between the object's own identity, its sources, its fields, its
      * identities and its indexes. It is never read as data.</p>
      */
-    private record Member(String member, String literal, String path, String section, boolean flattened) {}
+    protected record Member(String member, String literal, String path, String section, boolean flattened) {}
 
     private static Member str(String member, String value, String path, String section) {
         return new Member(member, "\"" + value + "\"", path, section, false);
@@ -601,40 +602,8 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
         // looks a column up by field name and an inherited one has to be there.
         List<Member> declared = membersOf(names, superClass == null);
 
-        StringBuilder src = new StringBuilder();
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
-        }
-        src.append("import java.util.Map;\n\n");
-        src.append("/**\n");
-        src.append(" * GENERATED — per-object physical database names for ").append(shortName).append(".\n");
-        src.append(" */\n");
-        // `abstract`, not `final`: this class is now a base other names classes extend
-        // rather than restate. Java inherits static members, so `CouponAuthNames.ID_COLUMN`
-        // resolves through the base and every consumption site is unchanged; `abstract`
-        // keeps the "no instances" guarantee `final` + a private constructor used to give,
-        // while still allowing a subclass.
-        src.append("public abstract class ").append(className);
-        if (superClass != null) src.append(" extends ").append(superClass);
-        src.append(" {\n\n");
-
-        String section = null;
-        for (Member m : declared) {
-            if (section != null && !section.equals(m.section())) src.append("\n");
-            section = m.section();
-            src.append("    public static final String ").append(m.member())
-               .append(" = ").append(m.literal()).append(";\n");
-        }
-
         // The map's values reference the constants rather than repeating the literals --
         // the artifact must not spell a physical name twice inside itself.
-        //
-        // Map.ofEntries(...), not Map.of(...): Map.of has overloads for 0-10 pairs
-        // only, so an object with 11+ fields (AllTypes in the canonical persistence
-        // corpus has 21) emitted more argument pairs than any Map.of overload
-        // accepts and javac refused the file outright. Map.ofEntries is a single
-        // varargs method with no arity ceiling and still returns the same
-        // immutable Map contract.
         //
         // It stays COMPLETE — every field, inherited included — because it is the lookup
         // surface, and a miss on an inherited field is exactly the fallback-to-literal this
@@ -658,30 +627,72 @@ public class SpringNamesGenerator extends MultiFileDirectGeneratorBase<MetaObjec
             }
         }
         allRows.sort((a, b) -> a[1].compareTo(b[1]));
-        src.append("\n");
-        src.append("    public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(\n");
-        for (int i = 0; i < allRows.size(); i++) {
-            String[] row = allRows.get(i);
-            src.append("        Map.entry(\"").append(row[1]).append("\", ").append(row[0]).append(")");
-            src.append(i < allRows.size() - 1 ? ",\n" : "\n");
-        }
-        src.append("    );\n");
 
-        // No instances -- pure constants holder. PROTECTED, not private: a subclass's
-        // implicit constructor calls super(), and a private one made every generated
-        // subclass fail to compile ("XNames() has private access"). The class is abstract,
-        // so this cannot construct one either way.
-        src.append("\n    protected ").append(className).append("() {}\n");
-        src.append("}\n");
+        SpringJavaWriter w = new SpringJavaWriter();
+        if (!pkg.isEmpty()) w.packageName(pkg);
+        w.use("java.util.Map");
+        w.line("/**");
+        w.line(" * GENERATED — per-object physical database names for " + shortName + ".");
+        w.line(" */");
+        // `abstract`, not `final`: this class is now a base other names classes extend
+        // rather than restate. Java inherits static members, so `CouponAuthNames.ID_COLUMN`
+        // resolves through the base and every consumption site is unchanged; `abstract`
+        // keeps the "no instances" guarantee `final` + a private constructor used to give,
+        // while still allowing a subclass.
+        try (var cls = w.block("public abstract class " + className
+                + (superClass != null ? " extends " + superClass : "") + " {")) {
+            writeConstants(w, declared);
+            w.blank();
+            writeColumnsByField(w, allRows);
+            w.blank();
+            // No instances -- pure constants holder. PROTECTED, not private: a subclass's
+            // implicit constructor calls super(), and a private one made every generated
+            // subclass fail to compile ("XNames() has private access"). The class is abstract,
+            // so this cannot construct one either way.
+            w.line("protected " + className + "() {}");
+        }
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(className + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + className + ".java for entity " + entity.getName() + ": " + e, e);
         }
         return true;
+    }
+
+    /**
+     * One {@code public static final String} per declared member, a blank line between the
+     * object's own identity, its sources, its fields, its identities and its indexes.
+     */
+    protected void writeConstants(SpringJavaWriter w, List<Member> declared) {
+        String section = null;
+        for (Member m : declared) {
+            if (section != null && !section.equals(m.section())) w.blank();
+            section = m.section();
+            w.line("public static final String " + m.member() + " = " + m.literal() + ";");
+        }
+    }
+
+    /**
+     * {@code COLUMNS_BY_FIELD}: field name (or {@code <field>.<member>}) to the column constant.
+     *
+     * <p>Map.ofEntries(...), not Map.of(...): Map.of has overloads for 0-10 pairs only, so an
+     * object with 11+ fields (AllTypes in the canonical persistence corpus has 21) emitted
+     * more argument pairs than any Map.of overload accepts and javac refused the file
+     * outright. Map.ofEntries is a single varargs method with no arity ceiling and still
+     * returns the same immutable Map contract.</p>
+     */
+    protected void writeColumnsByField(SpringJavaWriter w, List<String[]> rows) {
+        w.line("public static final Map<String, String> COLUMNS_BY_FIELD = Map.ofEntries(");
+        w.deeper(1, () -> {
+            for (int i = 0; i < rows.size(); i++) {
+                String[] row = rows.get(i);
+                w.line("Map.entry(\"" + row[1] + "\", " + row[0] + ")" + (i < rows.size() - 1 ? "," : ""));
+            }
+        });
+        w.line(");");
     }
 
     /**

@@ -1,6 +1,6 @@
 # ADR-0024 — AI-trace scope: the typed trace + recorder is the standard; the LLM caller is bring-your-own
 
-**Status:** Accepted (2026-06-06); **amended 2026-06-07** — see Amendment below.
+**Status:** Accepted (2026-06-06); **amended 2026-06-07** (the first amendment below) and **2026-11-21** (Amendment 2).
 **Deciders:** human (project owner) + Claude
 **Relates to:** ADR-0020 (codegen tiering — native per-port vs. language-neutral), ADR-0023 (strict metadata provenance), and the AI LLM-trace design docs (`docs/superpowers/specs/2026-06-02-ai-llm-call-trace-persistence-design.md`, `2026-06-05-ai-runtime-call-loop-and-recorders-design.md`, `2026-06-05-ai-trace-1c-shared-table-sti-design.md`).
 
@@ -29,6 +29,37 @@ Everything else in this ADR stands: the typed-trace data model, the recorder sea
 `@responseRef` as first-class cross-port vocabulary (the carve-out was still closed),
 and STI all remain. Only the derivation mechanism + the `preFreeze` hook are gone.
 (Shipped: Python `378db17f`, Java `7ce05527`, TS+C#+Kotlin `7d6552c7`.)
+
+## Amendment 2 (2026-11-21) — the call glue is generated into the project; `ai-runtime` is no longer published
+
+The decision put the vendor-neutral call glue (`LlmClient`, `runLlmCall`, `callLlm`) in KEEP
+and shipped it as the npm package `@metaobjectsdev/ai-runtime`, which the generated
+`call<Entity>` imported. That made a 120-line loop a dependency every adopter installed and a
+package the project published in lockstep, for code an adopter is expected to own anyway: the
+`LlmClient` it plugs in is theirs, and so is how a call is timed and costed.
+
+**Revised rule:** the call glue is still owned and kept, but it is **generated**, not
+depended on. The `trace-helper` generator writes `llm-call.ts` beside the
+`<Entity>.trace.ts` modules whenever a helper has a `call<Entity>`: the `LlmClient` seam,
+the injectable `Clock`, `IdGen` and `CostFn`, and `runLlmCall`, with the same behaviour the
+package had. Generated trace code therefore imports only the ordinary published packages it
+already used (`runtime-ts`, `render`, `metadata`), which is what this project promises of
+generated code. The module is the project's to edit, and `meta eject trace-helper` owns the
+generator that writes it.
+
+`@metaobjectsdev/ai-runtime` is `private` from 1.3.0 and leaves the publish set
+(`scripts/publish-set.mjs`). Its last published version, 1.2.3, stays on the registry for
+projects that have not regenerated. The package stays in the repository as source: its
+`callLlm`, `CompositeRecorder` and the optional Langfuse and OpenTelemetry recorders are small
+and are reference code to copy, not a supported dependency.
+
+Nothing else changes. The provider call stays bring-your-own behind `LlmClient`, no rate table
+ships, and the typed-trace data model and recorder seam are as above. The other ports were
+never on this package: their call glue is per-port already (ADR-0020 Tier 1).
+
+Upgrading: regenerate. A project's `<Entity>.trace.ts` now imports `./llm-call`, and the
+project can drop `@metaobjectsdev/ai-runtime` from its dependencies. Code that imported
+`LlmClient` or `runLlmCall` from the package imports them from the generated `llm-call.ts`.
 
 ## Context
 

@@ -12,26 +12,26 @@
 
 import { manifestEntries } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "single-entity.json");
 
 let projectRoot: string;
 let elsewhere: string;
 beforeEach(() => {
-  projectRoot = mkdtempSync(join(tmpdir(), "oop-project-"));
-  elsewhere = mkdtempSync(join(tmpdir(), "oop-elsewhere-"));
+  projectRoot = makeScratchDir("oop-project-");
+  elsewhere = makeScratchDir("oop-elsewhere-");
 });
 afterEach(() => {
-  rmSync(projectRoot, { recursive: true, force: true });
-  rmSync(elsewhere, { recursive: true, force: true });
+  removeTree(projectRoot);
+  removeTree(elsewhere);
 });
 
 async function genInto(outDir: string) {

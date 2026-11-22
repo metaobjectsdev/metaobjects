@@ -57,6 +57,19 @@ dialect only; `meta migrate --dialect mysql` is refused with that explanation, a
 yours (`docs/recipes/mysql.md`). Output lands under the path
 configured in `metaobjects.config.ts` (typically `./migrations/<timestamp>__<slug>.sql`).
 
+**`meta schema`** prints the expected schema without migrating anything: the `CREATE`
+statements `meta migrate` would write for an empty database (`--as ddl`, the default), or the
+neutral JSON document (`--as json`), the same format as the committed snapshot and described in
+[schema-snapshot-format.md](schema-snapshot-format.md). It builds the schema as `meta migrate`
+does, with the project's conventions, `migrate.scope`, the dependency exclusion and the
+projection and report views, and reads no database and no snapshot. Use it to hand the schema
+to a native migration tool, to review it, or to diff it between two commits.
+
+```bash
+meta schema --dialect postgres > schema.sql
+meta schema --dialect postgres --as json --out schema.json
+```
+
 **`meta migrate apply-pending`** replays the committed migration files against `--db`
 in order, ledger-tracked (`_metaobjects_migrations`) and transactional — with **no
 diff and no metadata load**. For a project whose chain *builds* the schema, it is the

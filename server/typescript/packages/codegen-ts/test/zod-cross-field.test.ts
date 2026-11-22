@@ -3,7 +3,7 @@
 // Execution pins (render -> import -> safeParse), plus the "update schema unchanged" pin.
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -19,13 +19,14 @@ import {
 import type { AttrValue, MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "./_meta-build.js";
 import { renderZodValidators, hasInsertRefinements } from "../src/templates/zod-validators.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamically imported generated module — no static shape
 type GeneratedModule = Record<string, any>;
 
 const tmpDirs: string[] = [];
 afterEach(() => {
-  while (tmpDirs.length > 0) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
+  while (tmpDirs.length > 0) removeTree(tmpDirs.pop()!);
 });
 
 async function executeGenerated(source: string): Promise<GeneratedModule> {

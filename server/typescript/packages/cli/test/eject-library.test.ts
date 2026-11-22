@@ -7,7 +7,7 @@
 // their origin legible later, and they tell the adopter the one step that finishes the
 // job — which the loader then enforces.
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, statSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ejectCommand } from "../src/commands/eject.js";
@@ -82,6 +82,13 @@ describe("meta eject <library>", () => {
 
       const forced = await ejectLibrary({ cwd: root, name: "iam", force: true });
       expect(forced.files.find((f) => f.ref === "iam/model")!.status).toBe("replaced");
+
+      // --force over files that already hold the shipped bytes writes nothing.
+      const model = join(root, "model", "meta.iam.model.yaml");
+      const before = statSync(model).mtimeMs;
+      const again2 = await ejectLibrary({ cwd: root, name: "iam", force: true });
+      expect(again2.files.every((f) => f.status === "preserved" && f.identical === true)).toBe(true);
+      expect(statSync(model).mtimeMs).toBe(before);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

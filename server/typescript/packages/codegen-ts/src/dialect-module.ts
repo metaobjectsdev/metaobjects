@@ -34,6 +34,9 @@ export function dialectModule(dialect: Dialect): DialectModule {
  * (ADR-0008 — `db` is passed in). Every type argument is as open as Drizzle's own constraint
  * allows, so any driver's database handle assigns — a schema-carrying `drizzle(client,
  * { schema })` as well as a schema-less one.
+ *
+ * SQLite accepts a sync and an async driver: the service layer drives a sync driver's transaction
+ * itself (`@metaobjectsdev/runtime-ts/service`), so no tier needs to narrow it.
  */
 export function dbTypeBlock(dialect: Dialect): { import: string; alias: string } {
   switch (dialect) {

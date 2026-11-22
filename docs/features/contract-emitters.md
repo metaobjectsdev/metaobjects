@@ -164,8 +164,9 @@ It also states what the routes do beyond the happy path:
 
 - **Page size.** When the project sets `api.pagination`, a list's `limit` carries that `default` and
   `maximum`, and the description names the `limit_too_large` answer. Without the setting `limit`
-  states neither, because the server serves what it always did. A report keeps its own row cap and
-  states neither either.
+  carries `default: 50` and no `maximum`, because the server answers 50 rows and has no ceiling
+  ([api-contract.md](api-contract.md#sort--pagination)). A report keeps its own row cap and states
+  neither.
 - **Undeclared body keys.** A create, `PUT` or `PATCH` body description says an undeclared key is
   refused with `400 unknown_fields` (the default) or dropped under `api.unknownFields: drop`.
   The shapes stay open: the server still drops a declared key a client may not set, such as the
@@ -174,6 +175,12 @@ It also states what the routes do beyond the happy path:
   `message`), `fields` (the undeclared keys) and `maxLimit`.
 - **Read-only resources.** A projection or a report has no write operations, and each of its
   operations says a write answers `405 method_not_allowed`.
+- **Search and the combinators.** A list whose row has a text field `?search` matches (a
+  `@filterable` plain string or string-backed enum, never a uuid or an int-backed enum) takes a
+  `search` parameter whose description names those fields. A list with any filter also takes
+  `filter[or]` and `filter[and]`, each one `deepObject` parameter: a branch nests, which a query
+  parameter's schema cannot spell, so the description gives the grammar and the nesting cap of five
+  ([api-contract.md](api-contract.md), "The list query: search, combinators and refusals").
 
 A list answers an array, or `{ rows, total }` with `withCount=1`, so its response is a `oneOf` of
 `<Name>List` and `<Name>Page`.
@@ -200,8 +207,6 @@ openApiFile({
 
 - The `default` keyword: a default belongs to the database or to `@autoSet`, and is not on the wire.
 - `readOnly` and `writeOnly`: the shapes are separate.
-- The TypeScript-only `search`, `filter[or]` and `filter[and]` extensions: the document states the
-  cross-port contract ([api-contract.md](api-contract.md)).
 - 405 answers as operations: a verb a read-only surface does not serve is absent from the document,
   and the surface's operations say so in prose.
 - Routes you wrote by hand. Eject `openapi` and add them in `buildOpenApiDocument` if you want them

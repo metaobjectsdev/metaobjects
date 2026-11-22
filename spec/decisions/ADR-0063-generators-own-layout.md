@@ -123,9 +123,9 @@ those primitives cannot be read, so it is refused rather than written without it
 `CodeWriter` and `PyWriter` (`server/python/src/metaobjects/codegen/writer/`) are exported as
 `metaobjects.codegen.writer` and listed in `eject.engineSurface.python`. Python lays out at
 **88 columns** with a four-space indent and a trailing comma in broken lists. Its runner is
-`server/python/tests/codegen/test_writer_conformance.py`. The `output-prompt`, `report-export` and
-`filter-allowlist` generators write through it and no longer call `ruff`. Every other Python
-generator still types its own layout: `tests/codegen/layout_ratchet/allowlist.json` lists those
+`server/python/tests/codegen/test_writer_conformance.py`. The `entity` model, `output-prompt`,
+`report-export` and `filter-allowlist` generators write through it and no longer call `ruff`. Every
+other Python generator still types its own layout: `tests/codegen/layout_ratchet/allowlist.json` lists those
 files, the layout check (`tests/codegen/test_layout_ratchet.py`) fails on any new one, and an entry
 is removed when its generator converts, so the list only shrinks. The dialect contract is in
 [`spec/code-writer.md`](../code-writer.md).
@@ -145,6 +145,18 @@ is removed when its generator converts, so the list only shrinks. The dialect co
   is that an override can break on a minor upgrade, which is the trade item 7 accepts.
 - Five writers must agree, which the shared corpus checks, as the repository already does for
   everything else that must match across ports.
+
+## Amendment (2026-11-21, Java): the Java writers
+
+Every Java generator writes through the code writer. `JavaWriter` (`codegen-base`,
+`com.metaobjects.generator.writer`) is the dialect the object and direct generators use, and
+`SpringJavaWriter` (`codegen-spring`) extends it with the two layouts Spring source needs: a
+continuation line two indents deeper, and an indented `case` body. Decisions 1 to 7 apply
+unchanged. Java lays out at **120 columns** with a four-space indent and no trailing comma in
+broken lists. The dialect contract is in [`spec/code-writer.md`](../code-writer.md), the Java
+dialect section. The layout ratchet (`LayoutRatchetTest`, `codegen-base`, with its allowlist at
+`codegen-base/src/test/resources/layout-ratchet/allowlist.json`) holds an empty `unconverted`
+section: no Java generator source types layout by hand.
 
 ## Amendment (2026-11-21, C#): the C# writer
 

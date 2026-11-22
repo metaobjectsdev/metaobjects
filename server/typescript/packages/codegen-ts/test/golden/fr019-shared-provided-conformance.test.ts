@@ -10,8 +10,7 @@
 //   • A `@provided` enum with no `providedEnumModule` config → a codegen-time error.
 
 import { describe, test, expect } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { runGen, defineConfig } from "../../src/index.js";
 import { barrel } from "../../src/generators/barrel.js";
@@ -20,6 +19,7 @@ import { queriesFile } from "../../src/generators/queries-file.js";
 import { MetaDataLoader, InMemoryStringSource, FIELD_SUBTYPE_ENUM, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import { sharedEnumForField, materializedSharedEnums } from "../../src/enum-shared.js";
 import { renderSharedEnumsFile } from "../../src/templates/enums-file.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 function findRepoRoot(start: string): string {
   let dir = start;
@@ -55,7 +55,7 @@ async function gen(
   providedEnumModule?: string,
   only?: (entity: MetaObject) => boolean,
 ): Promise<Record<string, string>> {
-  const tmp = mkdtempSync(join(tmpdir(), "fr019-conf-"));
+  const tmp = makeScratchDir("fr019-conf-");
   try {
     await runGen({
       config: defineConfig({
@@ -73,7 +73,7 @@ async function gen(
     for (const name of readdirSync(tmp)) if (name.endsWith(".ts")) files[name] = readFileSync(join(tmp, name), "utf-8");
     return files;
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
+    removeTree(tmp);
   }
 }
 

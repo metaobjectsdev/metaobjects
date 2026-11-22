@@ -17,7 +17,6 @@ TypeScript implementation of the MetaObjects standard.
 | `@metaobjectsdev/migrate-ts` | Database migration tooling |
 | `@metaobjectsdev/sdk` | Programmatic SDK (memory, paths, workspace) |
 | `@metaobjectsdev/cli` | The `meta` CLI binary (`init`, `gen`, `migrate`) |
-| `@metaobjectsdev/forge` | AI-collaboration capabilities (agent-docs, future MCP) |
 
 ## Getting started
 

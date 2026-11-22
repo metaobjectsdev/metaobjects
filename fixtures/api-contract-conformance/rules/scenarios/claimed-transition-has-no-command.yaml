@@ -1,0 +1,11 @@
+name: claimed-transition-has-no-command
+description: >
+  Under the default `rules.lifecycle.commands: unclaimed`, a transition a declared command lists
+  in `@transitions` derives no command of its own: `approve` is reached only through `decide`.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/2/approve
+    headers: { x-actor: "rita", x-grants: "acme::purchasing.PurchaseRequest.approve,purchasing.decide" }
+    expect:
+      status: 404

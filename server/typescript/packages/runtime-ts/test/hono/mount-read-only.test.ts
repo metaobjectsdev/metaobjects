@@ -118,3 +118,44 @@ describe("hono mountReadOnlyCrudRoutes — GET :id addresses idColumn", () => {
     }
   });
 });
+
+describe("hono mountReadOnlyCrudRoutes — default page without api.pagination", () => {
+  let client: ReturnType<typeof createClient>;
+  let app: Hono;
+
+  beforeAll(async () => {
+    client = createClient({ url: ":memory:" });
+    await client.execute(`CREATE TABLE sales (id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)`);
+    await client.execute(`CREATE VIEW v_totals AS SELECT id, amount FROM sales`);
+    for (let i = 1; i <= 55; i++) await client.execute(`INSERT INTO sales (id, amount) VALUES (${i}, ${i * 10})`);
+    app = new Hono();
+    mountReadOnlyCrudRoutes({
+      app,
+      path: "/totals",
+      db: drizzle(client),
+      view: sqliteView("v_totals", {
+        id: integer("id").notNull(),
+        amount: integer("amount").notNull(),
+      }).existing(),
+      filterAllowlist: {},
+      sortAllowlist: { id: { defaultOrder: "asc" } },
+      dialect: "sqlite",
+    });
+  });
+
+  afterAll(() => {
+    client.close();
+  });
+
+  test("no ?limit= answers 50 rows, not the whole view", async () => {
+    const res = await app.request("/totals");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toHaveLength(50);
+  });
+
+  test("a large ?limit= answers every row: no maximum without the setting", async () => {
+    const res = await app.request("/totals?limit=100000");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toHaveLength(55);
+  });
+});

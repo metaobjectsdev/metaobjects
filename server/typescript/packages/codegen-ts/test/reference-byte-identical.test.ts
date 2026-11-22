@@ -4,8 +4,7 @@
 // if this passes, a consumer can copy them out and own them with no behavior change.
 import { describe, test, expect, beforeEach, afterEach, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, cpSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, readFileSync, cpSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   runGen, defineConfig, REFERENCE_GENERATOR_NAMES, HTTP_RUNTIME_PACKAGE, OWNED_RUNTIME_DIR,
@@ -23,6 +22,14 @@ import { routesFile as refRoutes } from "../src/reference/routes.js";
 import { routesFileHono as refRoutesHono } from "../src/reference/routes-hono.js";
 import { barrel as refBarrel } from "../src/reference/barrel.js";
 import { namesFile as refNames } from "../src/reference/names.js";
+import { rulesNamesFile as builtinRulesNames } from "../src/generators/rules-names-file.js";
+import { rulesNamesFile as refRulesNames } from "../src/reference/rules-names.js";
+import { contractTypes as builtinContractTypes } from "../src/generators/contract-types-file.js";
+import { contractTypes as refContractTypes } from "../src/reference/contract-types.js";
+import { serviceFile as builtinService } from "../src/generators/service-file.js";
+import { serviceFile as refService } from "../src/reference/service.js";
+import { serviceRoutesFile as builtinServiceRoutes } from "../src/generators/service-routes-file.js";
+import { serviceRoutesFile as refServiceRoutes } from "../src/reference/service-routes.js";
 import { reportExport as builtinReportExport } from "../src/generators/report-export-file.js";
 import { reportExport as refReportExport } from "../src/reference/report-export.js";
 import { promptRender as builtinPromptRender } from "../src/generators/prompt-render-file.js";
@@ -80,6 +87,7 @@ import {
 import type { RequirementTestArgs, RequirementTestsOpts } from "../src/index.js";
 import { MetaDataLoader, InMemoryStringSource, isMetaSource, isReadOnlySource, type MetaObject } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -117,8 +125,8 @@ const FIXTURES = [
 const ROUTE_SHAPE_CORPORA = ["projection", "write-through", "m2m", "tph", "jsonb"] as const;
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-ref-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-ref-"); });
+afterEach(() => { removeTree(tmp); });
 
 async function gen(
   dir: string,
@@ -178,6 +186,14 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   "routes-hono": { builtin: builtinRoutesHono, ref: () => refRoutesHono(PKG) },
   barrel: { builtin: builtinBarrel, ref: refBarrel },
   names: { builtin: builtinNames, ref: refNames },
+  // Emits nothing over the entity-shaped fixtures (none declares a lifecycle or an operation);
+  // test/rules-names.test.ts runs both over a rules model.
+  "rules-names": { builtin: builtinRulesNames, ref: refRulesNames },
+  "contract-types": { builtin: builtinContractTypes, ref: refContractTypes },
+  // Bound to the package as the routes pair is: the built-ins import it, the references default to
+  // the copy `meta eject` places in `codegen/runtime/`.
+  service: { builtin: builtinService, ref: () => refService(PKG) },
+  "service-routes": { builtin: builtinServiceRoutes, ref: () => refServiceRoutes(PKG) },
   // Emits nothing over the entity-shaped fixtures (none declares a served report); the
   // describe after the route-composition one runs the pair, with the routes, over the report corpus.
   "report-export": { builtin: builtinReportExport, ref: refReportExport },
@@ -257,8 +273,8 @@ describe("ADR-0034 — reference templates are byte-identical to built-ins", () 
       const result = await loader.load([new FileSource(join(FIXTURE_DIR, fixture))]);
       expect(result.errors).toEqual([]);
 
-      const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
-      const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+      const aDir = makeScratchDir("codegen-builtin-");
+      const bDir = makeScratchDir("codegen-reference-");
       try {
         // routes-hono emits `<Entity>.routes.hono.ts`, so it does not collide with
         // routesFile()'s `<Entity>.routes.ts` and both ride the same run.
@@ -273,8 +289,8 @@ describe("ADR-0034 — reference templates are byte-identical to built-ins", () 
           expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
         }
       } finally {
-        rmSync(aDir, { recursive: true, force: true });
-        rmSync(bDir, { recursive: true, force: true });
+        removeTree(aDir);
+        removeTree(bDir);
       }
     });
   }
@@ -290,8 +306,8 @@ describe("ADR-0034 — the route composition, over every shape it dispatches on"
   for (const corpus of ROUTE_SHAPE_CORPORA) {
     test(`api-contract ${corpus} corpus`, async () => {
       const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", corpus, "meta.json")]);
-      const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
-      const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+      const aDir = makeScratchDir("codegen-builtin-");
+      const bDir = makeScratchDir("codegen-reference-");
       try {
         const names = ["entity", "routes", "routes-hono"] as const;
         const a = await gen(aDir, names.map((n) => PAIRS[n].builtin()), root);
@@ -301,8 +317,8 @@ describe("ADR-0034 — the route composition, over every shape it dispatches on"
         expect(Object.keys(b).sort()).toEqual(aKeys);
         for (const k of aKeys) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
       } finally {
-        rmSync(aDir, { recursive: true, force: true });
-        rmSync(bDir, { recursive: true, force: true });
+        removeTree(aDir);
+        removeTree(bDir);
       }
     });
   }
@@ -312,8 +328,8 @@ describe("ADR-0034 — report-export and the routes it wires, over the report co
   for (const options of [undefined, { maxRows: 60, xmlNulls: "nil", csvBom: true }] as const) {
     test(`options ${JSON.stringify(options)}`, async () => {
       const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", "report", "meta.json")]);
-      const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
-      const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+      const aDir = makeScratchDir("codegen-builtin-");
+      const bDir = makeScratchDir("codegen-reference-");
       try {
         const a = await gen(aDir, [builtinEntity(), builtinRoutes(), builtinRoutesHono(), builtinReportExport(options)], root);
         const b = await gen(bDir, [refEntity(PKG), refRoutes(PKG), refRoutesHono(PKG), refReportExport(options)], root);
@@ -325,22 +341,22 @@ describe("ADR-0034 — report-export and the routes it wires, over the report co
         expect(Object.keys(b).sort()).toEqual(aKeys);
         for (const k of aKeys) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
       } finally {
-        rmSync(aDir, { recursive: true, force: true });
-        rmSync(bDir, { recursive: true, force: true });
+        removeTree(aDir);
+        removeTree(bDir);
       }
     });
   }
 
   test("with no report-export wired, a report's routes carry no export branch", async () => {
     const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", "report", "meta.json")]);
-    const dir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
+    const dir = makeScratchDir("codegen-builtin-");
     try {
       const out = await gen(dir, [builtinEntity(), builtinRoutes(), builtinRoutesHono()], root);
       expect(out["ExportCells.routes.ts"]).not.toContain("ExportCellsExport");
       expect(out["ExportCells.routes.hono.ts"]).not.toContain("ExportCellsExport");
       expect(Object.keys(out).some((k) => k.includes(".export.") || k.startsWith("report-export"))).toBe(false);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });
@@ -357,7 +373,7 @@ describe("ADR-0034 Amendment 3 — an ejected generator's output imports the OWN
   for (const corpus of ROUTE_SHAPE_CORPORA) {
     test(`api-contract ${corpus} corpus`, async () => {
       const root = await loadFiles([join(REPO_FIXTURES, "api-contract-conformance", corpus, "meta.json")]);
-      const projectRoot = mkdtempSync(join(tmpdir(), "codegen-owned-runtime-"));
+      const projectRoot = makeScratchDir("codegen-owned-runtime-");
       const aDir = join(projectRoot, "builtin", "gen");
       const bDir = join(projectRoot, "src", "gen");
       try {
@@ -395,7 +411,7 @@ describe("ADR-0034 Amendment 3 — an ejected generator's output imports the OWN
         // Vacuity guard: the corpus must actually exercise the moved import.
         expect(importing).toBeGreaterThan(0);
       } finally {
-        rmSync(projectRoot, { recursive: true, force: true });
+        removeTree(projectRoot);
       }
     });
   }
@@ -410,9 +426,9 @@ describe("ADR-0034 — the prompt-tier reference templates over corpora that dec
       const result = await loader.load(corpus.files.map((f) => new FileSource(f)));
       expect(result.errors).toEqual([]);
 
-      const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
-      const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
-      const projectRoot = mkdtempSync(join(tmpdir(), "codegen-project-"));
+      const aDir = makeScratchDir("codegen-builtin-");
+      const bDir = makeScratchDir("codegen-reference-");
+      const projectRoot = makeScratchDir("codegen-project-");
       if (corpus.templatesDir !== undefined) {
         cpSync(corpus.templatesDir, join(projectRoot, "templates"), { recursive: true });
       }
@@ -434,9 +450,9 @@ describe("ADR-0034 — the prompt-tier reference templates over corpora that dec
           expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
         }
       } finally {
-        rmSync(aDir, { recursive: true, force: true });
-        rmSync(bDir, { recursive: true, force: true });
-        rmSync(projectRoot, { recursive: true, force: true });
+        removeTree(aDir);
+        removeTree(bDir);
+        removeTree(projectRoot);
       }
     });
   }
@@ -595,7 +611,7 @@ describe("ADR-0034 — the requirement-tests reference over a ledger that declar
       expect(loaded.errors).toEqual([]);
 
       const emit = async (generator: Generator) => {
-        const dir = mkdtempSync(join(tmpdir(), "codegen-req-"));
+        const dir = makeScratchDir("codegen-req-");
         try {
           const result = await runGen({
             config: defineConfig({ outputLayout: "flat", outDir: join(dir, "out"), extStyle: "none", dbImport: "~/server/db", dialect: "sqlite", generators: [generator] }),
@@ -610,7 +626,7 @@ describe("ADR-0034 — the requirement-tests reference over a ledger that declar
           }
           return { files, warnings: result.warnings };
         } finally {
-          rmSync(dir, { recursive: true, force: true });
+          removeTree(dir);
         }
       };
 
@@ -894,7 +910,7 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
     const root = await loadModelFile(CANONICAL_MODEL);
     // The canonical corpus declares literal columns in its .metaobjects/config.json (ADR-0058).
     root.physicalNaming = { columns: "literal", tables: "snake_case" };
-    const dir = mkdtempSync(join(tmpdir(), "cube-ref-run-"));
+    const dir = makeScratchDir("cube-ref-run-");
     try {
       await runGen({
         config: defineConfig({ outputLayout: "flat", outDir: join(dir, "out"), dialect: config.dialect, generators: [make()] }),
@@ -904,7 +920,7 @@ describe("ADR-0034 — the cube-model reference is byte-identical to the built-i
       });
       return [...readCubeTree(join(dir, "out")).entries()];
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   }
 
@@ -1072,8 +1088,8 @@ describe("ADR-0034 — the callable and trace-helper reference templates over mo
     emitted: RegExp,
     expected: number,
   ) {
-    const aDir = mkdtempSync(join(tmpdir(), "codegen-builtin-"));
-    const bDir = mkdtempSync(join(tmpdir(), "codegen-reference-"));
+    const aDir = makeScratchDir("codegen-builtin-");
+    const bDir = makeScratchDir("codegen-reference-");
     try {
       const a = await gen(aDir, names.map((n) => PAIRS[n].builtin()), root);
       const b = await gen(bDir, names.map((n) => PAIRS[n].ref()), root);
@@ -1083,8 +1099,8 @@ describe("ADR-0034 — the callable and trace-helper reference templates over mo
       expect(Object.keys(b).sort()).toEqual(aKeys);
       for (const k of aKeys) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
     } finally {
-      rmSync(aDir, { recursive: true, force: true });
-      rmSync(bDir, { recursive: true, force: true });
+      removeTree(aDir);
+      removeTree(bDir);
     }
   }
 
@@ -1145,7 +1161,7 @@ describe("ADR-0034 Amendment 7 — the shared-model reference publishes the same
     opts: Opts,
     run: { model: string; sourceFiles?: readonly string[]; packageVersion?: string },
   ): Promise<Outcome> {
-    const project = mkdtempSync(join(tmpdir(), "codegen-shared-"));
+    const project = makeScratchDir("codegen-shared-");
     try {
       if (run.packageVersion !== undefined) {
         writeFileSync(join(project, "package.json"), JSON.stringify({ name: "p", version: run.packageVersion }));
@@ -1163,7 +1179,7 @@ describe("ADR-0034 Amendment 7 — the shared-model reference publishes the same
         return readdirSync(outDir).sort().map((f): [string, string] => [f, readFileSync(join(outDir, f), "utf-8")]);
       });
     } finally {
-      rmSync(project, { recursive: true, force: true });
+      removeTree(project);
     }
   }
 
@@ -1601,8 +1617,8 @@ describe("ADR-0034 — the prisma-schema reference is byte-identical to the buil
   for (const c of CASES) {
     test(c.label, async () => {
       const root = await loadFiles([SHOP]);
-      const aDir = mkdtempSync(join(tmpdir(), "prisma-builtin-"));
-      const bDir = mkdtempSync(join(tmpdir(), "prisma-reference-"));
+      const aDir = makeScratchDir("prisma-builtin-");
+      const bDir = makeScratchDir("prisma-reference-");
       try {
         const a = await gen(aDir, [builtinPrismaSchema(c.opts)], root);
         const b = await gen(bDir, [refPrismaSchema(c.opts)], root);
@@ -1611,15 +1627,15 @@ describe("ADR-0034 — the prisma-schema reference is byte-identical to the buil
         expect(written(b)).toEqual(c.files);
         for (const k of c.files) expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
       } finally {
-        rmSync(aDir, { recursive: true, force: true });
-        rmSync(bDir, { recursive: true, force: true });
+        removeTree(aDir);
+        removeTree(bDir);
       }
     });
   }
 
   test("both refuse a CHECK on sqlite with the same message", async () => {
     const root = await loadFiles([SHOP]);
-    const dir = mkdtempSync(join(tmpdir(), "prisma-refuse-"));
+    const dir = makeScratchDir("prisma-refuse-");
     try {
       const message = async (g: Generator): Promise<string> => {
         try {
@@ -1634,7 +1650,7 @@ describe("ADR-0034 — the prisma-schema reference is byte-identical to the buil
       expect(a).toContain("ERR_PRISMA_UNSUPPORTED_CHECK");
       expect(b).toBe(a);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 });

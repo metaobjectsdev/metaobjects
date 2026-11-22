@@ -6,7 +6,6 @@ import java.util.Map;
  * GENERATED — per-object physical database names for OrderSummary.
  */
 public abstract class OrderSummaryNames {
-
     public static final String TYPE = "object";
     public static final String SUB_TYPE = "projection";
     public static final String NAME = "OrderSummary";

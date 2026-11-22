@@ -3,6 +3,7 @@ package com.metaobjects.generator.direct.object.javacode;
 // Eject note (ADR-0034 Amendment 6): `mvn metaobjects:eject -Dnames=extractor` copies this
 // file together with JavaCodeWriter and BaseObjectCodeWriter, into one package. JavaCodeWriter,
 // named bare below, is that copy: the names an owned extractor writes come from owned code.
+import com.metaobjects.generator.writer.JavaWriter;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.direct.object.BaseObjectCodeGenerator;
@@ -138,85 +139,74 @@ public class ExtractorCodeGenerator extends GeneratorBase {
         String extractorName = className + EXTRACTOR_SUFFIX;
         File src = new File(pkgDir, extractorName + ".java");
 
-        StringBuilder sb = new StringBuilder();
-        writeHeader(sb, javaPackage, className, extractorName);
-        writeLookupHelper(sb, resolutionKey);
-        writeExtractMethod(sb, className);
-        writeExtractLenientMethod(sb, className);
-        writeFooter(sb);
+        JavaWriter w = new JavaWriter();
+        writeHeader(w, javaPackage, className);
+        try (var cls = w.block("public final class " + extractorName + " {")) {
+            w.line("private " + extractorName + "() { /* no instances */ }");
+            w.blank();
+            writeLookupHelper(w, resolutionKey);
+            w.blank();
+            writeExtractMethod(w, className);
+            w.blank();
+            writeExtractLenientMethod(w, className);
+        }
 
         // Guarded like every other generator on this port: writeHeader emits the GENERATED
         // marker, so our own output is still overwritten freely while a hand-written extractor
-        // at this path is refused. Byte-identical to the previous raw Files.write (UTF-8).
-        GeneratedFileWriter.write(src.toPath(), sb.toString());
+        // at this path is refused.
+        GeneratedFileWriter.write(src.toPath(), w.toString());
     }
 
-    /** Emit the package declaration, JavaDoc, and the {@code final class} header + private ctor. */
-    protected void writeHeader(StringBuilder sb, String javaPackage, String className, String extractorName) {
-        if (!isBlank(javaPackage)) {
-            sb.append("package ").append(javaPackage).append(";\n\n");
+    /** Write the package declaration and the class JavaDoc. */
+    protected void writeHeader(JavaWriter w, String javaPackage, String className) {
+        if (!isBlank(javaPackage)) w.packageName(javaPackage);
+        w.line("/**");
+        w.line(" * GENERATED — extractor for {@code " + className + "}.");
+        w.line(" *");
+        w.line(" * <p>Turns dirty LLM text into a fully-typed {@code " + className + "} graph (nested");
+        w.line(" * objects + arrays-of-objects populated) in one call, by delegating to the Phase-B");
+        w.line(" * runtime extract ({@code " + META_OBJECT_EXTRACT_FQN + "}).</p>");
+        w.line(" */");
+    }
+
+    /** Write the private {@code lookup(loader)} helper resolving the payload MetaObject by FQN. */
+    protected void writeLookupHelper(JavaWriter w, String resolutionKey) {
+        try (var m = w.block("private static com.metaobjects.object.MetaObject lookup(" + LOADER_FQN + " loader) {")) {
+            w.line("return loader.getMetaObjectByName(\"" + escape(resolutionKey) + "\");");
         }
-        sb.append("/**\n");
-        sb.append(" * GENERATED — extractor for {@code ").append(className).append("}.\n");
-        sb.append(" *\n");
-        sb.append(" * <p>Turns dirty LLM text into a fully-typed {@code ").append(className)
-          .append("} graph (nested\n");
-        sb.append(" * objects + arrays-of-objects populated) in one call, by delegating to the Phase-B\n");
-        sb.append(" * runtime extract ({@code ").append(META_OBJECT_EXTRACT_FQN).append("}).</p>\n");
-        sb.append(" */\n");
-        sb.append("public final class ").append(extractorName).append(" {\n\n");
-        sb.append("    private ").append(extractorName).append("() { /* no instances */ }\n\n");
-    }
-
-    /** Emit the private {@code lookup(loader)} helper resolving the payload MetaObject by FQN. */
-    protected void writeLookupHelper(StringBuilder sb, String resolutionKey) {
-        sb.append("    private static com.metaobjects.object.MetaObject lookup(")
-          .append(LOADER_FQN).append(" loader) {\n");
-        sb.append("        return loader.getMetaObjectByName(\"").append(escape(resolutionKey)).append("\");\n");
-        sb.append("    }\n\n");
     }
 
     /**
-     * Emit {@code extract(loader, text)} → typed object via the strict {@code orThrow()} gate.
+     * Write {@code extract(loader, text)} → typed object via the strict {@code orThrow()} gate.
      * Override to change the strictness gate or the default format.
      */
-    protected void writeExtractMethod(StringBuilder sb, String className) {
-        sb.append("    /**\n");
-        sb.append("     * Extract a fully-typed {@code ").append(className)
-          .append("} from dirty {@code text}.\n");
-        sb.append("     *\n");
-        sb.append("     * @throws com.metaobjects.render.extract.ExtractException iff a required field was lost or malformed\n");
-        sb.append("     */\n");
-        sb.append("    public static ").append(className).append(" extract(")
-          .append(LOADER_FQN).append(" loader, String text) {\n");
-        sb.append("        return (").append(className).append(") ")
-          .append(META_OBJECT_EXTRACT_FQN).append(".extract(lookup(loader), text).orThrow();\n");
-        sb.append("    }\n\n");
+    protected void writeExtractMethod(JavaWriter w, String className) {
+        w.line("/**");
+        w.line(" * Extract a fully-typed {@code " + className + "} from dirty {@code text}.");
+        w.line(" *");
+        w.line(" * @throws com.metaobjects.render.extract.ExtractException iff a required field was lost or malformed");
+        w.line(" */");
+        try (var m = w.block("public static " + className + " extract(" + LOADER_FQN + " loader, String text) {")) {
+            w.line("return (" + className + ") " + META_OBJECT_EXTRACT_FQN + ".extract(lookup(loader), text).orThrow();");
+        }
     }
 
     /**
-     * Emit {@code extractLenient(loader, text)} → the never-throws {@code ExtractionResult<<Type>>}
+     * Write {@code extractLenient(loader, text)} → the never-throws {@code ExtractionResult<<Type>>}
      * (typed data + per-field report). Override to change the default format.
      */
-    protected void writeExtractLenientMethod(StringBuilder sb, String className) {
-        sb.append("    /**\n");
-        sb.append("     * Extract a {@code ").append(className)
-          .append("} from dirty {@code text}, never throwing.\n");
-        sb.append("     *\n");
-        sb.append("     * @return the typed result; inspect {@code report()} for lost/malformed/defaulted fields\n");
-        sb.append("     */\n");
-        sb.append("    @SuppressWarnings(\"unchecked\")\n");
-        sb.append("    public static ").append(EXTRACTION_RESULT_FQN).append("<").append(className)
-          .append("> extractLenient(").append(LOADER_FQN).append(" loader, String text) {\n");
-        sb.append("        return (").append(EXTRACTION_RESULT_FQN).append("<").append(className).append(">) (")
-          .append(EXTRACTION_RESULT_FQN).append("<?>) ")
-          .append(META_OBJECT_EXTRACT_FQN).append(".extract(lookup(loader), text);\n");
-        sb.append("    }\n");
-    }
-
-    /** Emit the closing brace. */
-    protected void writeFooter(StringBuilder sb) {
-        sb.append("}\n");
+    protected void writeExtractLenientMethod(JavaWriter w, String className) {
+        String result = EXTRACTION_RESULT_FQN + "<" + className + ">";
+        w.line("/**");
+        w.line(" * Extract a {@code " + className + "} from dirty {@code text}, never throwing.");
+        w.line(" *");
+        w.line(" * @return the typed result; inspect {@code report()} for lost/malformed/defaulted fields");
+        w.line(" */");
+        w.line("@SuppressWarnings(\"unchecked\")");
+        try (var m = w.block("public static " + result + " extractLenient(" + LOADER_FQN + " loader, String text) {")) {
+            w.line("return (" + result + ") (" + EXTRACTION_RESULT_FQN + "<?>) "
+                + META_OBJECT_EXTRACT_FQN + ".extract(lookup(loader), text);");
+        }
     }
 
     private static boolean isBlank(String s) {

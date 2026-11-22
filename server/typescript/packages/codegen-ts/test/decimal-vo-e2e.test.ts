@@ -3,7 +3,7 @@
 // @precision / @scale, stored and answered as the canonical string. Generated code executed.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Database } from "bun:sqlite";
@@ -14,6 +14,7 @@ import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobje
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/hono";
 import { renderZodValidators, renderInsertSchemaOnly } from "../src/templates/zod-validators.js";
 import { renderFilterAllowlist } from "../src/templates/filter-allowlist.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const MODEL = {
   "metadata.root": { package: "ledger", children: [
@@ -39,7 +40,7 @@ const invoices = sqliteTable("invoices", {
 });
 
 const dir = mkdtempSync(join(import.meta.dir, "tmp-decimal-vo-"));
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
+afterAll(() => removeTree(dir));
 
 async function execute(name: string, source: string): Promise<Record<string, unknown>> {
   const file = join(dir, `${name}.ts`);

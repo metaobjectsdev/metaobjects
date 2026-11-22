@@ -1,0 +1,9 @@
+{
+  "count": 1,
+  "fields": "{path,subType,level,status,disposition,claims,statement}",
+  "rows": [
+    {
+      "line": "ExportsAreResumable,functional,4,planned,deferred,\"\",\"true\""
+    }
+  ]
+}

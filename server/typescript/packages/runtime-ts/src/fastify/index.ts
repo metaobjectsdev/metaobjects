@@ -20,14 +20,14 @@ import type { FastifyInstance } from "fastify";
 import { withConstraintMapping } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
 import { validationErrorBody } from "../route-errors.js";
-import qs from "qs";
+import { parseListQuery, parseListQueryString, rawQueryOf, type FilterNode, type ListQuery } from "../drizzle-fastify/list-query.js";
 import type { ObjectManager } from "../object-manager.js";
 import type { Row } from "../persistence-driver.js";
 import type { RouteShorthandOptions } from "fastify";
-import type { SortAllowlist } from "../drizzle-fastify/filter-allowlist.js";
-import { sortOrderSpec } from "../drizzle-fastify/filter-allowlist.js";
+import type { FilterAllowlist, SortAllowlist } from "../drizzle-fastify/filter-allowlist.js";
 import { isTruthyFlag, contractErrorCode } from "../drizzle-fastify/util.js";
-import { parsePageBound, FilterParseError, SORT_EXPECTED } from "../drizzle-fastify/list-params.js";
+import { FilterParseError, pageLimit, type PageSize } from "../drizzle-fastify/list-params.js";
+import type { Filter } from "../query-builder.js";
 import { withContractErrorHandler } from "../drizzle-fastify/route-error-handler.js";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +80,20 @@ export interface CrudRoutesOptions {
    * is ignored (legacy back-compat: limit/offset only).
    */
   sortAllowlist?: SortAllowlist;
+  /**
+   * Per-entity filter allowlist (`<Entity>FilterAllowlist` from codegen). When set, the list
+   * reads `filter[...]`, `filter[or]` / `filter[and]` and `?search`, and refuses what the
+   * REST standard refuses (a bare field parameter, a leading `%`, a malformed value, a
+   * filter nested too deep) with the same bodies as the Drizzle mounts: both parse through
+   * `parseListQuery`. Absent, `?filter` and `?search` are ignored, as before.
+   */
+  filterAllowlist?: FilterAllowlist;
+  /**
+   * The list page size (`api.pagination` in `.metaobjects/config.json`): a list with no
+   * `limit` returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
+   */
+  pagination?: PageSize;
 }
 
 const ALL_VERBS: readonly CrudVerb[] = ["list", "get", "create", "update", "delete"];
@@ -122,70 +136,83 @@ function routeOpts(opts: SingleVerbOptions): RouteShorthandOptions {
 
 export function mountListRoute(opts: SingleVerbOptions): void {
   opts.fastify.get(opts.path, routeOpts(opts), async (req, reply) => {
-    // Re-parse the raw URL with qs so the top-level withCount flag and the
-    // sort=field:dir param are available regardless of Fastify's query parser.
-    const rawSearch = req.raw.url?.includes("?")
-      ? req.raw.url.slice(req.raw.url.indexOf("?") + 1)
-      : "";
-    const parsed = qs.parse(rawSearch) as Record<string, unknown>;
+    // Re-parse the raw URL so bracketed filter notation, the top-level withCount flag and
+    // the sort=field:dir param are available regardless of Fastify's query parser.
+    const parsed = parseListQueryString(rawQueryOf(req.raw.url));
     const withCount = isTruthyFlag(parsed["withCount"]);
 
-    const readOpts: { limit?: number; offset?: number; orderBy?: [string, "asc" | "desc"] } = {};
+    const om = await opts.om();
+    let query: ListQuery;
+    let limit: number;
     try {
-      const limit = parsePageBound(parsed, "limit");
-      const offset = parsePageBound(parsed, "offset");
-      if (limit !== undefined) readOpts.limit = limit;
-      if (offset !== undefined) readOpts.offset = offset;
+      query = opts.filterAllowlist !== undefined
+        ? parseListQuery({
+            query: opts.sortAllowlist !== undefined ? parsed : withoutSort(parsed),
+            allowlist: opts.filterAllowlist,
+            sortAllowlist: opts.sortAllowlist ?? {},
+            isField: (name) => om.fieldNames(opts.entity).includes(name),
+          })
+        : parseListQuery({ query: pageAndSortOnly(parsed, opts.sortAllowlist !== undefined), allowlist: {}, sortAllowlist: opts.sortAllowlist ?? {} });
+      limit = pageLimit(query.limit, opts.pagination);
     } catch (err) {
-      if (err instanceof FilterParseError) return reply.code(400).send({ error: err.code, ...(err.details ?? {}) });
+      if (err instanceof FilterParseError) return reply.code(400).send({ error: contractErrorCode(err.code), ...(err.details ?? {}) });
       throw err;
     }
 
-    // Sort allowlist gate (cross-port REST contract). Only enforced when a
-    // sortAllowlist is configured; absent → ?sort is ignored (back-compat).
-    if (opts.sortAllowlist && typeof parsed["sort"] === "string") {
-      const sortParse = parseSort(parsed["sort"], opts.sortAllowlist);
-      if (sortParse.error) {
-        // `field` is REQUIRED on the invalid_sort envelope cross-port (F20 ruling) —
-        // it names the offending sort field instead of making the caller guess.
-        return reply.code(400).send({
-          error: contractErrorCode(sortParse.error),
-          field: sortParse.field,
-          expected: SORT_EXPECTED,
-          allowed: Object.keys(opts.sortAllowlist),
-        });
-      }
-      if (sortParse.orderBy) readOpts.orderBy = sortParse.orderBy;
+    const readOpts: { limit?: number; offset?: number; orderBy?: [string, "asc" | "desc"] | [string, "asc" | "desc"][] } = {};
+    readOpts.limit = limit;
+    if (query.offset !== undefined) readOpts.offset = query.offset;
+    // No `?sort`: the key, ascending, so a page holds the same rows on every engine, as the
+    // Drizzle mounts order by `id`.
+    if (query.sort !== undefined) readOpts.orderBy = [query.sort.field, query.sort.order];
+    else {
+      const key = om.keyFields(opts.entity);
+      if (key.length === 1) readOpts.orderBy = [key[0] as string, "asc"];
+      else if (key.length > 1) readOpts.orderBy = key.map((f): [string, "asc" | "desc"] => [f, "asc"]);
     }
 
-    const om = await opts.om();
-    const rows = await om.findMany(opts.entity, undefined, readOpts);
+    const filter = listFilter(query);
+    const rows = await om.findMany(opts.entity, filter, readOpts);
     if (!withCount) return rows;
-    // total is the UNPAGINATED count (no limit/offset).
-    const total = await om.count(opts.entity);
+    // total is the UNPAGINATED count of the same filter (no limit/offset).
+    const total = await om.count(opts.entity, filter);
     return { rows, total };
   });
 }
 
 /**
- * Validate a `sort=field:dir` spec against the allowlist. Mirrors the
- * drizzle-fastify filter-parser's sort semantics + internal error codes
- * (`sort.unknown_field` / `sort.invalid_order`) so both mounts emit the same
- * `invalid_sort` envelope at the HTTP boundary.
+ * With no filter allowlist the mount reads only the page and (when a sort allowlist is set)
+ * the sort, as it always has: `?filter` and `?search` are ignored and no bare parameter is
+ * refused, because there is no list of filterable fields to check them against.
  */
-function parseSort(
-  spec: string,
-  sortAllowlist: SortAllowlist,
-): { orderBy?: [string, "asc" | "desc"]; error?: string; field?: string } {
-  const [field, orderRaw] = spec.split(":");
-  if (!field || !sortAllowlist[field]) return { error: "sort.unknown_field", field: field ?? "" };
-  // Precedence (caller order > declared @sortableDefaultOrder > asc) comes from the
-  // shared sortOrderSpec, so this mount cannot answer one declaration differently from
-  // the drizzle mount again. Validation stays here because this mount reports a bad
-  // order as an error CODE rather than a thrown FilterParseError.
-  const order = sortOrderSpec(sortAllowlist, field, orderRaw).toLowerCase();
-  if (order !== "asc" && order !== "desc") return { error: "sort.invalid_order", field };
-  return { orderBy: [field, order] };
+function pageAndSortOnly(parsed: Record<string, unknown>, withSort: boolean): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of ["limit", "offset", ...(withSort ? ["sort"] : [])]) if (k in parsed) out[k] = parsed[k];
+  return out;
+}
+
+function withoutSort(parsed: Record<string, unknown>): Record<string, unknown> {
+  const { sort: _sort, ...rest } = parsed;
+  return rest;
+}
+
+/** The parsed filter tree and search as one ObjectManager filter (the AND of the two). */
+function listFilter(query: ListQuery): Filter | undefined {
+  const parts: Filter[] = [];
+  if (query.filter !== undefined) parts.push(toOmFilter(query.filter));
+  if (query.search !== undefined) {
+    const pattern = `%${query.search.term}%`;
+    const branches = query.search.fields.map((f): Filter => ({ [f]: { $ilike: pattern } }));
+    parts.push(branches.length === 1 ? (branches[0] as Filter) : { $or: branches });
+  }
+  if (parts.length === 0) return undefined;
+  return parts.length === 1 ? parts[0] : { $and: parts };
+}
+
+function toOmFilter(node: FilterNode): Filter {
+  if ("and" in node) return { $and: node.and.map(toOmFilter) };
+  if ("or" in node) return { $or: node.or.map(toOmFilter) };
+  return { [node.field]: { [`$${node.op}`]: node.value } } as Filter;
 }
 
 export function mountGetRoute(opts: SingleVerbOptions): void {

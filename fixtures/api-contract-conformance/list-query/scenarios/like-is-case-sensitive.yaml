@@ -1,0 +1,19 @@
+name: like-is-case-sensitive
+description: >
+  `like` is case-sensitive on every engine (ADR-0049), unlike search: `Pump%` matches "Pump Housing"
+  but not "pump seal", and `pump%` the other way round.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?filter[name][like]=Pump%25&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [7]
+  - id: r2
+    method: GET
+    path: "/api/parts?filter[name][like]=pump%25&sort=id:asc"
+    expect:
+      status: 200
+      body:
+        ids: [8]

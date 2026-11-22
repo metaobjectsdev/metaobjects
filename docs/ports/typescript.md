@@ -727,6 +727,44 @@ file and take `db` as an explicit first argument — useful directly in request
 handlers, tests, or any runtime where a module singleton doesn't fit (see the
 recipe above).
 
+### `rules.names.ts` — the business-rules names, as constants
+
+`rulesNamesFile()` (stable name `rules-names`) is the first rules layer of ADR-0067. It writes one
+`rules.names.ts` per metadata package that declares a lifecycle or an operation, under the
+package's directory in either layout: each lifecycle's states, initial and terminal states and
+transitions (`<Entity><Field>Lifecycle`, with `<Entity><Field>State` and `…Transition` unions), the
+commands derived from unclaimed transitions (`<Entity>Commands`), the declared `Operations`, every
+`Permission` the package asks about and its `BusinessError` codes. It is not scaffolded; add it to
+`generators` or `meta eject rules-names`. The derivations are the ones `meta verify`'s rules gate
+checks. See [Business rules](../features/business-rules.md#the-names-layer-typescript).
+
+### `*.contract.ts` — the contract types, with no persistence mapping
+
+`contractTypes()` (stable name `contract-types`) is the second rules layer of ADR-0067. It writes
+`<Entity>.contract.ts` (read, create and update shapes, as Zod schemas and their types),
+`<Projection>.contract.ts` (the read shape), the value modules they reach (the entity generator's,
+byte for byte), `<pkg path>/operations.contract.ts` per package that declares operations (each
+operation's input, output and errors) and `errors.contract.ts` (the wire error bodies). Every module
+imports `zod` only. It is not scaffolded; add it to `generators` or `meta eject contract-types`,
+and give it its own `target` to put the layer in a package the transport and clients share. See
+[Business rules](../features/business-rules.md#the-contract-types-layer-typescript).
+
+### `service/` and `transport/` — the service layer and its Fastify transport
+
+`serviceFile()` (stable name `service`, layer `service`) is layer 4 of ADR-0067. It writes one
+module per metadata package, under the package's directory in either layout: a file per operation
+in `<pkg path>/service/` (each entity's derived list, get, create, update and delete, every write in
+one transaction by default, with the declared write rules) and `service/index.ts` with the `<Pkg>Service`
+interface and `create<Pkg>Service(deps)`. A model with ADR-0066 rules also gets a file per
+derived transition command and per declared command and query, each running the rules' checks
+around a hand-written body; the policy, bodies, hooks and event hook are passed in `deps`.
+`serviceRoutesFile()` (stable name `service-routes`) writes `<pkg path>/transport/fastify.ts`, the
+routes that call it, with a `getActor(request)` option for the app's actor. Both need `entity` and
+`contract-types` in the same target. Neither is scaffolded; add them to `generators` or `meta eject`
+them. On SQLite the service takes a sync or an async Drizzle driver. A store that holds no
+transaction across application code (Cloudflare D1) takes `serviceFile({ interactiveTransactions: false })`.
+See [Business rules](../features/business-rules.md#the-service-layer-typescript).
+
 ### Prove it works
 
 Boot the server:
@@ -769,6 +807,18 @@ rejection, with no hand-written validation. If you set `apiPrefix` in
 
 The `runtime-ts` package supplies the helpers the generated routes lean on
 (`mountCrudRoutes`, `parseFilterParams`, the `ObjectManager` for full-runtime CRUD).
+
+The list handling is done in two stages. `parseListQuery` (exported from
+`@metaobjectsdev/runtime-ts`) reads the query string into a filter tree, a search, a sort and a
+page, and raises every refusal the REST standard names. It does not depend on Drizzle. Each mount
+then turns that tree into a query for its own library. The Drizzle and Hono mounts and the
+`ObjectManager` Fastify mount (`@metaobjectsdev/runtime-ts/fastify`) all parse this way, so they
+give the same answers to the same request. Give the `ObjectManager` mount
+`filterAllowlist: <Entity>FilterAllowlist` to serve `filter[...]`, `filter[or]` / `filter[and]`
+and `?search`, and `pagination` for `api.pagination`'s page size. Without a filter allowlist it
+reads only the page and the sort, as before. A list with no sort is ordered by the primary key.
+Hand-written transports should parse with `parseListQueryString` too: `qs`'s default depth
+cannot reach the five-level nesting cap.
 
 ### Hono variant (Workers / Bun / edge)
 

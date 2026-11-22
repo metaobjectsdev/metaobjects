@@ -7,17 +7,18 @@
 // holds the drifted text; the clean text the helpers are generated from is the parent corpus's
 // `templates/`.
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSystemProvider } from "../src/render-engine/framework-provider.js";
 import { renderRenderHelper } from "../src/templates/render-helper.js";
 import { promptRender } from "../src/generators/prompt-render-file.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/template-output-render-conformance");
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 async function load() {

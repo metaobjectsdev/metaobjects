@@ -18,9 +18,9 @@
  *     mount folded it into a Zod `validation` error. Both now answer
  *     `400 { "error": "invalid_json" }`.
  *
- * The api-contract corpus pins neither response (5xx is implementation-defined there, and
- * no scenario sends a malformed body), so both are TS-helper extensions — documented in
- * docs/features/api-contract.md, "TS-only error responses".
+ * Both are in the REST contract (docs/features/api-contract.md, "Error responses for a bad
+ * request or a failed write"); `api-contract-conformance/list-query/invalid-json` sends a
+ * malformed body. A 5xx body is otherwise implementation-defined there.
  */
 
 import { RedactedDatabaseError, logAndRedact } from "./constraint-errors.js";

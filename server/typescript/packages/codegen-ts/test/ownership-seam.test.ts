@@ -16,8 +16,7 @@
 
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
@@ -27,10 +26,11 @@ import { barrel } from "../src/generators/barrel.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { renderRequirementTest } from "../src/templates/requirement-test.js";
 import type { RequirementTestArgs } from "../src/templates/requirement-test.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-ownership-seam-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-ownership-seam-"); });
+afterEach(() => { removeTree(tmp); });
 
 const MODEL = {
   "metadata.root": {
@@ -101,7 +101,7 @@ function dropSnapshotBodies(projectRoot: string): void {
   const genState = join(projectRoot, ".metaobjects", ".gen-state");
   for (const entry of readdirSync(genState)) {
     if (entry !== ".hashes") {
-      rmSync(join(genState, entry), { recursive: true, force: true });
+      removeTree(join(genState, entry));
     }
   }
   expect(readdirSync(genState)).toEqual([".hashes"]);

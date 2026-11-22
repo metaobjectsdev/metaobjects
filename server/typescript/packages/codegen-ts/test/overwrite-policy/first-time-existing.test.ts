@@ -16,20 +16,20 @@
 // The pristine and no-record cases are covered in detail by pristine-hash.test.ts.
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { decideAndWrite } from "../../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 let tmp: string;
 let state: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-ftx-"));
-  state = mkdtempSync(join(tmpdir(), "codegen-state-"));
+  tmp = makeScratchDir("codegen-ftx-");
+  state = makeScratchDir("codegen-state-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
-  rmSync(state, { recursive: true, force: true });
+  removeTree(tmp);
+  removeTree(state);
 });
 
 describe("first-time-on-existing-file", () => {

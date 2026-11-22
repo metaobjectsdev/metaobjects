@@ -70,6 +70,24 @@ def make():
 '''
 
 
+_TEMPLATE = '''\
+from pathlib import Path
+
+from metaobjects.codegen.generators.template_generator import template_generator
+from metaobjects.render.filesystem_provider import FilesystemProvider
+
+
+def make():
+    return template_generator(
+        name="note", template="note", provider=FilesystemProvider(Path("prompts")),
+        scope="perEntity", output_pattern="notes/{name}.txt",
+    )
+'''
+
+#: The case that also configures a `template` generator and a docs page.
+DOCS_CASE = "template-and-docs-rerun"
+
+
 def _book_json(base_extra: bool = False, with_book: bool = True) -> str:
     """meta.b.json: an abstract parent (Base) and, optionally, a child that extends it."""
     base_fields = [{"field.long": {"name": "id"}}]
@@ -95,6 +113,7 @@ def _entity_json(name: str, extra_attr: str | None = None) -> str:
 class Project:
     root: Path
     uncacheable: bool = False
+    docs: bool = False
 
     @property
     def config(self) -> Path:
@@ -108,6 +127,8 @@ class Project:
         gens = generators
         if self.uncacheable:
             gens = "[entity, owned:make, volatile:make]"
+        elif self.docs:
+            gens = "[entity, owned:make, tmpl:make, api-docs]"
         self.config.write_text(
             "metadata: metaobjects\ntemplates: prompts\n"
             f"targets:\n  app:\n    outDir: generated\n    generators: {gens}\n",
@@ -115,8 +136,8 @@ class Project:
         )
 
 
-def _project(tmp_path: Path, uncacheable: bool = False) -> Project:
-    p = Project(tmp_path, uncacheable)
+def _project(tmp_path: Path, uncacheable: bool = False, docs: bool = False) -> Project:
+    p = Project(tmp_path, uncacheable, docs)
     (tmp_path / "metaobjects").mkdir()
     (tmp_path / "metaobjects" / "meta.a.json").write_text(_entity_json("Author"))
     (tmp_path / "metaobjects" / "meta.b.json").write_text(_book_json())
@@ -127,6 +148,8 @@ def _project(tmp_path: Path, uncacheable: bool = False) -> Project:
     (tmp_path / "README.md").write_text("readme\n")
     (tmp_path / "owned.py").write_text(_OWNED)
     (tmp_path / "volatile.py").write_text(_UNCACHEABLE)
+    (tmp_path / "tmpl.py").write_text(_TEMPLATE)
+    (tmp_path / "prompts" / "note.mustache").write_text("{{name}}\n")
     (tmp_path / ".metaobjects").mkdir()
     (tmp_path / ".metaobjects" / "config.json").write_text('{"schema_version": 1, "sources": [{"path": "metaobjects"}]}\n')
     p.write_config()
@@ -292,6 +315,7 @@ HANDLERS: dict[str, tuple[Callable[[Project, Harness], None], tuple[str, ...]]] 
     "ci": (_NOOP, ()),
     "failed-run": (_failed_run, ()),
     "legacy-manifest": (_legacy_manifest, ()),
+    DOCS_CASE: (_NOOP, ()),
 }
 
 
@@ -309,7 +333,7 @@ PYTHON_REFUSES_HAND_EDIT = {"hand-edit-kept"}
 def test_case(case: dict[str, str], tmp_path: Path, monkeypatch, capsys) -> None:
     assert case["id"] in HANDLERS, f"unknown case id {case['id']!r}"
     setup, flags = HANDLERS[case["id"]]
-    project = _project(tmp_path, uncacheable=case["id"] == "uncacheable-generator")
+    project = _project(tmp_path, uncacheable=case["id"] == "uncacheable-generator", docs=case["id"] == DOCS_CASE)
     h = Harness(project, monkeypatch, capsys)
 
     rc, skipped = h.gen()
@@ -341,6 +365,27 @@ def test_case(case: dict[str, str], tmp_path: Path, monkeypatch, capsys) -> None
     if case["id"] == "legacy-manifest":
         assert not (project.state / ".hashes.json").exists(), "the write run removes the legacy file"
         assert list((project.state / ".hashes").glob("*.json")), "and leaves per-package files"
+    if case["id"] == DOCS_CASE:
+        _assert_forced_rerun_writes_nothing(project, h)
+
+
+def _snapshot(*dirs: Path) -> list[tuple[str, bytes, int]]:
+    return sorted(
+        (str(f), f.read_bytes(), f.stat().st_mtime_ns)
+        for d in dirs if d.exists() for f in d.rglob("*") if f.is_file()
+    )
+
+
+def _assert_forced_rerun_writes_nothing(project: Project, h: Harness) -> None:
+    """The template output and the docs page were written, and a forced render rewrites none."""
+    generated = project.root / "generated"
+    assert (generated / "notes" / "Book.txt").read_text() == "Book\n"
+    assert any("api" in str(f).lower() for f in generated.rglob("*.md")), "the docs page was written"
+    watched = (generated, project.state / ".hashes")
+    before = _snapshot(*watched)
+    rc, skipped = h.gen("--force")
+    assert rc == 0 and not skipped, h.out + h.err
+    assert _snapshot(*watched) == before, "a forced run over unchanged inputs rewrote a file"
 
 
 def test_unchanged_files_keep_their_timestamp_and_report_unchanged(

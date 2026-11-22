@@ -1,9 +1,10 @@
 import type { Kysely, ExpressionBuilder, SelectQueryBuilder, Expression, SqlBool } from "kysely";
 import type {
   PersistenceDriver, SelectSpec, CountSpec, InsertSpec, InsertManySpec,
-  UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row,
+  UpdateSpec, UpdateManySpec, DeleteSpec, DeleteManySpec, WhereClause, Row, CompareOp, Operand,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
+import { likePatternToGlob } from "../drizzle-fastify/list-query.js";
 import { arraysAsJsonText, insertedKey, mysqlConstraintKind } from "./mysql-support.js";
 
 // Kysely's fluent builder is heavily generic on the database schema, but this driver
@@ -62,7 +63,7 @@ function makeKyselyDriver(
 
     async selectOne(spec: SelectSpec): Promise<Row | null> {
       let q = on(spec.schema).selectFrom(spec.table).select(spec.columns);
-      q = applyWhere(q, spec.where);
+      q = applyWhere(q, spec.where, dialect);
       q = applyOrderLimit(q, spec.orderBy, 1, undefined);
       const rows = await q.execute();
       return (rows[0] as Row | undefined) ?? null;
@@ -70,14 +71,14 @@ function makeKyselyDriver(
 
     async selectMany(spec: SelectSpec): Promise<Row[]> {
       let q = on(spec.schema).selectFrom(spec.table).select(spec.columns);
-      q = applyWhere(q, spec.where);
+      q = applyWhere(q, spec.where, dialect);
       q = applyOrderLimit(q, spec.orderBy, spec.limit, spec.offset);
       return (await q.execute()) as Row[];
     },
 
     async count(spec: CountSpec): Promise<number> {
       let q = on(spec.schema).selectFrom(spec.table).select((eb: AnyExprBuilder) => eb.fn.countAll().as("c"));
-      q = applyWhere(q, spec.where);
+      q = applyWhere(q, spec.where, dialect);
       const rows = (await q.execute()) as Array<{ c: number | string | bigint }>;
       const v = rows[0]?.c;
       return typeof v === "number" ? v : Number(v ?? 0);
@@ -118,11 +119,12 @@ function makeKyselyDriver(
     async update(spec: UpdateSpec): Promise<Row | null> {
       try {
         let q = on(spec.schema).updateTable(spec.table).set(bindable(spec.values));
-        q = applyWhere(q, spec.where);
+        q = applyWhere(q, spec.where, dialect);
         if (dialect === "mysql") {
-          await q.execute();
+          const result = await q.executeTakeFirst() as { numUpdatedRows?: bigint | number } | undefined;
+          if (spec.key !== undefined && Number(result?.numUpdatedRows ?? 0) === 0) return null;
           let s = on(spec.schema).selectFrom(spec.table).select(spec.returning);
-          s = applyWhere(s, spec.where);
+          s = applyWhere(s, spec.key ?? spec.where, dialect);
           return ((await s.executeTakeFirst()) as Row | undefined) ?? null;
         }
         const rows = await q.returning(spec.returning).execute();
@@ -135,7 +137,7 @@ function makeKyselyDriver(
     async updateMany(spec: UpdateManySpec): Promise<number> {
       try {
         let q = on(spec.schema).updateTable(spec.table).set(bindable(spec.values));
-        q = applyWhere(q, spec.where);
+        q = applyWhere(q, spec.where, dialect);
         const result = await q.executeTakeFirst() as { numUpdatedRows?: bigint | number } | undefined;
         return Number(result?.numUpdatedRows ?? 0);
       } catch (err) {
@@ -146,7 +148,7 @@ function makeKyselyDriver(
     async delete(spec: DeleteSpec): Promise<number> {
       try {
         let q = on(spec.schema).deleteFrom(spec.table);
-        q = applyWhere(q, spec.where);
+        q = applyWhere(q, spec.where, dialect);
         const result = await q.executeTakeFirst() as { numDeletedRows?: bigint | number } | undefined;
         return Number(result?.numDeletedRows ?? 0);
       } catch (err) {
@@ -157,7 +159,7 @@ function makeKyselyDriver(
     async deleteMany(spec: DeleteManySpec): Promise<number> {
       try {
         let q = on(spec.schema).deleteFrom(spec.table);
-        q = applyWhere(q, spec.where);
+        q = applyWhere(q, spec.where, dialect);
         const result = await q.executeTakeFirst() as { numDeletedRows?: bigint | number } | undefined;
         return Number(result?.numDeletedRows ?? 0);
       } catch (err) {
@@ -178,12 +180,36 @@ interface HasWhere<Q> {
   where(cb: (eb: AnyExprBuilder) => Expression<SqlBool>): Q;
 }
 
-function applyWhere<Q extends HasWhere<Q>>(q: Q, where: WhereClause | undefined): Q {
+function applyWhere<Q extends HasWhere<Q>>(q: Q, where: WhereClause | undefined, dialect: KyselyDialect): Q {
   if (!where) return q;
-  return q.where((eb: AnyExprBuilder) => buildExpression(eb, where));
+  return q.where((eb: AnyExprBuilder) => buildExpression(eb, where, dialect));
 }
 
-function buildExpression(eb: AnyExprBuilder, w: WhereClause): Expression<SqlBool> {
+type KyselyDialect = "sqlite" | "postgres" | "mysql";
+
+/**
+ * `like` is case-SENSITIVE SQL LIKE on every engine (ADR-0049). Postgres LIKE already is.
+ * SQLite's is not, so it is the core `glob(pattern, value)` function over the translated
+ * pattern. MySQL's follows the column's collation (case-insensitive by default), so both
+ * sides are compared as binary strings. (Kysely, an optional peer, is only TYPE-imported
+ * here, so there is no `sql` tag for a `COLLATE` clause; binary matching differs from it only
+ * in `_` matching one byte, not one character, of a multi-byte character.)
+ */
+function caseSensitiveLike(eb: AnyExprBuilder, column: string, pattern: string, dialect: KyselyDialect): Expression<SqlBool> {
+  if (dialect === "sqlite") return eb(eb.fn("glob", [eb.val(likePatternToGlob(pattern)), eb.ref(column)]), "=", 1);
+  if (dialect === "mysql") return eb(eb.cast(eb.ref(column), "binary"), "like", eb.cast(eb.val(pattern), "binary"));
+  return eb(column, "like", pattern);
+}
+
+/** Case-insensitive LIKE: Postgres ILIKE; SQLite's native LIKE (it folds ASCII case); MySQL
+ *  folds both sides, because its LIKE follows the column's collation. */
+function caseInsensitiveLike(eb: AnyExprBuilder, column: string, pattern: string, dialect: KyselyDialect): Expression<SqlBool> {
+  if (dialect === "postgres") return eb(column, "ilike", pattern);
+  if (dialect === "mysql") return eb(eb.fn("lower", [eb.ref(column)]), "like", eb.fn("lower", [eb.val(pattern)]));
+  return eb(column, "like", pattern);
+}
+
+function buildExpression(eb: AnyExprBuilder, w: WhereClause, dialect: KyselyDialect): Expression<SqlBool> {
   switch (w.kind) {
     case "eq": return w.value === null ? eb(w.column, "is", null) : eb(w.column, "=", w.value);
     case "ne": return w.value === null ? eb(w.column, "is not", null) : eb(w.column, "<>", w.value);
@@ -191,16 +217,29 @@ function buildExpression(eb: AnyExprBuilder, w: WhereClause): Expression<SqlBool
     case "gte": return eb(w.column, ">=", w.value);
     case "lt": return eb(w.column, "<", w.value);
     case "lte": return eb(w.column, "<=", w.value);
-    case "like": return eb(w.column, "like", w.pattern);
+    case "like": return caseSensitiveLike(eb, w.column, w.pattern, dialect);
+    case "ilike": return caseInsensitiveLike(eb, w.column, w.pattern, dialect);
     case "in": return eb(w.column, "in", w.values);
     case "isNull": return w.not ? eb(w.column, "is not", null) : eb(w.column, "is", null);
-    case "and": return eb.and(w.clauses.map((c: WhereClause) => buildExpression(eb, c)));
-    case "or": return eb.or(w.clauses.map((c: WhereClause) => buildExpression(eb, c)));
+    case "and": return eb.and(w.clauses.map((c: WhereClause) => buildExpression(eb, c, dialect)));
+    case "or": return eb.or(w.clauses.map((c: WhereClause) => buildExpression(eb, c, dialect)));
+    case "not": return eb.not(buildExpression(eb, w.clause, dialect));
+    case "compare": return eb(kyselyOperand(eb, w.left), KYSELY_COMPARE[w.op], kyselyOperand(eb, w.right));
+    case "nullTest": return eb(kyselyOperand(eb, w.operand), w.not ? "is not" : "is", null);
     default: {
       const exhaustive: never = w;
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);
     }
   }
+}
+
+const KYSELY_COMPARE = { eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const satisfies Record<CompareOp, string>;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function kyselyOperand(eb: AnyExprBuilder, o: Operand): any {
+  if ("column" in o) return eb.ref(o.column);
+  if ("value" in o) return eb.val(o.value);
+  return eb.fn("coalesce", o.coalesce.map((x) => kyselyOperand(eb, x)));
 }
 
 function applyOrderLimit(

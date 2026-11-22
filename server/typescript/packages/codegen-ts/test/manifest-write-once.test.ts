@@ -3,8 +3,7 @@
 // of a large project's run time, for the same bytes one write produces.
 import { describe, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import * as fs from "node:fs";
-import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -14,12 +13,13 @@ import { entityFile } from "../src/generators/entity-file.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { barrel } from "../src/generators/barrel.js";
 import { isManifestPath, manifestEntries, manifestFiles, removeManifest, seedLegacyManifest } from "./support/manifest.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 const FIXTURE = resolve(import.meta.dir, "fixtures", "two-entities-fk.json");
 
 let project: string;
-beforeEach(() => { project = mkdtempSync(join(tmpdir(), "codegen-manifest-once-")); });
-afterEach(() => { rmSync(project, { recursive: true, force: true }); });
+beforeEach(() => { project = makeScratchDir("codegen-manifest-once-"); });
+afterEach(() => { removeTree(project); });
 
 /** Manifest-file writes during one run: path -> times written. */
 async function gen(): Promise<Record<string, number>> {

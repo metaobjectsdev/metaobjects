@@ -78,7 +78,8 @@ async function emitCount(
     ...(opts.libraries !== undefined ? { libraries: opts.libraries } : {}),
     warn: () => {},
   } as GenContext;
-  return (await traceHelperFile().generate(ctx)).length;
+  // The helpers only: the llm-call.ts support module rides along with any renderable one.
+  return (await traceHelperFile().generate(ctx)).filter((f) => f.path.endsWith(".trace.ts")).length;
 }
 
 const AI = [libraryManifests()["ai"]!];

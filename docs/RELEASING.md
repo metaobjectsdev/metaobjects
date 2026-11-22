@@ -23,7 +23,7 @@
 > permanent (`scripts/maven-coordinate.mjs` is the single derivation; every script imports it).
 > Concretely: npm `0.25.0` is Maven `7.25.0`, and npm `1.0.0` is Maven **`8.0.0`**. Do not type
 > a literal `7.` anywhere — at the 1.0 cut it asks Central for a version BELOW the last release.
-> Two carve-outs: the **14 npm packages still move atomically with each other** (they
+> Two carve-outs: the **13 npm packages still move atomically with each other** (they
 > cross-depend — that is intra-npm lockstep and it is unchanged), and a change to
 > `expected-registry.json` / `metamodelVersion` **forces all four**, because that is the
 > cross-port contract — whatever the release's level, so a vocabulary-adding PATCH publishes
@@ -143,10 +143,14 @@ node scripts/publish-set.mjs --check    # the set + its tier order, and the inva
 | 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `docs-site`, `runtime-web` |
 | 2 | `codegen-ts-react`, `codegen-ts-tanstack`, `react` |
 | 3 | `tanstack` |
-| 4 | `cli`, `ai-runtime` (leaves — nothing depends on them; publish last) |
+| 4 | `cli` (the leaf — nothing depends on it; publish last) |
 
-Publish in tier order so a dependent never lands before its dependency. **`forge` and
-`conformance` are `private: true` and must never be published** (bun refuses them).
+Publish in tier order so a dependent never lands before its dependency. **`conformance`
+and `ai-runtime` are `private: true` and must never be published** (bun refuses them).
+`ai-runtime` left the set in 1.3.0: the generated trace helper used to import it, and the
+`trace-helper` generator now writes that call loop into the project instead
+([ADR-0024](../spec/decisions/ADR-0024-ai-trace-scope-and-llm-caller-boundary.md)
+Amendment 2). Its last published version is 1.2.3, and it stays on the registry.
 
 ## Golden rules (the non-obvious ones)
 
@@ -493,7 +497,7 @@ diff explained.
 ## Procedure
 
 Run everything from the repo root unless noted. Bump the publish-candidate set only
-(not the private root, not forge/conformance) — enumerate it (see "What gets published").
+(not the private root, not conformance/ai-runtime) — enumerate it (see "What gets published").
 
 ### 0. Build fresh — the stale-`dist` trap
 `bun publish` does NOT rebuild, `dist/` is gitignored, and `main` points at `dist/`,
@@ -929,7 +933,7 @@ versioned on its own major line — npm major + 7, so `7.x` while npm was `0.x` 
    that happens to share the number.)
    Then assert the excluded modules are in sync: `scripts/check-pom-versions.sh`
    (also enforced on every push by `.githooks/pre-push` and by `scripts/ci-local.sh`).
-2. **Validate locally:** `cd server/java && mvn -q clean install -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed).
+2. **Validate locally:** `cd server/java && mvn -q clean verify -DskipTests` (or with tests / `scripts/integration-test.sh java` if runtime changed). Use `verify`, not `install`: installing writes this unreleased version into the shared `~/.m2` ([RELEASING-java.md](RELEASING-java.md#3-local-smoke-build)).
 3. **Deploy — ONE of two routes, never both** (a second deploy of a published version fails
    with `Component … already exists`): push a `java-v<maven-version>` tag, and
    `publish-java.yml` runs the deploy below in CI with the signing secrets (how `8.0.4`

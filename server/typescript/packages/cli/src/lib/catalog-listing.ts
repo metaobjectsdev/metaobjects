@@ -486,6 +486,7 @@ export function declaredDepsOf(projectRoot: string): Set<string> | undefined {
 const LAYER_BLURB: Record<Layer, string> = {
   model: "the entity modules and the constants beside them",
   persistence: "how rows are read and written",
+  service: "the operations a route, a job or an agent tool calls — one transaction per write",
   api: "the HTTP surface — pick ONE framework",
   client: "the browser tier — form + hooks + grid compose, they do not conflict",
   docs: "pages about the model and the code — listed like the rest, written to the `docs` target",

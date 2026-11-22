@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { barrel } from "../src/generators/barrel.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 // ADR-0044 / #228, amended — two same-short-name `object.value`s across
 // packages. Nothing is renamed: under the package layout each `Note` is declared under its own
@@ -27,8 +27,8 @@ async function loadMultiPackageRoot(files: { package: string; children: unknown[
 }
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "entity-collision-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("entity-collision-"); });
+afterEach(() => { removeTree(tmp); });
 
 async function genFiles(
   root: Awaited<ReturnType<typeof loadMultiPackageRoot>>,

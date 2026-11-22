@@ -11,24 +11,24 @@
 
 import { setManifestEntry } from "./support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, existsSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { decideAndWrite, listGeneratedPaths } from "../src/overwrite-policy.js";
 import { sweepOrphans, type OrphanJob } from "../src/orphan-sweep.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 let root: string;
 let genStateDir: string;
 let outDir: string;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "orphan-sweep-"));
+  root = makeScratchDir("orphan-sweep-");
   genStateDir = join(root, ".gen-state");
   outDir = join(root, "src", "generated");
 });
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  removeTree(root);
 });
 
 /** Generate `relPath` (project-relative) the way the runner does. */

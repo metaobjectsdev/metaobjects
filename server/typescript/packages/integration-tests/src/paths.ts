@@ -54,10 +54,17 @@ export const API_CONTRACT_SECRET_FIELDS_TPH_SCENARIOS_DIR = resolve(API_CONTRACT
 // Enum @default applied on create subcorpus (GENERATED lane only, every port).
 export const API_CONTRACT_ENUM_DEFAULT_DIR = resolve(API_CONTRACT_DIR, "enum-default");
 export const API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR = resolve(API_CONTRACT_ENUM_DEFAULT_DIR, "scenarios");
+export const API_CONTRACT_RULES_DIR = resolve(API_CONTRACT_DIR, "rules");
+export const API_CONTRACT_RULES_SCENARIOS_DIR = resolve(API_CONTRACT_RULES_DIR, "scenarios");
+export const API_CONTRACT_RULES_SETTINGS_DIR = resolve(API_CONTRACT_RULES_DIR, "settings");
 
 // `api` settings subcorpus (GENERATED lane only): `api.pagination` and `api.unknownFields: drop`.
 export const API_CONTRACT_API_SETTINGS_DIR = resolve(API_CONTRACT_DIR, "api-settings");
 export const API_CONTRACT_API_SETTINGS_SCENARIOS_DIR = resolve(API_CONTRACT_API_SETTINGS_DIR, "scenarios");
+export const API_CONTRACT_LIST_QUERY_DIR = resolve(API_CONTRACT_DIR, "list-query");
+export const API_CONTRACT_LIST_QUERY_SCENARIOS_DIR = resolve(API_CONTRACT_LIST_QUERY_DIR, "scenarios");
+/** The shared parse cases of the REST standard's list handling (plan R0). */
+export const LIST_QUERY_CONFORMANCE_DIR = resolve(repoRoot, "fixtures", "list-query-conformance");
 
 export const API_CONTRACT_PROJECTION_DIR = resolve(API_CONTRACT_DIR, "projection");
 export const API_CONTRACT_PROJECTION_SCENARIOS_DIR = resolve(API_CONTRACT_PROJECTION_DIR, "scenarios");

@@ -191,27 +191,40 @@ specificity so a host app's reset styles win, and resolves colors through
 `--mo-*` CSS custom properties with fallback hex values — themable with zero
 configuration, override any subset.
 
-`react-easy-crop` is a **regular dependency of `@metaobjectsdev/react`, lazy-loaded
-at runtime.** It is imported via `React.lazy` only when `<ImageUpload>` actually
-renders the crop UI, so it lands in its own chunk and a consumer without a
-`view.image` field never downloads it — but it IS installed for everyone, and
-nothing needs to be added by hand.
+`<ImageUpload>` and `cropToBlob` live on their own subpath,
+**`@metaobjectsdev/react/image-upload`**, and the crop library, `react-easy-crop`, is an
+**optional peer** of `@metaobjectsdev/react` (`>=6.2.3 <7.0.0`). A project with a `view.image`
+field installs it beside the package:
 
-> It was an *optional peer* through `0.21.4`, which was a bug rather than a saving.
-> `ImageUpload` is exported from the package root, so `image-upload.js` sits in
-> every consumer's module graph, and bundlers resolve the whole graph before
-> tree-shaking — a dynamic `import()` of a missing package is fatal to **webpack,
-> Next.js (Turbopack and webpack), esbuild and Bun** alike (only Vite special-cases
-> optional peers). So *any* consumer of the generated forms failed to build with a
-> "can't resolve `react-easy-crop`" error naming a package they had never heard of,
-> whether or not they authored an image field. Making it a real dependency fixes
-> that for every bundler with nothing for the adopter to configure.
+```bash
+npm install react-easy-crop
+```
+
+```tsx
+import { ImageUpload } from "@metaobjectsdev/react/image-upload";
+import { ImageUploadAdapterProvider } from "@metaobjectsdev/react";
+```
+
+The generated form imports `ImageUpload` from the subpath, and only when the entity has an image
+field, so a project without one installs nothing extra and its bundle never reaches the crop
+code. The adapter provider stays on the package root, because it imports nothing optional and an
+app wires it once for the whole tree. Inside `<ImageUpload>` the crop UI is still loaded with
+`React.lazy`, so it lands in its own chunk.
+
+> **Why a subpath, and not the root.** Through `0.21.4` `react-easy-crop` was an optional peer while
+> `ImageUpload` was exported from the package root, so `image-upload.js` sat in every consumer's
+> module graph. Bundlers resolve the whole graph before tree-shaking, and a dynamic `import()` of a
+> missing package is fatal to **webpack, Next.js (Turbopack and webpack), esbuild and Bun** alike
+> (only Vite special-cases optional peers). So every consumer of the generated forms failed to
+> build, whether or not they authored an image field. From `0.21.5` to 1.2 it was a regular
+> dependency instead, installed for everyone. Since 1.3.0 nothing reachable from the root imports
+> it, which `test/browser-bundleable.test.ts` holds every optional peer to: the root must still
+> bundle with the optional peer absent.
 >
-> The cleaner long-term shape is a `@metaobjectsdev/react/image` subpath so the
-> crop dependency is pulled in only by consumers who import it. That removes
-> exports from the package root, which is breaking, so it belongs in a MINOR — and
-> a MINOR would not reach the adopters whose builds are broken today, since
-> `^0.21.x` will not resolve it.
+> **Upgrading from 1.2.** Regenerate (`meta gen`): a form with an image field changes its
+> `ImageUpload` import to the subpath. Code that imports `ImageUpload` or `cropToBlob` from
+> `@metaobjectsdev/react` by hand moves to `@metaobjectsdev/react/image-upload`. If the project has
+> an image field, add `react-easy-crop` to its dependencies; it is no longer installed for you.
 
 ## Storage & wire contract
 

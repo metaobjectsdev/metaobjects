@@ -27,6 +27,7 @@ COMMANDS:
   verify                Drift gate — subverbs: --templates / --db / --codegen / --deps (bare = --codegen --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
+  schema                Print the expected schema: DDL for a dialect, or --as json for the neutral document
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v, -V     Print version
   --help, -h            Print this help

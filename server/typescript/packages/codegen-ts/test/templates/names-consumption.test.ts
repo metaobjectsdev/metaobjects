@@ -12,8 +12,7 @@
 // ResolvedGenConfig.includeNames + RenderContext.includeNames → the template.
 import { describe, test, expect, beforeEach, afterEach, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
-import { existsSync, mkdtempSync, rmSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -23,6 +22,7 @@ import { namesFile } from "../../src/generators/index.js";
 import { entityFile } from "../../src/generators/entity-file.js";
 import { queriesFile } from "../../src/generators/queries-file.js";
 import type { ExtStyle } from "../../src/render-context.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -36,8 +36,8 @@ if (loadResult.errors.length > 0) {
 const metadataRoot = loadResult.root;
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "codegen-names-consume-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => { tmp = makeScratchDir("codegen-names-consume-"); });
+afterEach(() => { removeTree(tmp); });
 
 /** Generate `Subscriber.ts` with the names generator either wired in or absent. */
 async function renderEntityWithGenerators(active: boolean, extStyle: ExtStyle = "js"): Promise<string> {
@@ -172,7 +172,7 @@ describe("§A6 — the entity file consumes the names artifact", () => {
         .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
       expect(diagnostics).toEqual([]);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTree(dir);
     }
   });
 

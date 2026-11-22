@@ -1,0 +1,20 @@
+name: no-derived-commands
+description: >
+  Under `rules.lifecycle.commands: none`, no transition derives a command: `submit` has no route.
+  A declared command still makes the moves it lists.
+requests:
+  - id: r1
+    method: POST
+    path: /api/purchase_requests/1/submit
+    headers: { x-actor: "ann", x-grants: "acme::purchasing.PurchaseRequest.submit" }
+    expect:
+      status: 404
+  - id: r2
+    method: PUT
+    path: /api/purchase-requests/2/decision
+    headers: { x-actor: "rita", x-grants: "purchasing.decide" }
+    body: { approve: true }
+    expect:
+      status: 200
+      body:
+        row: { id: 2, status: "approved" }

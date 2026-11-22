@@ -35,6 +35,7 @@ const SERVER_ALIASES: Readonly<Record<string, ServerLang>> = {
   "c#": "csharp",
   dotnet: "csharp",
   py: "python",
+  rs: "rust",
 };
 
 const CLIENT_ALIASES: Readonly<Record<string, ClientFramework>> = {

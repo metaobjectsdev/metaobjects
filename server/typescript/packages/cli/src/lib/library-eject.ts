@@ -74,6 +74,8 @@ export interface EjectedLibraryFile {
   /** Path relative to the project root. */
   path: string;
   status: "created" | "preserved" | "replaced";
+  /** Set when a kept file already holds exactly the shipped bytes. */
+  identical?: true;
 }
 
 export interface LibraryEjectResult {
@@ -120,8 +122,10 @@ export async function ejectLibrary(opts: {
     const name = ejectedFileName(opts.name, ref);
     const abs = join(root, name);
     const existed = await fileExists(abs);
-    if (existed && opts.force !== true) {
-      files.push({ ref, path: name, status: "preserved" });
+    // Kept unless --force; and --force over identical bytes writes nothing either.
+    const identical = existed && (await readFile(abs, "utf8")) === text;
+    if (existed && (opts.force !== true || identical)) {
+      files.push({ ref, path: name, status: "preserved", ...(identical && { identical: true as const }) });
       continue;
     }
     await writeFile(abs, text, "utf8");

@@ -26,7 +26,7 @@ import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "..
 import type { ZodTypeAny } from "zod";
 import { validationErrorBody } from "../route-errors.js";
 import { eq, count, and } from "drizzle-orm";
-import qs from "qs";
+import { parseListQueryString } from "../drizzle-fastify/list-query.js";
 import { contractErrorCode } from "../drizzle-fastify/util.js";
 import {
   parseFilterParams,
@@ -132,7 +132,7 @@ export interface CrudRoutesOptions extends WireOptions {
   /**
    * The list page size (`api.pagination` in `.metaobjects/config.json`): a list with no `limit`
    * returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
-   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent → no default and no ceiling.
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
    */
   pagination?: PageSize;
 }
@@ -151,7 +151,7 @@ export function mountCrudRoutes(opts: CrudRoutesOptions): void {
 type VerbOptions = Omit<CrudRoutesOptions, "expose">;
 
 // ---------------------------------------------------------------------------
-// Hono-flavored qs.parse — analogue of Fastify's qs.parse(req.raw.url ...).
+// Hono-flavored query parse — analogue of the Fastify mounts' parseListQueryString(req.raw.url ...).
 //
 // Hono exposes the raw URL via c.req.url; we strip the prefix and feed the
 // raw query string to qs so the bracketed filter notation (filter[a][eq]=...)
@@ -163,7 +163,7 @@ export function parseHonoFilterParams(c: Context): Record<string, unknown> {
   const url = c.req.url;
   const qIdx = url.indexOf("?");
   const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-  return qs.parse(queryString) as Record<string, unknown>;
+  return parseListQueryString(queryString);
 }
 
 /** READ source: the replica view when the entity is write-through, else the table.
@@ -233,13 +233,13 @@ export function mountListRoute(opts: VerbOptions): void {
         if (combinedWhere) { q = q.where(combinedWhere); where = combinedWhere; }
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
         const limit = pageLimit(parsed.limit, opts.pagination);
-        if (limit !== undefined) q = q.limit(limit);
+        q = q.limit(limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
         // No allowlists configured. Only limit/offset.
         const limit = pageLimit(parsePageBound(qsParsed, "limit"), opts.pagination);
         const offset = parsePageBound(qsParsed, "offset");
-        if (limit  !== undefined) q = q.limit(limit);
+        q = q.limit(limit);
         if (offset !== undefined) q = q.offset(offset);
       }
 

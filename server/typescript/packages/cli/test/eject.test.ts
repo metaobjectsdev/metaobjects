@@ -1,13 +1,22 @@
 // FR-040 §4.2(a) — eject copies a reference template into the consumer's repo so they
 // own it, for any generator in any package, at any time after init.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, readFile, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readFile, readdir, mkdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ejectGenerator, ejectableNames } from "../src/commands/eject.js";
 import { Biome, Distribution } from "@biomejs/js-api";
 
 let cwd: string;
+/** Every file under `dir`, recursively. */
+async function allFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const e of await readdir(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...(await allFiles(p))); else out.push(p);
+  }
+  return out.sort();
+}
 beforeEach(async () => { cwd = await mkdtemp(join(tmpdir(), "mo-eject-")); });
 afterEach(async () => { await rm(cwd, { recursive: true, force: true }); });
 
@@ -260,11 +269,17 @@ describe("meta eject reports how the owned copy compares to the reference", () =
       .not.toContain("deliberate: trimmed");
   });
 
-  test("--force over an IDENTICAL copy is a replace with nothing lost", async () => {
-    await own("queries");
-    const r = await ejectGenerator({ cwd, name: "queries", force: true });
-    expect(r.status).toBe("replaced");
+  test("--force over an IDENTICAL copy writes nothing: the file, its templates and runtime stay as they were", async () => {
+    await own("entity");
+    const written = await allFiles(cwd);
+    const before = await Promise.all(written.map(async (f) => (await stat(f)).mtimeMs));
+    await new Promise((r) => setTimeout(r, 20));
+    const r = await ejectGenerator({ cwd, name: "entity", force: true });
+    expect(r.status).toBe("preserved");
     expect(r.comparison?.verdict).toBe("identical");
+    expect(r.templates?.files.every((f) => f.status === "preserved")).toBe(true);
+    expect(r.runtime?.files.every((f) => f.status === "preserved")).toBe(true);
+    expect(await Promise.all(written.map(async (f) => (await stat(f)).mtimeMs))).toEqual(before);
   });
 
   test("a first eject reports no comparison at all", async () => {

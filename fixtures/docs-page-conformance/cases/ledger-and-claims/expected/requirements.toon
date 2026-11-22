@@ -1,0 +1,8 @@
+requirements[7]{path,subType,level,status,disposition,claims,statement}:
+  Storefront,functional,1,live,"","",The storefront solution
+  Storefront.OrderService,functional,3,live,"","",Every placed order is recorded before payment is attempted
+  Storefront.OrderService.OrderRecord,functional,4,live,"","acme::shop::Order acme::shop::Order.placedAt","An order records what was bought, for how much, and when: placed | paid"
+  Storefront.OrderService.OrderRecord.TranscribableReference,functional,5,live,"","acme::shop::Order.reference","An order carries a reference a customer can read\ndown a phone line"
+  Storefront.OrderService.OrderRecord.OrderExpiry,functional,5,planned,"","",An unpaid order carries the instant it stops being reservable
+  MoneyIsExactMinorUnits,architectural,"",live,"","acme::shop::Invoice","Monetary amounts are stored as exact integer minor units, never as floating point"
+  GuestCheckout,functional,4,retired,"","",A visitor can check out without an account

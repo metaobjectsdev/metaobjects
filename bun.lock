@@ -46,7 +46,6 @@
       "version": "1.3.0",
       "dependencies": {
         "@metaobjectsdev/runtime-web": "workspace:*",
-        "react-easy-crop": "^6.2.3",
       },
       "devDependencies": {
         "@hookform/resolvers": "^3.10.0",
@@ -57,6 +56,7 @@
         "jsdom": "^29.1.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+        "react-easy-crop": "^6.2.3",
         "react-hook-form": "^7.54.0",
         "typescript": "^5.6.0",
         "zod": "^4.4.3",
@@ -64,10 +64,12 @@
       "peerDependencies": {
         "@hookform/resolvers": ">=3.0.0 <6.0.0",
         "react": ">=18.0.0 <20.0.0",
+        "react-easy-crop": ">=6.2.3 <7.0.0",
         "react-hook-form": ">=7.0.0 <8.0.0",
         "zod": ">=3.23.0 <5.0.0",
       },
       "optionalPeers": [
+        "react-easy-crop",
         "zod",
       ],
     },
@@ -319,19 +321,10 @@
         "typescript": "^5.6.0",
       },
     },
-    "server/typescript/packages/forge": {
-      "name": "@metaobjectsdev/forge",
-      "version": "0.1.0",
-      "devDependencies": {
-        "bun-types": "latest",
-        "typescript": "^5.6.0",
-      },
-    },
     "server/typescript/packages/integration-tests": {
       "name": "@metaobjectsdev/integration-tests",
       "version": "0.0.0",
       "dependencies": {
-        "@metaobjectsdev/ai-runtime": "workspace:*",
         "@metaobjectsdev/codegen-ts": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
@@ -773,8 +766,6 @@
     "@metaobjectsdev/docs-site": ["@metaobjectsdev/docs-site@workspace:server/typescript/packages/docs-site"],
 
     "@metaobjectsdev/example-dynamic-grid": ["@metaobjectsdev/example-dynamic-grid@workspace:examples/dynamic-grid"],
-
-    "@metaobjectsdev/forge": ["@metaobjectsdev/forge@workspace:server/typescript/packages/forge"],
 
     "@metaobjectsdev/integration-tests": ["@metaobjectsdev/integration-tests@workspace:server/typescript/packages/integration-tests"],
 
@@ -1603,6 +1594,8 @@
     "@metaobjectsdev/conformance/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
     "@metaobjectsdev/docs-site/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
+
+    "@metaobjectsdev/integration-tests/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
     "@metaobjectsdev/metadata/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 

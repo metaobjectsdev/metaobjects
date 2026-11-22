@@ -23,7 +23,7 @@ import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { classifyConstraintError, RedactedDatabaseError, logAndRedact } from "../constraint-errors.js";
 import type { ZodTypeAny } from "zod";
 import { eq, count, and, asc } from "drizzle-orm";
-import qs from "qs";
+import { parseListQueryString } from "./list-query.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, parsePageBound, pageLimit, FilterParseError, type PageSize } from "./filter-parser.js";
@@ -35,6 +35,10 @@ import { withContractErrorHandler } from "./route-error-handler.js";
 import { validationErrorBody } from "../route-errors.js";
 export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
 export { pageLimit, ERROR_CODE_LIMIT_TOO_LARGE, type PageSize } from "./list-params.js";
+export {
+  parseListQuery, parseListQueryString, rawQueryOf, FilterParseError,
+  type FilterNode, type ListQuery, type ParseListQueryOpts,
+} from "./filter-parser.js";
 export { ERROR_CODE_UNKNOWN_FIELDS, unknownBodyKeys } from "../wire-format.js";
 export { timestampWire, canonicalTimestamp } from "../timestamp-wire.js";
 export { decimalWire, withDecimals, decimalToNative, canonicalDecimal, parseDecimalInput, parseDecimalOperand } from "../decimal-wire.js";
@@ -121,7 +125,7 @@ export interface CrudRoutesOptions extends WireOptions {
   /**
    * The list page size (`api.pagination` in `.metaobjects/config.json`): a list with no `limit`
    * returns `defaultLimit` rows, and a `limit` above `maxLimit` answers
-   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent → no default and no ceiling.
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
    */
   pagination?: PageSize;
 }
@@ -210,7 +214,7 @@ export function mountListRoute(opts: VerbOptions): void {
       const rawSearch = req.raw.url?.includes("?")
         ? req.raw.url.slice(req.raw.url.indexOf("?") + 1)
         : "";
-      const qsParsed = qs.parse(rawSearch) as Record<string, unknown>;
+      const qsParsed = parseListQueryString(rawSearch);
       const withCount = isTruthyFlag(qsParsed.withCount);
 
       // FR-017 TPH: when subtype-scoped, AND the discriminator predicate into
@@ -240,7 +244,7 @@ export function mountListRoute(opts: VerbOptions): void {
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
         else if (src.id !== undefined) q = q.orderBy(asc(src.id));
         const limit = pageLimit(parsed.limit, opts.pagination);
-        if (limit !== undefined) q = q.limit(limit);
+        q = q.limit(limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
         // Legacy path — no allowlists configured. Only limit/offset (+ the TPH
@@ -249,7 +253,7 @@ export function mountListRoute(opts: VerbOptions): void {
         const offset = parsePageBound(qsParsed, "offset");
         if (discCond) { q = q.where(discCond); where = discCond; }
         if (src.id !== undefined) q = q.orderBy(asc(src.id));
-        if (limit  !== undefined) q = q.limit(limit);
+        q = q.limit(limit);
         if (offset !== undefined) q = q.offset(offset);
       }
 

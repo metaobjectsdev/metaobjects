@@ -19,6 +19,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import { fieldTsTypeString } from "../src/templates/inferred-types.js";
 import { metaField } from "./_meta-build.js";
+import { makeScratchDir } from "../src/scratch-dir.js";
 
 const YAML = `metadata:
   package: t
@@ -35,10 +36,9 @@ const YAML = `metadata:
 `;
 
 async function loadDoc() {
-  const { writeFileSync, mkdtempSync } = await import("node:fs");
-  const { tmpdir } = await import("node:os");
+  const { writeFileSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const dir = mkdtempSync(join(tmpdir(), "jsonb-zod-"));
+  const dir = makeScratchDir("jsonb-zod-");
   const f = join(dir, "doc.yaml");
   writeFileSync(f, YAML);
   const loader = new MetaDataLoader();

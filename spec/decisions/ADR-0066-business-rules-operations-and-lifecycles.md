@@ -12,8 +12,11 @@ every entity that extends it. ADR-0067 decides where the rules are enforced, and
 ADR-0045 to match.
 
 1.3.0 ships the vocabulary, the loader rules and the `verify` checks. The generated service
-shells that enforce the rules at run time (§6) are later work. Until they land, the vocabulary
-generates nothing. `fixtures/codegen-noop/rules/` holds every port to that.
+shells that enforce the rules at run time (§6) are the service generators of ADR-0067: TypeScript's
+`service` generator enforces them; the other ports' service generators are later 1.3.0 work. The
+flat generators emit nothing from the vocabulary; the layer generators of ADR-0067 emit its names,
+contract types and, in TypeScript, the shells. `fixtures/codegen-noop/rules/` holds the flat
+generators to that.
 
 **Experimental.** Decision 2 of the 1.3.0 design pass gives new vocabulary an experimental label
 until it is proven in use. Everything this ADR registers — `api.*`, `operation.*`, `binding.*`,
@@ -270,17 +273,27 @@ A model that declares no operation and no transition gets no rules diagnostics, 
 line and no gate row. The settings `rules.permissions.names`, `rules.lifecycle.create`,
 `rules.lifecycle.commands` and `verify.lifecycle.unreachable` are read from
 `.metaobjects/config.json` by every port. When a key is absent, the setting takes today's
-behaviour. `rules.lifecycle.create` is read and validated and has **no effect yet**: the shells
-will be the first to act on it, and the documentation says so until they do.
+behaviour. The service generators are what act on `rules.lifecycle.create` and
+`rules.lifecycle.commands` (TypeScript first; the shared API tests' `rules/` corpus pins both), and
+`verify` acts on the other two.
 
 ### 6. What the enforcing shell will guarantee, for every transition
 
-The shells are later work: service generators that an app adds (ADR-0067). A project that declares
-a lifecycle and wires no service generator will be told so by `verify`, as an advisory, once that check lands; today's flat
+The shells are the service generators an app adds (ADR-0067). TypeScript's `service` generator is
+the first, held to the shared API tests' `fixtures/api-contract-conformance/rules/` corpus; each
+other port's lands in its own 1.3.0 service work. A project that declares a lifecycle and wires no
+service generator will be told so by `verify`, as an advisory, once that check lands; the flat
 routes enforce nothing. This is what the shells are held to:
 
 1. Load the row: 404 when it is absent.
-2. Call the permission point: 403 `forbidden` when the policy refuses.
+2. Validate the operation's `@inputRef` input, when it has one (400 `validation`), then call the
+   permission point: 403 `forbidden` when the policy refuses. The input is validated first because
+   the policy is handed it, so it can decide on what was asked as well as on the row. The cost is
+   stated, not hidden: a caller the policy would refuse can get a 400 with the validation detail
+   before it would get the 403. That detail describes the declared input's shape, which the
+   contract types already publish, as step 1's 404 already tells such a caller whether the row
+   exists. An app that must answer neither to an unauthorised caller refuses it before the service
+   is called, in its actor resolver or transport.
 3. Check that the row's state is in the `@from` of a transition the operation may make: 409
    `invalid_transition`.
 4. Run the hand-written body, when the operation has one. It returns one of its declared
@@ -294,8 +307,13 @@ routes enforce nothing. This is what the shells are held to:
 
 **The guarded update is part of the store-neutral storage contract** (§8). Every store
 driver, including one an adopter writes, will be held to it by a persistence-conformance scenario.
-That scenario does not exist yet: no file under `fixtures/persistence-conformance/` pins the
-guarded update, so until it lands the contract is stated here, not yet implemented or gated.
+That scenario is `fixtures/persistence-conformance/queries/guarded-update.yaml` (`op:
+guardedUpdate`): the state guard, a failing condition, a missing row, the second of two moves, and
+a condition with a field compared with a field, `not`, `coalesce` and an int-backed state. The
+TypeScript runtime implements it as `ObjectManager.guardedUpdate` on every bundled
+`PersistenceDriver`. The scenario runs on Postgres and MySQL (`engines: [postgres, mysql]`); the C#,
+Java and Kotlin runners defer it by name until each port builds its own guarded update in 1.3.0, and
+the Python runner defers it by name.
 
 ### 7. Events and invariants in 1.3.0
 

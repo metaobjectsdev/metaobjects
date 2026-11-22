@@ -117,3 +117,35 @@ CI, the same command is available via the pre-compiled `meta` binary (see ADR-00
 
 See also: `docs/superpowers/specs/2026-06-23-agent-context-single-assembler-design.md`
 for the full design rationale.
+
+## Amendment 1 (2026-11-21): one assembler, its output shipped to every port
+
+1.3.0 removes "you need Node for the agent files" (design call 17 of the 1.3.0 build plan).
+The decision above stands where it counts: there is still **one assembler**, `assemble.ts`,
+and no port re-implements it. What changes is where its output is made. It is run once at
+build time for every stack a port's own command serves, and the result is committed at
+`agent-context-shipped/`. Each port's package embeds that tree, and its `agent-docs` command
+copies one stack out of it, so a C#, JVM, Python or Rust project gets the files with no Node
+on the path.
+
+- **The tree.** `manifest.json` lists one stack per server language alone, plus Java with
+  Kotlin (they share one Maven goal), each with every client choice: none, React, React with
+  TanStack, Angular. Each stack lists the files it writes, by project-relative path and by a
+  stored file under `files/`, named by its content hash, so a file shared by many stacks is
+  stored once. `agent-context-shipped/README.md` is the contract a port's command follows.
+- **What a port does with it.** It finds the stack by id (servers then clients, in the
+  canonical order, joined by `-`), and writes each file at its path after replacing the
+  manifest's `docsLinkPrefix` + `docsRef` + `/` with `docsLinkPrefix` + its release tag + `/`.
+  That substitution is all of `pinDocsRefs`. A stack the tree does not carry is refused,
+  naming the ones it does.
+- **What keeps it honest.** `server/typescript/packages/sdk/test/agent-context/shipped.test.ts`
+  fails when the committed tree is not what the build writes. It also checks that every stack,
+  materialized as a port would, equals what `assemble()` writes for it, and that the shared
+  `fixtures/agent-context-conformance` goldens come out of the tree unchanged. A content change
+  is still made once: rebuild the tree with
+  `bun server/typescript/packages/sdk/scripts/build-shipped-agent-context.ts`.
+- **What it does not change.** The `--skills-dir` choice stays with the Node CLI for now: the
+  trees are built with the default `.claude/skills`. The redirect stubs stay until each port's
+  command lands (rows G-CS-2, G-JV-2, G-PY-2 and G-RS-2 of the plan). Rust is a server
+  language of the assembler from this amendment on (`--server rust`), with its own loop and
+  verify step.

@@ -38,6 +38,9 @@ export const RUNTIME_ENTRIES: Readonly<Record<string, readonly HttpRuntimeModule
   routes: ["drizzle-fastify"],
   "routes-hono": ["hono"],
   entity: ["allowlists"],
+  // The service layer's store mechanics (ADR-0067 layer 4), and its transport's request and reply helpers.
+  service: ["service"],
+  "service-routes": ["service-fastify"],
 };
 
 /** True iff ejecting `name` also copies adapter source. */
@@ -175,7 +178,8 @@ export async function ejectRuntime(cwd: string, names: readonly string[], force:
     const abs = join(cwd, path);
     const existing = existsSync(abs) ? await readFile(abs, "utf8") : undefined;
     const comparison = existing === undefined ? undefined : await compareOwnedCopy(existing, source);
-    if (existing !== undefined && !force) {
+    // Kept unless --force; and --force over identical bytes writes nothing either.
+    if (existing !== undefined && (!force || existing === source)) {
       files.push({ path, status: "preserved", comparison });
       continue;
     }

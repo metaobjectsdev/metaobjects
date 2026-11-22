@@ -18,6 +18,8 @@
 //      with --update. That is the ratchet: the budget has no way to rise.
 //   3. `budgetBytes` may not be higher than it is on `main`. Raising it to make a change pass
 //      is the one edit this file exists to refuse; raise it only with a ruling that says why.
+//      A raise passes only when the newest `history` entry records it: `from` is main's budget,
+//      `to` is the new one, and it names the `reason` and the `ruling`.
 //   4. None of the packages in FORBIDDEN is in the tree (a fresh-install test: the install-time
 //      guard in check-peer-ranges.ts reads manifests, this reads the result).
 //
@@ -119,12 +121,23 @@ function installedNames(modules) {
 }
 
 function mainBudget() {
-  try {
-    const text = execFileSync("git", ["show", `main:${BUDGET_FILE}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    return JSON.parse(text).budgetBytes;
-  } catch {
-    return undefined; // no `main` here, or the file is new on this branch
+  // A worktree or a CI checkout may have no local `main`; the remote's is the same contract.
+  for (const ref of ["main", "origin/main"]) {
+    try {
+      const text = execFileSync("git", ["show", `${ref}:${BUDGET_FILE}`], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      return JSON.parse(text).budgetBytes;
+    } catch {
+      // try the next ref
+    }
   }
+  return undefined; // no `main` here, or the file is new on this branch
+}
+
+/** The ruling that raised the budget from `from` to `to`: the newest history entry, when it records exactly that. */
+function rulingFor(budget, from, to) {
+  const last = Array.isArray(budget.history) ? budget.history[budget.history.length - 1] : undefined;
+  if (last === undefined || last.from !== from || last.to !== to) return undefined;
+  return typeof last.reason === "string" && last.reason !== "" && typeof last.ruling === "string" && last.ruling !== "" ? last : undefined;
 }
 
 function measure() {
@@ -166,7 +179,7 @@ const budget = JSON.parse(readFileSync(BUDGET_PATH, "utf8"));
 const { bytes, rows, names, packed } = measure();
 const mb = (n) => (n / MB).toFixed(1);
 
-console.log(`install size: ${mb(bytes)} MB installing ${ENTRY} (${packed} workspace packages, ${names.length} top-level packages)`);
+console.log(`install size: ${mb(bytes)} MB (${bytes} bytes) installing ${ENTRY} (${packed} workspace packages, ${names.length} top-level packages)`);
 for (const row of rows.slice(0, 8)) console.log(`  ${mb(row.bytes).padStart(6)} MB  ${row.name}`);
 
 const forbidden = Object.keys(FORBIDDEN).filter((name) => names.includes(name));
@@ -181,7 +194,11 @@ if (budget.platform !== platformKey()) {
 
 const onMain = mainBudget();
 if (onMain !== undefined && budget.budgetBytes > onMain) {
-  fail(`the budget rose: ${BUDGET_FILE} says ${mb(budget.budgetBytes)} MB and main says ${mb(onMain)} MB. The budget only moves down.`);
+  const ruling = rulingFor(budget, onMain, budget.budgetBytes);
+  if (ruling === undefined) {
+    fail(`the budget rose: ${BUDGET_FILE} says ${mb(budget.budgetBytes)} MB and main says ${mb(onMain)} MB. The budget only moves down, unless the newest \`history\` entry records the raise ({ from: ${onMain}, to: ${budget.budgetBytes}, reason, ruling }).`);
+  }
+  console.log(`install-size budget: raised from ${mb(onMain)} MB to ${mb(budget.budgetBytes)} MB by ruling (${ruling.ruling}): ${ruling.reason}`);
 }
 
 if (bytes > budget.budgetBytes) {

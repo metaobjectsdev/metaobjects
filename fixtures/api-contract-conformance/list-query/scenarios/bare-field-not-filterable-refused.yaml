@@ -1,0 +1,12 @@
+name: bare-field-not-filterable-refused
+description: >
+  A bare parameter naming a field of the entity that is not `@filterable` is refused too.
+requests:
+  - id: r1
+    method: GET
+    path: "/api/parts?notes=bin%201"
+    expect:
+      status: 400
+      body:
+        error: "filter.bare_field"
+        field: "notes"

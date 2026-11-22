@@ -30,6 +30,7 @@ import {
   INIT_OPTIONS,
   MIGRATE_OPTIONS,
   PROMPT_SNAPSHOT_OPTIONS,
+  SCHEMA_OPTIONS,
   VERIFY_OPTIONS,
 } from "../src/lib/args.js";
 import { COMMAND_HELP } from "../src/index.js";
@@ -54,6 +55,7 @@ const COMMANDS: ReadonlyArray<readonly [string, Readonly<Record<string, unknown>
   ["verify", VERIFY_OPTIONS],
   ["prompt-snapshot", PROMPT_SNAPSHOT_OPTIONS],
   ["migrate", MIGRATE_OPTIONS],
+  ["schema", SCHEMA_OPTIONS],
   ["eject", EJECT_OPTIONS],
   ["deps", DEPS_OPTIONS],
   ["generator", GENERATOR_OPTIONS],

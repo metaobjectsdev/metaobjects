@@ -8,8 +8,7 @@ import { buildApiModel } from "../src/generators/api-model.js";
 import { queriesFile } from "../src/generators/queries-file.js";
 import { routesFile } from "../src/generators/routes-file.js";
 import { routesFileHono } from "../src/generators/routes-file-hono.js";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
@@ -17,6 +16,7 @@ import { apiDocsFile } from "../src/generators/api-docs-file.js";
 import { entityFile } from "../src/generators/entity-file.js";
 import { docsFile } from "../src/generators/docs-file.js";
 import { runEmitsEntityModule, runEmitsQueries, runEmitsRestRoutes } from "../src/ui-tier-gate.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 async function loadRoot() {
   const res = await new MetaDataLoader().load([
@@ -111,7 +111,7 @@ describe("what the run's generators say they write", () => {
 describe("through meta gen: the written pages follow the generator list", () => {
   async function page(generators: Parameters<typeof defineConfig>[0]["generators"]): Promise<string> {
     const root = await loadRoot();
-    const tmp = mkdtempSync(join(tmpdir(), "api-docs-surfaces-"));
+    const tmp = makeScratchDir("api-docs-surfaces-");
     try {
       await runGen({
         config: defineConfig({
@@ -121,7 +121,7 @@ describe("through meta gen: the written pages follow the generator list", () => 
         metadata: root, projectRoot: tmp,
       });
       return readFileSync(join(tmp, "docs", "api", "acme", "shop", "Product.md"), "utf8");
-    } finally { rmSync(tmp, { recursive: true, force: true }); }
+    } finally { removeTree(tmp); }
   }
 
   test("entity and docs only: neither the queries nor the routes are described", async () => {

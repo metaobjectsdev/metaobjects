@@ -18,6 +18,7 @@ import { mapColumnType, DURATION_COLUMN_FN, type EnumIntCustomType } from "../co
 import { renderEnumIntCustomType } from "./enum-int-codec.js";
 import { renderDurationCustomType } from "./duration-wire-helper.js";
 import { zodTypeFor } from "./field-meta.js";
+import { inlineObjectLiteral } from "./drizzle-schema.js";
 import { columnExpr, type ObjectNames } from "../names.js";
 
 export interface ViewDeclOpts {
@@ -111,7 +112,7 @@ function viewColumnLine(
         : imp(`${spec.fnName}@${spec.importModule}`);
   const optsArg =
     spec.fnOptions && Object.keys(spec.fnOptions).length > 0
-      ? `, ${optionsLiteral(spec.fnOptions)}`
+      ? `, ${inlineObjectLiteral(spec.fnOptions)}`
       : "";
   // #204 — of the table modifiers, only `.array()` (postgres native array element
   // typing) and `.notNull()` (shapes the SELECT type) carry to an existing view;
@@ -251,13 +252,4 @@ export function renderViewReadZodObject(fields: readonly MetaField[], opts: View
   return code`${z}.object({
 ${joinCode(lines, { on: ",\n" })}
 })`;
-}
-
-/** A column's options as a JS object literal: `{ length: 200 }`, not JSON's `{ "length": 200 }`. */
-function optionsLiteral(options: Record<string, unknown>): string {
-  const entries = Object.entries(options).map(([key, value]) => {
-    const name = /^[A-Za-z_$][\w$]*$/.test(key) ? key : JSON.stringify(key);
-    return `${name}: ${JSON.stringify(value)}`;
-  });
-  return `{ ${entries.join(", ")} }`;
 }

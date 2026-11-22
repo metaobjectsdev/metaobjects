@@ -56,15 +56,9 @@ def _load_scenarios() -> list[tuple[str, dict[str, Any]]]:
 
 _SCENARIOS = _load_scenarios()
 
-# Scenarios this port's generated routes answer differently, each with its reason. The routes
-# validate the body's discriminator against the route's subtype and answer 400 rather than
-# dropping it; nothing is stored either way. See codegen/KNOWN_GAPS.md.
-_PORT_SKIPS: dict[str, str] = {
-    "tph-input-foreign-discriminator-dropped": (
-        "a body discriminator naming another subtype is a 400 here, not a silent drop "
-        "(KNOWN_GAPS.md: TPH body discriminator)"
-    ),
-}
+# Scenarios this port's generated routes answer differently, each with its reason. None: a
+# body discriminator naming another subtype is dropped, as in every port.
+_PORT_SKIPS: dict[str, str] = {}
 _APP, _REPO = build_generated_tph_app(_TPH_DIR)
 _CLIENT = TestClient(_APP)
 

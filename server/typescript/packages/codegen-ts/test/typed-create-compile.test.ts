@@ -12,7 +12,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
@@ -23,6 +23,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -124,7 +125,7 @@ async function compileCaller(dialect: Dialect, body: string): Promise<{ all: str
     const all = compile(dir, [...files.map((f) => f.path), "caller.ts"]);
     return { all, caller: all.filter((d) => d.startsWith("caller.ts:")) };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }
 
@@ -148,7 +149,7 @@ for (const dialect of ["postgres", "sqlite"] as const) {
         expect(queries).not.toContain("data: unknown");
         expect(party).not.toContain("data: unknown");
       } finally {
-        rmSync(dir, { recursive: true, force: true });
+        removeTree(dir);
       }
     });
 

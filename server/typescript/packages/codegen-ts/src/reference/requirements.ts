@@ -28,12 +28,15 @@
 // renderers from `../generators/` — which `meta eject` copies into your project and points at
 // your copy.
 //
-// METADATA ALONE: this generator reads `ctx.loadedRoot` and NOTHING else. An EMPTY LEDGER
+// METADATA ALONE: this generator reads `ctx.loadedRoot` and NOTHING else (a page template
+// under the project's `templates/requirements/` shapes the layout and adds no fact). An EMPTY LEDGER
 // EMITS ZERO FILES, not an empty page. BOTH FILES, UNCONDITIONALLY: a drift gate wants the
 // machine-readable artifact committed regardless of who ran it.
 
 import {
+  docsTemplateRoot,
   oncePerRun,
+  projectProvider,
   type EmittedFile,
   type Generator,
   type GeneratorFactory,
@@ -53,6 +56,9 @@ export interface RequirementsFileOpts {
   outDir?: string;
   /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
+  /** Directory whose `templates/requirements/requirements.{md,toon}.mustache` override the
+   *  shipped pages, relative to the project. Default: the project's own `templates/`. */
+  templates?: string;
 }
 
 export const requirementsFile = function requirementsFile(
@@ -70,9 +76,10 @@ export const requirementsFile = function requirementsFile(
       // "zero FILES", which only this line can provide.
       if (rows.length === 0) return [];
 
+      const provider = projectProvider(docsTemplateRoot(ctx, opts?.templates));
       const files: EmittedFile[] = [
-        { path: `${dirPrefix}${MARKDOWN_FILENAME}`, content: renderRequirementsMarkdown(rows) },
-        { path: `${dirPrefix}${TOON_FILENAME}`, content: renderRequirementsToon(rows) },
+        { path: `${dirPrefix}${MARKDOWN_FILENAME}`, content: renderRequirementsMarkdown(rows, { provider }) },
+        { path: `${dirPrefix}${TOON_FILENAME}`, content: renderRequirementsToon(rows, provider) },
       ];
       return files;
     }),

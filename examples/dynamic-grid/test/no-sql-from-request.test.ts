@@ -27,8 +27,12 @@ beforeEach(() => {
   statements.length = 0;
 });
 
-/** A marker no schema name contains, so finding it in SQL text can only mean it was spliced in. */
-const MARKER = "zz_marker_zz";
+/**
+ * A marker no schema name contains, so finding it in SQL text can only mean it was spliced in.
+ * It holds no LIKE or GLOB wildcard (`%`, `_`, `*`, `?`, `[`): `like` is lowered to `glob` on
+ * SQLite and rewrites those, so a wildcard would change the bound value.
+ */
+const MARKER = "zzmarkerzz";
 const ATTACK = `${MARKER}'; DROP TABLE customers; --`;
 const q = encodeURIComponent;
 
@@ -54,9 +58,15 @@ test("a filter value is bound, never spliced into the statement", async () => {
 
 test("like and in values are bound too", async () => {
   expect((await demo.get(`/api/customers?filter[name][like]=${q(ATTACK)}`)).status).toBe(200);
+  const likeStatements = statements.splice(0);
   expect((await demo.get(`/api/customers?filter[name][in]=${q(`a,${ATTACK}`)}`)).status).toBe(200);
-  expectNotInSql();
-  expect(statements.filter((s) => s.parameters.some((p) => typeof p === "string" && p.includes(MARKER))).length).toBe(2);
+  const inStatements = statements.splice(0);
+  for (const sent of [likeStatements, inStatements]) {
+    for (const statement of sent) expect(statement.sql).not.toContain(MARKER);
+    expect(sent.filter((s) => s.parameters.some((p) => typeof p === "string" && p.includes(MARKER))).length).toBe(1);
+    // The bound value reaches the driver unchanged.
+    expect(sent.some((s) => s.parameters.some((p) => p === ATTACK))).toBe(true);
+  }
 });
 
 test("a field name the model does not declare is refused before any statement is sent", async () => {

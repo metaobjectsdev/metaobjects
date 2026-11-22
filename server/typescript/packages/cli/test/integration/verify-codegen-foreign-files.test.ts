@@ -21,7 +21,12 @@
  * from a stranger's, so the old, conservative verdict stands — the same
  * fail-closed default the content branch uses.
  */
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, setDefaultTimeout } from "bun:test";
+
+// Each test drives several in-process `meta gen` / `meta verify` runs over a real tree, which
+// is well inside a second on an idle machine and was overrunning Bun's 5 s default on a loaded
+// one, failing a different test each run. The budget is for the whole sequence.
+setDefaultTimeout(30_000);
 import {
   cpSync,
   mkdtempSync,
@@ -251,7 +256,9 @@ export default defineConfig({
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
+    // Six end-to-end gen/verify runs, each loading the config and rendering (a verify is
+    // ~1.8s alone), so bun's 5s per-test default is shorter than the work itself.
+  }, 60_000);
 
   test("with no manifest at all, the old conservative verdict stands", async () => {
     const root = setupRepo();

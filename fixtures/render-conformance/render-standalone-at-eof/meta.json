@@ -1,0 +1,1 @@
+{ "format": "text", "note": "a standalone closing tag on the last line, with no newline after it, is still standalone: its line is removed and nothing is appended" }

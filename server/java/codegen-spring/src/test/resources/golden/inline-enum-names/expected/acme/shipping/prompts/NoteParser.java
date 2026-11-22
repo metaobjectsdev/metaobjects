@@ -1,14 +1,14 @@
 // GENERATED — DO NOT EDIT — response parser for template.prompt `acme::shipping::Note`
+
 package acme.shipping.prompts;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.metaobjects.render.extract.Format;
 import com.metaobjects.render.extract.ExtractMap;
+import com.metaobjects.render.extract.Format;
 
 /** Parser for LLM responses matching the `Note` template.prompt. */
 public final class NoteParser {
-
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
 
     private NoteParser() { /* no instances */ }

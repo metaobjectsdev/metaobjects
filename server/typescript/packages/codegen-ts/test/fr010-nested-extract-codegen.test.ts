@@ -6,14 +6,15 @@
 // single metadata-driven extract path reads the live metadata and assembles the full graph.
 
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { renderOutputParser } from "../src/templates/output-parser.js";
+import { removeTree } from "../src/scratch-dir.js";
 
 const TEMP_DIRS: string[] = [];
 afterAll(() => {
-  for (const d of TEMP_DIRS) rmSync(d, { recursive: true, force: true });
+  for (const d of TEMP_DIRS) removeTree(d);
 });
 
 const PKG = "acme::ai";

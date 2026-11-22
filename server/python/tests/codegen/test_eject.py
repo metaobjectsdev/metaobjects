@@ -7,6 +7,7 @@ eject never overwrites without --force and never edits the config.
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -64,6 +65,20 @@ def test_eject_copies_verbatim_and_refuses_to_overwrite(tmp_path: Path, monkeypa
     assert copy.read_text(encoding="utf-8") == "# mine\n"
     assert main(["eject", "entity", "--force"]) == 0
     assert copy.read_text(encoding="utf-8") == _packaged_source("entity")
+
+
+def test_eject_force_over_the_reference_writes_nothing(
+    tmp_path: Path, monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert main(["eject", "routes"]) == 0
+    copy = tmp_path / "codegen" / "generators" / "routes.py"
+    # A sentinel mtime: a rewrite of the same bytes would move it.
+    os.utime(copy, ns=(1_000_000_000, 1_000_000_000))
+    capsys.readouterr()
+    assert main(["eject", "routes", "--force"]) == 0
+    assert copy.stat().st_mtime_ns == 1_000_000_000
+    assert "unchanged routes -> codegen/generators/routes.py" in capsys.readouterr().out
 
 
 def test_eject_unknown_name_writes_nothing(tmp_path: Path, monkeypatch) -> None:

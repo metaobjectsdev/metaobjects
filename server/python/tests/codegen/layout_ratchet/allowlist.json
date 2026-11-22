@@ -1,7 +1,6 @@
 {
   "$comment": "The Python layout ratchet's allowlist (ADR-0063). `unconverted`: generator source that still types its own layout; each entry names what it emits and the writer change that converts it, and is removed when that change lands (the test fails while a converted file keeps its entry). `exempt`: source that writes text which is not generated code; each says why. Neither list may grow: test_layout_ratchet.py compares it with the copy at the branch's merge base. Paths are relative to src/metaobjects/codegen.",
   "unconverted": {
-    "generators/entity_model.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Entity model: W-PY-2.",
     "generators/extractor_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Extractor tier.",
     "generators/names_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Names tier.",
     "generators/output_parser_generator.py": "Types its own layout into emitted Python; converts with the Python writer PR for this generator (ADR-0063). Output parser tier.",

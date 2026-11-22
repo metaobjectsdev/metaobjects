@@ -5,20 +5,20 @@
 
 import { manifestEntries, manifestExists } from "../support/manifest.js";
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { decideAndWrite } from "../../src/overwrite-policy.js";
+import { makeScratchDir, removeTree } from "../../src/scratch-dir.js";
 
 let tmp: string;
 let state: string;
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "codegen-int-"));
-  state = mkdtempSync(join(tmpdir(), "codegen-state-"));
+  tmp = makeScratchDir("codegen-int-");
+  state = makeScratchDir("codegen-state-");
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
-  rmSync(state, { recursive: true, force: true });
+  removeTree(tmp);
+  removeTree(state);
 });
 
 describe(".gen-state integrity", () => {

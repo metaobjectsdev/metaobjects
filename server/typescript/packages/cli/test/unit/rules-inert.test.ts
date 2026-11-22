@@ -14,6 +14,10 @@
 // node of the model in its data payload, so it lists the new nodes too. Its other output is
 // byte-identical, and the payload differs by exactly the `api`, `operation`, `binding` and
 // `transition` nodes.
+//
+// The generators of the rules layers themselves (ADR-0067) are the other exception: reading the
+// vocabulary is what they are for. Each emits nothing for the model without it, and only files of
+// its own for the model with it, so it adds files and moves none.
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -86,6 +90,40 @@ async function emit(metadata: MetaRoot, generators: Generator[]): Promise<Record
 }
 
 const DOCS_SITE = "docs-site";
+/** The ADR-0067 rules-layer generators, and the files the vocabulary ADDS to each one's output. */
+const RULES_LAYER: Record<string, string[]> = {
+  "rules-names": ["src/generated/acme/purchasing/rules.names.ts"],
+  // Its entity contracts and error bodies do not depend on the vocabulary; the operations do, and
+  // so does the value object only an operation reaches.
+  "contract-types": [
+    "src/generated/DecisionInput.ts",
+    "src/generated/acme/purchasing/operations.contract.ts",
+  ],
+};
+
+/**
+ * The ADR-0067 service generators: the enforcing shells, so the vocabulary is what they act on.
+ * Each pins the files the vocabulary ADDS (a command per derived transition, a shell per declared
+ * operation) and the files it CHANGES (the index's interfaces, the lifecycle entity's create and
+ * update, which check its state, and the transport's routes); every other file stays byte-identical.
+ */
+const SERVICE_LAYER: Record<string, { added: string[]; changed: string[] }> = {
+  service: {
+    // `approve` and `reject` are claimed by `decide`, so only `submit` derives a command.
+    added: [
+      "src/generated/acme/purchasing/service/decide.ts",
+      "src/generated/acme/purchasing/service/openRequests.ts",
+      "src/generated/acme/purchasing/service/requestSummary.ts",
+      "src/generated/acme/purchasing/service/submitPurchaseRequest.ts",
+    ],
+    changed: [
+      "src/generated/acme/purchasing/service/createPurchaseRequest.ts",
+      "src/generated/acme/purchasing/service/index.ts",
+      "src/generated/acme/purchasing/service/updatePurchaseRequest.ts",
+    ],
+  },
+  "service-routes": { added: [], changed: ["src/generated/acme/purchasing/transport/fastify.ts"] },
+};
 
 let withRules: MetaRoot;
 let withoutRules: MetaRoot;
@@ -105,11 +143,33 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
 
   const catalog = composeCatalog();
   for (const [name, entry] of Object.entries(catalog)) {
-    if (name === DOCS_SITE) continue;
+    if (name === DOCS_SITE || name in RULES_LAYER || name in SERVICE_LAYER) continue;
     test(`generator "${name}" emits the same files, byte for byte`, async () => {
       const expected = await emit(withoutRules, [entry.factory()]);
       const actual = await emit(withRules, [entry.factory()]);
       expect(actual).toEqual(expected);
+    });
+  }
+
+  for (const [name, files] of Object.entries(RULES_LAYER)) {
+    test(`rules-layer generator "${name}" adds only its own files for the vocabulary, and moves none`, async () => {
+      const expected = await emit(withoutRules, [catalog[name]!.factory()]);
+      const actual = await emit(withRules, [catalog[name]!.factory()]);
+      expect(expected["<threw>"]).toBeUndefined();
+      expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual(files);
+      for (const p of files) delete actual[p];
+      expect(actual).toEqual(expected);
+    });
+  }
+
+  for (const [name, { added, changed }] of Object.entries(SERVICE_LAYER)) {
+    test(`service generator "${name}" adds and changes exactly the files the vocabulary reaches`, async () => {
+      const expected = await emit(withoutRules, [catalog[name]!.factory()]);
+      const actual = await emit(withRules, [catalog[name]!.factory()]);
+      expect(expected["<threw>"]).toBeUndefined();
+      expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
+      expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual(added);
+      expect(Object.keys(expected).filter((p) => actual[p] !== expected[p]).sort()).toEqual(changed);
     });
   }
 
@@ -145,6 +205,17 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     const actual = await emit(withRules, runnable.map((f) => f()));
     expect(expected["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
+    // The rules layers add their own files beside the rest, and move none of them; the service
+    // layers add and change exactly the files their own tests pin. A value module
+    // the contract layer writes for an operation is the entity generator's, already in both runs.
+    const added = [...Object.values(RULES_LAYER).flat(), ...Object.values(SERVICE_LAYER).flatMap((l) => l.added)].filter((p) => !(p in expected));
+    expect(Object.keys(actual).filter((p) => !(p in expected)).sort()).toEqual([...added].sort());
+    for (const p of added) delete actual[p];
+    // The service generators' changed files are pinned by their own tests above.
+    for (const p of Object.values(SERVICE_LAYER).flatMap((l) => l.changed)) {
+      delete actual[p];
+      delete expected[p];
+    }
     expect(actual).toEqual(expected);
   });
 

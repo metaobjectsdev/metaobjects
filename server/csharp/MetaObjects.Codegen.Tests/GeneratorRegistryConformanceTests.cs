@@ -18,7 +18,7 @@ namespace MetaObjects.Codegen.Tests;
 ///   (3) tier agreement — every native manifest name is non-neutral in the registry
 ///       (C# has no neutral generators per the manifest);
 ///   (4) layer agreement — every manifest name's <c>layer</c> equals the registry's,
-///       and every manifest entry declares one of the six.
+///       and every manifest entry declares one of the seven.
 ///
 /// On mismatch this REPORTS the exact diff (extras / missing / tier / layer) so the
 /// manifest and registry can be reconciled. It never mutates either.
@@ -48,7 +48,7 @@ public sealed class GeneratorRegistryConformanceTests
     // enum would make this gate agree with whatever the code says, which is the one
     // thing a conformance gate must not do.
     private static readonly string[] AllowedLayers =
-        ["model", "persistence", "api", "client", "docs", "capability"];
+        ["model", "persistence", "service", "api", "client", "docs", "capability"];
 
     private static IReadOnlyList<ManifestEntry> LoadManifest()
     {
@@ -136,9 +136,9 @@ public sealed class GeneratorRegistryConformanceTests
             string.Join("\n  ", layerMismatches));
     }
 
-    /// <summary>(4b): every manifest entry — every port's — declares one of the six.</summary>
+    /// <summary>(4b): every manifest entry — every port's — declares one of the seven.</summary>
     [Fact]
-    public void EveryManifestEntry_DeclaresOneOfTheSixLayers()
+    public void EveryManifestEntry_DeclaresOneOfTheSevenLayers()
     {
         var bad = LoadManifest()
             .Where(e => !AllowedLayers.Contains(e.Layer))

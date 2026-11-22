@@ -344,12 +344,13 @@ A library row also carries `provides` (what is in the box) and, under `--probe`,
 added here, which of your entities `extends` into it, and any generator the library
 implies that you have not wired.
 
-### The six layers, and what picks them
+### The seven layers, and what picks them
 
 | layer | what it is | chosen by |
 |---|---|---|
 | `model` | entity/DTO/value-object modules and the constants beside them | app shape |
 | `persistence` | how rows are read and written | app shape |
+| `service` | one module per package that runs each operation in a transaction with the write rules (ADR-0067); its transport is on `api` | app shape |
 | `api` | the HTTP surface — pick one framework | app shape |
 | `client` | the browser tier | app shape |
 | `docs` | model pages, api reference, agent pages, requirement ledger — each its own generator entry, like any other | app shape |

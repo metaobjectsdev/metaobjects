@@ -10,8 +10,7 @@
 // see the report for why these use Secret rather than Customer (the pinned
 // artifact's actual Customer/Address pair carries no ref between them at all).
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
@@ -22,6 +21,7 @@ import {
   type MetaDataTypeProvider,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 function findRepoRoot(start: string): string {
   let dir = start;
@@ -132,7 +132,7 @@ let fileA: string;
 let fileB: string;
 
 beforeEach(() => {
-  tmp = mkdtempSync(join(tmpdir(), "shared-model-file-"));
+  tmp = makeScratchDir("shared-model-file-");
   mkdirSync(join(tmp, "metaobjects"), { recursive: true });
   fileA = join(tmp, "metaobjects", "meta.common-base.json");
   fileB = join(tmp, "metaobjects", "meta.common-customer.json");
@@ -141,7 +141,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTree(tmp);
 });
 
 /** Loads the outer `opts.metadata` MetaRoot `runGen` requires (non-strict — the

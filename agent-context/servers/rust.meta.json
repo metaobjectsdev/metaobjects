@@ -1,0 +1,6 @@
+{
+  "displayName": "Rust",
+  "install": "cargo install metaobjects-cli (the crates are not on crates.io yet: install from a clone with cargo install --path server/rust/metaobjects-cli)",
+  "codegenCommand": "cargo meta gen",
+  "verifyStep": "`cargo meta verify` (the generated crates and the business rules; `--codegen` runs the drift gate alone)"
+}

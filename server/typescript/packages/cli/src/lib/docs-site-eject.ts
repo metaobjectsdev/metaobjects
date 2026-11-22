@@ -6,7 +6,7 @@
 // the same place.
 
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { OWNED_DOCS_SITE_DIR } from "@metaobjectsdev/codegen-ts";
 import { readSiteFile, SITE_ASSET_NAMES, SITE_TEMPLATE_NAMES } from "@metaobjectsdev/docs-site";
@@ -18,6 +18,8 @@ export interface DocsSiteFileResult {
   /** Project-relative path. */
   path: string;
   status: "created" | "preserved" | "replaced";
+  /** Set when a kept file already holds exactly the shipped bytes. */
+  identical?: true;
 }
 
 /**
@@ -36,11 +38,14 @@ export async function ejectDocsSite(projectRoot: string, force: boolean): Promis
       const path = `${dir}/${name}`;
       const abs = join(projectRoot, path);
       const existed = existsSync(abs);
-      if (existed && !force) {
-        out.push({ path, status: "preserved" });
+      const text = readSiteFile(kind, name);
+      // Kept unless --force; and --force over identical bytes writes nothing either.
+      const identical = existed && (await readFile(abs, "utf8")) === text;
+      if (existed && (!force || identical)) {
+        out.push({ path, status: "preserved", ...(identical && { identical: true as const }) });
         continue;
       }
-      await writeFile(abs, readSiteFile(kind, name), "utf8");
+      await writeFile(abs, text, "utf8");
       out.push({ path, status: existed ? "replaced" : "created" });
     }
   }
