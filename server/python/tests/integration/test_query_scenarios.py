@@ -42,7 +42,8 @@ ENGINE_EXPECTED_FAILURES: dict[tuple[str, str], str] = {}
 
 
 def _skip_if_expected(engine: str, scenario: QueryScenario) -> None:
-    reason = ENGINE_EXPECTED_FAILURES.get((engine, scenario.name))
+    # A port-wide deferral (EXPECTED_FAILURES) holds on every engine a scenario runs on.
+    reason = ENGINE_EXPECTED_FAILURES.get((engine, scenario.name)) or EXPECTED_FAILURES.get(scenario.name)
     if reason:
         pytest.skip(reason)
 

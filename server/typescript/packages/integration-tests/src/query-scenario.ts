@@ -154,10 +154,16 @@ function decimalFieldNames(root: MetaRoot, entity: string): readonly string[] {
   return [...new Set([...declared, ...reportDecimalFields(entity)])];
 }
 
-/** A list result from a non-Postgres engine, mapped from its driver's spelling onto the corpus' wire form. */
+/** A row result from a non-Postgres engine, mapped from its driver's spelling onto the corpus' wire form. */
 function toEngineWire(engine: "postgres" | WireEngine, spec: QuerySpec, actual: unknown): unknown {
-  if (engine === "postgres" || spec.op !== "list" || !Array.isArray(actual)) return actual;
-  return (actual as Record<string, unknown>[]).map((row) => toWireRow(engine, spec.entity, row));
+  if (engine === "postgres") return actual;
+  if (spec.op === "list" && Array.isArray(actual))
+    return (actual as Record<string, unknown>[]).map((row) => toWireRow(engine, spec.entity, row));
+  // get / create / update / roundtrip each return a single row (or null for a missing one).
+  if ((spec.op === "get" || spec.op === "create" || spec.op === "update" || spec.op === "roundtrip")
+    && actual !== null && typeof actual === "object" && !Array.isArray(actual))
+    return toWireRow(engine, spec.entity, actual as Record<string, unknown>);
+  return actual;
 }
 
 // ---------------------------------------------------------------------------
