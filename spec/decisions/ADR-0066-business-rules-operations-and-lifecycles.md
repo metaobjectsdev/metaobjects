@@ -12,9 +12,11 @@ every entity that extends it. ADR-0067 decides where the rules are enforced, and
 ADR-0045 to match.
 
 1.3.0 ships the vocabulary, the loader rules and the `verify` checks. The generated service
-shells that enforce the rules at run time (§6) are later work. Until they land, the flat generators
-emit nothing from the vocabulary; the layer generators of ADR-0067 emit its names and contract
-types. `fixtures/codegen-noop/rules/` holds the flat generators to that.
+shells that enforce the rules at run time (§6) are the service generators of ADR-0067: TypeScript's
+`service` generator enforces them; the other ports' service generators are later 1.3.0 work. The
+flat generators emit nothing from the vocabulary; the layer generators of ADR-0067 emit its names,
+contract types and, in TypeScript, the shells. `fixtures/codegen-noop/rules/` holds the flat
+generators to that.
 
 **Experimental.** Decision 2 of the 1.3.0 design pass gives new vocabulary an experimental label
 until it is proven in use. Everything this ADR registers — `api.*`, `operation.*`, `binding.*`,
