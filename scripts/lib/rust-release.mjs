@@ -14,6 +14,20 @@
 // - The crates publish in dependency order, each after the crates it depends on, because
 //   crates.io refuses a crate whose dependency is not yet there.
 
+/**
+ * The part of `cargo metadata --format-version 1 --no-deps` the publish order reads.
+ *
+ * @typedef {{
+ *   workspace_members?: string[],
+ *   packages: {
+ *     id: string,
+ *     name: string,
+ *     publish?: string[] | null,
+ *     dependencies: {name: string, kind?: string | null}[],
+ *   }[],
+ * }} CargoMetadata
+ */
+
 /** The workspace that holds the crates, relative to the repository root. */
 export const RUST_DIR = "server/rust";
 
@@ -30,29 +44,52 @@ const NOT_SHIPPED = new Set(["tests", "examples", "benches", "baselines"]);
  * Whether a repository path is part of what the Rust crates ship: a crate's sources, build
  * script, data, manifest, README or licence, or the workspace manifest and lockfile. A
  * crate's tests, examples, benches and benchmark baselines are not.
+ *
+ * @param {string} path
+ * @returns {boolean}
  */
 export function isRustProductPath(path) {
   const prefix = `${RUST_DIR}/`;
   if (!path.startsWith(prefix)) return false;
   const parts = path.slice(prefix.length).split("/");
   if (parts.length === 1) return parts[0] === "Cargo.toml" || parts[0] === "Cargo.lock";
-  return !NOT_SHIPPED.has(parts[1]);
+  return !NOT_SHIPPED.has(parts[1] ?? "");
 }
 
-/** `1.3.0` or `1.3.0-rc.2` as numbers to compare: a final release sorts after its candidates. */
+/**
+ * `1.3.0` or `1.3.0-rc.2` as numbers to compare: a final release sorts after its candidates.
+ *
+ * @param {string} v
+ * @returns {number[] | null}
+ */
 function versionKey(v) {
   const m = v.match(/^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/);
   if (!m) return null;
   return [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? Infinity : Number(m[4])];
 }
 
+/**
+ * @param {number[]} a
+ * @param {number[]} b
+ * @returns {number}
+ */
 function compareKeys(a, b) {
-  for (let i = 0; i < 4; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  for (let i = 0; i < 4; i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
   return 0;
 }
 
-/** The newest `rust-v*` tag among `tags`, or null when the crates have never been tagged. */
+/**
+ * The newest `rust-v*` tag among `tags`, or null when the crates have never been tagged.
+ *
+ * @param {string[]} tags
+ * @returns {string | null}
+ */
 export function newestRustTag(tags) {
+  /** @type {{tag: string, key: number[]} | null} */
   let best = null;
   for (const t of tags) {
     if (!t.startsWith(RUST_TAG_PREFIX)) continue;
@@ -93,6 +130,8 @@ export function rustPublishDecision({ lastTag, changedPaths, mode = "auto" }) {
  * published manifest, and one with a version needs only to exist by the time someone runs
  * the crate's tests. Ties break on the name, so the order is the same on every machine.
  *
+ * @param {CargoMetadata} metadata
+ * @returns {string[]}
  * @throws when the crates depend on each other in a cycle.
  */
 export function rustPublishOrder(metadata) {
@@ -106,6 +145,7 @@ export function rustPublishOrder(metadata) {
       .filter((d) => d.kind !== "dev" && names.has(d.name) && d.name !== p.name)
       .map((d) => d.name),
   )]));
+  /** @type {string[]} */
   const order = [];
   while (needs.size > 0) {
     const ready = [...needs].filter(([, deps]) => [...deps].every((d) => !needs.has(d))).map(([n]) => n).sort();
@@ -121,13 +161,17 @@ export function rustPublishOrder(metadata) {
  * A crate manifest with every version the release sets moved to `version`: the
  * `[workspace.package]` version, and the version requirement on each dependency given by
  * `path` (a sibling crate). Nothing else in the text changes.
+ *
+ * @param {string} text
+ * @param {string} version
+ * @returns {string}
  */
 export function bumpRustManifest(text, version) {
   let out = "";
   let section = "";
   for (const line of text.split(/(?<=\n)/)) {
     const header = line.match(/^\s*\[([^\]]+)\]\s*$/);
-    if (header) section = header[1].trim();
+    if (header) section = (header[1] ?? "").trim();
     let next = line;
     if (section === "workspace.package") next = next.replace(/^(\s*version\s*=\s*")[^"]*(")/, `$1${version}$2`);
     if (/\bpath\s*=/.test(next)) next = next.replace(/(\bversion\s*=\s*")[^"]*(")/, `$1${version}$2`);
@@ -140,6 +184,10 @@ export function bumpRustManifest(text, version) {
  * Whether crates.io already holds `version` of a crate, from the JSON its
  * `/api/v1/crates/<name>` endpoint answers. A crate that does not exist answers 404, which
  * the caller reads as free before calling this.
+ *
+ * @param {{versions?: {num: string}[]}} json
+ * @param {string} version
+ * @returns {boolean}
  */
 export function crateVersionTaken(json, version) {
   return (json.versions ?? []).some((v) => v.num === version);
