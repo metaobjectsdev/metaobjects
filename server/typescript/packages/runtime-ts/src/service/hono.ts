@@ -5,7 +5,8 @@
 
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { OpResult } from "./index.js";
+import type { OpResult, ReadOnlyPage } from "./index.js";
+import { EXPORT_CONTENT_TYPES, exportContentDisposition, renderExport, type ReportExportSpec } from "../drizzle-fastify/report-export.js";
 import { HTTP_STATUS_BAD_REQUEST, INVALID_JSON_BODY } from "../route-errors.js";
 
 export { guardRoute } from "../hono/route-guard.js";
@@ -39,4 +40,33 @@ export function sendOpResult<T>(c: Context, result: OpResult<T>, okStatus = 200,
   if (!result.ok) return c.json(result.error, result.status as ContentfulStatusCode);
   if (okStatus === 204) return c.body(null, 204);
   return c.json(toWire === undefined ? result.value : toWire(result.value), okStatus as ContentfulStatusCode);
+}
+
+/** Answer a write to a read-only object: `405 { "error": "method_not_allowed" }`. */
+export function methodNotAllowed(c: Context, resource: "projection" | "report"): Response {
+  return c.json({ error: "method_not_allowed", message: `${c.req.method} is not supported on a ${resource} (read-only).` }, 405);
+}
+
+/**
+ * Answer a read-only list page: the rows mapped to the wire, as a `{ rows, total }` envelope when
+ * the count was asked for; with an export spec and an export format asked (`?format=`), the rows
+ * rendered in that format as a download named after `path`'s last segment.
+ */
+export function sendListPage(
+  c: Context,
+  result: OpResult<ReadOnlyPage>,
+  toWire: (row: Record<string, unknown>) => unknown,
+  exportOf?: { readonly spec: ReportExportSpec; readonly path: string },
+): Response {
+  if (!result.ok) return c.json(result.error, result.status as ContentfulStatusCode);
+  const page = result.value;
+  const rows = page.rows.map(toWire);
+  if (exportOf !== undefined && page.format !== undefined) {
+    const body = renderExport(exportOf.spec, page.format, rows as Record<string, unknown>[], page.total);
+    return c.body(body, 200, {
+      "content-disposition": exportContentDisposition(exportOf.path, page.format),
+      "content-type": EXPORT_CONTENT_TYPES[page.format],
+    });
+  }
+  return c.json(page.total === undefined ? rows : { rows, total: page.total });
 }

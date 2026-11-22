@@ -20,6 +20,9 @@ import { coerceIdForColumn, contractErrorCode, extractRowCount, firstRow, isTrut
 import { parseFilterParams } from "../drizzle-fastify/filter-parser.js";
 import { FilterParseError, pageLimit, type PageSize } from "../drizzle-fastify/list-params.js";
 import type { FilterAllowlist, SortAllowlist } from "../drizzle-fastify/filter-allowlist.js";
+import { ReportTooLargeError } from "../drizzle-fastify/list-params.js";
+import { ReportExportError } from "../drizzle-fastify/report-export.js";
+import { InvalidIdError } from "../read-only-read.js";
 
 export type { SqlDialect } from "../sql-dialect.js";
 export type { PageSize } from "../drizzle-fastify/list-params.js";
@@ -215,6 +218,9 @@ async function syncSqliteTransaction<T>(handle: Drizzle, nested: boolean, fn: (t
 
 function failure(e: unknown): OpResult<never> {
   if (e instanceof Refusal) return { ok: false, status: e.status, error: e.body };
+  if (e instanceof InvalidIdError) return { ok: false, status: 400, error: { error: "invalid_id" } };
+  if (e instanceof ReportTooLargeError) return { ok: false, status: 400, error: { error: "report_too_large", maxRows: e.maxRows } };
+  if (e instanceof ReportExportError) return { ok: false, status: e.status, error: e.body };
   if (e instanceof FilterParseError) {
     return { ok: false, status: 400, error: { error: contractErrorCode(e.code), ...(e.details ?? {}) } };
   }
@@ -326,6 +332,11 @@ export interface ListSpec {
   readonly pagination?: PageSize;
   /** The key field a list with no `sort` is ordered by, so a page is stable. Default `id`. */
   readonly keyField?: string;
+  /**
+   * A condition every row of the list meets besides the query's filter: a single-table subtype's
+   * discriminator (`scopeCondition`), so its list answers its own rows only.
+   */
+  readonly scope?: SQL;
 }
 
 /** A page of a list, and the count of every row the filter matches when the query asked for it (`withCount`). */
@@ -354,7 +365,7 @@ export async function listRows(db: Drizzle, src: Drizzle, query: ListQueryInput,
     sortAllowlist: spec.sortAllowlist,
     dialect: spec.dialect,
   });
-  const where = parsed.where && parsed.searchWhere ? and(parsed.where, parsed.searchWhere) : (parsed.where ?? parsed.searchWhere);
+  const where = and(...[parsed.where, parsed.searchWhere, spec.scope].filter((c): c is SQL => c !== undefined));
   let q = db.select().from(src).$dynamic();
   if (where) q = q.where(where);
   if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
@@ -368,3 +379,23 @@ export async function listRows(db: Drizzle, src: Drizzle, query: ListQueryInput,
   const countRow = (await cq)[0] as { c: number } | undefined;
   return { rows, total: countRow?.c ?? 0 };
 }
+
+/** The condition a single-table subtype's rows meet: its discriminator `field` holds `value`. */
+export function scopeCondition(table: Drizzle, field: string, value: string): SQL {
+  return eq(table[field], value);
+}
+
+/**
+ * The row a write to a write-through entity's table just wrote, read back through its replica
+ * view by key, so the answer carries the view's derived columns. Answers the written row when the
+ * view has none (it never 500s a write that succeeded).
+ */
+export async function readThroughView(db: Drizzle, view: Drizzle, keyField: string, written: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return (await readOne(db, view, eq(view[keyField], written[keyField]))) ?? written;
+}
+
+// How a read-only object (a projection, a served report) and a many-to-many traversal are read: the
+// same functions the flat routes call, so the service answers what they answer.
+export { readOnlyGet, readOnlyList, type ReadOnlyPage, type ReadOnlySpec } from "../read-only-read.js";
+export { m2mRelated, type M2mSpec } from "../m2m-read.js";
+export type { ReportExportSpec } from "../drizzle-fastify/report-export.js";
