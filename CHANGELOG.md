@@ -149,6 +149,14 @@ here.**
   TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
   decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
   scenario can now send a body that is not JSON with `rawBody`.
+- **openapi: the document describes `?search`, `filter[or]` and `filter[and]`.** A list whose row
+  has a text field the search matches takes a `search` parameter naming those fields, and a list
+  with any filter takes the two combinators as `deepObject` parameters whose description gives the
+  grammar and the nesting cap. Item `GET` and `DELETE` now list the `400 invalid_id` answer the routes
+  already gave. A project that wires `openApiFile()` sees `openapi.json` change on the next
+  `meta gen`; the contract corpus goldens move with it. A new contract case, `list-query`, documents
+  the list-query model, and the list-query lane now holds every exchange to it as the other
+  generated lanes do; the check no longer exempts `search` and the combinators.
 - **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
   `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
   port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle

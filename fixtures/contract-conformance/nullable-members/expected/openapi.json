@@ -148,6 +148,16 @@
               }
             }
           },
+          "400": {
+            "description": "The id is not one the key column can hold: error \"invalid_id\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No such row.",
             "content": {
@@ -287,6 +297,16 @@
           "204": {
             "description": "Deleted."
           },
+          "400": {
+            "description": "The id is not one the key column can hold: error \"invalid_id\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No such row.",
             "content": {
@@ -402,6 +422,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SensorSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not one the key column can hold: error \"invalid_id\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
