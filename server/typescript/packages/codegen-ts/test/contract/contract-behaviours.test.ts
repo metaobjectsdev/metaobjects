@@ -414,6 +414,14 @@ describe("the document states what the routes do beyond the happy path", () => {
     expect(drop.responses?.["400"]?.description).toContain("validation");
   });
 
+  test("every item verb states invalid_id, and the collection POST does not", async () => {
+    const doc = await document("blog");
+    for (const method of ["get", "patch", "put", "delete"]) {
+      expect(operation(doc, "/api/authors/{id}", method).responses?.["400"]?.description, method).toContain("invalid_id");
+    }
+    expect(operation(doc, "/api/authors", "post").responses?.["400"]?.description).not.toContain("invalid_id");
+  });
+
   test("the error envelope carries the validation issues and the undeclared keys", async () => {
     const error = ((await document("blog"))["components"] as { schemas: Record<string, { properties: Record<string, unknown> }> }).schemas["ApiError"];
     expect(Object.keys(error?.properties ?? {})).toEqual(["error", "message", "field", "fields", "issues", "maxLimit"]);

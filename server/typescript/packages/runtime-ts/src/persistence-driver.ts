@@ -86,6 +86,13 @@ export interface UpdateSpec extends TableTarget {
   values: Row;
   where: WhereClause;
   returning: string[];
+  /**
+   * A write whose `where` no longer matches the row it wrote (a guarded update moves the state
+   * its own guard tests) names the key alone here. A dialect without RETURNING (MySQL) then
+   * answers no row when the statement changed none, and otherwise reads the row back by this
+   * clause instead of by `where`.
+   */
+  key?: WhereClause;
 }
 
 export interface UpdateManySpec extends TableTarget {

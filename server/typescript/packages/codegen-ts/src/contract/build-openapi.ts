@@ -315,8 +315,11 @@ function writeBody(r: ResourceOps, shape: ContractShape): JsonSchema {
   return { required: true, description, content: jsonContent(pathRef(r.refs, r.row, shape)) };
 }
 
-function writeRefused(r: ResourceOps): JsonSchema {
-  return apiUnknownFieldsOf(r.root) === UNKNOWN_FIELDS_REJECT ? UNKNOWN_FIELDS_REFUSED : VALIDATION_REFUSED;
+const INVALID_ID_NOTE = ' An id the key column cannot hold answers error "invalid_id".';
+
+function writeRefused(r: ResourceOps, byId = false): JsonSchema {
+  const refused = apiUnknownFieldsOf(r.root) === UNKNOWN_FIELDS_REJECT ? UNKNOWN_FIELDS_REFUSED : VALIDATION_REFUSED;
+  return byId ? { ...refused, description: `${String(refused["description"])}${INVALID_ID_NOTE}` } : refused;
 }
 
 function updateOperation(r: ResourceOps, operationId: string): JsonSchema {
@@ -326,7 +329,7 @@ function updateOperation(r: ResourceOps, operationId: string): JsonSchema {
     requestBody: writeBody(r, "update"),
     responses: {
       "200": { description: "The row.", content: jsonContent(pathRef(r.refs, r.row, "read")) },
-      "400": writeRefused(r),
+      "400": writeRefused(r, true),
       "404": NOT_FOUND,
       "409": CONFLICT,
     },

@@ -81,6 +81,24 @@ const DRIVERS: { name: string; build: () => Promise<PersistenceDriver> }[] = [
       return drizzleDriver({ db: drizzleLibsql(client), schema: { tickets: drzTickets }, dialect: "sqlite" });
     },
   },
+  // The MySQL branch (no RETURNING: UPDATE, then read back) over a SQLite connection: it runs the
+  // same driver code a MySQL connection would, which is what the read-back-by-key rule is about.
+  {
+    name: "kyselyDriver/mysql read-back",
+    build: async () => {
+      const db = new Kysely<Record<string, Row>>({ dialect: new LibsqlDialect({ url: ":memory:" }) });
+      await sql.raw(DDL).execute(db);
+      return kyselyDriver({ db, dialect: "mysql" });
+    },
+  },
+  {
+    name: "drizzleDriver/mysql read-back",
+    build: async () => {
+      const client = createClient({ url: ":memory:" });
+      await client.execute(DDL);
+      return drizzleDriver({ db: drizzleLibsql(client), schema: { tickets: drzTickets }, dialect: "mysql" });
+    },
+  },
 ];
 
 const gt = (field: string, value: number): ExprNode => ({ op: "gt", left: { field }, right: { value } });

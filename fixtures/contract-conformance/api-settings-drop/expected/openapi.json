@@ -489,7 +489,7 @@
             }
           },
           "400": {
-            "description": "The request was refused. A body that fails validation answers error \"validation\" with an issue for every problem, not the first.",
+            "description": "The request was refused. A body that fails validation answers error \"validation\" with an issue for every problem, not the first. An id the key column cannot hold answers error \"invalid_id\".",
             "content": {
               "application/json": {
                 "schema": {
@@ -548,7 +548,7 @@
             }
           },
           "400": {
-            "description": "The request was refused. A body that fails validation answers error \"validation\" with an issue for every problem, not the first.",
+            "description": "The request was refused. A body that fails validation answers error \"validation\" with an issue for every problem, not the first. An id the key column cannot hold answers error \"invalid_id\".",
             "content": {
               "application/json": {
                 "schema": {

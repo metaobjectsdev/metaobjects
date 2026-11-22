@@ -334,10 +334,12 @@ function makeDrizzleDriver(
         const w = applyWhere(table, spec.where, table);
         if (w !== undefined) q = q.where(w);
         if (dialect === "mysql") {
-          await q;
+          const changed = extractRowCount(await q);
+          if (spec.key !== undefined && changed === 0) return null;
           const selectArg = buildSelectMap(table, spec.returning);
           let s = db.select(selectArg).from(table);
-          if (w !== undefined) s = s.where(w);
+          const readBack = spec.key === undefined ? w : applyWhere(table, spec.key, table);
+          if (readBack !== undefined) s = s.where(readBack);
           const found = ((await s.limit(1)) as Row[])[0];
           return found ? toDbKeyedRow(table, jsKeyedFromSelect(found, selectArg)) : null;
         }

@@ -389,7 +389,7 @@ export function buildGuardedUpdateSpec(
       encode: (f, v) => encodeFilterValue(getField(entity, f), v, dialect),
     }));
   }
-  return { ...base, where: { kind: "and", clauses } };
+  return { ...base, where: { kind: "and", clauses }, key: base.where };
 }
 
 export function buildDeleteSpec(

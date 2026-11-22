@@ -121,9 +121,10 @@ function makeKyselyDriver(
         let q = on(spec.schema).updateTable(spec.table).set(bindable(spec.values));
         q = applyWhere(q, spec.where, dialect);
         if (dialect === "mysql") {
-          await q.execute();
+          const result = await q.executeTakeFirst() as { numUpdatedRows?: bigint | number } | undefined;
+          if (spec.key !== undefined && Number(result?.numUpdatedRows ?? 0) === 0) return null;
           let s = on(spec.schema).selectFrom(spec.table).select(spec.returning);
-          s = applyWhere(s, spec.where, dialect);
+          s = applyWhere(s, spec.key ?? spec.where, dialect);
           return ((await s.executeTakeFirst()) as Row | undefined) ?? null;
         }
         const rows = await q.returning(spec.returning).execute();
