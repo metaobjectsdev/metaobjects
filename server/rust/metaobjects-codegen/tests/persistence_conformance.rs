@@ -6,6 +6,7 @@
 //! port's persistence layer, normalized by `normalization.md` and compared with its `expect`.
 //! Here the persistence layer is the code `repository` generates for `canonical/meta.fitness.json`:
 //! a probe crate calls each entity's `list`, `count`, `get`, `create`, `update` and `delete`, and
+//! the guarded update (`meta_store::transition`, with the scenario's `@condition`), and
 //! the expected rows are the corpus's own, so the oracle is shared with every other port.
 //!
 //! Postgres runs in `docker run --rm` on a capped tmpfs with durability off, and is removed when
@@ -381,6 +382,21 @@ macro_rules! entity {
                 }
             }
             "delete" => Ok(json!(st::delete($c, key!($k, $s)).await.map_err(e)?)),
+            "guardedUpdate" => {
+                let g = &$s["guard"];
+                let state = g["field"].as_str().ok_or("guard.field is a field name")?;
+                let from = g["from"].as_array().ok_or("guard.from is a list")?;
+                let condition = match g.get("condition") {
+                    Some(c) => Some(meta_store::Condition::from_json(c).map_err(e)?),
+                    None => None,
+                };
+                let moved = meta_store::transition(
+                    $c, t, key!($k, $s), state, from, &g["to"], condition.as_ref(),
+                )
+                .await
+                .map_err(e)?;
+                Ok(json!(moved))
+            }
             "roundtrip" => {
                 let created = create!($c, t, st, $row, $create, $s.get("insert"));
                 let created = serde_json::to_value(created).unwrap();

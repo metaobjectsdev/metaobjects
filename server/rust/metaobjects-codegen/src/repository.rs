@@ -884,7 +884,7 @@ pub fn entity_file(e: &StoredEntity) -> Result<String, GenError> {
                             format!("to: {}", l.state_type),
                         ],
                         "bool",
-                        &format!("meta_store::transition(c, &TABLE, id, {}, from, &to).await", literal(&l.field)),
+                        &format!("meta_store::transition(c, &TABLE, id, {}, from, &to, None).await", literal(&l.field)),
                     );
                 }
             }

@@ -950,7 +950,8 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   junction in one statement (hetero, directed self-join and `@symmetric` self-join, which keeps a
   row relating a record to itself). The junction's keys come from the same derivation the loader's
   pairing rule runs, now a public function of the core crate (`derive_m2m_fields`). The persistence
-  runner runs all 55 scenarios on Postgres, and its ledger is empty.
+  runner runs all 56 scenarios on Postgres, `guarded-update` among them (`meta_store::transition`
+  takes a transition's `@condition` and ANDs it into the same statement), and its ledger is empty.
 - **The Rust crates join the release path (ADR-0065 Amendment 3).** The workspace version moves to
   the shared line (1.3.0), and `scripts/release.mjs` publishes the four crates to crates.io after
   npm, behind the same confirm, in dependency order, when a file they ship changed since the last

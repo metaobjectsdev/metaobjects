@@ -297,6 +297,108 @@ impl Filter {
     }
 }
 
+/// A transition's `@condition` (ADR-0066 §1): attr.expression's CHECK subset, the six
+/// comparisons, the null tests, and, or, not and coalesce, over a model's FIELD names. The
+/// guarded update ANDs it into the one statement that makes the move.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Condition {
+    /// One of `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
+    Compare {
+        op: Op,
+        left: Operand,
+        right: Operand,
+    },
+    /// `isNull`, or `isNotNull` when `not`.
+    IsNull {
+        operand: Operand,
+        not: bool,
+    },
+    Not(Box<Condition>),
+    And(Vec<Condition>),
+    Or(Vec<Condition>),
+}
+
+/// One side of a comparison in a [`Condition`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Operand {
+    Field(String),
+    /// A literal: compared with a field, it is written in the form that field's column stores
+    /// (an int-backed enum's member is its integer), as a filter value is.
+    Value(Value),
+    Coalesce(Vec<Operand>),
+}
+
+impl Condition {
+    /// The condition of its JSON form, a node of the `@condition` grammar. A node outside the
+    /// grammar is refused rather than dropped: a guard that loses its condition makes a move the
+    /// model forbids.
+    pub fn from_json(node: &Value) -> Result<Condition, StoreError> {
+        let op = node.get("op").and_then(Value::as_str).unwrap_or("");
+        let arg = |key: &str| {
+            node.get(key).ok_or_else(|| bad("condition", format!("`{op}` takes `{key}`")))
+        };
+        let args = || match node.get("args") {
+            Some(Value::Array(items)) => items.iter().map(Condition::from_json).collect(),
+            _ => Err(bad("condition", format!("`{op}` takes a list `args`"))),
+        };
+        Ok(match op {
+            "and" => Condition::And(args()?),
+            "or" => Condition::Or(args()?),
+            "not" => Condition::Not(Box::new(Condition::from_json(arg("arg")?)?)),
+            "isNull" | "isNotNull" => Condition::IsNull {
+                operand: Operand::from_json(arg("arg")?)?,
+                not: op == "isNotNull",
+            },
+            _ => match Op::of(op) {
+                Some(o @ (Op::Eq | Op::Ne | Op::Gt | Op::Gte | Op::Lt | Op::Lte)) => {
+                    Condition::Compare {
+                        op: o,
+                        left: Operand::from_json(arg("left")?)?,
+                        right: Operand::from_json(arg("right")?)?,
+                    }
+                }
+                _ => {
+                    return Err(bad(
+                        "condition",
+                        format!("{node} is not a condition the guarded update can apply"),
+                    ))
+                }
+            },
+        })
+    }
+}
+
+impl Operand {
+    /// The operand of its JSON form: `{ "field": name }`, `{ "value": literal }` or
+    /// `{ "fn": "coalesce", "args": [ ... ] }`.
+    pub fn from_json(node: &Value) -> Result<Operand, StoreError> {
+        if let Some(field) = node.get("field").and_then(Value::as_str) {
+            return Ok(Operand::Field(field.to_string()));
+        }
+        if let Some(v) = node.get("value") {
+            return Ok(Operand::Value(v.clone()));
+        }
+        if let (Some("coalesce"), Some(Value::Array(items))) =
+            (node.get("fn").and_then(Value::as_str), node.get("args"))
+        {
+            return Ok(Operand::Coalesce(
+                items.iter().map(Operand::from_json).collect::<Result<_, _>>()?,
+            ));
+        }
+        Err(bad("condition", format!("{node} is not an operand the guarded update can apply")))
+    }
+
+    /// The field whose stored form a literal compared with this operand takes: the field
+    /// itself, or a coalesce's first field.
+    fn stored_field(&self) -> Option<&str> {
+        match self {
+            Operand::Field(f) => Some(f),
+            Operand::Value(_) => None,
+            Operand::Coalesce(items) => items.iter().find_map(Operand::stored_field),
+        }
+    }
+}
+
 /// An order on one field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sort {
@@ -387,6 +489,15 @@ impl Sql {
                 let ty = pg_type(column);
                 self.text.push_str(&format!("CAST(${n} AS {ty})"));
             }
+            Engine::Sqlite => self.text.push('?'),
+        }
+    }
+
+    /// A placeholder for a literal with no column to take its type from.
+    fn raw_param(&mut self, bind: Bind) {
+        self.binds.push(bind);
+        match self.engine {
+            Engine::Postgres => self.text.push_str(&format!("${}", self.binds.len())),
             Engine::Sqlite => self.text.push('?'),
         }
     }
@@ -1036,6 +1147,100 @@ fn where_filter(sql: &mut Sql, table: &Table, f: &Filter) -> Result<(), StoreErr
     Ok(())
 }
 
+fn where_condition(sql: &mut Sql, table: &Table, cond: &Condition) -> Result<(), StoreError> {
+    match cond {
+        Condition::Compare { op, left, right } => {
+            sql.push("(");
+            operand_sql(sql, table, left, right.stored_field())?;
+            sql.push(&format!(" {} ", op.sql()));
+            operand_sql(sql, table, right, left.stored_field())?;
+            sql.push(")");
+        }
+        Condition::IsNull { operand, not } => {
+            sql.push("(");
+            operand_sql(sql, table, operand, None)?;
+            sql.push(&format!(" IS {}NULL)", if *not { "NOT " } else { "" }));
+        }
+        Condition::Not(inner) => {
+            sql.push("(NOT ");
+            where_condition(sql, table, inner)?;
+            sql.push(")");
+        }
+        Condition::And(all) | Condition::Or(all) => {
+            let (join, empty) = if matches!(cond, Condition::And(_)) {
+                (" AND ", "1 = 1")
+            } else {
+                (" OR ", "1 = 0")
+            };
+            if all.is_empty() {
+                sql.push(empty);
+                return Ok(());
+            }
+            sql.push("(");
+            for (i, c) in all.iter().enumerate() {
+                if i > 0 {
+                    sql.push(join);
+                }
+                where_condition(sql, table, c)?;
+            }
+            sql.push(")");
+        }
+    }
+    Ok(())
+}
+
+/// One operand; a literal takes the stored form of `partner`, the field it is compared with.
+fn operand_sql(
+    sql: &mut Sql,
+    table: &Table,
+    operand: &Operand,
+    partner: Option<&str>,
+) -> Result<(), StoreError> {
+    match operand {
+        Operand::Field(f) => {
+            let c = *table.column(f)?;
+            if c.array || c.kind == Kind::Json {
+                return Err(bad(f, "a condition compares no list or JSON value"));
+            }
+            sql.push(&quote(c.column));
+        }
+        Operand::Value(v) => match partner {
+            Some(f) => {
+                let c = *table.column(f)?;
+                let b = scalar_bind(sql.engine, f, c.kind, v)?;
+                sql.param(b, &c);
+            }
+            None => {
+                let b = match v {
+                    Value::Null => Bind::Null,
+                    Value::Bool(b) => Bind::Bool(*b),
+                    Value::String(s) => Bind::Text(s.clone()),
+                    Value::Number(n) => match n.as_i64() {
+                        Some(i) => Bind::Int(i),
+                        None => Bind::Real(n.as_f64().unwrap_or_default()),
+                    },
+                    _ => return Err(bad("condition", "a literal is a scalar")),
+                };
+                sql.raw_param(b);
+            }
+        },
+        Operand::Coalesce(items) => {
+            // The arguments of a coalesce share its type, so a literal among them takes the
+            // first field's form.
+            let own = operand.stored_field().or(partner);
+            sql.push("COALESCE(");
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    sql.push(", ");
+                }
+                operand_sql(sql, table, item, own)?;
+            }
+            sql.push(")");
+        }
+    }
+    Ok(())
+}
+
 /// ` AND "<discriminator>" = <value>` (or ` WHERE ...` when `first`), for a subtype.
 fn scope(sql: &mut Sql, table: &Table, first: bool) -> Result<(), StoreError> {
     if let Some((field, value)) = table.discriminator {
@@ -1292,8 +1497,9 @@ pub async fn delete<C: Conn + ?Sized>(
 }
 
 /// The guarded update of a lifecycle (ADR-0066 §6 step 5): sets `state` to `to` on the row
-/// with key `key` only while its state is one of `from`, in one statement. `false` when no
-/// row matched: the row is gone, or another writer moved it first. The caller re-reads to
+/// with key `key` only while its state is one of `from` and `condition` (a transition's
+/// `@condition`, when it has one) holds, in one statement. `false` when no row matched: the
+/// row is gone, its condition fails, or another writer moved it first. The caller re-reads to
 /// tell which.
 pub async fn transition<S: Serialize, C: Conn + ?Sized>(
     c: &mut C,
@@ -1302,6 +1508,7 @@ pub async fn transition<S: Serialize, C: Conn + ?Sized>(
     state: &str,
     from: &[S],
     to: &S,
+    condition: Option<&Condition>,
 ) -> Result<bool, StoreError> {
     table.require_writable()?;
     let key = serde_json::to_value(key).map_err(|e| bad(table.object, e.to_string()))?;
@@ -1323,5 +1530,9 @@ pub async fn transition<S: Serialize, C: Conn + ?Sized>(
         sql.param(scalar_bind(engine, state, col.kind, &value(f)?)?, &col);
     }
     sql.push(")");
+    if let Some(cond) = condition {
+        sql.push(" AND ");
+        where_condition(&mut sql, table, cond)?;
+    }
     Ok(c.execute(&sql.text, sql.binds).await? == 1)
 }

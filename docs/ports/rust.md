@@ -349,7 +349,10 @@ over it:
 - per lifecycle (ADR-0066), the guarded update `transition_<field>(c, id, from, to)`: one
   `UPDATE ... WHERE key = id AND state IN (from)`, `false` when no row matched because it is gone
   or another writer moved it first. It decides nothing: which move is legal, and who may make it,
-  is the service's (layer 4).
+  is the service's (layer 4). Underneath it is `meta_store::transition`, which also takes a
+  transition's `@condition` (a `meta_store::Condition`, the CHECK subset: the six comparisons, the
+  null tests, and, or, not and coalesce) and ANDs it into the same statement; a literal compared
+  with a field is written in that field's stored form, so an int-backed enum's member is its integer.
 
 `c` is a `sqlx::PgConnection` or a `sqlx::SqliteConnection` (a transaction derefs to one), through
 `meta_store::Conn`; the shared crate's `postgres` and `sqlite` features pick the engines. Rows come
@@ -390,7 +393,7 @@ The store is held to the shared persistence corpus (`fixtures/persistence-confor
 `tests/persistence_conformance.rs` generates the corpus model, starts a throwaway Postgres
 (`docker run --rm` on a tmpfs, removed when the test ends; without docker the test says so and
 passes), and runs every scenario through the generated functions, normalized as
-`normalization.md` says. All 55 run; a scenario this port could not run would go on the
+`normalization.md` says. All 56 run, `guarded-update` among them; a scenario this port could not run would go on the
 ledger in that file, which is empty and only shrinks. `tests/repository.rs` runs the same
 rows on SQLite in memory, and the guarded update on the rules model.
 
