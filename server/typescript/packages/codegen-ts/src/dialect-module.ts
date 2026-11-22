@@ -34,8 +34,11 @@ export function dialectModule(dialect: Dialect): DialectModule {
  * (ADR-0008 — `db` is passed in). Every type argument is as open as Drizzle's own constraint
  * allows, so any driver's database handle assigns — a schema-carrying `drizzle(client,
  * { schema })` as well as a schema-less one.
+ *
+ * SQLite accepts a sync and an async driver by default. `asyncOnly` narrows it to async drivers
+ * (libsql), for a tier that awaits inside a transaction callback, which a sync driver rejects.
  */
-export function dbTypeBlock(dialect: Dialect): { import: string; alias: string } {
+export function dbTypeBlock(dialect: Dialect, opts?: { asyncOnly?: boolean }): { import: string; alias: string } {
   switch (dialect) {
     case "postgres":
       return {
@@ -50,7 +53,7 @@ export function dbTypeBlock(dialect: Dialect): { import: string; alias: string }
     case "sqlite":
       return {
         import: `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`,
-        alias: `type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;`,
+        alias: `type Db = BaseSQLiteDatabase<${opts?.asyncOnly ? '"async"' : '"sync" | "async"'}, unknown, Record<string, unknown>>;`,
       };
   }
 }

@@ -1,5 +1,5 @@
 {
-  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python, and rust (ADR-0065, held to the same four checks by its own test). `tier`: native (idiomatic per-port code) or neutral (language-neutral pages that describe the model the same way in every port; a description of the output, not a door: every generator runs when the project's generator list declares it, ADR-0034 Amendment 9). `layer`: one of model, persistence, api, client, docs, capability — the grouping an adopter SELECTS BY, gated in every port exactly as `tier` is (see README.md). `eject`: \"full\" (the owned copy holds the generator's emit) or an exemption with a written reason and the ruling that grants it; the top-level `eject` block carries the engine surface, the exempt non-generator emitters and the pending list (ADR-0034 Amendment 8, see README.md). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
+  "$comment": "CANONICAL generator stable-name manifest (ADR-0021 D3). The single cross-port source of truth for generator stable names. Every port's generator registry is conformance-tested against this file: (1) every generator a port exposes MUST use a name listed here; (2) for each generator, the `ports` array lists exactly the ports expected to expose it (presence is checked both ways); (3) because all ports validate against this one file, a shared concept (e.g. `routes`) is spelled identically everywhere. Port ids: typescript, csharp, java, kotlin, python, and rust (ADR-0065, held to the same four checks by its own test). `tier`: native (idiomatic per-port code) or neutral (language-neutral pages that describe the model the same way in every port; a description of the output, not a door: every generator runs when the project's generator list declares it, ADR-0034 Amendment 9). `layer`: one of model, persistence, service, api, client, docs, capability — the grouping an adopter SELECTS BY, gated in every port exactly as `tier` is (see README.md). `eject`: \"full\" (the owned copy holds the generator's emit) or an exemption with a written reason and the ruling that grants it; the top-level `eject` block carries the engine surface, the exempt non-generator emitters and the pending list (ADR-0034 Amendment 8, see README.md). Adding/renaming a generator = edit THIS file + the port registry together; the conformance gate fails otherwise.",
   "ports": ["typescript", "csharp", "java", "kotlin", "python", "rust"],
   "generators": {
     "entity": {
@@ -117,6 +117,20 @@
       "layer": "model",
       "eject": "full",
       "ports": ["typescript", "csharp"]
+    },
+    "service": {
+      "concept": "The service layer (ADR-0067 layer 4): one module per metadata package, a function per operation, and a factory that binds them to the dependencies passed in. Each store-backed entity gets its derived list, get, create, update and delete; every write runs in one transaction (a savepoint inside a caller's) with the declared write rules (ADR-0045). TypeScript so far, behind its own transport (`service-routes`); the other ports add theirs with their rules-layer work.",
+      "tier": "native",
+      "layer": "service",
+      "eject": "full",
+      "ports": ["typescript"]
+    },
+    "service-routes": {
+      "concept": "A thin REST transport over the service layer (ADR-0067 layer 5), one per metadata package: each route parses the request, calls one service operation and sends what it answered, and holds no rules. It answers the shared REST contract as `routes` does. TypeScript (Fastify) so far.",
+      "tier": "native",
+      "layer": "api",
+      "eject": "full",
+      "ports": ["typescript"]
     },
     "prompt-render": {
       "concept": "Per-template.prompt render handle over the render engine, aggregated into one module. TYPESCRIPT ONLY by design: the other four ports emit a prompt's render helper from `render-helper` (see its note) rather than a second generator.",
@@ -430,6 +444,7 @@
           "codegen-ts/src/requirement-walk.ts",
           "codegen-ts/src/routes-expose.ts",
           "codegen-ts/src/rules-walk.ts",
+          "codegen-ts/src/service-walk.ts",
           "codegen-ts/src/source-detect.ts",
           "codegen-ts/src/templates/entity-ui-descriptor.ts",
           "codegen-ts/src/templates/find-inbound.ts",

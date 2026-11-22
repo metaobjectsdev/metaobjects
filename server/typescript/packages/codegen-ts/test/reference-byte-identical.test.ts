@@ -26,6 +26,10 @@ import { rulesNamesFile as builtinRulesNames } from "../src/generators/rules-nam
 import { rulesNamesFile as refRulesNames } from "../src/reference/rules-names.js";
 import { contractTypes as builtinContractTypes } from "../src/generators/contract-types-file.js";
 import { contractTypes as refContractTypes } from "../src/reference/contract-types.js";
+import { serviceFile as builtinService } from "../src/generators/service-file.js";
+import { serviceFile as refService } from "../src/reference/service.js";
+import { serviceRoutesFile as builtinServiceRoutes } from "../src/generators/service-routes-file.js";
+import { serviceRoutesFile as refServiceRoutes } from "../src/reference/service-routes.js";
 import { reportExport as builtinReportExport } from "../src/generators/report-export-file.js";
 import { reportExport as refReportExport } from "../src/reference/report-export.js";
 import { promptRender as builtinPromptRender } from "../src/generators/prompt-render-file.js";
@@ -186,6 +190,10 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // test/rules-names.test.ts runs both over a rules model.
   "rules-names": { builtin: builtinRulesNames, ref: refRulesNames },
   "contract-types": { builtin: builtinContractTypes, ref: refContractTypes },
+  // Bound to the package as the routes pair is: the built-ins import it, the references default to
+  // the copy `meta eject` places in `codegen/runtime/`.
+  service: { builtin: builtinService, ref: () => refService(PKG) },
+  "service-routes": { builtin: builtinServiceRoutes, ref: () => refServiceRoutes(PKG) },
   // Emits nothing over the entity-shaped fixtures (none declares a served report); the
   // describe after the route-composition one runs the pair, with the routes, over the report corpus.
   "report-export": { builtin: builtinReportExport, ref: refReportExport },

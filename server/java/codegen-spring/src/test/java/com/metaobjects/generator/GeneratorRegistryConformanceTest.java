@@ -39,7 +39,7 @@ public class GeneratorRegistryConformanceTest {
      * code says, which is the one thing a conformance gate must not do.
      */
     private static final Set<String> ALLOWED_LAYERS =
-            Set.of("model", "persistence", "api", "client", "docs", "capability");
+            Set.of("model", "persistence", "service", "api", "client", "docs", "capability");
 
     /**
      * Registered stable names whose {@code classname} is deliberately NOT a wirable
@@ -188,7 +188,7 @@ public class GeneratorRegistryConformanceTest {
     }
 
     @Test
-    public void everyManifestEntryDeclaresOneOfTheSixLayers() throws Exception {
+    public void everyManifestEntryDeclaresOneOfTheSevenLayers() throws Exception {
         TreeSet<String> bad = new TreeSet<>();
         for (Map.Entry<String, String> e : manifestLayers(loadManifest()).entrySet()) {
             if (!ALLOWED_LAYERS.contains(e.getValue())) {

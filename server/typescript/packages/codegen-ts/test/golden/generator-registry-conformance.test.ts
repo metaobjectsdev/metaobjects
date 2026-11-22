@@ -8,7 +8,7 @@
 //   2. Tier agreement — a manifest name marked `tier: "neutral"` is flagged
 //      neutral in the TS registry; native manifest names are NOT neutral.
 //   3. Layer agreement — a manifest name's `layer` equals the TS registry's.
-//   4. Every manifest entry declares one of the six layers.
+//   4. Every manifest entry declares one of the seven layers.
 //
 // PRESENCE BOTH WAYS IS ASSERTED ELSEWHERE. `codegen-ts` is one SLICE of the
 // TypeScript catalog: `form` lives in `codegen-ts-react` and `hooks`/`grid`/
@@ -60,9 +60,9 @@ interface ManifestEntry {
 
 // The closed set, mirrored from GENERATOR_LAYERS. Spelled out here rather than
 // imported so this gate fails if the CODE's union and the MANIFEST's values ever
-// diverge from the six the design ruled — importing the union would make the test
+// diverge from the seven the design ruled (`service` added by ADR-0067 §5.6) — importing the union would make the test
 // agree with whatever the code says.
-const LAYERS = ["model", "persistence", "api", "client", "docs", "capability"] as const;
+const LAYERS = ["model", "persistence", "service", "api", "client", "docs", "capability"] as const;
 
 interface Manifest {
   ports: string[];
@@ -110,7 +110,7 @@ describe("generator registry — conforms to canonical stable-name manifest (ADR
     expect(extraInRegistry, message).toEqual([]);
   });
 
-  it("every manifest entry declares one of the six layers", () => {
+  it("every manifest entry declares one of the seven layers", () => {
     const bad = Object.entries(manifest.generators)
       .filter(([, e]) => !(LAYERS as readonly string[]).includes(e.layer))
       .map(([n, e]) => `${n}=${String(e.layer)}`)

@@ -62,8 +62,8 @@ from metaobjects.render.verify import InMemoryProvider
 
 GeneratorTier = str  # "native" | "neutral"
 
-#: The six layers a generator can belong to — the axis an adopter SELECTS BY, gated
-#: cross-port against the manifest exactly as ``tier`` is. Six, not ten: an earlier
+#: The seven layers a generator can belong to — the axis an adopter SELECTS BY, gated
+#: cross-port against the manifest exactly as ``tier`` is. Seven (the six plus ``service``, ADR-0067 layer 4), not ten: an earlier
 #: draft split ``capability`` four ways, each with ONE member, and a layer with one
 #: member does no grouping work. ``capability`` holds the generators the MODEL has
 #: already chosen (you declared a ``template.prompt``), which is why they are found
@@ -71,6 +71,7 @@ GeneratorTier = str  # "native" | "neutral"
 GENERATOR_LAYERS: tuple[str, ...] = (
     "model",
     "persistence",
+    "service",
     "api",
     "client",
     "docs",

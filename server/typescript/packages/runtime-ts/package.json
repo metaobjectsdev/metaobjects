@@ -26,6 +26,16 @@
       "types": "./dist/drizzle-fastify/index.d.ts",
       "default": "./dist/drizzle-fastify/index.js"
     },
+    "./service": {
+      "bun": "./src/service/index.ts",
+      "types": "./dist/service/index.d.ts",
+      "default": "./dist/service/index.js"
+    },
+    "./service/fastify": {
+      "bun": "./src/service/fastify.ts",
+      "types": "./dist/service/fastify.d.ts",
+      "default": "./dist/service/fastify.js"
+    },
     "./hono": {
       "bun": "./src/hono/index.ts",
       "types": "./dist/hono/index.d.ts",

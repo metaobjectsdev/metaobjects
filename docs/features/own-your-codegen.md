@@ -396,6 +396,8 @@ calls it copies the adapter's source too:
 | `routes` | `routes.ts` — the whole route composition (CRUD, read-only projections, M:N traversal, TPH per-subtype sets), not a call into the engine | `drizzle-fastify/*` (mounts, filter parser, list params, M:N and read-only mounts, error handler), `route-errors.ts`, `constraint-errors.ts`, `timestamp-wire.ts`, `decimal-wire.ts`, `duration-wire.ts`, `wire-format.ts`, `sql-dialect.ts`, `canonical-key.ts`, `errors.ts` |
 | `routes-hono` | `routes-hono.ts`, likewise self-contained | `hono/*`, plus the shared parser, allowlist, envelope and timestamp files it reaches |
 | `entity` | `entity.ts` | `drizzle-fastify/filter-allowlist.ts` — the `FilterAllowlist` / `SortAllowlist` types the entity module's allowlists are typed by |
+| `service` | `service.ts` | `service/index.ts` — the store mechanics the generated service modules call (transaction, row lock, write-rule stamping) |
+| `service-routes` | `service-routes.ts` | `service/fastify.ts` — the request and reply helpers the generated Fastify transport imports |
 
 The ejected generators point their output at that copy
 (`import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index.js"`), so

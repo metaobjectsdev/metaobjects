@@ -68,6 +68,7 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/requirement-walk.ts",
   "codegen-ts/src/routes-expose.ts",
   "codegen-ts/src/rules-walk.ts",
+  "codegen-ts/src/service-walk.ts",
   "codegen-ts/src/source-detect.ts",
   "codegen-ts/src/templates/entity-ui-descriptor.ts",
   "codegen-ts/src/templates/find-inbound.ts",
