@@ -173,6 +173,147 @@ def test_a_generator_may_not_cover_what_its_required_generator_is_limited_away_f
     assert not out.exists() or not _stems(out)
 
 
+def test_an_unlimited_generator_does_not_count_objects_it_writes_nothing_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `routes` writes no router for an abstract object or a sourceless one, so limiting the
+    # allowlist to the packages that hold the routed entities leaves nothing dangling.
+    out = _project(
+        tmp_path,
+        "- entity\n- {name: filter-allowlist, packages: ['acme::sales', 'acme::hr']}\n- routes\n",
+    )
+    (tmp_path / "metaobjects" / "meta.common.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::common", "children": [
+            {"object.entity": {"name": "Base", "abstract": True, "children": [
+                {"field.long": {"name": "id"}},
+            ]}},
+            {"object.entity": {"name": "Remote", "children": [
+                {"field.long": {"name": "id"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+            ]}},
+        ]}}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    stems = _stems(out)
+    assert {"order_router", "invoice_router", "person_router"} <= stems
+    assert "remote_router" not in stems and "base_router" not in stems
+
+
+def _sales_with_common_base(root: Path, *, order_extends_base: bool) -> None:
+    meta = root / "metaobjects"
+    (meta / "meta.hr.json").unlink()
+    order = _value("Order")["object.entity"]
+    if order_extends_base:
+        order["extends"] = "acme::common::Base"
+    (meta / "meta.sales.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::sales", "children": [
+            {"object.entity": order}, _value("Invoice"),
+        ]}}),
+        encoding="utf-8",
+    )
+    (meta / "meta.common.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::common", "children": [
+            {"object.entity": {"name": "Base", "abstract": True, "children": [
+                {"field.string": {"name": "label"}},
+            ]}},
+        ]}}),
+        encoding="utf-8",
+    )
+
+
+def test_an_abstract_base_no_routed_object_extends_is_not_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    _sales_with_common_base(tmp_path, order_extends_base=False)
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) == 0
+    assert {"order_router", "invoice_router"} <= _stems(out)
+
+
+def test_the_abstract_base_a_routed_object_extends_is_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    _sales_with_common_base(tmp_path, order_extends_base=True)
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    err = capsys.readouterr().err
+    assert "'routes' requires 'entity', which is limited away from ['Base']" in err
+    assert not out.exists() or not _stems(out)
+
+
+def test_the_many_to_many_target_a_routed_object_imports_is_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    meta = tmp_path / "metaobjects"
+    (meta / "meta.hr.json").unlink()
+    order = _value("Order")["object.entity"]
+    order["children"].append({"relationship.association": {
+        "name": "tags", "@cardinality": "many",
+        "@objectRef": "acme::common::Tag", "@through": "OrderTag",
+    }})
+    order_tag = {"object.entity": {"name": "OrderTag", "children": [
+        {"source.rdb": {"@table": "order_tags"}},
+        {"field.long": {"name": "orderId", "@required": True}},
+        {"field.long": {"name": "tagId", "@required": True}},
+        {"identity.primary": {"name": "pk", "@fields": ["orderId", "tagId"]}},
+        {"identity.reference": {"name": "fkOrder", "@fields": "orderId", "@references": "Order"}},
+        {"identity.reference": {
+            "name": "fkTag", "@fields": "tagId", "@references": "acme::common::Tag",
+        }},
+    ]}}
+    (meta / "meta.sales.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::sales", "children": [
+            {"object.entity": order}, order_tag,
+        ]}}),
+        encoding="utf-8",
+    )
+    (meta / "meta.common.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::common", "children": [_value("Tag")]}}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    err = capsys.readouterr().err
+    assert "'routes' requires 'entity', which is limited away from ['Tag']" in err
+    assert not out.exists() or not _stems(out)
+
+
+def test_the_subtype_a_routed_discriminator_base_imports_is_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    meta = tmp_path / "metaobjects"
+    (meta / "meta.hr.json").unlink()
+    auth = {"object.entity": {"name": "Auth", "@discriminator": "type", "children": [
+        {"source.rdb": {"@table": "auths"}},
+        {"field.long": {"name": "id"}},
+        {"field.enum": {"name": "type", "@values": ["Bridge"]}},
+        {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+    ]}}
+    (meta / "meta.sales.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::sales", "children": [auth]}}),
+        encoding="utf-8",
+    )
+    bridge = {"object.entity": {
+        "name": "BridgeAuth", "extends": "acme::sales::Auth", "@discriminatorValue": "Bridge",
+        "children": [{"field.int": {"name": "quantity"}}],
+    }}
+    (meta / "meta.catalog.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::catalog", "children": [bridge]}}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    err = capsys.readouterr().err
+    assert "'routes' requires 'entity', which is limited away from ['BridgeAuth']" in err
+    assert not out.exists() or not _stems(out)
+
+
 def test_limiting_a_generator_and_the_one_it_requires_to_the_same_entity_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -171,7 +171,11 @@ never disagree about what was generated. A target whose `generators` is empty wr
 nothing and says so. With no `metaobjects.config.yaml` at all, `gen` and `verify --codegen`
 fail with exit 2 and write nothing: there is no list to run. `routes` needs `entity` and
 `filter-allowlist` beside it (the router imports both), and `metaobjects gen` warns when one
-is missing.
+is missing. A `packages` or `entities` limit on either one is refused when it leaves out an
+object the routed objects import: for `filter-allowlist`, the routed objects; for `entity`, the
+routed objects and the models they import (the abstract base each `extends`, the value objects
+they reference, their M:N targets, and the concrete subtypes of a routed discriminator base). An
+abstract or sourceless object that `routes` writes no router for needs neither.
 
 The 1.0 form `metaobjects gen <metadata_dir> --out <dir> --generators <names>` is not read:
 the metadata directory is `metadata` and each output directory is a target's `outDir`.
@@ -429,8 +433,10 @@ A declared name wins over the pluralizer. Either one is snake_cased with an acro
 split, so `FAQs` becomes `faqs`, not `fa_qs`. The router, the API docs, the M:N routes and the
 collision check all read one function, `collection_segment`. The same name also gives the
 reverse finders: `@collectionName: CaseHistory` on an object turns
-`find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A project that sets
-neither keeps every route and finder name it has today. The shared cases are in
+`find_<plural>_by_<fk>` into `find_case_history_by_<fk>` (and `..._in`). A reference whose
+`@fields` names a member of a flattened value object (`address.countryId`) takes that member's
+flat key in `<fk>`, so the finder is `find_plans_by_address_country`, as TypeScript names it. A
+project that sets neither keeps every route and finder name it has today. The shared cases are in
 `fixtures/naming-conformance/collection-segments.json`.
 
 ### Page size and undeclared body keys: the `api` block
@@ -781,10 +787,13 @@ that file's root package, so `package` on such a node is already the full
 A `field.enum` with `@intValueMap` (own or inherited from a shared abstract enum) is stored as its
 declared integers while `ObjectManager` callers pass and receive member symbols. The codec in
 `metaobjects.runtime.values` (called by `ObjectManagerDb`) encodes on every write and on filter operands, and decodes on
-every read. On an `isArray: true` field it does this for each element, on Postgres only (see
+every read. On an `isArray: true` field it does this for each element, on every engine (see
 [Int-backed enum arrays](../features/field-types.md#int-backed-enum-arrays)); a null element stays
 a null element. An int that has no member raises `ValueError` on read, whether it is a scalar or an
-array element.
+array element. On SQLite and MySQL, which have no array type, the column is `TEXT` / `JSON` holding a
+JSON array (`[5,0]`). This holds for every primitive array (strings, numbers, dates, uuids): each
+element is written as the JSON form of what the scalar column binds and read back through the scalar
+decode.
 
 ### Run-time validation
 
@@ -1053,10 +1062,12 @@ already have it. The `[email]` extra is needed as soon as any field carries
 generator types that field `EmailStr`, which imports `email-validator` when the class is
 defined. Without it the generated module fails at import, not at `gen`.
 
-**Note on emitted output.** Both generators run `ruff_format(content)` on the
-file before writing, so the literal emitted layout may reflow whitespace
-slightly vs the snippets above. Function signatures, class definitions, and
-import lines are stable.
+**Note on emitted output.** The entity generator lays its modules out with the
+Python code writer (ADR-0063); no formatter runs over them, so what is written does
+not depend on whether `ruff` is installed. The output-parser generator still runs
+`ruff_format(content)` on the file until it is converted, so its literal layout may
+reflow whitespace slightly vs the snippets above. Function signatures, class
+definitions, and import lines are stable.
 
 ## Capability snapshot
 

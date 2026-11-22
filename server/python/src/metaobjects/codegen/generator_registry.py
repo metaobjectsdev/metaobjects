@@ -23,12 +23,13 @@ from __future__ import annotations
 import re
 import tempfile
 from dataclasses import dataclass, field
+from collections.abc import Iterable
 from typing import Callable, Mapping
 
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE, ApiDocsConfig
 from metaobjects.codegen.generators.api_docs_generator import api_docs_generator
-from metaobjects.codegen.generators.entity_model import entity_model
+from metaobjects.codegen.generators.entity_model import entity_model, model_import_closure
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
     filter_allowlist_generator,
@@ -55,6 +56,8 @@ from metaobjects.codegen.generators.router_generator import (
 from metaobjects.codegen.generators.shared_model_generator import shared_model_generator
 from metaobjects.codegen.generators.template_generator import template_generator
 from metaobjects.codegen.generators.trace_helper_generator import trace_helper_generator
+from metaobjects.codegen.runtime.shared_predicates import emits_router
+from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.render.verify import InMemoryProvider
 
 GeneratorTier = str  # "native" | "neutral"
@@ -241,6 +244,15 @@ class GeneratorEntry:
     #: Not gated cross-port (the manifest carries no such column); surfaced by ``--list``
     #: and warned about by :func:`unsatisfied_requires`.
     requires: tuple[str, ...] = ()
+    #: Per required generator, the objects of the target that one of this generator's objects
+    #: imports from it: ``(object, every object in the target) -> objects``. Limiting a required
+    #: generator away from one of those leaves a dangling import, limiting it away from any other
+    #: object does not. A required generator with no entry here is needed for the object itself.
+    #: ``routes`` writes nothing for an abstract or sourceless object, so a limit that leaves
+    #: those out is no gap, unless a routed object's model imports it.
+    covers: Mapping[str, Callable[[MetaObject, list[MetaObject]], Iterable[MetaObject]]] = field(
+        default_factory=dict
+    )
     #: The settings an ``options:`` mapping on this generator's ``generators`` entry may carry.
     #: A generator that lists none refuses any.
     options: tuple[GeneratorOption, ...] = ()
@@ -362,6 +374,10 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         # FIELDS/OPS constants from <entity>_filter_allowlist; without either the
         # generated package fails at import (ModuleNotFoundError).
         requires=("entity", "filter-allowlist"),
+        covers={
+            "entity": lambda o, objects: model_import_closure(o, objects) if emits_router(o) else (),
+            "filter-allowlist": lambda o, _objects: (o,) if emits_router(o) else (),
+        },
         source=router_generator,
         runtime=_ROUTER_RUNTIME + (_EXPORT_RUNTIME,) + _SHARED_PREDICATES + (_FR010_FIELD_MAPPING, _M2M_CODEGEN),
     ),
