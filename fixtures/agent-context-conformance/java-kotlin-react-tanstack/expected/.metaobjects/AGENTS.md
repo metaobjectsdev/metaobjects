@@ -39,7 +39,7 @@ from `@metaobjectsdev/codegen-ts-react`, `tanstackQuery()` and `tanstackGrid()` 
 `baseUrl` is where the server mounts its routes, and leaving it out drops that prefix from every
 hook without an error. The `metaobjects-runtime-ui` skill has the detail.
 
-### Schema (every stack: the Node `meta` CLI owns it, so Java, Kotlin, C# and Python projects need Node too)
+### Schema (every stack: the Node `meta` CLI owns it, so Java, Kotlin, C#, Python and Rust projects need Node too)
 
 Never hand-write DDL, and never `ALTER` a live database by hand.
 
