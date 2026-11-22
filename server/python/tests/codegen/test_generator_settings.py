@@ -245,6 +245,44 @@ def test_the_abstract_base_a_routed_object_extends_is_needed_from_entity(
     assert not out.exists() or not _stems(out)
 
 
+def test_the_many_to_many_target_a_routed_object_imports_is_needed_from_entity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = _project(tmp_path, "- {name: entity, packages: ['acme::sales']}\n- routes\n")
+    meta = tmp_path / "metaobjects"
+    (meta / "meta.hr.json").unlink()
+    order = _value("Order")["object.entity"]
+    order["children"].append({"relationship.association": {
+        "name": "tags", "@cardinality": "many",
+        "@objectRef": "acme::common::Tag", "@through": "OrderTag",
+    }})
+    order_tag = {"object.entity": {"name": "OrderTag", "children": [
+        {"source.rdb": {"@table": "order_tags"}},
+        {"field.long": {"name": "orderId", "@required": True}},
+        {"field.long": {"name": "tagId", "@required": True}},
+        {"identity.primary": {"name": "pk", "@fields": ["orderId", "tagId"]}},
+        {"identity.reference": {"name": "fkOrder", "@fields": "orderId", "@references": "Order"}},
+        {"identity.reference": {
+            "name": "fkTag", "@fields": "tagId", "@references": "acme::common::Tag",
+        }},
+    ]}}
+    (meta / "meta.sales.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::sales", "children": [
+            {"object.entity": order}, order_tag,
+        ]}}),
+        encoding="utf-8",
+    )
+    (meta / "meta.common.json").write_text(
+        json.dumps({"metadata.root": {"package": "acme::common", "children": [_value("Tag")]}}),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["gen"]) != 0
+    err = capsys.readouterr().err
+    assert "'routes' requires 'entity', which is limited away from ['Tag']" in err
+    assert not out.exists() or not _stems(out)
+
+
 def test_limiting_a_generator_and_the_one_it_requires_to_the_same_entity_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
