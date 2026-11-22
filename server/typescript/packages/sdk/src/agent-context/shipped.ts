@@ -48,13 +48,13 @@ export const SHIPPED_CLIENT_SETS: readonly (readonly ClientFramework[])[] = [
   ["angular"],
 ];
 
-/** A stack's id: its server languages then its clients, each in their canonical order, joined by `-`. */
 /** A stack as a set of server languages and clients, in any order. */
 export interface StackChoice {
   readonly servers: readonly ServerLang[];
   readonly clients: readonly ClientFramework[];
 }
 
+/** A stack's id: its server languages then its clients, each in their canonical order, joined by `-`. */
 export function shippedStackId(stack: StackChoice): string {
   const servers = SERVER_LANGS.filter((s) => stack.servers.includes(s));
   const clients = CLIENT_FRAMEWORKS.filter((c) => stack.clients.includes(c));
