@@ -1,3 +1,14 @@
+// `@metaobjectsdev/react/image-upload`: the upload-and-crop control, on its own subpath.
+// This module IS that subpath (its name mirrors src/, which tsconfig.scripts.json relies on).
+//
+// `react-easy-crop` is an OPTIONAL peer. A bundler resolves the whole import graph before it
+// tree-shakes, and a dynamic import() of a package that is not installed is fatal to webpack,
+// Next.js, esbuild and Bun, so nothing reachable from the package root may import it (#287;
+// test/browser-bundleable.test.ts holds every optional peer to that). A project with a
+// `view.image` field installs react-easy-crop and imports from here; every other project
+// installs nothing extra. The adapter contract stays on the root, because it imports nothing
+// optional and an app wires it once for the whole tree.
+
 import { lazy, Suspense, useCallback, useRef, useState } from "react";
 import type { ChangeEvent, ReactElement } from "react";
 import type { Area } from "react-easy-crop";
@@ -126,3 +137,5 @@ export function ImageUpload({ value, onChange, meta }: ImageUploadProps): ReactE
     </div>
   );
 }
+
+export { cropToBlob } from "./crop-to-blob.js";

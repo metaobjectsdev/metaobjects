@@ -15,4 +15,4 @@ export {
   type ImageUploadAdapterProviderProps,
 } from "./image-adapter-provider.js";
 // <ImageUpload> and cropToBlob live on the `@metaobjectsdev/react/image-upload` subpath, which
-// needs the optional peer react-easy-crop (see src/image.ts).
+// needs the optional peer react-easy-crop (see src/image-upload.tsx).

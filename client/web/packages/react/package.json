@@ -12,9 +12,9 @@
       "default": "./dist/index.js"
     },
     "./image-upload": {
-      "bun": "./src/image.ts",
-      "types": "./dist/image.d.ts",
-      "default": "./dist/image.js"
+      "bun": "./src/image-upload.tsx",
+      "types": "./dist/image-upload.d.ts",
+      "default": "./dist/image-upload.js"
     },
     "./form.css": "./form.css"
   },
