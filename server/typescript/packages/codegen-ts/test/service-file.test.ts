@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { InMemoryStringSource, loadUris, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
-import { contractTypes, entityFile, serviceFile, serviceRoutesFile } from "../src/generators/index.js";
+import { contractTypes, entityFile, queriesFile, serviceFile, serviceRoutesFile } from "../src/generators/index.js";
 import { defineConfig, runGen, type OutputLayout } from "../src/index.js";
 import { serviceModelOf, serviceRoutesName, serviceTypeName } from "../src/service-walk.js";
 import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
@@ -88,6 +88,13 @@ describe("service generators — what they write", () => {
     expect(files["acme/shop/service/index.ts"]).toContain("export function createShopService(deps: ServiceDeps): ShopService {");
     // The entity module stays where the flat layout puts it, and the service reaches it.
     expect(files["acme/shop/service/createOrder.ts"]).toContain('from "../../../Order.js";');
+  });
+
+  test("on sqlite the service takes an async Drizzle driver only; the flat queries module still takes both", async () => {
+    const root = await load("acme::shop", [entity("Order")]);
+    const files = await gen(root, [entityFile(), contractTypes(), serviceFile(), queriesFile()], "package", { dialect: "sqlite" });
+    expect(files["acme/shop/service/index.ts"]).toContain('type Db = BaseSQLiteDatabase<"async", unknown, Record<string, unknown>>;');
+    expect(files["acme/shop/Order.queries.ts"]).toContain('type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;');
   });
 
   test("the service is named for the package's last segment; the root package's is ModelService", () => {
