@@ -34,6 +34,11 @@ DEST_ROOTS=(
   "${REPO_ROOT}/server/typescript/packages/codegen-ts/templates"
 )
 
+# Consumers that bundle only some groups: the Python port ships the requirements and agent
+# pages (its docs generators), not the TypeScript-only docs and api templates.
+PYTHON_DEST_ROOT="${REPO_ROOT}/server/python/src/metaobjects/render/bundled_templates"
+PYTHON_GROUPS=(requirements agent)
+
 for group in "${TEMPLATE_GROUPS[@]}"; do
   src_dir="${REPO_ROOT}/templates/${group}"
   if [[ ! -d "${src_dir}" ]]; then
@@ -57,6 +62,16 @@ for group in "${TEMPLATE_GROUPS[@]}"; do
       cp "${src}" "${dest}/$(basename "${src}")"
       echo "synced: ${src} -> ${dest}/$(basename "${src}")"
     done
+  done
+
+  for py_group in "${PYTHON_GROUPS[@]}"; do
+    if [[ "${py_group}" == "${group}" ]]; then
+      mkdir -p "${PYTHON_DEST_ROOT}/${group}"
+      for src in "${src_files[@]}"; do
+        cp "${src}" "${PYTHON_DEST_ROOT}/${group}/$(basename "${src}")"
+        echo "synced: ${src} -> ${PYTHON_DEST_ROOT}/${group}/$(basename "${src}")"
+      done
+    fi
   done
 done
 

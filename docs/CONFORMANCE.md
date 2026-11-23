@@ -53,7 +53,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 6 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/list-query-conformance/`](../fixtures/list-query-conformance/) (how a list route reads its query string: filter tree, search, sort, page, or the named 400) | 95 cases | ✓ (reference; the source of the expected answers) | planned (R-JV) | planned (R-KT) | planned (R-CS) | planned (R-PY) |
-| [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | planned | planned |
+| [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | ✓ | planned |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -788,8 +788,10 @@ ledger and model-only schema rows that data is built from (the shapes the docs s
 builders are the source of the expected bytes. The corpus README writes down what a
 non-TypeScript schema page contains and what it leaves out.
 
-**Held to it:** `server/typescript/packages/cli/test/docs-page-conformance.test.ts`. The
-other ports' page generators are planned.
+**Held to it:** `server/typescript/packages/cli/test/docs-page-conformance.test.ts` and
+`server/python/tests/conformance/test_docs_page_conformance.py` (rows, page data, then bytes;
+the Python builders derive the schema rows from the model with the port's own naming helpers).
+The C#, Java (Kotlin through Java) and Rust page generators are planned.
 
 ### `fixtures/requirement-test-identity-conformance/` (27 cases)
 

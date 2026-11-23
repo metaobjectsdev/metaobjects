@@ -94,5 +94,7 @@ written from the expected schema, carries those; `agent/ui.md` stays a TypeScrip
 - TypeScript: `server/typescript/packages/cli/test/docs-page-conformance.test.ts`.
   Regenerate with `UPDATE_DOCS_PAGE_FIXTURES=1 bun test test/docs-page-conformance.test.ts`
   from that package, and review the diff: it is the cross-port contract.
-- C#, Java (Kotlin through Java), Python and Rust: their page generators are planned and
-  will run every case.
+- Python: `server/python/tests/conformance/test_docs_page_conformance.py` (rows, page data,
+  then the bytes the `requirements` and `agent-docs` generators write).
+- C#, Java (Kotlin through Java) and Rust: their page generators are planned and will run
+  every case.
