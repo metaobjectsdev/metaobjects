@@ -455,8 +455,8 @@ gate_owned_template_copies() { bun scripts/sync-owned-template-copies.ts --check
 # biome.json of its own, and the per-package reference-byte-identical gates compare
 # EMITTED OUTPUT, which is unchanged whether a template asserts non-null or narrows.
 # Discovery keys on the "REFERENCE TEMPLATE — copy this into your repo" header rather
-# than a path, so it reaches all 22 copies (three src/reference dirs, test-generators,
-# and both examples/ scaffolds) — every one carried the identical findings. Lint only,
+# than a path, so it reaches every copy (three src/reference dirs and both examples/
+# scaffolds) — every one carried the identical findings. Lint only,
 # deliberately not `biome check`: formatting is a diff the adopter's own formatter owns
 # and re-runs. bun_install FIRST — biome comes from the codegen packages' node_modules.
 gate_reference_templates_lint() {

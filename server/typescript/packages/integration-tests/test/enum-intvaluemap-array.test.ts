@@ -18,7 +18,7 @@ import { Database } from "bun:sqlite";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, diff, emit, introspectPostgres } from "@metaobjectsdev/migrate-ts";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/test-generators";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { ObjectManager } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { drizzle as drizzleSqlite } from "drizzle-orm/bun-sqlite";

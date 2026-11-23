@@ -25,10 +25,7 @@ const names = new Set<string>([...CORE_NAMES, ...REACT_NAMES, ...TANSTACK_NAMES]
 
 /** Same discovery the gate uses — a new owned copy is covered the moment it lands. */
 export function ownedTiers(repo: string = REPO_ROOT): OwnedTier[] {
-  const packageSrc = join(repo, "server/typescript/packages/test-generators/src");
-  const tiers: OwnedTier[] = [
-    { generators: join(packageSrc, "generators"), templates: join(packageSrc, "templates") },
-  ];
+  const tiers: OwnedTier[] = [];
   const examples = join(repo, "examples");
   if (existsSync(examples)) {
     for (const e of readdirSync(examples, { withFileTypes: true })) {

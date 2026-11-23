@@ -17,7 +17,7 @@ import mysql from "mysql2/promise";
 import { createPool } from "mysql2";
 import { drizzle } from "drizzle-orm/mysql2";
 import { defineConfig, runGen } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/test-generators";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import {
   ObjectManager, ConstraintViolationError, type PersistenceDriver, type Row,

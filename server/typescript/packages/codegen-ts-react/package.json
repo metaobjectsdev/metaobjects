@@ -50,7 +50,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
-    "@metaobjectsdev/test-generators": "workspace:*",
     "bun-types": "latest",
     "typescript": "^5.6.0"
   }
