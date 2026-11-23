@@ -1,4 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
+import { CodeWriter } from "./writer/code-writer.js";
+import { docSample, legacyMemberLines } from "./writer/ts-writer.js";
 
 /**
  * The five CRUD verbs a generated routes file can mount.
@@ -90,18 +92,19 @@ export function intersectExpose(
 }
 
 /**
- * The `expose: [...]` line for a mount call, or "" when every verb mounts.
+ * The `expose: [...]` member of a mount call, or none when every verb mounts.
  *
  * Emitting nothing rather than the full list keeps output byte-identical for every
  * project that does not use the option.
  */
-export function exposeLine(verbs: readonly CrudVerb[] | undefined, indent: string): string {
-  if (verbs === undefined) return "";
-  return `\n${indent}expose: [${verbs.map((v) => JSON.stringify(v)).join(", ")}],`;
+export function exposeMembers(verbs: readonly CrudVerb[] | undefined): string[] {
+  if (verbs === undefined) return [];
+  return [`expose: [${verbs.map((v) => JSON.stringify(v)).join(", ")}],`];
 }
 
 /**
- * The auth-seam paragraph in a generated routes handler's JSDoc.
+ * The auth-seam paragraph in a generated routes handler's JSDoc, as doc lines (`TsWriter.doc`),
+ * led by the blank line that separates it from the paragraph before.
  *
  * The long-form version of this recipe, with `expose`, is docs/recipes/guarding-generated-routes.md;
  * keep the two in step with `runtime-ts/test/route-auth-seam.test.ts`.
@@ -124,7 +127,7 @@ export function exposeLine(verbs: readonly CrudVerb[] | undefined, indent: strin
  * so the honest move is to hand-write those verbs and narrow the generated file with
  * `expose` — not to mount them and hope.
  */
-export function authSeamJsDoc(opts: {
+export function authSeamDoc(opts: {
   framework: "fastify" | "hono";
   /** The emitted handler's name, so the worked example is callable as written. */
   handlerName: string;
@@ -132,30 +135,54 @@ export function authSeamJsDoc(opts: {
   mountPathExpr?: string;
   /** False for a read-only mount, which `expose` cannot narrow further. */
   narrowable: boolean;
-}): string {
-  const recipe =
-    opts.framework === "fastify"
-      ? ` *     app.register(async (s) => {\n` +
-        ` *       s.addHook("preHandler", requireAuth);\n` +
-        ` *       await ${opts.handlerName}(s);\n` +
-        ` *     });`
-      : ` *     app.use(${opts.mountPathExpr}, requireAuth);   // matches the collection path too\n` +
-        ` *     ${opts.handlerName}(app, { db });`;
+}): string[] {
+  const recipe = new CodeWriter();
+  if (opts.framework === "fastify") {
+    recipe.block("app.register(async (s) => {", () => {
+      recipe.line(`s.addHook("preHandler", requireAuth);`);
+      recipe.line(`await ${opts.handlerName}(s);`);
+    }, "});");
+  } else {
+    recipe.line(`app.use(${opts.mountPathExpr}, requireAuth);   // matches the collection path too`);
+    recipe.line(`${opts.handlerName}(app, { db });`);
+  }
   const guarded =
     opts.framework === "fastify"
-      ? `Register this inside a scope that\n` +
-        ` * carries your hook and every verb below is guarded — routes outside that scope\n` +
-        ` * are not:`
-      : `Guard the mount path with\n` + ` * middleware before calling this:`;
+      ? [
+        "Auth: these endpoints are unauthenticated. Register this inside a scope that",
+        "carries your hook and every verb below is guarded — routes outside that scope",
+        "are not:",
+      ]
+      : ["Auth: these endpoints are unauthenticated. Guard the mount path with", "middleware before calling this:"];
   // Name the generator that actually emitted this file — `routesFile` does not exist in
   // a Hono project's config, and a recipe naming the wrong symbol is the same defect
   // one size smaller.
   const generatorName = opts.framework === "fastify" ? "routesFile" : "routesFileHono";
   const narrowNote = opts.narrowable
-    ? `\n *\n * A row-ownership rule ("only the owner may read this row") is not expressible in a\n` +
-      ` * mount. Hand-write those verbs and narrow this file with\n` +
-      ` * ${generatorName}({ expose: ["list", "get"] }) rather than mounting them open.`
-    : `\n *\n * A row-ownership rule ("only the owner may read this row") is not expressible in a\n` +
-      ` * mount. Hand-write those reads rather than exposing this one open.`;
-  return ` *\n * Auth: these endpoints are unauthenticated. ${guarded}\n *\n${recipe}${narrowNote}`;
+    ? [
+      `A row-ownership rule ("only the owner may read this row") is not expressible in a`,
+      "mount. Hand-write those verbs and narrow this file with",
+      `${generatorName}({ expose: ["list", "get"] }) rather than mounting them open.`,
+    ]
+    : [
+      `A row-ownership rule ("only the owner may read this row") is not expressible in a`,
+      "mount. Hand-write those reads rather than exposing this one open.",
+    ];
+  return ["", ...guarded, "", ...docSample(recipe), "", ...narrowNote];
+}
+
+/** @deprecated The 1.2 string form of {@link exposeMembers}, kept so an owned 1.2 routes generator still loads. */
+export function exposeLine(verbs: readonly CrudVerb[] | undefined, indent: string): string {
+  return legacyMemberLines(exposeMembers(verbs), indent);
+}
+
+/**
+ * @deprecated The 1.2 string form of {@link authSeamDoc} (the paragraph's ` * ` lines, no
+ * trailing break), kept so an owned 1.2 routes generator still loads. New code passes the
+ * lines to `TsWriter.doc`.
+ */
+export function authSeamJsDoc(opts: Parameters<typeof authSeamDoc>[0]): string {
+  const w = new CodeWriter();
+  for (const l of authSeamDoc(opts)) w.line(l === "" ? " *" : ` * ${l}`);
+  return w.toString().trimEnd();
 }

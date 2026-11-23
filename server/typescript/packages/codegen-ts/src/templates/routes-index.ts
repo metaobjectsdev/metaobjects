@@ -14,6 +14,7 @@ import { effectivePackage } from "../docs-paths.js";
 import { barrelEntrySpecifier } from "../import-path.js";
 import { routesHandlerName } from "../naming.js";
 import type { RenderContext } from "../render-context.js";
+import { TsWriter } from "../writer/ts-writer.js";
 
 /** Which route flavor the index registers. */
 export type RoutesIndexFlavor = "fastify" | "hono";
@@ -33,49 +34,51 @@ export function renderRoutesIndex(
   ctx: RenderContext,
   flavor: RoutesIndexFlavor,
 ): string {
+  const w = new TsWriter();
+  writeRoutesIndex(w, entities, ctx, flavor);
+  return w.toString();
+}
+
+/** Write {@link renderRoutesIndex}'s module, header included, into `w`. */
+export function writeRoutesIndex(
+  w: TsWriter,
+  entities: readonly MetaObject[],
+  ctx: RenderContext,
+  flavor: RoutesIndexFlavor,
+): void {
   const sorted = [...entities].sort((a, b) => a.name.localeCompare(b.name));
   const suffix = flavor === "hono" ? ".routes.hono" : ".routes";
-  const handler = (e: MetaObject): string =>
-    flavor === "hono" ? `register${e.name}Routes` : routesHandlerName(e.name);
-  const imports = sorted.map((e) => {
+  const handler = (e: MetaObject): string => {
     const spec = barrelEntrySpecifier(ctx.outputLayout, effectivePackage(e), `${e.name}${suffix}`, ctx.extStyle);
-    return `import { ${handler(e)} } from ${JSON.stringify(spec)};`;
-  });
-
-  const lines: string[] = [`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`];
+    return w.use(flavor === "hono" ? `register${e.name}Routes` : routesHandlerName(e.name), spec);
+  };
+  w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`);
   if (flavor === "hono") {
-    lines.push(
-      `import type { Hono } from "hono";`,
-      ...imports,
+    const hono = w.useType("Hono", "hono");
+    const handlers = sorted.map(handler);
+    w.doc(
+      "Register every generated entity's routes on `app`.",
       "",
-      "/**",
-      " * Register every generated entity's routes on `app`.",
-      " *",
-      " * Auth: every endpoint registered here is unauthenticated. Guard them with middleware",
-      " * on the mount paths before calling this. An entity that needs a row-ownership rule",
-      " * should not be registered open: narrow its routes with `expose` or hand-write them.",
-      " */",
-      "export function registerAllRoutes(app: Hono<any, any, any>, deps: { db: unknown }): void {",
-      ...sorted.map((e) => `  ${handler(e)}(app, deps);`),
-      "}",
+      "Auth: every endpoint registered here is unauthenticated. Guard them with middleware",
+      "on the mount paths before calling this. An entity that needs a row-ownership rule",
+      "should not be registered open: narrow its routes with `expose` or hand-write them.",
     );
+    w.block(`export function registerAllRoutes(app: ${hono}<any, any, any>, deps: { db: unknown }): void {`, () => {
+      for (const h of handlers) w.line(`${h}(app, deps);`);
+    });
   } else {
-    lines.push(
-      `import type { FastifyInstance } from "fastify";`,
-      ...imports,
+    const fastify = w.useType("FastifyInstance", "fastify");
+    const handlers = sorted.map(handler);
+    w.doc(
+      "Register every generated entity's routes on `fastify`.",
       "",
-      "/**",
-      " * Register every generated entity's routes on `fastify`.",
-      " *",
-      " * Auth: every endpoint registered here is unauthenticated. Register this inside a",
-      " * scope that carries your hook to guard all of them at once. An entity that needs a",
-      " * row-ownership rule should not be registered open: narrow its routes with `expose`",
-      " * or hand-write them.",
-      " */",
-      "export async function registerAllRoutes(fastify: FastifyInstance): Promise<void> {",
-      ...sorted.map((e) => `  await ${handler(e)}(fastify);`),
-      "}",
+      "Auth: every endpoint registered here is unauthenticated. Register this inside a",
+      "scope that carries your hook to guard all of them at once. An entity that needs a",
+      "row-ownership rule should not be registered open: narrow its routes with `expose`",
+      "or hand-write them.",
     );
+    w.block(`export async function registerAllRoutes(fastify: ${fastify}): Promise<void> {`, () => {
+      for (const h of handlers) w.line(`await ${h}(fastify);`);
+    });
   }
-  return `${lines.join("\n")}\n`;
 }

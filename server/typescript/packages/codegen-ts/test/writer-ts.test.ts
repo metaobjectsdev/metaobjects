@@ -5,8 +5,8 @@ import { describe, expect, test } from "bun:test";
 import { OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { code, Import, imp, joinCode } from "../src/poet.js";
 import { renderInferredTypes } from "../src/templates/inferred-types.js";
-import { WRITER_ERRORS, WriterError } from "../src/writer/code-writer.js";
-import { arr, call, key, props, str, TsWriter } from "../src/writer/ts-writer.js";
+import { CodeWriter, WRITER_ERRORS, WriterError } from "../src/writer/code-writer.js";
+import { arr, call, docSample, key, legacyMemberLines, props, str, TsWriter } from "../src/writer/ts-writer.js";
 import { metaObject } from "./_meta-build.js";
 
 function errorCode(fn: () => unknown): string | undefined {
@@ -188,5 +188,22 @@ describe("TsWriter use/useType with a local alias", () => {
     const w = new TsWriter();
     w.useType("Order", "./a", "Local");
     expect(() => w.useType("Other", "./a", "Local")).toThrow(/ERR_WRITER_IMPORT_CONFLICT|names both/);
+  });
+});
+
+describe("TsWriter doc samples and the 1.2 member form", () => {
+  test("docSample indents a laid-out sample for a doc comment", () => {
+    const sample = new CodeWriter();
+    sample.block("app.register(async (s) => {", () => sample.line("await routes(s);"), "});");
+    const w = new TsWriter();
+    w.doc("Register it:", "", ...docSample(sample));
+    expect(w.toString()).toBe(
+      ["/**", " * Register it:", " *", " *     app.register(async (s) => {", " *       await routes(s);", " *     });", " */", ""].join("\n"),
+    );
+  });
+
+  test("legacyMemberLines puts the break before each member, and is empty for none", () => {
+    expect(legacyMemberLines(["a: 1,", "b: 2,"], "    ")).toBe("\n    a: 1,\n    b: 2,");
+    expect(legacyMemberLines([], "    ")).toBe("");
   });
 });

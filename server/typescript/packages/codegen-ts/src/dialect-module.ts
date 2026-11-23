@@ -10,6 +10,7 @@
 // (ADR-0015 — the migrate engine supports Postgres, SQLite and D1), so the adopter writes the
 // DDL and the generated Drizzle schema describes it.
 import type { Dialect } from "./metaobjects-config.js";
+import type { TsWriter } from "./writer/ts-writer.js";
 
 export interface DialectModule {
   /** The Drizzle core module every column/table builder is imported from. */
@@ -30,13 +31,17 @@ export function dialectModule(dialect: Dialect): DialectModule {
 }
 
 /**
- * The `Db` type alias (and its import) a generated queries module is parameterised over
+ * Write the `Db` type alias (recording its import) a generated queries module is parameterised over
  * (ADR-0008 — `db` is passed in). Every type argument is as open as Drizzle's own constraint
  * allows, so any driver's database handle assigns — a schema-carrying `drizzle(client,
  * { schema })` as well as a schema-less one.
  *
  * SQLite accepts a sync and an async driver: the service layer drives a sync driver's transaction
  * itself (`@metaobjectsdev/runtime-ts/service`), so no tier needs to narrow it.
+ */
+/**
+ * @deprecated The 1.2 form of {@link writeDbType}: the import line and the alias as text, kept so
+ * an owned 1.2 queries generator still loads.
  */
 export function dbTypeBlock(dialect: Dialect): { import: string; alias: string } {
   switch (dialect) {
@@ -55,6 +60,29 @@ export function dbTypeBlock(dialect: Dialect): { import: string; alias: string }
         import: `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`,
         alias: `type Db = BaseSQLiteDatabase<"sync" | "async", unknown, Record<string, unknown>>;`,
       };
+  }
+}
+
+export function writeDbType(w: TsWriter, dialect: Dialect): void {
+  switch (dialect) {
+    case "postgres": {
+      const db = w.useType("PgDatabase", "drizzle-orm/pg-core");
+      const hkt = w.useType("PgQueryResultHKT", "drizzle-orm/pg-core");
+      w.line(`type Db = ${db}<${hkt}, Record<string, unknown>>;`);
+      return;
+    }
+    case "mysql": {
+      const db = w.useType("MySqlDatabase", "drizzle-orm/mysql-core");
+      const hkt = w.useType("MySqlQueryResultHKT", "drizzle-orm/mysql-core");
+      const prepared = w.useType("PreparedQueryHKTBase", "drizzle-orm/mysql-core");
+      w.line(`type Db = ${db}<${hkt}, ${prepared}, Record<string, unknown>>;`);
+      return;
+    }
+    case "sqlite": {
+      const db = w.useType("BaseSQLiteDatabase", "drizzle-orm/sqlite-core");
+      w.line(`type Db = ${db}<"sync" | "async", unknown, Record<string, unknown>>;`);
+      return;
+    }
   }
 }
 

@@ -10,12 +10,12 @@
   "generated/python/subscriber_names.py": "269637a02bf9b46f55658b58cb42f83196c03a877e1e2101337847fd406c1561",
   "generated/python/subscriber_router.py": "16502ff815bf9ae29c7dba4700d0465d06058a9fd7ea8db5f98334d52d284851",
   "generated/ts/Subscriber.queries.ts": {
-    "hash": "63adba7ac4415f5e9962c4da100ffd97816524580a513e8350d14bc7a9f3507c",
+    "hash": "6875563ec3973d00f5a0c4ef754ba36a83f6d86b6182ff4b1ee1e2bff6578d8c",
     "generatedBy": "queries-file",
     "sourceNode": "acme::Subscriber"
   },
   "generated/ts/Subscriber.routes.ts": {
-    "hash": "c26d2e8e146c5e310fabefa16d1a413109716544a3f817f20f4536cf09e2585e",
+    "hash": "769a65d8ac1e4b489c28071724d0889b782527dc1b4a3f21eda078f94370283b",
     "generatedBy": "routes-file",
     "sourceNode": "acme::Subscriber"
   },

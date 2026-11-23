@@ -61,7 +61,7 @@ describe("xpkg-value-object-refs", () => {
     const callable = files.get("acme/app/Summary.callable.ts")!;
     expect(callable).toContain('import type { Summary as AcmeAlphaSummary } from "../alpha/Summary.js";');
     expect(callable).toContain("args: AcmeAlphaSummary");
-    expect(callable).toContain('type Summary } from "./Summary.js"');
+    expect(callable).toContain('import { type Summary, SummarySchema } from "./Summary.js";');
 
     // Only the NAME-binding diagnostics are this corpus's concern: a duplicate or conflicting
     // import, a missing export, an unresolved relative module or name. The rest (the routes'

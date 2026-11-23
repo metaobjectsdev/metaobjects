@@ -110,7 +110,7 @@ describe("meta eject --undo", () => {
       await ejectCommand(["barrel"], dir, "text");
       // Swap two statements of the generator body: the same lines in a different order.
       const lines = readFileSync(gen(dir, "barrel"), "utf8").split("\n");
-      const i = lines.findIndex((l) => l.includes("const sorted = ["));
+      const i = lines.findIndex((l) => l.includes("const rc = ctx.renderContext;"));
       expect(i).toBeGreaterThan(0);
       [lines[i], lines[i + 1]] = [lines[i + 1] as string, lines[i] as string];
       writeFileSync(gen(dir, "barrel"), lines.join("\n"), "utf8");

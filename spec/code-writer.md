@@ -127,6 +127,11 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
 - Helpers: `str` (a quoted string literal), `arr`, `call`, `props()` (an object literal built
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).
+- `docSample(writer)` turns a code sample laid out by another writer into doc-comment lines,
+  each indented four spaces, for a worked example inside a `doc(...)` comment.
+- `legacyMemberLines(members, indent)` is the 1.2 string form of a member list (a line break
+  before each member, at `indent`). It exists only for the deprecated `*Line` helpers an owned
+  1.2 generator still calls; new code spreads the members into the writer.
 
 ## Java dialect (`JavaWriter`)
 

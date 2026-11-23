@@ -4,7 +4,7 @@
 //   import { sql } from "drizzle-orm";
 //   import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 //   import type { StageSummaryArgs } from "./StageSummaryArgs.js";
-//   import { StageSummarySchema, type StageSummary } from "./StageSummary.js";
+//   import { type StageSummary, StageSummarySchema } from "./StageSummary.js";
 //
 //   export async function callStageSummary(
 //     db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>,
@@ -34,7 +34,8 @@ import {
 } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
 import { crossEntitySpecifier, entityOutputPath } from "../import-path.js";
-import { importBinding, valueObjectImport } from "./value-object-import.js";
+import { valueObjectImport } from "./value-object-import.js";
+import { TsWriter } from "../writer/ts-writer.js";
 import { resolveObjectNames } from "../names.js";
 import type { RenderContext } from "../render-context.js";
 import { effectivePackage } from "../docs-paths.js";
@@ -70,6 +71,13 @@ function callableSource(entity: MetaObject): MetaSource | undefined {
  *  keep compiling; with it absent the physical name is spelled literally, which is the
  *  same documented fallback as running with `namesFile()` out of the suite. */
 export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): string {
+  const w = new TsWriter();
+  writeCallableFile(w, entity, ctx);
+  return w.toString();
+}
+
+/** Write {@link renderCallableFile}'s module, header included, into `w`. */
+export function writeCallableFile(w: TsWriter, entity: MetaObject, ctx?: RenderContext): void {
   // Run the primary-source DIVERGENCE refusal before resolving a physical name.
   // `callableSource` selects by @kind with NO role filter, so it is a THIRD door into
   // "what relation does this object name" — and it is reached by `callableFile()` alone,
@@ -112,80 +120,68 @@ export function renderCallableFile(entity: MetaObject, ctx?: RenderContext): str
         .map((f) => f.name)
     : [];
 
-  const sqlArgList = paramFieldNames.length === 0
-    ? ""
-    : paramFieldNames.map((n) => `\${args.${n}}`).join(", ");
+  w.header(`// ${GENERATED_HEADER}`);
+  const sql = w.use("sql", "drizzle-orm");
+  const pgDatabase = w.useType("PgDatabase", "drizzle-orm/pg-core");
+  const pgQueryResult = w.useType("PgQueryResultHKT", "drizzle-orm/pg-core");
+  const sqlArgList = paramFieldNames.map((n) => `\${args.${n}}`).join(", ");
 
   // §A6 — reference `<Entity>Names.sources.primary.proc` rather than spelling the
-  // procedure a SECOND time.
-  // This file is a raw string template rather than ts-poet, so the import is composed here
-  // instead of through `imp`; `crossEntitySpecifier` is the same helper `namesRef` uses, so
+  // procedure a SECOND time. `crossEntitySpecifier` is the same helper `namesRef` uses, so
   // the specifier (and its extension style) cannot drift from every other generator's.
   const namesConst =
     ctx !== undefined && ctx.includeNames &&
     resolveObjectNames(entity, ctx.columnNamingStrategy) !== undefined
-      ? `${entity.name}Names`
+      ? w.use(`${entity.name}Names`, crossEntitySpecifier(
+        ctx.selfTarget.outputLayout, effectivePackage(entity), effectivePackage(entity),
+        `${entity.name}.names`, ctx.extStyle,
+      ))
       : undefined;
-  const namesImport = namesConst === undefined
-    ? ""
-    : `import { ${namesConst} } from "${crossEntitySpecifier(
-        ctx!.selfTarget.outputLayout, effectivePackage(entity), effectivePackage(entity),
-        `${entity.name}.names`, ctx!.extStyle,
-      )}";\n`;
   // The identifier must stay an IDENTIFIER. A bare interpolation into drizzle's `sql` tag
   // binds a PARAMETER, so `sql`SELECT * FROM ${Names.sources.primary.proc}(…)`` would send the procedure
   // name as a query argument and produce SQL that cannot execute. `sql.raw` splices text.
   // `sql.identifier` is deliberately not used: it quotes, which changes the statement.
-  const procNameExpr = namesConst === undefined
-    ? procName
-    : `\${${"sql.raw"}(${namesConst}.name)}`;
+  const procNameExpr = namesConst === undefined ? procName : `\${${sql}.raw(${namesConst}.name)}`;
 
   const fnName = `call${entity.name}`;
-  const projectionType = entity.name;
-  const projectionSchemaName = `${entity.name}Schema`;
+  // The entity module's schema and type.
+  const entityModule = `./${entity.name}.js`;
+  const projectionSchemaName = w.use(`${entity.name}Schema`, entityModule);
+  const projectionType = w.useType(entity.name, entityModule);
 
-  // Imports: entity (Zod schema + type) + drizzle sql + the args value-object
-  // when applicable.
   // The args type lives in its own value object's module, which may be another package's: with a
   // render context it is imported from there, under its local name (aliased when another object
   // shares the short name — the result type can be one).
   const argsVo = argsObject !== undefined && ctx !== undefined
     ? valueObjectImport(ctx, argsObject, entityOutputPath(ctx.selfTarget.outputLayout, effectivePackage(entity), `${entity.name}.callable.ts`))
     : undefined;
-  const argsTypeName = argsVo?.name ?? argsObjectName;
-  const argsImport = argsVo !== undefined
-    ? `import type { ${importBinding(argsVo.exported, argsVo.name)} } from ${JSON.stringify(argsVo.specifier)};\n`
+  const argsTypeName = argsVo !== undefined
+    ? w.useType(argsVo.exported, argsVo.specifier, argsVo.name)
     : argsObject
-      ? `import type { ${argsObjectName} } from "./${argsObjectName}.js";\n`
-      : "";
+      ? w.useType(argsObjectName!, `./${argsObjectName}.js`)
+      : undefined;
 
   // The `db` parameter type carries the same open-type-argument rule as the queries
-  // file's `Db` alias (see templates/queries-file.ts `dbTypeBlock`): `PgDatabase` is the
+  // file's `Db` alias (see dialect-module.ts `writeDbType`): `PgDatabase` is the
   // base every PG driver extends, and the schema parameter stays at Drizzle's own bound
   // `Record<string, unknown>` — NOT its `Record<string, never>` default, which rejects the
   // idiomatic `drizzle(client, { schema })` db with TS2345 and makes this callable
   // uninvokable. Uncompilable generated code is indistinguishable from unused generated
   // code, so this parameter must never be narrowed back.
-  const signature = argsObject
-    ? `db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>, args: ${argsTypeName}`
-    : `db: PgDatabase<PgQueryResultHKT, Record<string, unknown>>`;
+  const db = `db: ${pgDatabase}<${pgQueryResult}, Record<string, unknown>>`;
+  const signature = argsTypeName === undefined ? db : `${db}, args: ${argsTypeName}`;
 
-  return `// ${GENERATED_HEADER}
-import { sql } from "drizzle-orm";
-import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
-${namesImport}${argsImport}import { ${projectionSchemaName}, type ${projectionType} } from "./${entity.name}.js";
-
-/**
- * FR-015: typed wrapper around the ${source.effectiveKind === SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function"} named by
- * \`${namesConst === undefined ? procName : `${namesConst}.name`}\`.
- * Drizzle passes a parameterised SELECT — args bind in declaration order from
- * the @parameterRef value-object${argsObject ? `, here ${argsObjectName}` : ""}.
- */
-export async function ${fnName}(${signature}): Promise<${projectionType}[]> {
-  const r = await db.execute(
-    sql\`SELECT * FROM ${procNameExpr}(${sqlArgList})\`,
+  const kind = source.effectiveKind === SOURCE_KIND_STORED_PROC ? "stored procedure" : "table function";
+  w.doc(
+    `FR-015: typed wrapper around the ${kind} named by`,
+    `\`${namesConst === undefined ? procName : `${namesConst}.name`}\`.`,
+    "Drizzle passes a parameterised SELECT — args bind in declaration order from",
+    `the @parameterRef value-object${argsObject ? `, here ${argsObjectName}` : ""}.`,
   );
-  return r.rows.map((row) => ${projectionSchemaName}.parse(row as unknown));
-}
-`;
+  w.block(`export async function ${fnName}(${signature}): Promise<${projectionType}[]> {`, () => {
+    w.block("const r = await db.execute(", () => {
+      w.line(`${sql}\`SELECT * FROM ${procNameExpr}(${sqlArgList})\`,`);
+    }, ");");
+    w.line(`return r.rows.map((row) => ${projectionSchemaName}.parse(row as unknown));`);
+  });
 }

@@ -9,132 +9,32 @@
 // targets:       Drizzle. Emitted helpers take `db` as a PARAMETER rather than importing
 //                a module singleton, so they compose with any caller that already holds a
 //                connection — including a server-rendered component. Swap the
-//                `render<Verb>Fn` primitives (findById/list/create/update/deleteById) and
-//                the inline `Db` type block above them to emit for another query builder.
+//                `write<Verb>Fn` primitives (findById/list/create/update/deleteById) and
+//                the `Db` type alias in the copied templates to emit for another query builder.
 // use-when:      you want generated typed CRUD finders (find<E>ById, list<E>s, create/update/delete)
 //                over Drizzle. Drop it if you hand-write your data access.
 // emits:         <target>/<Entity>.queries.ts per source-backed object (any source.rdb kind,
 //                incl. read-only projections) — skipped for sourceless objects (incl. every
 //                object.value, source-less by value purity) and TPH subtypes (#248 R2).
-// customize:     the vanilla CRUD assembly below is OWNED — reorder, drop verbs (e.g. no delete),
-//                change the Db type alias, add your own finders. The render<Verb>Fn primitives emit
-//                each block; call your own instead to change a verb's body.
+// customize:     the file's COMPOSITION is `writeQueriesFile` in ../templates/queries-file.ts,
+//                and each verb's body a `write<Verb>Fn` in ../templates/queries.ts; `meta eject
+//                queries` copied both beside this file. They are OWNED — reorder, drop verbs
+//                (e.g. no delete), change the Db type alias, add your own finders there.
 // composes-with: entity.ts (imports the table + InsertSchema it emits).
-//
-// NOTE: the advanced TPH-base + projection variants delegate to `renderQueriesFile`, which
-// `meta eject` copies beside this file (`codegen/templates/queries-file.ts`) — they are rarely
-// customized, and are yours to change there. The vanilla path here is byte-identical to the
-// built-in.
 
-// ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the
-// Code sections composed here must share ONE ts-poet instance with the render*
-// primitives below, or (with a globally-installed / linked CLI, where the project and
-// the CLI resolve ts-poet to different physical copies) every section renders
-// standalone with its own duplicate import header.
-import { code, joinCode, type Code, effectivePackage } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  type RenderContext,
-  dbTypeBlock,
-  entityModuleSpecifier,
-  isProjection,
-  isWriteThrough,
   servesReadApi,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
-  GENERATED_HEADER,
-  GENERATED_EDIT_NOTE,
-  sidecarLine,
+  effectivePackage,
   isTphSubtype,
   claimModuleNames,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { renderQueriesFile } from "../templates/queries-file.js";
-import {
-  renderFindByIdFn,
-  renderListFn,
-  renderCreateFn,
-  renderInsertPreservingFn,
-  renderUpdateFn,
-  renderDeleteByIdFn,
-  renderReverseFinderFns,
-  reverseFksFor,
-} from "../templates/queries.js";
-import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
-import { hasAutoSetFields } from "../templates/zod-validators.js";
-
-// --- composition (OWNED for the common case) ---
-function renderQueries(obj: MetaObject, ctx: RenderContext): string {
-  // Advanced variants delegate to the engine (byte-identical). Own them by copying their source.
-  // #214 — a write-through entity read-view (reads → replica view, writes → table) delegates
-  // too; owning it inline would duplicate the hybrid read/write routing.
-  if (isTphDiscriminatorBase(obj, ctx.loadedRoot) || isProjection(obj) || isWriteThrough(obj)) {
-    return renderQueriesFile(obj, ctx);
-  }
-
-  const entityName = obj.name;
-  const entityFileName = entityModuleSpecifier(
-    ctx.selfTarget,
-    ctx.entityModuleTarget,
-    effectivePackage(obj),
-    entityName,
-    ctx.extStyle,
-  );
-  const varName = ctx.collectionName(entityName);
-
-  // `db` is parameter-passed into every finder (ADR-0008). Emit the dialect-correct
-  // Drizzle type alias so signatures typecheck without the consumer constructing one.
-  // Keep EVERY type argument as open as Drizzle's own constraint allows — a `Db` this
-  // alias cannot name is a helper nobody can call, and uncompilable generated code looks
-  // exactly like unused generated code from outside. Both the driver axis (base classes,
-  // not `NodePgDatabase` / `<"async">`) and the schema axis (`Record<string, unknown>`,
-  // Drizzle's own `TFullSchema extends …` bound, NOT its `Record<string, never>` default)
-  // have been re-pinned once already; do not narrow either again. A schema-carrying
-  // `drizzle(client, { schema })` must assign, and so must a schema-less `drizzle(client)`.
-  // `dbTypeBlock` spells it per dialect (Postgres, SQLite/D1, MySQL).
-  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
-
-  // #203 — an @autoSet entity additionally imports its preserving-shape schema and emits
-  // the `insertPreserving<Entity>` escape hatch after `create<Entity>`. OWNED: drop both
-  // halves together if you never insert rows carrying their own timestamps.
-  const autoSet = hasAutoSetFields(obj);
-  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
-
-  // The create functions' typed inputs are spelled through these schemas by the engine
-  // primitives (`z.input<typeof <Entity>InsertSchema>`), so this line names no alias the
-  // entity module may not export.
-  const literalImports = code`
-${dbTypeImport}
-${dbTypeAlias}
-
-import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
-`;
-
-  const sections: Code[] = [
-    literalImports,
-    renderFindByIdFn(obj, ctx),
-    renderListFn(obj, ctx),
-    renderCreateFn(obj, ctx),
-    ...(autoSet ? [renderInsertPreservingFn(obj, ctx)] : []),
-    renderUpdateFn(obj, ctx),
-    renderDeleteByIdFn(obj, ctx),
-  ];
-
-  // ADR-0038 — reverse-relationship navigation as explicit FK finders. One
-  // find<Plural>By<FkField> (+ batched …In) per FK this entity holds. OWNED:
-  // drop this loop if you don't want reverse finders.
-  for (const fk of reverseFksFor(obj)) {
-    sections.push(renderReverseFinderFns(obj, fk, ctx));
-  }
-
-  const body = joinCode(sections, { on: "\n" }).toString();
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${obj.fqn()})\n${sidecarLine(`${entityName}.extra.ts`)}`;
-  return header + body;
-}
 
 export interface QueriesFileOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -172,7 +72,7 @@ export const queriesFile = function queriesFile(opts?: QueriesFileOpts): Generat
       claimModuleNames(ctx, entity);
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.queries.ts`),
-        content: renderQueries(entity, ctx.renderContext),
+        content: renderQueriesFile(entity, ctx.renderContext),
       };
     }),
   };
