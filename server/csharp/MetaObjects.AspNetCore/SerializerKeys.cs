@@ -16,7 +16,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 public static class SerializerKeys
 {

@@ -112,12 +112,12 @@ public sealed class DecimalWireGeneratedApiTests
         cmd.CommandText = "SELECT 0.1 + 0.2, 1.0 / 3, 123456789012345680.0, 12.5";
         await using var r = await cmd.ExecuteReaderAsync();
         Assert.True(await r.ReadAsync());
-        Assert.Equal("0.3", MetaObjects.Codegen.Runtime.DecimalWire.Format(r.GetDecimal(0)));
-        Assert.Equal("0.333333333333333", MetaObjects.Codegen.Runtime.DecimalWire.Format(r.GetDecimal(1)));
-        Assert.Equal("123456789012346000", MetaObjects.Codegen.Runtime.DecimalWire.Format(r.GetDecimal(2)));
-        Assert.Equal("12.5", MetaObjects.Codegen.Runtime.DecimalWire.Format(r.GetDecimal(3)));
+        Assert.Equal("0.3", MetaObjects.AspNetCore.DecimalWire.Format(r.GetDecimal(0)));
+        Assert.Equal("0.333333333333333", MetaObjects.AspNetCore.DecimalWire.Format(r.GetDecimal(1)));
+        Assert.Equal("123456789012346000", MetaObjects.AspNetCore.DecimalWire.Format(r.GetDecimal(2)));
+        Assert.Equal("12.5", MetaObjects.AspNetCore.DecimalWire.Format(r.GetDecimal(3)));
         // ...which is what the helper's own W4 rendering says for the same doubles.
-        Assert.Equal(r.GetDecimal(0), MetaObjects.Codegen.Runtime.DecimalWire.FromDouble15(0.1 + 0.2));
+        Assert.Equal(r.GetDecimal(0), MetaObjects.AspNetCore.DecimalWire.FromDouble15(0.1 + 0.2));
     }
 
     [Fact]

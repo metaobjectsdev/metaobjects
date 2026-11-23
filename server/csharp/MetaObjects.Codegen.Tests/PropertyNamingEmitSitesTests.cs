@@ -229,7 +229,7 @@ public class PropertyNamingEmitSitesTests
         paths.Add(typeof(Microsoft.EntityFrameworkCore.ModelBuilder).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.PrimaryKeyAttribute).Assembly.Location);
-        paths.Add(typeof(MetaObjects.Codegen.Runtime.FilterParser).Assembly.Location);
+        paths.Add(typeof(MetaObjects.AspNetCore.FilterParser).Assembly.Location);
         var refs = paths.Where(File.Exists).Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create("all_sites_" + Guid.NewGuid().ToString("N"), trees, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
@@ -366,17 +366,17 @@ public class PropertyNamingEmitSitesTests
     [Fact]
     public void The_filter_dispatch_finds_a_property_the_resolver_renamed_beyond_case()
     {
-        var predicates = new[] { new MetaObjects.Codegen.Runtime.FilterPredicate("ownerRef", "eq", "5") };
+        var predicates = new[] { new MetaObjects.AspNetCore.FilterPredicate("ownerRef", "eq", "5") };
         var map = new Dictionary<string, string> { ["ownerRef"] = "OwnerKey" };
         var rows = new[] { new FilterRow { OwnerKey = 5 }, new FilterRow { OwnerKey = 6 } }.AsQueryable();
 
         // With the map the field resolves to its property; without it the lookup misses (the 500 this guards).
-        var filtered = MetaObjects.Codegen.Runtime.EfCoreFilterDispatch.ApplyFilter(rows, predicates, map).ToList();
+        var filtered = MetaObjects.AspNetCore.EfCoreFilterDispatch.ApplyFilter(rows, predicates, map).ToList();
         Assert.Equal(5, Assert.Single(filtered).OwnerKey);
-        Assert.Throws<InvalidOperationException>(() => MetaObjects.Codegen.Runtime.EfCoreFilterDispatch.ApplyFilter(rows, predicates));
+        Assert.Throws<InvalidOperationException>(() => MetaObjects.AspNetCore.EfCoreFilterDispatch.ApplyFilter(rows, predicates));
 
-        var bad = MetaObjects.Codegen.Runtime.EfCoreFilterDispatch.Validate<FilterRow>(
-            MetaObjects.Codegen.Runtime.FilterParseResult.Ok([new MetaObjects.Codegen.Runtime.FilterPredicate("ownerRef", "eq", "not-a-number")]), map);
+        var bad = MetaObjects.AspNetCore.EfCoreFilterDispatch.Validate<FilterRow>(
+            MetaObjects.AspNetCore.FilterParseResult.Ok([new MetaObjects.AspNetCore.FilterPredicate("ownerRef", "eq", "not-a-number")]), map);
         Assert.Equal("invalid_filter_value", bad.ErrorEnvelope);
     }
 }

@@ -33,7 +33,7 @@
 // dispatches the resulting predicates onto the IQueryable<T> via
 // EfCoreFilterDispatch.ApplyFilter. Those helpers (and ValueObjectValidator,
 // ConstraintErrors) live in the namespace HelperRuntimeNamespace names: the
-// package's MetaObjects.Codegen.Runtime for the packaged generator, the adopter's
+// MetaObjects.AspNetCore package for the packaged generator, the adopter's
 // own codegen/runtime/ copy (Codegen.Runtime) once `dotnet meta eject routes` has
 // copied both — see MetaObjects.Codegen.HelperRuntime.
 
@@ -54,7 +54,7 @@ public class RoutesGenerator : PerEntityGenerator
     // ValueObjectValidator / ConstraintErrors from. `dotnet meta eject routes` rewrites
     // this one line to "Codegen.Runtime" and copies those helpers' source into
     // codegen/runtime/, so an owned copy's output binds to code the adopter owns.
-    private const string HelperRuntimeNamespace = "MetaObjects.Codegen.Runtime";
+    private const string HelperRuntimeNamespace = "MetaObjects.AspNetCore";
 
     public override bool Filter(MetaObject entity) =>
         // FR-044: a report has routes iff it is served (see AppliesTo).

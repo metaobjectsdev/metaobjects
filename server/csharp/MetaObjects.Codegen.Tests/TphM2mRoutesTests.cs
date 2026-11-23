@@ -340,10 +340,10 @@ public class TphM2mRoutesTests
         paths.Add(typeof(Microsoft.EntityFrameworkCore.ModelBuilder).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.PrimaryKeyAttribute).Assembly.Location);
-        // The routes file's `using MetaObjects.Codegen.Runtime;` (FilterParser,
+        // The routes file's `using MetaObjects.AspNetCore;` (FilterParser,
         // EfCoreFilterDispatch) lives in this same assembly — a project reference, so it
         // is not on TRUSTED_PLATFORM_ASSEMBLIES.
-        paths.Add(typeof(MetaObjects.Codegen.Runtime.FilterParser).Assembly.Location);
+        paths.Add(typeof(MetaObjects.AspNetCore.FilterParser).Assembly.Location);
         var refs = paths.Where(File.Exists)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
 

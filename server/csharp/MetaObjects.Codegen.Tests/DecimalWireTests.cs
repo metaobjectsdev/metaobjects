@@ -1,6 +1,6 @@
 // ADR-0019 Amendment 1 (W1-W4) — the C# half of the decimal wire rule, gated against the
 // shared vectors in fixtures/decimal-wire/vectors.json. No database: the production wire
-// helper (Runtime/DecimalWire.cs, the SAME text the entity generator emits into every
+// helper (MetaObjects.AspNetCore/DecimalWire.cs, the SAME text the entity generator emits into every
 // generated project) runs every vector, and the emitted text is proven identical to it.
 // The HTTP bytes and the read path are gated by the api-contract and persistence lanes.
 
@@ -11,7 +11,7 @@ using System.Text.Json.Serialization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;
@@ -221,12 +221,12 @@ public class DecimalWireTests
         var emitted = files.Where(f => f.Path == "DecimalWire.g.cs").ToList();
         Assert.NotEmpty(emitted);
         var production = File.ReadAllText(Path.Combine(
-            CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen", "Runtime", "DecimalWire.cs")).Replace("\r\n", "\n");
+            CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.AspNetCore", "DecimalWire.cs")).Replace("\r\n", "\n");
         foreach (var f in emitted)
         {
             var ns = f.Content.Split('\n').First(l => l.StartsWith("namespace ", StringComparison.Ordinal));
             Assert.Equal(
-                production.Replace("namespace MetaObjects.Codegen.Runtime;", ns),
+                production.Replace("namespace MetaObjects.AspNetCore;", ns),
                 f.Content.Replace("\r\n", "\n"));
             Assert.DoesNotContain("MetaObjects", ns.Replace("namespace ", ""), StringComparison.Ordinal);
         }

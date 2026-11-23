@@ -10,7 +10,7 @@ Update when a gap closes or a new one surfaces.
 - `?limit=N&offset=N` pagination — honoured on the list route.
 - `?sort=<field>:asc|desc` — honoured against a per-entity static `SortAllowlist` derived from scalar fields. Unknown field returns 400 `{ "error": "validation", "message": "unknown sort field: ..." }`.
 - `?withCount=1` — switches the list envelope from `[<row>...]` to `{ rows, total }`. The grid hook always sends this. `total` reflects the filtered count when `filter[...]` is present.
-- `?filter[<field>][<op>]=<value>` (and the `filter[<field>]=<value>` sugar form for `eq`) — honoured against a per-entity `<Entity>FilterAllowlist` emitted by `FilterAllowlistGenerator`. Errors return 400 `{ "error": "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" }`. The list handler calls `FilterParser.Parse` and dispatches via `EfCoreFilterDispatch.ApplyFilter` (both in `MetaObjects.Codegen.Runtime`). FR-009.
+- `?filter[<field>][<op>]=<value>` (and the `filter[<field>]=<value>` sugar form for `eq`) — honoured against a per-entity `<Entity>FilterAllowlist` emitted by `FilterAllowlistGenerator`. Errors return 400 `{ "error": "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" }`. The list handler calls `FilterParser.Parse` and dispatches via `EfCoreFilterDispatch.ApplyFilter` (both in the `MetaObjects.AspNetCore` package). FR-009.
 - Both `PATCH` and `PUT` map to the same update handler (TS reference exposes both verbs; C# now matches).
 - 404 carries a JSON envelope: `{ "error": "not_found" }`.
 - Projection (`object.projection` over a read-only `source.rdb` `@kind: view`) routes are read-only — only `GET` list + `GET /:id` are mounted; no `POST` / `PATCH` / `PUT` / `DELETE`.

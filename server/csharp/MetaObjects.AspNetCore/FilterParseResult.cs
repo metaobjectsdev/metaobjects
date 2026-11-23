@@ -5,7 +5,7 @@
 // Part of the codegen runtime surface; mirrors Java codegen-spring's
 // runtime/FilterParseResult.java.
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>
 /// Result of <see cref="FilterParser.Parse"/>. Exactly one of

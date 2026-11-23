@@ -5,7 +5,7 @@ name: publish-csharp
 # after validating GitHub's OIDC token against the trusted-publishing policy
 # configured under the `metaobjects` org. See docs/RELEASING.md.
 #
-# Packages: MetaObjects, MetaObjects.Render, MetaObjects.Codegen, MetaObjects.Cli (dotnet tool).
+# Packages: MetaObjects, MetaObjects.Render, MetaObjects.Codegen, MetaObjects.AspNetCore, MetaObjects.Cli (dotnet tool).
 #
 # One-time setup on nuget.org (your username -> Trusted Publishing -> Create):
 #   Package Owner:    metaobjects        (the org)
@@ -72,6 +72,7 @@ jobs:
           dotnet pack server/csharp/MetaObjects/MetaObjects.csproj                 -c Release -o artifacts $VERSION_ARG
           dotnet pack server/csharp/MetaObjects.Render/MetaObjects.Render.csproj   -c Release -o artifacts $VERSION_ARG
           dotnet pack server/csharp/MetaObjects.Codegen/MetaObjects.Codegen.csproj -c Release -o artifacts $VERSION_ARG
+          dotnet pack server/csharp/MetaObjects.AspNetCore/MetaObjects.AspNetCore.csproj -c Release -o artifacts $VERSION_ARG
           dotnet pack server/csharp/MetaObjects.Cli/MetaObjects.Cli.csproj         -c Release -o artifacts $VERSION_ARG
           ls -l artifacts
 

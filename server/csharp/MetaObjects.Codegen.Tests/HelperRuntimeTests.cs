@@ -1,7 +1,8 @@
 // ADR-0034 Amendment 3 — the helper runtime `dotnet meta eject routes` hands over with the
 // generator (MetaObjects.Codegen.HelperRuntime). These tests gate:
-//   1. the embedded copies are byte-identical to Runtime/<file> and match HelperRuntime.Files;
-//   2. every Runtime/ file is classified helper (copied) or core (stays in the package);
+//   1. the embedded copies are byte-identical to MetaObjects.AspNetCore/<file> and match HelperRuntime.Files;
+//   2. every MetaObjects.AspNetCore/ file is a helper (copied) and every MetaObjects.Codegen/Runtime/
+//      file is core (stays in MetaObjects.Codegen);
 //   3. the helper set is CLOSED — it compiles on its own, with no MetaObjects assembly;
 //   4. an ejected routes generator's output compiles against the OWNED copy with no
 //      MetaObjects assembly referenced at all, and binds to that copy: break the copy and
@@ -17,6 +18,9 @@ namespace MetaObjects.Codegen.Tests;
 public class HelperRuntimeTests
 {
     private static string RuntimeDir() =>
+        Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.AspNetCore");
+
+    private static string CoreRuntimeDir() =>
         Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen", "Runtime");
 
     private static string Normalize(string s) => s.Replace("\r\n", "\n");
@@ -27,7 +31,7 @@ public class HelperRuntimeTests
         foreach (var file in HelperRuntime.Files)
             Assert.True(
                 Normalize(HelperRuntime.ReadSourceFile(file)) == Normalize(File.ReadAllText(Path.Combine(RuntimeDir(), file))),
-                $"embedded Runtime/{file} diverges from its source file — rebuild MetaObjects.Codegen.");
+                $"embedded MetaObjects.AspNetCore/{file} diverges from its source file — rebuild MetaObjects.Codegen.");
     }
 
     [Fact]
@@ -43,11 +47,12 @@ public class HelperRuntimeTests
     [Fact]
     public void Every_runtime_file_is_classified_helper_or_core_and_never_both()
     {
-        // A new Runtime/ file must be put on one side of the line on purpose: copied to an
-        // adopter who ejects, or kept in the package as core.
-        var onDisk = Directory.GetFiles(RuntimeDir(), "*.cs").Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal);
-        var classified = HelperRuntime.Files.Concat(HelperRuntime.CoreFiles).OrderBy(n => n, StringComparer.Ordinal);
-        Assert.Equal(classified, onDisk);
+        // A new runtime file must be put on one side of the line on purpose: a helper in
+        // MetaObjects.AspNetCore, copied to an adopter who ejects, or core in MetaObjects.Codegen.
+        static IEnumerable<string?> CsFiles(string dir) =>
+            Directory.GetFiles(dir, "*.cs").Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(HelperRuntime.Files.OrderBy(n => n, StringComparer.Ordinal), CsFiles(RuntimeDir()));
+        Assert.Equal(HelperRuntime.CoreFiles.OrderBy(n => n, StringComparer.Ordinal), CsFiles(CoreRuntimeDir()));
         Assert.Empty(HelperRuntime.Files.Intersect(HelperRuntime.CoreFiles));
     }
 

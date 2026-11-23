@@ -222,6 +222,7 @@ public sealed class PackageKeyedOutputTests
         var refs = HelperRuntimeTests.ReferencesWithoutMetaObjects();
         refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Meta.MetaObject).Assembly.Location));
         refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.Codegen.Runtime.ExtractObject).Assembly.Location));
+        refs.Add(MetadataReference.CreateFromFile(typeof(MetaObjects.AspNetCore.FilterParser).Assembly.Location));
         var comp = CSharpCompilation.Create(
             "package_keyed_" + Guid.NewGuid().ToString("N"), trees, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));

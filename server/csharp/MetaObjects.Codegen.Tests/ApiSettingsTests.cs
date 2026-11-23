@@ -4,7 +4,7 @@
 
 using MetaObjects.Codegen;
 using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 using MetaObjects.Config;

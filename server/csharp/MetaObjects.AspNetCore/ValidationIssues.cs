@@ -23,7 +23,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>An ordered, de-duplicated list of validation issues, and the 400 response that carries it.</summary>
 public sealed class ValidationIssues

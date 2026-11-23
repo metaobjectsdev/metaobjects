@@ -524,6 +524,9 @@ public static class VerifyCommand
             ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
             SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
+        // The committed output imports the helper runtime package its project may not reference (1.3.0).
+        advisories.AddRange(HelperRuntimeReference.ForRun(config, generators, config.ProjectRoot)
+            .Select(w => $"warning: {w}"));
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }
 

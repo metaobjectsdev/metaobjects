@@ -1088,6 +1088,10 @@ public static class CodegenCli
             SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
         if (configure is not null) config = configure(config);
+        // Advisory, on every path below: the committed output imports the helper runtime package
+        // its project may not reference (1.3.0 moved it out of MetaObjects.Codegen).
+        foreach (var w in HelperRuntimeReference.ForRun(config, suite, projectRoot))
+            Console.Error.WriteLine($"  warning: {w}");
         // ADR-0064: locally, an unchanged key and output that still hashes to what gen recorded answer
         // "no drift" without rendering. CI and --full always render.
         if (a.Entities is null && suite.All(g => g.Cacheable) && GenFingerprint.MayAnswerNoDrift(

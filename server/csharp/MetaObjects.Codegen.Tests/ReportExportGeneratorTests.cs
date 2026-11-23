@@ -8,7 +8,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Primitives;
 using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
 using Xunit;

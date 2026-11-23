@@ -12,7 +12,7 @@
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Http;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>
 /// Parses the cross-port FR-009 filter URL grammar

@@ -347,7 +347,7 @@ public static class EjectCommand
         if (runtimeRemoved)
             lines.Add($"The helper runtime copy is gone: drop the `<Compile Include=\".../{HelperRuntime.OwnedDirectory}/**/*.cs\" />` " +
                       $"line from the project that compiled it, and register the timestamp converter from " +
-                      $"`{HelperRuntime.PackagedNamespace}` again.");
+                      $"`{HelperRuntime.PackagedNamespace}` again (the app needs its {HelperRuntime.PackageId} package reference back).");
         return new Outcome(0, lines, []);
     }
 
@@ -438,7 +438,7 @@ public static class EjectCommand
         lines.Add($"  <Compile Include=\"<path-to-project-root>/{HelperRuntime.OwnedDirectory}/**/*.cs\" />");
         lines.Add(
             $"and register the timestamp converter from `{HelperRuntime.OwnedNamespace}` rather than " +
-            $"`{HelperRuntime.PackagedNamespace}`. The generated routes then need no MetaObjects.Codegen " +
+            $"`{HelperRuntime.PackagedNamespace}`. The generated routes then need no {HelperRuntime.PackageId} " +
             "reference. codegen/Codegen.csproj must not compile runtime/ " +
             "(`<Compile Remove=\"runtime/**\" />`; a scaffold written by this version already has it).");
         return lines;

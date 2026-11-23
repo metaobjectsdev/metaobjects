@@ -15,7 +15,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>The unknown-field refusal of a generated write route.</summary>
 public static class UnknownFieldCheck

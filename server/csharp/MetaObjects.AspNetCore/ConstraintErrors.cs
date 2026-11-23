@@ -38,7 +38,7 @@
 // command text or parameter collection — so the matched text cannot carry user data into
 // a classification decision.
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>The constraint kinds worth telling a client apart.</summary>
 public enum ConstraintKind

@@ -56,6 +56,7 @@ The test suite includes per-fixture `Lint` and `Conformance` theories over the s
   - `ConformanceAdapter.cs`, `FixtureDiscovery.cs`, `OperationScript.cs`, `FixtureLint.cs`, `Navigator.cs`, `CapabilityBinding.cs`, `Result.cs`, `ExpectedFailures.cs`, `conformance-expected-failures.json`, `ConformanceTests.cs`
   - `YamlConformanceTests.cs`, `YamlDesugarTests.cs`, `yaml-conformance-expected-failures.json` — YAML conformance + unit tests
   - Per-pipeline-stage unit tests (`ErrorsTests`, `RegistryTests`, `TreeTests`, `ParserTests`, `SerializerTests`, `LoaderTests`, `SuperResolveTests`, `ValidationTests`, …)
+- `MetaObjects.AspNetCore/` — the helper runtime generated routes call (filter parser, EF Core filter dispatch, validation, wire forms); the app references it, `MetaObjects.Codegen` and the tool do not
 - `MetaObjects.Codegen/` — the .NET emit pipeline (`Generators/` holds entity, db-context, routes, payload, filter-allowlist, output-parser/prompt, extractor, template) + `CodegenRunner`, `GeneratorRegistry`, `CodegenDrift`
 - `MetaObjects.Render/` — Mustache render, payload value objects, `verify`
 - `MetaObjects.Cli/` — the `dotnet meta` tool (`init`, `gen`, `eject`, `verify`, `fmt`)

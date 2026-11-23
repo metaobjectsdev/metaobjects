@@ -144,12 +144,12 @@ public class EntityGeneratorTests
     {
         // FR-009: the generated list handler must parse filter[...] qs against
         // the per-entity allowlist + dispatch via EfCoreFilterDispatch. Both
-        // are runtime helpers shipped under MetaObjects.Codegen.Runtime.
+        // are runtime helpers shipped in the MetaObjects.AspNetCore package.
         var ctx = Ctx(Load());
         var src = Assert.Single(new RoutesGenerator().Generate(ctx)).Content;
 
         // Imports the runtime namespace.
-        Assert.Contains("using MetaObjects.Codegen.Runtime;", src);
+        Assert.Contains("using MetaObjects.AspNetCore;", src);
         // Parses filter against the per-entity allowlist.
         Assert.Contains("FilterParser.Parse(qs, SubscriberFilterAllowlist.Fields, SubscriberFilterAllowlist.OpsByField)", src);
         // 400 envelope on parse error — carries `field`, which every filter envelope

@@ -3,7 +3,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;

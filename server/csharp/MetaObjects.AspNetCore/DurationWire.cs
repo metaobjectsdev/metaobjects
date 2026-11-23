@@ -30,7 +30,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>The canonical wire form of a duration: format, parse, and the System.Text.Json converters.</summary>
 public static class DurationWire

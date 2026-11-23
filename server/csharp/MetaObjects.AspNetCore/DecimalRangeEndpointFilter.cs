@@ -12,7 +12,7 @@
 
 using Microsoft.AspNetCore.Http;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>Turns a driver's decimal-overflow-on-read into <c>500 {"error":"decimal_out_of_range"}</c>.</summary>
 public sealed class DecimalRangeEndpointFilter : IEndpointFilter

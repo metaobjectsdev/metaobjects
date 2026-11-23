@@ -6,7 +6,7 @@
 // runtime in their ASP.NET Core host. Mirrors Java codegen-spring's
 // runtime/FilterPredicate.java.
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>
 /// A single parsed + validated filter predicate from the FR-009 URL grammar

@@ -27,7 +27,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>
 /// Reads and writes <see cref="DateTimeOffset"/> in the api contract's wire spelling:

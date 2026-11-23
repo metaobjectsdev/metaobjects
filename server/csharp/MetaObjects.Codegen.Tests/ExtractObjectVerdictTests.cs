@@ -12,6 +12,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using MetaObjects.AspNetCore;
 using MetaObjects.Codegen.Runtime;
 using MetaObjects.Loader;
 using MetaObjects.Meta;

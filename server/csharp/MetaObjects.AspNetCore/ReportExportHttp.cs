@@ -19,7 +19,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
-namespace MetaObjects.Codegen.Runtime;
+namespace MetaObjects.AspNetCore;
 
 /// <summary>Format selection, refusals and attachment responses for a report export.</summary>
 public static class ReportExportHttp

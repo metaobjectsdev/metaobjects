@@ -743,14 +743,15 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (the `<Version>` in
+Five packages, version-locked at the C# port version (the `<Version>` in
 [`server/csharp/Directory.Build.props`](../server/csharp/Directory.Build.props)):
 
 | Package | Contents |
 |---|---|
 | `MetaObjects` | Loader + canonical serializer |
 | `MetaObjects.Render` | Mustache render + payload-VO + `verify` |
-| `MetaObjects.Codegen` | EF Core + ASP.NET codegen + the runtime filter/dispatch helpers generated code references |
+| `MetaObjects.Codegen` | EF Core + ASP.NET codegen (writes EF and ASP.NET code as text; depends on neither) |
+| `MetaObjects.AspNetCore` | The helper runtime generated routes call (filter parser, EF Core filter dispatch, validation, wire forms); the APP references it, the tool does not |
 | `MetaObjects.Cli` | The `dotnet meta` .NET tool (`gen` / `verify`; `agent-docs` is a redirect stub to the Node `meta` CLI) |
 
 Shared package metadata lives in [`server/csharp/Directory.Build.props`](../server/csharp/Directory.Build.props);
@@ -818,11 +819,12 @@ lock the repo/owner IDs against resurrection attacks.)
 2. **Validate locally** (catches immutable-version mistakes before they're permanent):
    ```bash
    cd server/csharp
-   # NOTE: pack ONE project per invocation. Passing all four to a single `dotnet pack`
+   # NOTE: pack ONE project per invocation. Passing all five to a single `dotnet pack`
    # fails on modern SDKs (verified on 8.0.129) with `MSBUILD : error MSB1008: Only one
    # project can be specified` — MSBuild treats the extra paths as switches.
    for p in MetaObjects/MetaObjects.csproj MetaObjects.Render/MetaObjects.Render.csproj \
-            MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.Cli/MetaObjects.Cli.csproj; do
+            MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.AspNetCore/MetaObjects.AspNetCore.csproj \
+            MetaObjects.Cli/MetaObjects.Cli.csproj; do
      dotnet pack "$p" -c Release -o /tmp/mo-nupkg || echo "PACK FAILED: $p"
    done
    # inspect a nuspec — version, license, readme, deps:
@@ -833,7 +835,7 @@ lock the repo/owner IDs against resurrection attacks.)
 3. **Run persistence conformance** if the runtime/codegen changed: `scripts/integration-test.sh csharp`.
 4. **Publish:** GitHub → **Actions → publish-csharp → Run workflow** (or push a `csharp-v<version>` tag).
    This is the one registry that CANNOT be published locally — see "How we publish" above.
-5. **Verify** on nuget.org: all four packages listed and **owned by the `metaobjects` org**
+5. **Verify** on nuget.org: all five packages listed (`MetaObjects.AspNetCore` is a new package id from 1.3.0: check its first push landed) and **owned by the `metaobjects` org**
    (indexing/validation takes a few minutes).
 
 # Releasing the Python package to PyPI

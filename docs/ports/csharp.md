@@ -71,7 +71,8 @@ SQLite so it runs with nothing else installed; the same generated code runs on P
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MetaObjects.Codegen" Version="1.2.0" />
+    <!-- the helpers the generated routes call; before 1.3.0 they were in MetaObjects.Codegen -->
+    <PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
   </ItemGroup>
   <ItemGroup>
@@ -935,9 +936,13 @@ is for samples; on Postgres create the tables with the Node CLI's migrations
 
 EF Core does the rest — the generated entities and `AppDbContext` are plain EF Core with
 no MetaObjects types in them. Note the one exception: generated **routes** emit
-`using MetaObjects.Codegen.Runtime;` for the shared filter/sort helpers, so a project that
-generates routes with the packaged generator references `MetaObjects.Codegen` at runtime.
-Entities-and-DbContext-only projects do not.
+`using MetaObjects.AspNetCore;` for the shared filter/sort helpers, so a project that
+generates routes with the packaged generator references the `MetaObjects.AspNetCore` package
+(`<PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" />`). Entities-and-DbContext-only
+projects do not. `MetaObjects.Codegen` and the `dotnet meta` tool carry no EF Core or ASP.NET Core
+dependency; before 1.3.0 the helpers lived in `MetaObjects.Codegen` under
+`MetaObjects.Codegen.Runtime`, and `dotnet meta gen` / `verify` warn when generated routes import
+`MetaObjects.AspNetCore` and the project compiling them does not reference it.
 
 **Owning the routes, helpers included.** `dotnet meta eject routes` copies the routes
 generator into `codegen/generators/` AND the helper source its output calls into
@@ -946,8 +951,8 @@ generator into `codegen/generators/` AND the helper source its output calls into
 `Iso8601TimestampConverter`, each under the namespace `Codegen.Runtime`. The owned
 generator's output imports `Codegen.Runtime` instead of the package. Compile the folder into
 your app (`<Compile Include="../codegen/runtime/**/*.cs" />`) and the generated routes need
-no `MetaObjects.Codegen` reference; a fix to the filter parser is then an edit in your repo,
-not a wait for a release. What stays in the package is core: `ExtractObject` (the reply
+no `MetaObjects.AspNetCore` reference; a fix to the filter parser is then an edit in your repo,
+not a wait for a release. What stays in `MetaObjects.Codegen` is core: `ExtractObject` (the reply
 parser the prompt tier calls) and `M2MResolver` (metadata-driven M:N traversal), plus the
 loader, registry, render and verify. `dotnet meta gen --list` reports the copy `identical`
 or per-file `DIFFERS`, `verify --codegen` does not treat it as drift, and

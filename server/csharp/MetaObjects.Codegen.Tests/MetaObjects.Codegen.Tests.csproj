@@ -23,6 +23,7 @@
          instead of hand-copying it a second time (a hand-copy that drifted silently is the
          reason this reference exists — see CodegenDriftTests.cs). -->
     <ProjectReference Include="../MetaObjects.Cli/MetaObjects.Cli.csproj" />
+    <ProjectReference Include="..\MetaObjects.AspNetCore\MetaObjects.AspNetCore.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Golden/ holds generated output captured for byte-for-byte comparison (GeneratorGoldenTests):

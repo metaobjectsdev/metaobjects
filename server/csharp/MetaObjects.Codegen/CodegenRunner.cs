@@ -96,6 +96,9 @@ public static class CodegenRunner
         // POCO) writing the same path would silently clobber each other; error
         // instead, mirroring codegen-ts's runGen duplicate-path check.
         var emitted = new Dictionary<string, string>(StringComparer.Ordinal);
+        // Written files that import the packaged helper runtime: their projects must reference it.
+        var helperImports = new List<(string Path, string Shown)>();
+        var formerImports = new List<string>();
         var refused = new List<string>();
         var adopted = new List<string>();
         var overwritePaths = new HashSet<string>(StringComparer.Ordinal);
@@ -160,6 +163,8 @@ public static class CodegenRunner
                     var outside = config.ProjectRoot is not null
                         && (key.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(key));
                     if (outside) { untracked++; outsidePaths.Add(full); }
+                    if (HelperRuntimeReference.Imports(file.Content)) helperImports.Add((full, shown + file.Path));
+                    else if (HelperRuntimeReference.ImportsFormer(file.Content)) formerImports.Add(shown + file.Path);
                     var status = WriteOne(
                         outside ? config with { GenStateDir = null } : config,
                         outside ? null : manifest,
@@ -179,6 +184,10 @@ public static class CodegenRunner
             }
         }
         finally { manifest?.Save(); }
+
+        // 1.3.0 moved the helper runtime into its own package; say so when the app would not compile.
+        warnings.AddRange(HelperRuntimeReference.WarningsForImporting(helperImports));
+        if (HelperRuntimeReference.FormerImportWarning(formerImports) is { } former) warnings.Add(former);
 
         if (config.SweepOrphans && config.GenStateDir is { } genState && config.ProjectRoot is { } project
             && config.Baseline != "adopt")

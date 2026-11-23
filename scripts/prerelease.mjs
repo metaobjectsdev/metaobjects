@@ -404,13 +404,14 @@ if (wants("csharp")) {
   // No file edit needed — dotnet takes the version on the command line.
   const out = scratch("nupkg");
   const projs = ["MetaObjects/MetaObjects", "MetaObjects.Render/MetaObjects.Render",
-                 "MetaObjects.Codegen/MetaObjects.Codegen", "MetaObjects.Cli/MetaObjects.Cli"];
+                 "MetaObjects.Codegen/MetaObjects.Codegen", "MetaObjects.AspNetCore/MetaObjects.AspNetCore",
+                 "MetaObjects.Cli/MetaObjects.Cli"];
   for (const p of projs) await run(`cd server/csharp && dotnet pack ${p}.csproj -c Release -o ${out} -p:Version=${V.nuget} --nologo -v q`);
-  ok(`csharp packed ${V.nuget} (4 packages)`);
+  ok(`csharp packed ${V.nuget} (${projs.length} packages)`);
   begin("csharp");
   if (!DRY) {
     await run(`dotnet nuget push "${out}/*.nupkg" --source "${NUGET_SRC}" --api-key "${TOKEN}"`);
-    ok(`csharp: 4 packages @ ${V.nuget} → ${expectedHost}`);
+    ok(`csharp: ${projs.length} packages @ ${V.nuget} → ${expectedHost}`);
   } else ok("csharp: dry run, nothing published");
   if (!DRY) published.push("csharp");
 }

@@ -53,4 +53,7 @@
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
     <PackageReference Include="Testcontainers.MySql" Version="4.16.0" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MetaObjects.AspNetCore\MetaObjects.AspNetCore.csproj" />
+  </ItemGroup>
 </Project>

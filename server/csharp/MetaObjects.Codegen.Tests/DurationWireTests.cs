@@ -1,6 +1,6 @@
 // field.duration — the C# half of the duration wire rule, gated against the shared vectors in
 // fixtures/duration-wire/vectors.json. No database: the production wire helper
-// (Runtime/DurationWire.cs, the SAME text the entity generator emits into every generated project)
+// (MetaObjects.AspNetCore/DurationWire.cs, the SAME text the entity generator emits into every generated project)
 // runs every `wire` vector (the `precision` ones at seven digits: a TimeSpan tick is 100 ns), and
 // the emitted text is proven identical to it. Of the `codecs` groups C# has two in production:
 // `storedMicros` (the generated value converter on SQLite and MySQL, here) and the Postgres read
@@ -13,7 +13,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using MetaObjects.Core.Query;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
@@ -254,8 +254,8 @@ public class DurationWireTests
     {
         var emitted = Emit().Single(f => f.Path == "DurationWire.g.cs");
         var production = File.ReadAllText(Path.Combine(
-            CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen", "Runtime", "DurationWire.cs")).Replace("\r\n", "\n");
-        Assert.Equal(production.Replace("namespace MetaObjects.Codegen.Runtime;", "namespace Acme.Ops;"), emitted.Content.Replace("\r\n", "\n"));
+            CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.AspNetCore", "DurationWire.cs")).Replace("\r\n", "\n");
+        Assert.Equal(production.Replace("namespace MetaObjects.AspNetCore;", "namespace Acme.Ops;"), emitted.Content.Replace("\r\n", "\n"));
     }
 
     [Fact]
