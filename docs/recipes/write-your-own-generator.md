@@ -321,6 +321,24 @@ any release (ADR-0034 Amendment 12). In TypeScript the surface is reached throug
 `@metaobjectsdev/codegen-ts/engine`, and its names are listed in
 `server/typescript/packages/codegen-ts/test/authoring-surface.snapshot.json`.
 
+When your generator writes something another part of the run asks about, declare it in one
+place. In TypeScript that is `provides` on the generator:
+
+```ts
+const generator: Generator = {
+  name: "acme-routes",
+  // The api reference lists the verbs these routes mount; agent/ui.md, the model pages and
+  // the entity tier read the other keys (entityModule, queries, names, reportExport, uiTier,
+  // modelDocs, apiDocs).
+  provides: { routes: { framework: "fastify", expose: ["list", "get"] } },
+  generate: (ctx) => [/* ... */],
+};
+```
+
+Nothing in the run matches a generator by its name, so your own generator is seen the same
+way as the stock one it replaces. The single-purpose markers that came before (`emitsQueries`,
+`mountsRoutes`, `emitsUiTier` and the rest) are still read, and are deprecated.
+
 ## Reads outside the model: declare them, or `meta gen` may skip your output
 
 `meta gen` skips a run when nothing it is built from has changed ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)).

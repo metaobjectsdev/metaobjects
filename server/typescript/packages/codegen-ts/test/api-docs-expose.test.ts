@@ -232,9 +232,17 @@ describe("through meta gen: the written api pages list only the mounted verbs", 
     expect(full.product).toMatch(/DELETE \/products\/:id/);
   });
 
-  test("an owned routes copy with no mountsRoutes marker is warned about", async () => {
-    const { mountsRoutes: _marker, ...stale } = routesFile();
+  test("an owned routes copy that declares no routes is warned about", async () => {
+    const { provides: _declaration, ...stale } = routesFile();
     const { warnings } = await pages([stale, apiDocsFile()]);
-    expect(warnings.join("\n")).toContain("mountsRoutes");
+    expect(warnings.join("\n")).toContain("provides.routes");
+  });
+
+  test("an owned routes copy that still sets the deprecated mountsRoutes marker is read as before", async () => {
+    const { provides: _declaration, ...rest } = routesFile({ expose: ["list", "get"] });
+    const legacy = { ...rest, mountsRoutes: { expose: ["list", "get"] as const } };
+    const { product, warnings } = await pages([legacy, apiDocsFile()]);
+    expect(warnings.join("\n")).not.toContain("provides.routes");
+    expect(product).not.toMatch(/DELETE \/products\/:id/);
   });
 });

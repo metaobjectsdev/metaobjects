@@ -56,7 +56,7 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
 
   const generator: Generator = {
     name: "entity-file",
-    emitsEntityModule: true,
+    provides: { entityModule: true },
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
       const files = await perEntityEmit(ctx);
       // FR-019: emit the shared-enums module ONCE per run, into the entity-module

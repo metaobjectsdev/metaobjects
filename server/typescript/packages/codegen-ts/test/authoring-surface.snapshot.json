@@ -4,11 +4,14 @@
     "GenContext",
     "Generator",
     "GeneratorFactory",
+    "GeneratorProvides",
+    "GeneratorRoutes",
     "RunOutputFile",
     "oncePerRun",
     "perEntity",
     "perModel",
     "perPackage",
+    "providesOf",
     "selectedEntities"
   ],
   "codegen-ts/src/model-walk.ts": [

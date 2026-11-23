@@ -117,9 +117,12 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     name: "routes-file",
     // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts, so an
     // `expose` you pass here is honoured there. Keep this line if you change what the file mounts.
-    mountsRoutes: {
-      ...(opts?.expose !== undefined && { expose: opts.expose }),
-      ...(opts?.filter !== undefined && { filter: opts.filter }),
+    provides: {
+      routes: {
+        framework: "fastify",
+        ...(opts?.expose !== undefined && { expose: opts.expose }),
+        ...(opts?.filter !== undefined && { filter: opts.filter }),
+      },
     },
     // TPH subtypes get no standalone routes file (their routes live in the discriminator
     // base's); AND-composed with your filter.

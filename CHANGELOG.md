@@ -35,6 +35,15 @@ here.**
   entry (`@metaobjectsdev/codegen-ts/engine`) now also exports `objectRefTarget`. The other ports'
   snapshot tests follow.
 
+- **codegen-ts: a generator declares what it provides in one place.** `provides` on a `Generator`
+  (`entityModule`, `queries`, `names`, `reportExport`, `routes` with its framework, `expose` and
+  `filter`, `uiTier`, `modelDocs`, `apiDocs`) replaces the nine single-purpose markers
+  (`emitsEntityModule`, `emitsQueries`, `emitsNames`, `emitsReportExport`, `emitsHonoRoutes`,
+  `mountsRoutes`, `emitsUiTier`, `emitsModelDocs`, `emitsApiDocs`). The runner, the docs
+  generators and the gates read it through one function, `providesOf`, so a generator of your own
+  under any name is seen as the stock one is. The old markers are deprecated and still read, so an
+  owned copy that sets them keeps working; a re-ejected copy declares `provides`.
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint

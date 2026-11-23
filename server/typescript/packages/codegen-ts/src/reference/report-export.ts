@@ -23,7 +23,7 @@
 //                the options `maxRows`, `xmlNulls`, `csvBom`. Whatever you change, keep the module's
 //                `{ maxRows, csv, xml }` shape: it is what the mount takes.
 // composes-with: routes.ts / routes-hono.ts, which import the per-report module when this generator is
-//                in the same target (the `emitsReportExport` marker below is how they know).
+//                in the same target (the `provides.reportExport` declaration below is how they know).
 import {
   effectivePackage,
   DEFAULT_OUTPUT_LAYOUT,
@@ -50,7 +50,7 @@ import {
  * emits nothing a project did not wire it for.
  *
  * Wiring it does two things. It emits one `<Report>.export.ts` per served report plus ONE shared
- * `report-export-writers.ts` per target, and it marks the run (`emitsReportExport`) so the routes
+ * `report-export-writers.ts` per target, and it marks the run (`provides.reportExport`) so the routes
  * generators emit the `format` branch on a report list route and import that module. A project that
  * wires no `report-export` gets routes byte-identical to before export existed.
  *
@@ -84,7 +84,7 @@ export function reportExport(opts?: ReportExportOpts): Generator {
   }
   const generator: Generator = {
     name: "report-export",
-    emitsReportExport: true,
+    provides: { reportExport: true },
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
       const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";

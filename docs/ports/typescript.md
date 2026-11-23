@@ -440,7 +440,7 @@ source, or an abstract one, generates nothing. The contract is in
 
 Wire `reportExport()` and a served report's list route also answers `?format=csv|json|xml`
 (the contract is "Report export" in [api-contract](../features/api-contract.md)). The
-wiring is the generator's presence: it carries the `emitsReportExport` marker, the runner turns
+wiring is the generator's presence: it declares `provides: { reportExport: true }`, the runner turns
 that into `includeReportExport` for the routes generators, and only then does a report's routes
 file import `<R>.export` and pass `export: <R>Export` to the mount. Without `reportExport()` the
 routes are byte-identical to before and `?format=` is ignored like any unknown parameter.
