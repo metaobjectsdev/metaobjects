@@ -251,9 +251,12 @@ lines it lacks and how many are its own.
 `cargo meta eject --undo` removes copies that are still identical (`--force` discards an edited one)
 and tells you the two lines of `codegen/main.rs` to change; it never edits that file.
 
-This is **not a plugin contract**. Nothing discovers or loads a third-party generator, and the
-engine's Rust API carries no stability promise: an owned copy is pinned
-to the exact engine its `Cargo.toml` names.
+Nothing discovers or loads a third-party generator: the owned crate is the supported way to add
+your team's own generator. Write it against `metaobjects-codegen`'s authoring surface (the
+`generator`, `emitted`, `plan`, `writer` and `names` modules) and add it to the generator list. That
+surface is versioned with the crate under the [compatibility policy](../compatibility-policy.md); the
+rest of the crate is internal and may change in any release (ADR-0065 Amendment 5). An owned copy is
+pinned to the exact engine its `Cargo.toml` names.
 
 The owned crate's `Cargo.toml` names no machine. By default the three engine crates are the crates.io
 release the tool is, pinned exactly (`metaobjects = "=<version>"`), since an owned copy is that release's

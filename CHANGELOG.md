@@ -23,6 +23,16 @@ here.**
   and Angular templates now write through the code writer (ADR-0063). Their output is otherwise
   the same code, with imports merged per module and sorted.
 
+- **The generator-authoring surface is named and promised.** Each port names the modules you write
+  your own generator against, in four roles: the generator interface, the model walk, the code
+  writer and the naming helpers. They are listed in a new `surface` block of
+  `fixtures/generator-registry-conformance/registry.json`. That surface is versioned with the port's
+  codegen package under the compatibility policy; the rest of the engine is internal. A generator
+  will declare what it provides in one place instead of flags named after packaged generators, and
+  reference templates that `meta eject` copies stay your own code, never surface. Decision record:
+  ADR-0034 Amendment 12, ADR-0035 Amendment 7, ADR-0065 Amendment 5. Each port's snapshot test
+  follows.
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint

@@ -624,5 +624,108 @@
       }
     ],
     "pending": []
+  },
+  "surface": {
+    "$comment": "The generator-authoring surface (ADR-0034 Amendment 12): the part of each port's codegen engine a team writes its own generator against, and the only part of the engine the compatibility policy promises. Four roles per port: `generator` (the interface a generator implements and what it is handed and returns, including the one declaration of what it provides), `modelWalk` (the questions about the loaded model a generator asks that are not a single metadata accessor), `writer` (what lays out emitted text) and `naming` (the spellings of metadata names in the port's language). Entries use the same spelling as `eject.engineSurface.<port>.engine`. The surface is versioned with the port's codegen package and changes under docs/compatibility-policy.md; every other engine member is internal: an owned copy may still import it (the eject contract), but it may change in any release. Modules that `meta eject` copies into the project (reference templates) are owned code and never surface. A role with an empty list says the port has no module in that role yet. Each port's T7 row pins the surface's exported names with a name-level snapshot test and checks that every entry is also an engine entry.",
+    "typescript": {
+      "generator": [
+        "codegen-ts/src/generator.ts"
+      ],
+      "modelWalk": [
+        "codegen-ts/src/model-walk.ts"
+      ],
+      "writer": [
+        "codegen-ts/src/writer/code-writer.ts",
+        "codegen-ts/src/writer/ts-writer.ts",
+        "codegen-ts/src/poet.ts"
+      ],
+      "naming": [
+        "codegen-ts/src/naming.ts",
+        "codegen-ts/src/names.ts"
+      ]
+    },
+    "csharp": {
+      "generator": [
+        "MetaObjects.Codegen.IGenerator",
+        "MetaObjects.Codegen.PerEntityGenerator",
+        "MetaObjects.Codegen.GenContext",
+        "MetaObjects.Codegen.EmittedFile"
+      ],
+      "modelWalk": [],
+      "writer": [
+        "MetaObjects.Codegen.Writer.CodeWriter",
+        "MetaObjects.Codegen.Writer.CsWriter"
+      ],
+      "naming": [
+        "MetaObjects.Codegen.CSharpNaming",
+        "MetaObjects.Codegen.ObjectNames",
+        "MetaObjects.Codegen.FieldNames"
+      ]
+    },
+    "java": {
+      "generator": [
+        "com.metaobjects.generator.Generator",
+        "com.metaobjects.generator.GeneratorBase",
+        "com.metaobjects.generator.FileEmittingGenerator",
+        "com.metaobjects.generator.direct.GenerationContext"
+      ],
+      "modelWalk": [
+        "com.metaobjects.generator.ModelWalk"
+      ],
+      "writer": [
+        "com.metaobjects.generator.writer.CodeWriter",
+        "com.metaobjects.generator.writer.JavaWriter",
+        "com.metaobjects.generator.writer.WriterOptions"
+      ],
+      "naming": [
+        "com.metaobjects.generator.spring.SpringNaming",
+        "com.metaobjects.generator.util.JavaIdentifiers"
+      ]
+    },
+    "kotlin": {
+      "generator": [
+        "com.metaobjects.generator.Generator",
+        "com.metaobjects.generator.GeneratorBase",
+        "com.metaobjects.generator.FileEmittingGenerator"
+      ],
+      "modelWalk": [
+        "com.metaobjects.generator.ModelWalk"
+      ],
+      "writer": [
+        "com.metaobjects.generator.kotlin.KotlinPoetFileWriter"
+      ],
+      "naming": [
+        "com.metaobjects.generator.kotlin.KotlinNaming"
+      ]
+    },
+    "python": {
+      "generator": [
+        "metaobjects.codegen.generator"
+      ],
+      "modelWalk": [
+        "metaobjects.codegen.model_walk"
+      ],
+      "writer": [
+        "metaobjects.codegen.writer"
+      ],
+      "naming": [
+        "metaobjects.apidocs.naming"
+      ]
+    },
+    "rust": {
+      "generator": [
+        "metaobjects_codegen::generator",
+        "metaobjects_codegen::emitted"
+      ],
+      "modelWalk": [
+        "metaobjects_codegen::plan"
+      ],
+      "writer": [
+        "metaobjects_codegen::writer"
+      ],
+      "naming": [
+        "metaobjects_codegen::names"
+      ]
+    }
   }
 }
