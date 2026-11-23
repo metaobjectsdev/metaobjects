@@ -36,6 +36,7 @@ import {
   type LibraryCatalogRow, type LibraryProjectContext,
 } from "./library-listing.js";
 import { installSetFor } from "./install-set.js";
+import { RECOMMENDED_SERVICE_GENERATORS } from "./recommended-services.js";
 import {
   RUNTIME_ENTRIES, resolveRuntimePackage, runtimeClosure, runtimeCopyStatus, runtimeInstall,
   type RuntimeCopyRow,
@@ -508,6 +509,14 @@ export const REFERENCE_HELPER_NOTE: readonly string[] = [
   "references/any-stack.md has the procedure. MySQL is `dialect: \"mysql\"`.",
 ];
 
+/**
+ * The footer line naming the recommended service list (ADR-0067 §5.1): a list, not a mode, so it
+ * is said once here rather than as a mark on five rows.
+ */
+export const RECOMMENDED_SERVICE_NOTE =
+  `Service layers, recommended together: ${RECOMMENDED_SERVICE_GENERATORS.join(", ")}. ` +
+  "`meta init --with-services` wires them in a new project.";
+
 /** The footer line explaining the `package-only` row mark. */
 export const PACKAGE_ONLY_NOTE =
   "package-only = no reference template ships for it, so `meta eject` cannot copy it. " +
@@ -588,6 +597,7 @@ export function renderCatalogText(rows: CatalogRow[], probed: boolean): string {
   lines.push("`generators: [...]`. To change what one emits, `meta eject <name...>` copies it into");
   lines.push("codegen/generators/ and prints the import to swap in, the entry to wire, and what to install.");
   if (generators.some((r) => !r.source.ejectable)) lines.push(PACKAGE_ONLY_NOTE);
+  if (generators.some((r) => r.layer === "service")) lines.push(RECOMMENDED_SERVICE_NOTE);
   if (!probed) {
     lines.push("Add --probe to see how many files each would emit for YOUR model.");
   }
