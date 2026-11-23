@@ -36,8 +36,11 @@ conformance corpora. This guide covers how to propose changes.
    unit and conformance tests of the ports your change touches (`pr-ci.yml`); the docker
    integration suites run on release tags and on manual dispatch — see the *Local CI*
    section below.
-4. Open a **pull request** against `main` and fill out the PR template.
-5. A maintainer reviews the change and the checks on the pull request before merge. Who can
+4. If users would notice the change, add a changelog entry as a new file under
+   [`changelog.d/`](changelog.d/README.md). Do not edit `CHANGELOG.md` directly: the release
+   folds the fragments into it.
+5. Open a **pull request** against `main` and fill out the PR template.
+6. A maintainer reviews the change and the checks on the pull request before merge. Who can
    approve what, and which changes need a core maintainer, is in
    [GOVERNANCE.md](GOVERNANCE.md#how-decisions-are-made).
 

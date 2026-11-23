@@ -24,11 +24,12 @@
 // refuses an already-taken version/tag.
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promoteChangelog } from "./lib/changelog-promote.mjs";
+import { FRAGMENT_DIR, assembleChangelog, fragmentProblems, readFragments } from "./lib/changelog-fragments.mjs";
 import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 import { mavenVersion } from "./maven-coordinate.mjs";
@@ -94,10 +95,15 @@ const unmergedRefusal = unmergedMaintenanceRefusal(VERSION, maintenanceBranches,
   (b) => Number(out(`git rev-list --count HEAD..origin/${b}`)));
 if (unmergedRefusal !== null) die(unmergedRefusal);
 
-// Clean tree, except the CHANGELOG (we promote its [Unreleased] section) and untracked noise.
+// Clean tree, except the CHANGELOG and its fragments (we assemble the fragments into it and
+// promote its [Unreleased] section, so an aborted run leaves both changed) and untracked noise.
 const dirty = out("git status --porcelain").split("\n")
-  .filter((l) => l && !l.startsWith("??") && !l.endsWith("CHANGELOG.md"));
-if (dirty.length) die(`uncommitted changes:\n${dirty.join("\n")}\n(commit or stash first; CHANGELOG is allowed)`);
+  .filter((l) => l && !l.startsWith("??") && !l.endsWith("CHANGELOG.md") && !l.slice(3).startsWith(`${FRAGMENT_DIR}/`));
+if (dirty.length) die(`uncommitted changes:\n${dirty.join("\n")}\n(commit or stash first; CHANGELOG and ${FRAGMENT_DIR}/ are allowed)`);
+
+// Malformed changelog fragments would be folded into the release notes as they are.
+const fragmentErrors = readFragments(FRAGMENT_DIR).flatMap((f) => fragmentProblems(f.name, f.text));
+if (fragmentErrors.length) die(`malformed changelog fragments (${FRAGMENT_DIR}/README.md):\n${fragmentErrors.join("\n")}`);
 
 if (out(`git tag -l v${VERSION}`)) die(`tag v${VERSION} already exists`);
 
@@ -232,6 +238,17 @@ const bad = Object.entries(pj.dependencies || {}).filter(([k, v]) => k.startsWit
 if (bad.length) die(`packed cli pins stale/workspace sibling deps: ${JSON.stringify(bad)}`);
 ok(`packed deps verified: all @metaobjectsdev/* pinned to ${VERSION}`);
 
+// --- fold changelog.d/ fragments into [Unreleased], then promote it --------------
+// One file per change (scripts/lib/changelog-fragments.mjs) keeps parallel PRs from
+// conflicting in CHANGELOG.md; here they become ordinary [Unreleased] entries and the files
+// go, so the release commit carries one CHANGELOG and an empty changelog.d/.
+const fragments = readFragments(FRAGMENT_DIR);
+if (fragments.length) {
+  writeFileSync("CHANGELOG.md", assembleChangelog(readFileSync("CHANGELOG.md", "utf8"), fragments));
+  for (const f of fragments) rmSync(join(FRAGMENT_DIR, f.name));
+  ok(`${fragments.length} changelog fragment(s) assembled into [Unreleased]`);
+}
+
 // --- promote CHANGELOG [Unreleased] → [VERSION], or date a prepared [VERSION] ----
 // The rule and its cases live in scripts/lib/changelog-promote.mjs (tested by
 // scripts/test-changelog-promote.mjs): a section prepared ahead of the cut carries the date it
@@ -275,7 +292,7 @@ if (!YES) {
 }
 
 // --- commit the release ---------------------------------------------------
-sh("git add server/typescript/packages/*/package.json client/web/packages/*/package.json bun.lock CHANGELOG.md examples/showcase/site-payload.json");
+sh(`git add -A server/typescript/packages/*/package.json client/web/packages/*/package.json bun.lock CHANGELOG.md ${FRAGMENT_DIR} examples/showcase/site-payload.json`);
 sh(`git commit -q -m "chore(release): @metaobjectsdev TypeScript packages ${VERSION}"`);
 ok("committed");
 
