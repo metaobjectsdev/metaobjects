@@ -783,7 +783,8 @@ All 4 cases → [features/requirements.md](features/requirements.md) (the docume
 surfaces) and [features/templates-and-payloads.md](features/templates-and-payloads.md) (the
 shared templates). Each case is a model under `input/` and, under `expected/`, every page it
 yields (`requirements.md`, `requirements.toon`, `agent/requirements.md`, the model-only
-`agent/schema.md`) plus the data each page's shared template is fed. The TypeScript
+`agent/schema.md`) plus the data each page's shared template is fed and, under `rows/`, the
+ledger and model-only schema rows that data is built from (the shapes the docs site reuses). The TypeScript
 builders are the source of the expected bytes. The corpus README writes down what a
 non-TypeScript schema page contains and what it leaves out.
 

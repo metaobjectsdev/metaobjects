@@ -10,6 +10,13 @@ here.**
 
 ## [Unreleased]
 
+- **The docs pages and the docs site share one row shape.** `fixtures/docs-page-conformance/`
+  now also pins, under `expected/rows/`, the rows each page is built from: the requirement
+  ledger rows and the model-only schema rows. The schema rows are a subset of `meta schema
+  --as json`, and the requirement rows are what the explorer graph already holds, so the site
+  reuses them instead of pinning a second shape. codegen-ts exports `schemaRows()` and
+  `schemaInputFromRows()`. No page changes a byte.
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint

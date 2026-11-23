@@ -450,6 +450,18 @@ export {
   type AgentSchemaPageData,
   type AgentSchemaPageOptions,
 } from "./generators/agent-schema-page.js";
+// The rows layer beneath the model-only schema page (1.3.0 D0a): a subset of the
+// `meta schema --as json` shape, pinned by the docs-page corpus and shared with the docs site.
+export {
+  schemaRows,
+  schemaInputFromRows,
+  schemaRowKey,
+  type SchemaRows,
+  type SchemaRowTable,
+  type SchemaRowColumn,
+  type SchemaRowForeignKey,
+  type SchemaRowView,
+} from "./generators/agent-schema-rows.js";
 export type {
   RequirementTestsOpts,
   RequirementTestRenderer,
