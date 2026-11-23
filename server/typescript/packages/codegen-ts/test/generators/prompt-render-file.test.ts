@@ -145,7 +145,7 @@ describe("promptRender() factory", () => {
     ]);
     const out = await promptRender().generate(makeCtx(root));
     const content = out[0]!.content;
-    const renderImports = content.match(/import \{ render, type Provider \} from "@metaobjectsdev\/render";/g);
+    const renderImports = content.match(/import \{ type Provider, render \} from "@metaobjectsdev\/render";/g);
     expect(renderImports).toHaveLength(1);
     // Every render handle still emits its function body.
     expect(content).toMatch(/renderAlpha/);

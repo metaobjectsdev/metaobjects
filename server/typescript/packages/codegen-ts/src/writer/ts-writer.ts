@@ -76,14 +76,14 @@ export class TsWriter extends CodeWriter {
     super({ indent: "  ", width: 120, trailingComma: true, ...options });
   }
 
-  /** Reference a value import; returns the name to write. */
-  use(name: string, from: string): string {
-    return this.addNamed(name, name, from, false);
+  /** Reference a value import, bound locally as `as` when given (`import { name as as }`); returns the name to write. */
+  use(name: string, from: string, as: string = name): string {
+    return this.addNamed(name, as, from, false);
   }
 
-  /** Reference a type-only import; returns the name to write. */
-  useType(name: string, from: string): string {
-    return this.addNamed(name, name, from, true);
+  /** Reference a type-only import, bound locally as `as` when given; returns the name to write. */
+  useType(name: string, from: string, as: string = name): string {
+    return this.addNamed(name, as, from, true);
   }
 
   /** Reference a module's default export under `name`; returns the name to write. */

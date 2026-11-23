@@ -30,6 +30,7 @@ import {
 import { fields, isArray, scalarKind, jsonStringLiteral } from "./fr010-field-mapping.js";
 import { emittedVoName } from "./value-object-import.js";
 import type { RenderContext } from "../render-context.js";
+import type { CodeWriter } from "../writer/code-writer.js";
 
 /** The @objectRef target VO for a nested-object field (ADR-0059 R7: the target the
  *  loader bound, resolved where the attribute was declared), or undefined when
@@ -89,25 +90,19 @@ function nestedMirrorType(field: MetaData, root: MetaData, ctx?: RenderContext):
  * Emit the nested-aware mirror interface for `vo` and every value-object reachable from it
  * (deduped by resolutionKey(); cycle-safe). ADR-0056: every mirror — the root included — is named
  * for its VALUE OBJECT (`<Vo>Extracted`), never for a template, so two prompts replying with one
- * shape name one mirror type. Returns the joined interface declarations in stable order.
+ * shape name one mirror type. Writes the interface declarations in stable order, each after a
+ * blank line.
  */
-export function nestedMirrorInterfaces(
-  vo: MetaData,
-  root: MetaData,
-  ctx?: RenderContext,
-): string {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  emitMirror(vo, root, mirrorName(vo, ctx), seen, out, ctx);
-  return out.join("\n\n");
+export function writeNestedMirrorInterfaces(w: CodeWriter, vo: MetaData, root: MetaData, ctx?: RenderContext): void {
+  emitMirror(w, vo, root, mirrorName(vo, ctx), new Set<string>(), ctx);
 }
 
 function emitMirror(
+  w: CodeWriter,
   vo: MetaData,
   root: MetaData,
   interfaceName: string,
   seen: Set<string>,
-  out: string[],
   ctx?: RenderContext,
 ): void {
   // ADR-0044/#228: dedupe by resolutionKey(), NOT the bare name — two distinct value-objects
@@ -120,22 +115,16 @@ function emitMirror(
   const base = interfaceName.endsWith("Extracted")
     ? interfaceName.slice(0, -"Extracted".length)
     : interfaceName;
-  const lines: string[] = [];
-  lines.push(
-    `/** Best-effort extracted twin of \`${base}\` — every field nullable (null where lost/malformed). */`,
-  );
-  lines.push(`export interface ${interfaceName} {`);
-  for (const f of fields(vo)) {
-    lines.push(`  ${f.name}: ${nestedMirrorType(f, root, ctx)};`);
-  }
-  lines.push("}");
-  out.push(lines.join("\n"));
+  w.blank().line(`/** Best-effort extracted twin of \`${base}\` — every field nullable (null where lost/malformed). */`);
+  w.block(`export interface ${interfaceName} {`, () => {
+    for (const f of fields(vo)) w.line(`${f.name}: ${nestedMirrorType(f, root, ctx)};`);
+  });
 
   // Recurse into nested VOs (post-order via the shared seen set → dedupe + cycle guard).
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
       const target = refVo(f);
-      if (target !== undefined) emitMirror(target, root, mirrorName(target, ctx), seen, out, ctx);
+      if (target !== undefined) emitMirror(w, target, root, mirrorName(target, ctx), seen, ctx);
     }
   }
 }
@@ -150,20 +139,11 @@ function emitMirror(
  * mappers for object/array-of-object components. ADR-0056: the root is named for its value object
  * like every nested one — `from<Vo>Extracted` returning `<Vo>Extracted`.
  */
-export function nestedMappers(vo: MetaData, root: MetaData, ctx?: RenderContext): string {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  emitMapper(vo, root, seen, out, ctx);
-  return out.join("\n\n");
+export function writeNestedMappers(w: CodeWriter, vo: MetaData, root: MetaData, ctx?: RenderContext): void {
+  emitMapper(w, vo, root, new Set<string>(), ctx);
 }
 
-function emitMapper(
-  vo: MetaData,
-  root: MetaData,
-  seen: Set<string>,
-  out: string[],
-  ctx?: RenderContext,
-): void {
+function emitMapper(w: CodeWriter, vo: MetaData, root: MetaData, seen: Set<string>, ctx?: RenderContext): void {
   // ADR-0044/#228: dedupe by resolutionKey() — see emitMirror for why bare-name dedupe drops
   // the second colliding VO's mapper (silently misdirecting its extraction to the FIRST
   // colliding VO's mapper — the exact wrong-data bug closed by this fix).
@@ -172,22 +152,18 @@ function emitMapper(
 
   const fn = mapperName(vo, ctx);
   const mir = mirrorName(vo, ctx);
-  const assigns = fields(vo).map((f) => `    ${f.name}: ${mapperArg(f, root, ctx)},`);
-  const body = [
-    `/** Map an assembled ValueObject graph into a typed \`${mir}\` mirror. Generated; null-tolerant. */`,
-    `function ${fn}(o: unknown): ${mir} | null {`,
-    `  if (o == null) return null;`,
-    `  return {`,
-    ...assigns,
-    `  };`,
-    `}`,
-  ].join("\n");
-  out.push(body);
+  w.blank().line(`/** Map an assembled ValueObject graph into a typed \`${mir}\` mirror. Generated; null-tolerant. */`);
+  w.block(`function ${fn}(o: unknown): ${mir} | null {`, () => {
+    w.line("if (o == null) return null;");
+    w.block("return {", () => {
+      for (const f of fields(vo)) w.line(`${f.name}: ${mapperArg(f, root, ctx)},`);
+    }, "};");
+  });
 
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
       const target = refVo(f);
-      if (target !== undefined) emitMapper(target, root, seen, out, ctx);
+      if (target !== undefined) emitMapper(w, target, root, seen, ctx);
     }
   }
 }
@@ -312,13 +288,13 @@ export function hasNested(vo: MetaData, root: MetaData): boolean {
  *     `dlg` prefix avoids shadowing the render ExtractMap helpers (`asString(d, key)` etc.) that
  *     the self-contained extract path imports into the SAME file — a collision would silently
  *     rebind those two-arg map readers to these one-arg readers.
- * Emitted once per parser file.
+ * Written once per parser file, each block after a blank line.
  */
-export function delegateHelpers(used: Set<string>): string {
-  const blocks: string[] = ["// ---- runtime-delegating extract helpers (generated) ----"];
+export function writeDelegateHelpers(w: CodeWriter, used: Set<string>): void {
+  w.blank().line("// ---- runtime-delegating extract helpers (generated) ----");
 
   // readProp is always needed once a mapper exists.
-  blocks.push(`/** Read a property from an assembled backing object, mirroring the MetaField getValue SPI. */
+  w.blank().text(`/** Read a property from an assembled backing object, mirroring the MetaField getValue SPI. */
 function readProp(o: unknown, name: string): unknown {
   if (o == null) return undefined;
   const vo = o as { get?: (n: string) => unknown };
@@ -327,43 +303,42 @@ function readProp(o: unknown, name: string): unknown {
 }`);
 
   if (used.has("mapObjectList")) {
-    blocks.push(`/** Map each element of an assembled array via \`fn\`; null/absent -> null; non-mappable -> filtered. */
+    w.blank().text(`/** Map each element of an assembled array via \`fn\`; null/absent -> null; non-mappable -> filtered. */
 function mapObjectList<T>(v: unknown, fn: (o: unknown) => T | null): (T | null)[] | null {
   if (!Array.isArray(v)) return null;
   return v.map((e) => fn(e));
 }`);
   }
   if (used.has("dlgString")) {
-    blocks.push(`function dlgString(v: unknown): string | null {
+    w.blank().text(`function dlgString(v: unknown): string | null {
   return v == null ? null : String(v);
 }`);
   }
   if (used.has("dlgInt")) {
-    blocks.push(`function dlgInt(v: unknown): number | null {
+    w.blank().text(`function dlgInt(v: unknown): number | null {
   if (v == null) return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }`);
   }
   if (used.has("dlgNumber")) {
-    blocks.push(`function dlgNumber(v: unknown): number | null {
+    w.blank().text(`function dlgNumber(v: unknown): number | null {
   if (v == null) return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }`);
   }
   if (used.has("dlgBool")) {
-    blocks.push(`function dlgBool(v: unknown): boolean | null {
+    w.blank().text(`function dlgBool(v: unknown): boolean | null {
   if (v == null) return null;
   if (typeof v === "boolean") return v;
   return String(v).toLowerCase() === "true";
 }`);
   }
   if (used.has("dlgStringList")) {
-    blocks.push(`function dlgStringList(v: unknown): (string | null)[] | null {
+    w.blank().text(`function dlgStringList(v: unknown): (string | null)[] | null {
   if (!Array.isArray(v)) return null;
   return v.map((e) => (e == null ? null : String(e)));
 }`);
   }
-  return blocks.join("\n\n");
 }

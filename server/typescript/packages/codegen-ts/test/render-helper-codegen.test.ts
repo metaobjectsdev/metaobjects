@@ -70,8 +70,7 @@ describe("render-helper codegen — emitted source shape", () => {
     const provider = new InMemoryProvider({ "pages/welcome": "Hello {{name}}" });
     const src = renderRenderHelper(root, "WelcomePage", provider);
 
-    expect(src).toContain('import { render } from "@metaobjectsdev/render";');
-    expect(src).toContain('import type { Provider } from "@metaobjectsdev/render";');
+    expect(src).toContain('import { type Provider, render } from "@metaobjectsdev/render";');
     expect(src).toContain("export function renderWelcomePage(payload: WelcomeVO, provider: Provider): string {");
     expect(src).toContain('ref: "pages/welcome"');
     expect(src).toContain('format: "html"');
@@ -90,8 +89,7 @@ describe("render-helper codegen — emitted source shape", () => {
     });
     const src = renderRenderHelper(root, "WelcomeEmail", provider);
 
-    expect(src).toContain('import { render } from "@metaobjectsdev/render";');
-    expect(src).toContain("EmailDocument");
+    expect(src).toContain('import { type EmailDocument, type Provider, render } from "@metaobjectsdev/render";');
     expect(src).toContain("export function renderWelcomeEmail(payload: WelcomeVO, provider: Provider): EmailDocument {");
     expect(src).toContain('subject: render({ ref: "emails/welcome.subject"');
     expect(src).toContain('htmlBody: render({ ref: "emails/welcome.html"');

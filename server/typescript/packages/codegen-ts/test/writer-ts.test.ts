@@ -172,3 +172,21 @@ describe("TsWriter.reopen", () => {
     expect(errorCode(() => new TsWriter().reopen("} else {"))).toBe(WRITER_ERRORS.unbalancedClose);
   });
 });
+
+describe("TsWriter use/useType with a local alias", () => {
+  test("binds the import under the alias and returns it", () => {
+    const w = new TsWriter();
+    const a = w.useType("Order", "./shop/Order", "ShopOrder");
+    const b = w.use("parse", "zod", "zParse");
+    w.line(`export type X = ${a}; export const p = ${b};`);
+    expect(w.toString()).toBe(
+      'import { parse as zParse } from "zod";\nimport type { Order as ShopOrder } from "./shop/Order";\n\nexport type X = ShopOrder; export const p = zParse;\n',
+    );
+  });
+
+  test("one alias naming two different exports is an import conflict", () => {
+    const w = new TsWriter();
+    w.useType("Order", "./a", "Local");
+    expect(() => w.useType("Other", "./a", "Local")).toThrow(/ERR_WRITER_IMPORT_CONFLICT|names both/);
+  });
+});

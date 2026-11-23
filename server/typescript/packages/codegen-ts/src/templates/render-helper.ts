@@ -58,28 +58,23 @@ import { templateSymbolBase } from "../naming.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import type { ExtStyle } from "../metaobjects-config.js";
 import type { RenderContext } from "../render-context.js";
-import { importBinding, valueObjectImport } from "./value-object-import.js";
+import { useValueObjectType, valueObjectImport } from "./value-object-import.js";
+import { TsWriter } from "../writer/ts-writer.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
   return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
 
+const RENDER_MODULE = "@metaobjectsdev/render";
+
 /**
- * The three lines every emitted render-helper module opens with: the generated-file
- * marker, the `render()` import, and the typed payload import. Identical between the
- * email and document kinds below — only the `@metaobjectsdev/render` type import
- * differs (email additionally needs `EmailDocument`), so that piece is a parameter
- * rather than a second near-copy of this block.
- *
- * ADR-0056: the payload type is the @payloadRef value object's OWN interface, imported from
- * the module entityFile() declares it in (`payloadSpecifier`).
+ * A render-helper module's opening, shared by the email and document kinds: the
+ * generated-file marker and the `render()` and `Provider` imports. Returns the names to write.
  */
-function renderHelperHeader(typeImports: string, payloadBinding: string, payloadSpecifier: string): string {
-  return `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
-import { render } from "@metaobjectsdev/render";
-import type { ${typeImports} } from "@metaobjectsdev/render";
-import type { ${payloadBinding} } from ${JSON.stringify(payloadSpecifier)};`;
+function startRenderHelper(w: TsWriter): { render: string; provider: string } {
+  w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`);
+  return { render: w.use("render", RENDER_MODULE), provider: w.useType("Provider", RENDER_MODULE) };
 }
 
 /**
@@ -210,8 +205,11 @@ export function renderRenderHelper(
   const fnName = `render${templateSymbolBase(templateName)}`;
   // ADR-0056 — the payload is the value object's own interface: its emitted name and module
   // come from the one helper every template-tier file uses.
-  const { name: payloadTypeName, exported: payloadExported, specifier: payloadSpecifier } =
-    valueObjectImport(ctx, vo, outPath, extStyle);
+  // ADR-0056: the payload type is the @payloadRef value object's OWN interface, imported from
+  // the module entityFile() declares it in.
+  const w = new TsWriter();
+  const { render, provider: providerType } = startRenderHelper(w);
+  const payloadTypeName = useValueObjectType(w, valueObjectImport(ctx, vo, outPath, extStyle));
 
   // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
   const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT)
@@ -235,25 +233,22 @@ export function renderRenderHelper(
     const textEngine =
       typeof textBodyRef === "string" ? gateRef(templateName, textBodyRef, provider, fields) : "";
 
-    const textBodyLine =
-      typeof textBodyRef === "string"
-        ? `\n    textBody: render({ ref: ${JSON.stringify(textBodyRef)}, payload, format: "text", provider, verify: ${ft}${textEngine} }),`
-        : "";
-
-    return `${renderHelperHeader("Provider, EmailDocument", importBinding(payloadExported, payloadTypeName), payloadSpecifier)}
-
-/**
- * Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a
- * typed ${payloadTypeName} payload. Wraps the render() engine; the payload field tree is
- * baked in so render()'s runtime drift check matches the build-time gate.
- */
-export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): EmailDocument {
-  return {
-    subject: render({ ref: ${JSON.stringify(subjectRef)}, payload, format: "text", provider, verify: ${ft}${subjectEngine} }),
-    htmlBody: render({ ref: ${JSON.stringify(htmlBodyRef)}, payload, format: "html", provider, verify: ${ft}${htmlEngine} }),${textBodyLine}
-  };
-}
-`;
+    const emailDocument = w.useType("EmailDocument", RENDER_MODULE);
+    const part = (key: string, ref: string, format: string, engine: string): string =>
+      `${key}: ${render}({ ref: ${JSON.stringify(ref)}, payload, format: "${format}", provider, verify: ${ft}${engine} }),`;
+    w.doc(
+      `Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a`,
+      `typed ${payloadTypeName} payload. Wraps the render() engine; the payload field tree is`,
+      "baked in so render()'s runtime drift check matches the build-time gate.",
+    );
+    w.block(`export function ${fnName}(payload: ${payloadTypeName}, provider: ${providerType}): ${emailDocument} {`, () => {
+      w.block("return {", () => {
+        w.line(part("subject", subjectRef, "text", subjectEngine));
+        w.line(part("htmlBody", htmlBodyRef, "html", htmlEngine));
+        if (typeof textBodyRef === "string") w.line(part("textBody", textBodyRef, "text", textEngine));
+      }, "};");
+    });
+    return w.toString();
   }
 
   // --- document kind ---
@@ -278,15 +273,13 @@ export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): Emai
   const maxCharsArg =
     maxChars !== undefined && Number.isFinite(maxChars) ? `, maxChars: ${maxChars}` : "";
 
-  return `${renderHelperHeader("Provider", importBinding(payloadExported, payloadTypeName), payloadSpecifier)}
-
-/**
- * Render the ${templateName} document from a typed ${payloadTypeName} payload. Wraps the
- * render() engine; the payload field tree is baked in so render()'s runtime drift
- * check matches the build-time gate enforced when this file was generated.
- */
-export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): string {
-  return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${ft}${maxCharsArg}${engineArg} });
-}
-`;
+  w.doc(
+    `Render the ${templateName} document from a typed ${payloadTypeName} payload. Wraps the`,
+    "render() engine; the payload field tree is baked in so render()'s runtime drift",
+    "check matches the build-time gate enforced when this file was generated.",
+  );
+  w.block(`export function ${fnName}(payload: ${payloadTypeName}, provider: ${providerType}): string {`, () => {
+    w.line(`return ${render}({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${ft}${maxCharsArg}${engineArg} });`);
+  });
+  return w.toString();
 }

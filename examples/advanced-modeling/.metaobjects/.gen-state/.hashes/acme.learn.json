@@ -64,7 +64,7 @@
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::Program"
   },
-  "src/generated/ProgramDescriptionOutput.render.ts": "77691e7f4c7dd8658ad2842fb5ea68a4b79e5c5ec69bb7221c618db303f2eb9f",
+  "src/generated/ProgramDescriptionOutput.render.ts": "ce4f093b57f92ed362d74e6257da5b34add50bbef44447fd763ff5dfcebdc5fb",
   "src/generated/ProgramDescriptionPayload.ts": {
     "hash": "c12590e0c4956bfc6c3dea6874cf0f92a87e84f769ae15e7e915a11f8cb34175",
     "generatedBy": "entity-file",

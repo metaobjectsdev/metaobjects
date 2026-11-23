@@ -1,12 +1,8 @@
+import type { MetaRoot } from "@metaobjectsdev/metadata";
+import { type ExtractOptions, type ExtractionResult, Format } from "@metaobjectsdev/render";
+import { extractObject } from "@metaobjectsdev/runtime-ts";
 import { z } from "zod";
 import type { SupportAnswer } from "./SupportAnswer.js";
-import {
-  Format,
-  type ExtractOptions,
-  type ExtractionResult,
-} from "@metaobjectsdev/render";
-import type { MetaRoot } from "@metaobjectsdev/metadata";
-import { extractObject } from "@metaobjectsdev/runtime-ts";
 
 const SupportAnswerPromptSchema = z.object({
   text: z.string(),
@@ -47,7 +43,6 @@ export function safeParseSupportAnswerPrompt(
     ? { success: true, data: result.data }
     : { success: false, error: result.error };
 }
-
 
 /** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime. */
 export const SUPPORTANSWERPROMPT_PAYLOAD_NAME = "SupportAnswer";

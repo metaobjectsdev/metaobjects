@@ -96,7 +96,9 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
 ## TypeScript dialect (`TsWriter`)
 
 - **Imports are collected while the body is written.** `use(name, from)` records a value
-  import and returns the name to write. `useType` records a type-only import. `useDefault`,
+  import and returns the name to write; `use(name, from, as)` binds it locally as `as`
+  (`import { name as as }`) and returns `as`. `useType` records a type-only import and takes
+  the same optional `as`. `useDefault`,
   `useNamespace` and `useSideEffect` record the other forms. Imports print before the body,
   after any `header(...)` lines, with one blank line between each of the three sections.
 - **Order.** Package modules come first, then relative ones (those starting with `.`). Each
