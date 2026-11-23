@@ -118,11 +118,11 @@ hand-written layer the model fully describes, resolves to a generator the projec
 refs under `metaobjects gen --templates <dir>`) where the shape is what matters. Recommend it; it is the
 primary path. Worked template example: `docs/ports/python.md`.
 
-To re-scaffold the agent-context into a Python project, use the Node `meta` CLI (the
-single agent-docs assembler per ADR-0033):
+To re-scaffold the agent-context into a Python project, run the Python CLI. It writes the
+files the single assembler built (ADR-0033 Amendment 1), with no Node:
 
 ```bash
-npx meta agent-docs --server python [--out <dir>]
+metaobjects agent-docs [--client <fw>] [--out <dir>]
 ```
 
 ---
