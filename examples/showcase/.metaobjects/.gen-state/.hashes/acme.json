@@ -20,12 +20,12 @@
     "sourceNode": "acme::Subscriber"
   },
   "generated/ts/Subscriber.ts": {
-    "hash": "760b3d76d100d05f289070ce483f63ee022a3c6fc8d6356e691e4d17f0593734",
+    "hash": "92c8a7f17309f428d94d9a1ae0dd268c1d5a9a8b41e29439b5ddee935681f869",
     "generatedBy": "entity-file",
     "sourceNode": "acme::Subscriber"
   },
   "generated/ts/SubscriberBlurbPayload.ts": {
-    "hash": "83272130c428ad0cc68190cb63e32b418a0bcfd05345804def9bf22e79b55fcc",
+    "hash": "12305ca42c7d4313cce318a416c1a90d084ee550c26c4b705c6c49ab5316e7e6",
     "generatedBy": "entity-file",
     "sourceNode": "acme::SubscriberBlurbPayload"
   },

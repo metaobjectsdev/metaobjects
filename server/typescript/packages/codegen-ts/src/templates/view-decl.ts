@@ -7,7 +7,8 @@
 // attempt DDL (the SQL view is created/owned by migrate-ts). Both hosts emit the
 // SAME declaration shape, so it lives here once (extracted from projection-decl).
 
-import { code, imp, joinCode, type Code, type Import } from "../poet.js";
+import { code, imp, type Code, type Import } from "../poet.js";
+import { TsWriter } from "../writer/ts-writer.js";
 import { dialectModule } from "../dialect-module.js";
 import type { Dialect } from "../metaobjects-config.js";
 import {
@@ -15,8 +16,8 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { mapColumnType, DURATION_COLUMN_FN, type EnumIntCustomType } from "../column-mapper.js";
-import { renderEnumIntCustomType } from "./enum-int-codec.js";
-import { renderDurationCustomType } from "./duration-wire-helper.js";
+import { writeEnumIntCustomType } from "./enum-int-codec.js";
+import { writeDurationCustomType } from "./duration-wire-helper.js";
 import { zodTypeFor } from "./field-meta.js";
 import { inlineObjectLiteral } from "./drizzle-schema.js";
 import { columnExpr, type ObjectNames } from "../names.js";
@@ -146,7 +147,7 @@ function viewColumnLine(
   // A6 — reference the constant whenever the artifact is in the run AND carries this
   // field. A lookup MISS is normal, not a divergence — see ViewDeclOpts.names.
   const dbNameExpr = columnExpr(opts.names, f.name, spec.dbName);
-  return code`  ${f.name}: ${colSym}(${dbNameExpr}${optsArg})${dollarType}${viewModifiers}`;
+  return code`${f.name}: ${colSym}(${dbNameExpr}${optsArg})${dollarType}${viewModifiers}`;
 }
 
 /**
@@ -166,6 +167,19 @@ export function renderExistingViewDecl(
   viewVar: string,
   opts: ViewDeclOpts,
 ): Code {
+  const w = new TsWriter();
+  writeExistingViewDecl(w, fields, viewName, viewVar, opts);
+  return w.toCode();
+}
+
+/** Write {@link renderExistingViewDecl}'s codecs and view declaration into `w`. */
+export function writeExistingViewDecl(
+  w: TsWriter,
+  fields: readonly MetaField[],
+  viewName: string | Code,
+  viewVar: string,
+  opts: ViewDeclOpts,
+): void {
   const { viewFn, core: viewModule } = dialectModule(opts.dialect);
   const viewSym = imp(`${viewFn}@${viewModule}`);
   const enumIntTypes = new Map<string, EnumIntCustomType>();
@@ -190,25 +204,22 @@ export function renderExistingViewDecl(
   // by const name so output is deterministic regardless of field order — the same
   // contract the table template holds.
   const alreadyDeclared = opts.declaredEnumIntCodecs;
-  const enumIntBlocks = [...enumIntTypes.values()]
-    .filter((t) => alreadyDeclared === undefined || !alreadyDeclared.has(t.fnConstName))
-    .sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))
-    .map((t) => renderEnumIntCustomType(t, viewModule));
   if (usesDuration.has(DURATION_COLUMN_FN) && (alreadyDeclared === undefined || !alreadyDeclared.has(DURATION_COLUMN_FN))) {
-    enumIntBlocks.unshift(renderDurationCustomType(opts.dialect, viewModule));
+    writeDurationCustomType(w, opts.dialect, viewModule);
+  }
+  for (const t of [...enumIntTypes.values()]
+    .filter((t) => alreadyDeclared === undefined || !alreadyDeclared.has(t.fnConstName))
+    .sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))) {
+    writeEnumIntCustomType(w, t, viewModule);
   }
 
-  const viewBlock = code`
-// View declaration — Drizzle uses this for typed SELECT queries.
-// The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
-// not to attempt DDL for this declaration.
-export const ${viewVar} = ${viewCall}(${viewNameExpr}, {
-${joinCode(viewColumnLines, { on: ",\n" })}
-}).existing();
-`;
-  return enumIntBlocks.length === 0
-    ? viewBlock
-    : joinCode([...enumIntBlocks, viewBlock], { on: "\n" });
+  w.blank();
+  w.line("// View declaration — Drizzle uses this for typed SELECT queries.");
+  w.line("// The SQL view is created/managed by migrate-ts; .existing() tells Drizzle");
+  w.line("// not to attempt DDL for this declaration.");
+  w.block(["export const ", viewVar, " = ", viewCall, "(", viewNameExpr, ", {"], () => {
+    for (const line of viewColumnLines) w.line(line, ",");
+  }, "}).existing();");
 }
 
 /**
@@ -221,35 +232,43 @@ ${joinCode(viewColumnLines, { on: ",\n" })}
  * `voModule` resolves a value-object short name → its import module.
  */
 export function renderViewReadZodObject(fields: readonly MetaField[], opts: ViewDeclOpts): Code {
+  const w = new TsWriter();
+  writeViewReadZodObject(w, fields, opts);
+  return w.toCode();
+}
+
+/**
+ * Write {@link renderViewReadZodObject}'s `z.object({ … })` into `w`. `head` is written before
+ * it on its first line (`export const <R>Schema = `) and `tail` after its closing `})` (`;`).
+ */
+export function writeViewReadZodObject(w: TsWriter, fields: readonly MetaField[], opts: ViewDeclOpts, head = "", tail = ""): void {
   const { dialect, columnNamingStrategy, timestampMode } = opts;
-  const z = imp("z@zod");
-  const lines: Code[] = fields.map((f) => {
-    // Non-null when the column is `.notNull()` OR it is a primary-identity
-    // field — a PK is never NULL, but its table-side non-null is expressed via
-    // `.primaryKey()`, not a `.notNull()` modifier (see viewColumnLine above).
-    const nonNull =
-      mapColumnType(f, dialect, columnNamingStrategy, timestampMode).modifiers.includes(".notNull()") ||
-      opts.pkFieldNames.has(f.name);
-    const nullable = nonNull ? "" : ".nullable()";
-    const hasObjectRef =
-      f.subType === FIELD_SUBTYPE_OBJECT &&
-      typeof f.attr(FIELD_ATTR_OBJECT_REF) === "string" &&
-      (f.attr(FIELD_ATTR_OBJECT_REF) as string).length > 0;
-    if (hasObjectRef) {
-      // #228 — the <Ref>InsertSchema symbol + its module resolved together from the
-      // field's ref, so a cross-package collision qualifies both consistently.
-      const schemaSym = opts.voRef(f, "InsertSchema", false);
-      const base = f.resolvedIsArray() ? code`${z}.array(${schemaSym})` : code`${schemaSym}`;
-      return code`  ${f.name}: ${base}${nullable}`;
+  const z = w.use("z", "zod");
+  w.block(`${head}${z}.object({`, () => {
+    for (const f of fields) {
+      // Non-null when the column is `.notNull()` OR it is a primary-identity
+      // field — a PK is never NULL, but its table-side non-null is expressed via
+      // `.primaryKey()`, not a `.notNull()` modifier (see viewColumnLine above).
+      const nonNull =
+        mapColumnType(f, dialect, columnNamingStrategy, timestampMode).modifiers.includes(".notNull()") ||
+        opts.pkFieldNames.has(f.name);
+      const nullable = nonNull ? "" : ".nullable()";
+      const hasObjectRef =
+        f.subType === FIELD_SUBTYPE_OBJECT &&
+        typeof f.attr(FIELD_ATTR_OBJECT_REF) === "string" &&
+        (f.attr(FIELD_ATTR_OBJECT_REF) as string).length > 0;
+      if (hasObjectRef) {
+        // #228 — the <Ref>InsertSchema symbol + its module resolved together from the
+        // field's ref, so a cross-package collision qualifies both consistently.
+        const schema = w.useImport(opts.voRef(f, "InsertSchema", false));
+        w.line(`${f.name}: ${f.resolvedIsArray() ? `${z}.array(${schema})` : schema}${nullable},`);
+        continue;
+      }
+      // #204 — an array passthrough reads as `T[]`; zodTypeFor returns the ELEMENT type.
+      // CRITICAL 3: thread timestampMode through so a FIELD_SUBTYPE_TIMESTAMP column
+      // agrees with the Drizzle view column's mode (both sourced from `opts` above).
+      const inner = `${z}.${zodTypeFor(f, timestampMode).replace(/^z\./, "")}`;
+      w.line(`${f.name}: ${f.resolvedIsArray() ? `${z}.array(${inner})` : inner}${nullable},`);
     }
-    // #204 — an array passthrough reads as `T[]`; zodTypeFor returns the ELEMENT type.
-    // CRITICAL 3: thread timestampMode through so a FIELD_SUBTYPE_TIMESTAMP column
-    // agrees with the Drizzle view column's mode (both sourced from `opts` above).
-    const inner = code`${z}.${zodTypeFor(f, timestampMode).replace(/^z\./, "")}`;
-    const zbase = f.resolvedIsArray() ? code`${z}.array(${inner})` : inner;
-    return code`  ${f.name}: ${zbase}${nullable}`;
-  });
-  return code`${z}.object({
-${joinCode(lines, { on: ",\n" })}
-})`;
+  }, `})${tail}`);
 }

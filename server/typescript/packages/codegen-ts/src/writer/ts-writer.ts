@@ -5,7 +5,7 @@
 // (src/poet.ts, the vendored ts-poet printer), harvesting their `imp()` imports, so a generator
 // can move to the writer one function at a time while the rest of it still returns `Code`.
 
-import { Code, Import, ImportsAll, ImportsDefault, ImportsName, Node, SideEffect } from "../poet.js";
+import { Code, formatFragment, Import, ImportsAll, ImportsDefault, ImportsName, Node, SideEffect } from "../poet.js";
 import { CodeWriter, type CodeWriterOptions, flat, Group, type Piece, WRITER_ERRORS, WriterError } from "./code-writer.js";
 
 /** A correctly quoted TypeScript string literal. */
@@ -104,6 +104,12 @@ export class TsWriter extends CodeWriter {
     return name;
   }
 
+  /** Reference a ts-poet `imp()` symbol: its import is collected; returns the name to write. */
+  useImport(symbol: Import): string {
+    this.record(symbol);
+    return symbol.toCodeString();
+  }
+
   /** Import a module for its side effects only: `import "from";`. */
   useSideEffect(from: string): void {
     this.module(from).sideEffect = true;
@@ -126,9 +132,34 @@ export class TsWriter extends CodeWriter {
     return this.line(" */");
   }
 
-  /** A ts-poet `Code` fragment, possibly many lines: its imports are collected, its text re-indented. */
-  code(fragment: Code): this {
-    return this.text(fragment instanceof Code ? this.harvest(fragment) : flat(this.piece(fragment)));
+  /**
+   * A ts-poet `Code` fragment, possibly many lines: its imports are collected, its text re-indented.
+   * `format: true` first lays the fragment out with the printer's dprint pass, for a template
+   * not yet on the writer that typed no layout of its own (removed with dprint, W-TS-9).
+   */
+  code(fragment: Code, opts: { readonly format?: boolean } = {}): this {
+    const text = fragment instanceof Code ? this.harvest(fragment) : flat(this.piece(fragment));
+    return this.text(opts.format === true ? formatFragment(text) : text);
+  }
+
+  /**
+   * The body written so far (no header, no imports) as a ts-poet `Code` fragment that carries the
+   * collected imports, for a caller still composing `Code`: the `render*` functions of a converted
+   * template return this, so an owned copy or an unconverted template that joins `Code` sections
+   * keeps working while the generators move to the writer one at a time.
+   */
+  toCode(): Code {
+    const imports: Import[] = [];
+    for (const [from, m] of this.modules) {
+      for (const ns of m.namespaces) imports.push(new ImportsAll(ns, from));
+      if (m.defaultName !== undefined) imports.push(new ImportsDefault(m.defaultName, from));
+      for (const [local, n] of m.named) {
+        imports.push(new ImportsName(local, from, n.exported === local ? undefined : n.exported, n.typeOnly));
+      }
+      if (m.sideEffect) imports.push(new SideEffect(from, from));
+    }
+    // No final newline: a fragment is spliced into a larger `Code`, often mid-line.
+    return new Code([super.toString().trimEnd(), ""], [new ImportCarrier(imports)]);
   }
 
   override toString(): string {
@@ -248,6 +279,19 @@ export class TsWriter extends CodeWriter {
     } else if (m.namespaces.size === 0 && m.sideEffect) {
       w.line(`import ${str(from)};`);
     }
+  }
+}
+
+/** Imports with no text of their own: what `toCode()` attaches its collected imports with. */
+class ImportCarrier extends Node {
+  constructor(readonly imports: readonly Import[]) {
+    super();
+  }
+  toCodeString(): string {
+    return "";
+  }
+  get childNodes(): unknown[] {
+    return [...this.imports];
   }
 }
 

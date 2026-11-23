@@ -18,8 +18,9 @@
  * declaration emitted after its use is a TDZ ReferenceError at import: both are worse than
  * the missing-codec bug, because neither lets the module load at all.
  */
-import { code, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import type { Code } from "@metaobjectsdev/codegen-ts/engine";
 import type { EnumIntCustomType } from "@metaobjectsdev/codegen-ts/engine";
+import { TsWriter } from "@metaobjectsdev/codegen-ts/engine";
 
 /**
  * Render an int-backed `field.enum`'s Drizzle `customType` helper plus its two
@@ -41,35 +42,49 @@ import type { EnumIntCustomType } from "@metaobjectsdev/codegen-ts/engine";
  * yielding `undefined` for a non-nullable field would surface far from the cause.
  */
 export function renderEnumIntCustomType(t: EnumIntCustomType, importModule: string): Code {
-  const customTypeSym = imp(`customType@${importModule}`);
+  const w = new TsWriter();
+  writeEnumIntCustomType(w, t, importModule);
+  return w.toCode();
+}
+
+/** Write the codec of {@link renderEnumIntCustomType} into `w`. */
+export function writeEnumIntCustomType(w: TsWriter, t: EnumIntCustomType, importModule: string): void {
+  const customTypeSym = w.use("customType", importModule);
   const union = t.members.map((m) => JSON.stringify(m)).join(" | ");
-  if (t.storedByMember !== undefined) return renderStoredStringCodec(t, t.storedByMember, customTypeSym, union);
+  w.blank();
+  if (t.storedByMember !== undefined) {
+    writeStoredStringCodec(w, t, t.storedByMember, customTypeSym, union);
+    return;
+  }
   const toEntries = t.members
     .map((m) => `${JSON.stringify(m)}: ${t.intByMember[m]}`)
     .join(", ");
   const fromEntries = t.members
     .map((m) => `${t.intByMember[m]}: ${JSON.stringify(m)}`)
     .join(", ");
-  const maps = code`
-const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, number>;
-const ${t.fromIntConstName}: Record<number, ${union}> = { ${fromEntries} };`;
-  if (t.array === "native") return renderNativeArrayElementCodec(t, customTypeSym, union, maps);
-  if (t.array === "json") return renderJsonArrayCodec(t, customTypeSym, union, maps);
-  return code`
-const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, number>;
-const ${t.fromIntConstName}: Record<number, ${union}> = { ${fromEntries} };
-const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }>({
-  dataType: () => ${JSON.stringify(t.dataType)},
-  toDriver: (value) => ${t.toIntConstName}[value],
-  fromDriver: (value) => {
-    const member = ${t.fromIntConstName}[value];
-    if (member === undefined) {
-      throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
-    }
-    return member;
-  },
-});
-`;
+  w.line(`const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, number>;`);
+  w.line(`const ${t.fromIntConstName}: Record<number, ${union}> = { ${fromEntries} };`);
+  if (t.array === "native") {
+    writeNativeArrayElementCodec(w, t, customTypeSym, union);
+    return;
+  }
+  if (t.array === "json") {
+    writeJsonArrayCodec(w, t, customTypeSym, union);
+    return;
+  }
+  w.text(`
+    const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }>({
+      dataType: () => ${JSON.stringify(t.dataType)},
+      toDriver: (value) => ${t.toIntConstName}[value],
+      fromDriver: (value) => {
+        const member = ${t.fromIntConstName}[value];
+        if (member === undefined) {
+          throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
+        }
+        return member;
+      },
+    });
+  `);
 }
 
 /**
@@ -81,8 +96,8 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }
  * column's CHECK: an array column has none, and an `undefined` element would be
  * bound as NULL.
  */
-function renderNativeArrayElementCodec(t: EnumIntCustomType, customTypeSym: unknown, union: string, maps: Code): Code {
-  return code`${maps}
+function writeNativeArrayElementCodec(w: TsWriter, t: EnumIntCustomType, customTypeSym: string, union: string): void {
+  w.text(`
 const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }>({
   dataType: () => ${JSON.stringify(t.dataType)},
   toDriver: (value) => {
@@ -93,7 +108,9 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }
     return stored;
   },
   fromDriver: (value) => {
-    if (value === null) return value as never;
+    if (value === null) {
+      return value as never;
+    }
     const member = ${t.fromIntConstName}[value];
     if (member === undefined) {
       throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
@@ -101,7 +118,7 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }
     return member;
   },
 });
-`;
+`);
 }
 
 /**
@@ -112,13 +129,15 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }
  * existed included). The driver hands back JSON text (SQLite) or the parsed array
  * (mysql2), so both are accepted.
  */
-function renderJsonArrayCodec(t: EnumIntCustomType, customTypeSym: unknown, union: string, maps: Code): Code {
-  return code`${maps}
+function writeJsonArrayCodec(w: TsWriter, t: EnumIntCustomType, customTypeSym: string, union: string): void {
+  w.text(`
 const ${t.fnConstName} = ${customTypeSym}<{ data: (${union})[]; driverData: string }>({
   dataType: () => ${JSON.stringify(t.dataType)},
   toDriver: (value) =>
     JSON.stringify(value.map((member) => {
-      if (member === null) return null;
+      if (member === null) {
+        return null;
+      }
       const stored = ${t.toIntConstName}[member];
       if (stored === undefined) {
         throw new Error(\`unmapped ${t.fnConstName} member: \${String(member)}\`);
@@ -131,7 +150,9 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: (${union})[]; driverData: stri
       throw new Error(\`${t.fnConstName} expected a JSON array, got: \${String(value)}\`);
     }
     return stored.map((el: unknown) => {
-      if (el === null) return el as never;
+      if (el === null) {
+        return el as never;
+      }
       const member = typeof el === "number" ? ${t.fromIntConstName}[el] : undefined;
       if (member === undefined) {
         throw new Error(\`unmapped ${t.fnConstName} value: \${JSON.stringify(el)}\`);
@@ -140,7 +161,7 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: (${union})[]; driverData: stri
     });
   },
 });
-`;
+`);
 }
 
 /**
@@ -151,12 +172,12 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: (${union})[]; driverData: stri
  * the int codec's does, and an unmapped member throws on write (rc.21 ruling: no CHECK need stand
  * behind it under @dbCheck: false).
  */
-function renderStoredStringCodec(t: EnumIntCustomType, stored: Record<string, string>, customTypeSym: unknown, union: string): Code {
+function writeStoredStringCodec(w: TsWriter, t: EnumIntCustomType, stored: Record<string, string>, customTypeSym: string, union: string): void {
   const toEntries = t.members.map((m) => `${JSON.stringify(m)}: ${JSON.stringify(stored[m])}`).join(", ");
   const fromEntries = t.members.map((m) => `${JSON.stringify(stored[m])}: ${JSON.stringify(m)}`).join(", ");
-  return code`
-const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, string>;
-const ${t.fromIntConstName}: Record<string, ${union}> = { ${fromEntries} };
+  w.line(`const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, string>;`);
+  w.line(`const ${t.fromIntConstName}: Record<string, ${union}> = { ${fromEntries} };`);
+  w.text(`
 const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: string }>({
   dataType: () => ${JSON.stringify(t.dataType)},
   toDriver: (value) => {
@@ -174,5 +195,5 @@ const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: string }
     return member;
   },
 });
-`;
+`);
 }

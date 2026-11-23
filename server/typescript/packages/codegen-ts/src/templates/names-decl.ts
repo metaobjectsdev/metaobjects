@@ -24,6 +24,7 @@ import {
   resolveObjectNames, resolveSuperFragmentNames,
   type FieldNames, type KeyNames, type ObjectNames, type SourceNames,
 } from "../names.js";
+import { TsWriter } from "../writer/ts-writer.js";
 
 /** The JSDoc on a flattened field's own `column`, which names no column of the table. */
 export const FLATTENED_COLUMN_DEPRECATION =
@@ -58,6 +59,19 @@ export function renderNamesDecl(
   obj: MetaObject,
   opts?: ColumnNamingStrategy | NamesDeclOpts,
 ): string {
+  const w = new TsWriter();
+  return writeNamesDecl(w, obj, opts) ? w.toString() : "";
+}
+
+/**
+ * Write `<Entity>Names` into `w`, header included. False, with nothing written, when the
+ * object has no names artifact (no primary source, #248).
+ */
+export function writeNamesDecl(
+  w: TsWriter,
+  obj: MetaObject,
+  opts?: ColumnNamingStrategy | NamesDeclOpts,
+): boolean {
   const o = normalize(opts);
   // `fragment` says "this is an ANCESTOR render" — emit even though the walk reached this
   // object by climbing rather than by matching. It does NOT say which shape to render, and
@@ -73,11 +87,12 @@ export function renderNamesDecl(
   const n: ObjectNames | undefined = o.fragment === true && primaryRdbSource(obj) === undefined
     ? resolveSuperFragmentNames(obj, o.strategy)
     : resolveObjectNames(obj, o.strategy);
-  if (n === undefined) return "";
+  if (n === undefined) return false;
 
+  w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`, `// Source metadata: ${obj.name}`);
   const superSym = n.superNames === undefined || o.superSpecifier === undefined
     ? undefined
-    : `${n.superNames.name}Names`;
+    : w.use(`${n.superNames.name}Names`, o.superSpecifier);
 
   const q = (v: string): string => JSON.stringify(v);
   // A key is emitted bare only when it is a valid identifier. Field names always are;
@@ -87,7 +102,7 @@ export function renderNamesDecl(
   const key = (k: string): string => (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k) ? k : q(k));
 
   /**
-   * One `name`-keyed collection — `fields`, `identities`, `indexes`.
+   * One `name`-keyed collection — `fields`, `identities`, `indexes`, `sources`.
    *
    * With a super to spread, only what THIS object declares is emitted and the rest is
    * reached through the parent's artifact, so a physical name is stated once. Without one,
@@ -97,79 +112,69 @@ export function renderNamesDecl(
    * The collection key is always emitted, even when empty, because a child spreads
    * `...Super.identities` unconditionally.
    */
-  const collection = (
-    label: string,
-    all: Readonly<Record<string, unknown>>,
-    own: Readonly<Record<string, unknown>>,
-    render: (v: never) => string,
-  ): string => {
-    const rows = superSym === undefined ? all : own;
-    const body = Object.keys(rows).sort()
-      .map((k) => `    ${key(k)}: ${render(rows[k] as never)},`)
-      .join("\n");
-    const spread = superSym === undefined ? "" : `    ...${superSym}.${label},\n`;
-    if (spread === "" && body === "") return `  ${label}: {},`;
-    return `  ${label}: {\n${spread}${body}${body === "" ? "" : "\n"}  },`;
+  const collection = (label: string, spread: boolean, rows: Readonly<Record<string, unknown>>, row: (k: string, v: never) => void): void => {
+    const keys = Object.keys(rows).sort();
+    if (!spread && keys.length === 0) {
+      w.line(`${label}: {},`);
+      return;
+    }
+    w.block(`${label}: {`, () => {
+      if (spread) w.line(`...${superSym}.${label},`);
+      for (const k of keys) row(k, rows[k] as never);
+    }, "},");
   };
-
-  const fieldsBlock = collection("fields", n.fields, n.ownFields,
-    (f: FieldNames) => f.members === undefined
-      ? `{ name: ${q(f.name)}, column: ${q(f.column)} }`
-      // A flattened value object: no column of its own, one per member of the value object.
-      : `{\n      name: ${q(f.name)},\n` +
-        `      members: { ${Object.keys(f.members).sort()
-          .map((m) => `${key(m)}: { name: ${q(f.members![m]!.name)}, column: ${q(f.members![m]!.column)} }`)
-          .join(", ")} },\n    }`);
+  const ownOrAll = <T>(all: Readonly<Record<string, T>>, own: Readonly<Record<string, T>>): Readonly<Record<string, T>> =>
+    superSym === undefined ? all : own;
 
   // `type` and `subType` on every entry, because the artifact mirrors the metadata tree
   // and because on these two collections the subType is the only thing that says whether
   // an index is unique — ADR-0040 put that in the type rather than in an attribute.
-  const renderKey = (k: KeyNames): string =>
-    `{ type: ${q(k.type)}, subType: ${q(k.subType)}, name: ${q(k.name)}` +
-    (k.index === undefined ? " }" : `, index: ${q(k.index)} }`);
-  const identitiesBlock = collection("identities", n.identities, n.ownIdentities, renderKey);
-  const indexesBlock = collection("indexes", n.indexes, n.ownIndexes, renderKey);
-
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${obj.name}\n` +
-    (superSym === undefined ? "" : `import { ${superSym} } from ${q(o.superSpecifier as string)};\n\n`);
-
-  // The object's own identity. `name` is the METAMODEL name — it held the physical name
-  // until 0.25.0, and that key changing meaning without changing shape is the one thing
-  // here a hand-written consumer adopts without a compile error.
-  const identity =
-    `  type: ${q(n.type)},\n` +
-    `  subType: ${q(n.subType)},\n` +
-    `  name: ${q(n.name)},\n`;
+  const keyRow = (k: string, v: KeyNames): void => {
+    w.line(`${key(k)}: { type: ${q(v.type)}, subType: ${q(v.subType)}, name: ${q(v.name)}` +
+      (v.index === undefined ? " }," : `, index: ${q(v.index)} },`));
+  };
 
   /** One source, under its role. The physical name sits under the alias for its `@kind`. */
-  const renderSource = (role: string, src: SourceNames): string => {
+  const sourceRow = (role: string, src: SourceNames): void => {
     const parts = [`type: ${q(src.type)}`, `subType: ${q(src.subType)}`, `kind: ${q(src.kind)}`];
     if (src.schema !== undefined) parts.push(`schema: ${q(src.schema)}`);
     for (const alias of PHYSICAL_NAME_ALIASES) {
       const v = src[alias as keyof SourceNames];
       if (typeof v === "string") parts.push(`${alias}: ${q(v)}`);
     }
-    return `    ${key(role)}: { ${parts.join(", ")} },`;
+    w.line(`${key(role)}: { ${parts.join(", ")} },`);
   };
 
-  // A fragment declares no source and must never acquire one; a TPH subtype INHERITS its
-  // base's, so it spreads rather than restating — structural (the two resolve to the SAME
-  // node), never an equality test on the resolved strings.
-  const sourceRows = Object.keys(n.ownSources).sort()
-    .map((role) => renderSource(role, n.ownSources[role] as SourceNames)).join("\n");
-  const spreadSources = superSym !== undefined && n.inheritsSource ? `    ...${superSym}.sources,\n` : "";
-  const sourcesBlock =
-    spreadSources === "" && sourceRows === ""
-      ? "  sources: {},"
-      : `  sources: {\n${spreadSources}${sourceRows}${sourceRows === "" ? "" : "\n"}  },`;
+  const fieldRow = (k: string, f: FieldNames): void => {
+    if (f.members === undefined) {
+      w.line(`${key(k)}: { name: ${q(f.name)}, column: ${q(f.column)} },`);
+      return;
+    }
+    // A flattened value object: no column of its own, one per member of the value object.
+    const members = Object.keys(f.members).sort()
+      .map((m) => `${key(m)}: { name: ${q(f.members![m]!.name)}, column: ${q(f.members![m]!.column)} }`)
+      .join(", ");
+    w.block(`${key(k)}: {`, () => {
+      w.line(`name: ${q(f.name)},`);
+      w.line(`members: { ${members} },`);
+    }, "},");
+  };
 
-  return `${header}export const ${obj.name}Names = {
-${identity}${sourcesBlock}
-${fieldsBlock}
-${identitiesBlock}
-${indexesBlock}
-} as const;
-`;
+  w.blank();
+  w.block(`export const ${obj.name}Names = {`, () => {
+    // The object's own identity. `name` is the METAMODEL name — it held the physical name
+    // until 0.25.0, and that key changing meaning without changing shape is the one thing
+    // here a hand-written consumer adopts without a compile error.
+    w.line(`type: ${q(n.type)},`);
+    w.line(`subType: ${q(n.subType)},`);
+    w.line(`name: ${q(n.name)},`);
+    // A fragment declares no source and must never acquire one; a TPH subtype INHERITS its
+    // base's, so it spreads rather than restating — structural (the two resolve to the SAME
+    // node), never an equality test on the resolved strings.
+    collection("sources", superSym !== undefined && n.inheritsSource, n.ownSources, sourceRow);
+    collection("fields", superSym !== undefined, ownOrAll(n.fields, n.ownFields), fieldRow);
+    collection("identities", superSym !== undefined, ownOrAll(n.identities, n.ownIdentities), keyRow);
+    collection("indexes", superSym !== undefined, ownOrAll(n.indexes, n.ownIndexes), keyRow);
+  }, "} as const;");
+  return true;
 }

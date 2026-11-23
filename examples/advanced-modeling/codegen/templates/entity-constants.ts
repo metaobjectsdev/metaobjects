@@ -26,7 +26,8 @@
 // per-attribute access (placeholder, rules, etc.) by hand — the helper
 // picks them up from this object automatically.
 
-import { code, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import type { Code } from "@metaobjectsdev/codegen-ts/engine";
+import { TsWriter } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject } from "@metaobjectsdev/metadata";
 import { resolveTableName } from "@metaobjectsdev/metadata";
 import { physicalNameExpr } from "@metaobjectsdev/codegen-ts/engine";
@@ -66,8 +67,8 @@ function renderRule(r: UiRule): string {
   }
 }
 
-/** Build one nested field-object entry like `email: { name, label, ... },`. */
-function renderFieldEntry(f: UiFieldDescriptor): string {
+/** The members of one nested field object: `name`, `label`, `view`, then what the field has. */
+function fieldEntryMembers(f: UiFieldDescriptor): string[] {
   const entries: string[] = [
     `name: ${JSON.stringify(f.name)}`,
     `label: ${JSON.stringify(f.label)}`,
@@ -90,8 +91,14 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
     entries.push(`currency: ${JSON.stringify(f.currency.currency)}`);
     entries.push(`locale: ${JSON.stringify(f.currency.locale)}`);
   }
+  return entries;
+}
 
-  return `  ${f.name}: {\n    ${entries.join(",\n    ")},\n  }`;
+/** Write one nested field-object entry like `email: { name, label, ... },`. */
+function writeFieldEntry(w: TsWriter, f: UiFieldDescriptor): void {
+  w.block(`${f.name}: {`, () => {
+    for (const e of fieldEntryMembers(f)) w.line(e, ",");
+  }, "},");
 }
 
 /**
@@ -102,22 +109,27 @@ function renderFieldEntry(f: UiFieldDescriptor): string {
  * getters. Emitted for the value subtype only (see `renderValueObjectFile`).
  */
 export function renderValueObjectConstants(obj: MetaObject, emittedName?: string): Code {
+  const w = new TsWriter();
+  writeValueObjectConstants(w, obj, emittedName);
+  return w.toCode();
+}
+
+/** Write {@link renderValueObjectConstants}'s constant into `w`. */
+export function writeValueObjectConstants(w: TsWriter, obj: MetaObject, emittedName?: string): void {
   const descriptor = buildEntityUiDescriptor(obj);
   // The emitted name (collision-qualified, ADR-0044) matches the value object's interface.
   const name = emittedName ?? descriptor.entity;
-  const body = joinCode(
-    [code`  $entity: ${JSON.stringify(descriptor.entity)}`, ...descriptor.fields.map((f) => code`${renderFieldEntry(f)}`)],
-    { on: ",\n" },
-  );
-  return code`
-/**
- * Metadata constants for the value object ${name}: each field's name, label, view and the
- * validation rules derived from its validator children (e.g. \`${name}.<field>.rules.maxLength.value\`).
- */
-export const ${name} = {
-${body},
-} as const;
-`;
+  w.blank();
+  w.text(`
+    /**
+     * Metadata constants for the value object ${name}: each field's name, label, view and the
+     * validation rules derived from its validator children (e.g. \`${name}.<field>.rules.maxLength.value\`).
+     */
+  `);
+  w.block(`export const ${name} = {`, () => {
+    w.line(`$entity: ${JSON.stringify(descriptor.entity)},`);
+    for (const f of descriptor.fields) writeFieldEntry(w, f);
+  }, "} as const;");
 }
 
 export function renderEntityConstants(
@@ -138,61 +150,60 @@ export function renderEntityConstants(
   // arguments. A required parameter would fail to compile in every ejected copy.
   names?: { readonly name: string; readonly symbol: Code } | undefined,
 ): Code {
+  const w = new TsWriter();
+  writeEntityConstants(w, obj, names);
+  return w.toCode();
+}
+
+/** Write {@link renderEntityConstants}'s `<Entity>` constant into `w`. */
+export function writeEntityConstants(
+  w: TsWriter,
+  obj: MetaObject,
+  names?: { readonly name: string; readonly symbol: Code } | undefined,
+): void {
   // ONE derivation of the form surface, shared with the `agent/ui.md` docs page — see
   // entity-ui-descriptor.ts. The descriptor already walks the RESOLVING fields(), so
   // inherited fields (from extends:/super:) appear here as they always have.
   const descriptor = buildEntityUiDescriptor(obj);
   const entityName = descriptor.entity;
   const tableName = resolveTableName(obj);
-  const path = descriptor.path;
+  const exampleField = descriptor.fields[0]?.name ?? "fieldName";
 
-  const fieldEntries: string[] = descriptor.fields.map(renderFieldEntry);
-
-  // A6/B2 — reference the constant whenever the artifact is in the run. No equality
-  // guard: primaryRdbSource (@metaobjectsdev/metadata) refuses any object whose
-  // @role: primary sources disagree on a physical name, and both the constant and the
-  // literal below resolve through it, so a reference here is the single spelling. `physicalNameExpr` accepts
-  // any `{ symbol }`-shaped value, so it works with this function's `{ name, symbol }`
-  // parameter as well as `namesRef`'s own `{ resolved, symbol }`.
-  const tableLine: Code = code`  $table: ${physicalNameExpr(names, tableName, obj)}`;
-
-  const body = joinCode(
-    [
-      code`  $entity: ${JSON.stringify(entityName)}`,
-      tableLine,
-      code`  $path: ${JSON.stringify(path)}`,
-      ...fieldEntries.map((e) => code`${e}`),
-    ],
-    { on: ",\n" },
-  );
-
-  return code`
-/**
- * Metadata constants for ${entityName}.
- *
- * Use these instead of magic strings so TS catches typos and refactors stay
- * coherent. Each non-dollar-prefixed key is a per-field object carrying
- * name, label, view, an htmlType where the field's view maps to one, and the
- * RHF-shaped validation rules derived from the field's validator children.
- *
- * placeholder and helpText are NOT emitted — no provider registers an attribute
- * for them, so nothing here could derive one. (htmlType is emitted, but derived
- * from the view subtype; the @htmlType override was removed for the same reason.)
- * useEntityForm still honours placeholder if you add it: this file is generated,
- * hand edits inside it survive regeneration through the three-way merge, and the
- * consumers read this const rather than the metadata. That is the intended way
- * to set it.
- *
- * Typical usage with the metaobjects React form helper:
- *
- *   import { useEntityForm } from '@metaobjectsdev/react';
- *   const form = useEntityForm(${entityName}, ${entityName}InsertSchema);
- *   <input {...form.input.${
-    fieldEntries[0]?.match(/^\s*(\w+):/)?.[1] ?? "fieldName"
-  }} />
- */
-export const ${entityName} = {
-${body},
-} as const;
-`;
+  w.blank();
+  w.text(`
+    /**
+     * Metadata constants for ${entityName}.
+     *
+     * Use these instead of magic strings so TS catches typos and refactors stay
+     * coherent. Each non-dollar-prefixed key is a per-field object carrying
+     * name, label, view, an htmlType where the field's view maps to one, and the
+     * RHF-shaped validation rules derived from the field's validator children.
+     *
+     * placeholder and helpText are NOT emitted — no provider registers an attribute
+     * for them, so nothing here could derive one. (htmlType is emitted, but derived
+     * from the view subtype; the @htmlType override was removed for the same reason.)
+     * useEntityForm still honours placeholder if you add it: this file is generated,
+     * hand edits inside it survive regeneration through the three-way merge, and the
+     * consumers read this const rather than the metadata. That is the intended way
+     * to set it.
+     *
+     * Typical usage with the metaobjects React form helper:
+     *
+     *   import { useEntityForm } from '@metaobjectsdev/react';
+     *   const form = useEntityForm(${entityName}, ${entityName}InsertSchema);
+     *   <input {...form.input.${exampleField}} />
+     */
+  `);
+  w.block(`export const ${entityName} = {`, () => {
+    w.line(`$entity: ${JSON.stringify(entityName)},`);
+    // A6/B2 — reference the constant whenever the artifact is in the run. No equality
+    // guard: primaryRdbSource (@metaobjectsdev/metadata) refuses any object whose
+    // @role: primary sources disagree on a physical name, and both the constant and the
+    // literal resolve through it, so a reference here is the single spelling. `physicalNameExpr` accepts
+    // any `{ symbol }`-shaped value, so it works with this function's `{ name, symbol }`
+    // parameter as well as `namesRef`'s own `{ resolved, symbol }`.
+    w.line("$table: ", physicalNameExpr(names, tableName, obj), ",");
+    w.line(`$path: ${JSON.stringify(descriptor.path)},`);
+    for (const f of descriptor.fields) writeFieldEntry(w, f);
+  }, "} as const;");
 }

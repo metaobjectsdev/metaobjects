@@ -582,6 +582,15 @@ function dprint(): Formatter {
   return formatter;
 }
 
+/**
+ * Format the text of a fragment (no imports) with the dprint pass `toString()` runs. For a
+ * writer-built file that still splices in a template not yet on the writer: that template
+ * typed no layout of its own and relied on this pass. Goes with dprint (W-TS-9).
+ */
+export function formatFragment(text: string): string {
+  return maybePretty(text).trimEnd();
+}
+
 function maybePretty(input: string): string {
   // Loading the formatter stays outside the try: a missing or broken @dprint/typescript must
   // fail loudly (as dprint-node's import-time load did), not silently emit unformatted code.

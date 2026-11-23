@@ -14,7 +14,8 @@
 // shape — covered by FR-014 fixture `tph-discriminator-string-no-subtypes`),
 // returns null too: there are no subtype names to union.
 
-import { code, joinCode, imp, type Code } from "../poet.js";
+import type { Code } from "../poet.js";
+import { TsWriter } from "../writer/ts-writer.js";
 import {
   type MetaObject,
   type MetaField,
@@ -138,70 +139,66 @@ export function collectTphSubtypeFields(base: MetaObject, root: MetaRoot): MetaF
   return out;
 }
 
+/** True when {@link writeTphDiscriminatorUnion} writes a section for `base`. */
+export function hasTphDiscriminatorUnion(base: MetaObject, root: MetaRoot): boolean {
+  // ADR-0039: own — TPH super-resolution walk; @discriminator identifies the base level.
+  const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
+  return typeof discFieldName === "string" && discFieldName !== "" && collectConcreteSubtypes(base, root).length > 0;
+}
+
 /** Render the TPH union + guards + dispatcher block, or null when the entity
  *  is not a discriminator-bearing base with at least one concrete subtype. */
 export function renderTphDiscriminatorUnion(
   base: MetaObject,
   root: MetaRoot,
 ): Code | null {
-  // ADR-0039: own — TPH super-resolution walk; @discriminator identifies the base level.
-  const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR);
-  if (typeof discFieldName !== "string" || discFieldName === "") return null;
+  const w = new TsWriter();
+  return writeTphDiscriminatorUnion(w, base, root) ? w.toCode() : null;
+}
 
+/** Write {@link renderTphDiscriminatorUnion}'s section into `w`; false, with nothing written, when `base` is no TPH base. */
+export function writeTphDiscriminatorUnion(w: TsWriter, base: MetaObject, root: MetaRoot): boolean {
+  if (!hasTphDiscriminatorUnion(base, root)) return false;
+  const discFieldName = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string; // ADR-0039: own — as below
   const subtypes = collectConcreteSubtypes(base, root);
-  if (subtypes.length === 0) return null;
 
   const baseName = base.name;
+  const subType = (b: SubtypeBinding): string => w.useType(b.subtype.name, `./${b.subtype.name}.js`);
 
-  // 1. Union type alias. Subtype names are imported lazily via ts-poet `imp()`
-  //    so they resolve cross-module without manual import wiring.
-  const unionMembers: Code[] = subtypes.map((b) => {
-    const sub = imp(`t:${b.subtype.name}@./${b.subtype.name}.js`);
-    return code`${sub}`;
-  });
-  const unionType = code`export type ${baseName} = ${joinCode(unionMembers, { on: " | " })};`;
+  // 1. Union type alias.
+  w.blank();
+  w.line(`export type ${baseName} = ${subtypes.map(subType).join(" | ")};`);
 
   // 2. Type guards.
-  const guards: Code[] = subtypes.map((b) => {
-    const sub = imp(`t:${b.subtype.name}@./${b.subtype.name}.js`);
-    return code`
-/** True when value is a ${b.subtype.name} (discriminated by ${discFieldName} === "${b.value}"). */
-export function is${b.subtype.name}(value: ${baseName}): value is ${sub} {
-  return value.${discFieldName} === "${b.value}";
-}`;
-  });
+  for (const b of subtypes) {
+    w.blank();
+    w.line(`/** True when value is a ${b.subtype.name} (discriminated by ${discFieldName} === "${b.value}"). */`);
+    w.block(`export function is${b.subtype.name}(value: ${baseName}): value is ${subType(b)} {`, () => {
+      w.line(`return value.${discFieldName} === "${b.value}";`);
+    });
+  }
 
   // 3. Dispatcher. The head-read uses z.object so the discriminator is read
   //    without committing the row to any subtype yet.
-  const z = imp("z@zod");
+  const z = w.use("z", "zod");
   const enumLiterals = subtypes.map((b) => JSON.stringify(b.value)).join(", ");
-
-  const caseBranches: Code[] = subtypes.map((b) => {
-    const schema = imp(`${b.subtype.name}Schema@./${b.subtype.name}.js`);
-    return code`    case ${JSON.stringify(b.value)}: return ${schema}.parse(row);`;
+  w.blank();
+  w.text(`
+    /**
+     * Parse a row from the ${baseName} table, dispatching by the
+     * \`${discFieldName}\` discriminator value to the matching subtype's
+     * Zod schema. Throws on unknown discriminator values.
+     */
+  `);
+  w.block(`export function parse${baseName}(row: unknown): ${baseName} {`, () => {
+    w.line(`const head = ${z}.object({ ${discFieldName}: ${z}.enum([${enumLiterals}]) }).parse(row);`);
+    w.block(`switch (head.${discFieldName}) {`, () => {
+      for (const b of subtypes) {
+        w.line(`case ${JSON.stringify(b.value)}: return ${w.use(`${b.subtype.name}Schema`, `./${b.subtype.name}.js`)}.parse(row);`);
+      }
+    });
   });
-
-  const dispatcher = code`
-/**
- * Parse a row from the ${baseName} table, dispatching by the
- * \`${discFieldName}\` discriminator value to the matching subtype's
- * Zod schema. Throws on unknown discriminator values.
- */
-export function parse${baseName}(row: unknown): ${baseName} {
-  const head = ${z}.object({ ${discFieldName}: ${z}.enum([${enumLiterals}]) }).parse(row);
-  switch (head.${discFieldName}) {
-${joinCode(caseBranches, { on: "\n" })}
-  }
-}
-`;
-
-  return code`
-${unionType}
-
-${joinCode(guards, { on: "\n" })}
-
-${dispatcher}
-`;
+  return true;
 }
 
 /** Walk every top-level object.entity in the root and return the concrete

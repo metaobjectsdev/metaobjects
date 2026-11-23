@@ -363,9 +363,15 @@ function compareKind(f: MetaField | undefined): CompareKind {
 
 /** The local helpers a refinement body uses, declared once at its top when needed. */
 const HELPER_CMP = `  const cmp = (a: unknown, b: unknown): number | null => {
-    if (a == null || b == null) return null;
-    if (typeof a === "number" || typeof b === "number") return Number(a) - Number(b);
-    if (a instanceof Date || b instanceof Date) return new Date(a as string).getTime() - new Date(b as string).getTime();
+    if (a == null || b == null) {
+      return null;
+    }
+    if (typeof a === "number" || typeof b === "number") {
+      return Number(a) - Number(b);
+    }
+    if (a instanceof Date || b instanceof Date) {
+      return new Date(a as string).getTime() - new Date(b as string).getTime();
+    }
     return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
   };`;
 const HELPER_TRI = `  const all = (...v: Array<boolean | null>): boolean | null => v.includes(false) ? false : v.includes(null) ? null : true;
@@ -374,9 +380,13 @@ const HELPER_TRI = `  const all = (...v: Array<boolean | null>): boolean | null 
 // An ISO-8601 duration (weeks, days, hours, minutes, seconds) as microseconds, or null when the
 // text is not one (the accepted form: `P`, `PT` and `P1DT` are not durations).
 const HELPER_MICROS = `  const micros = (d: unknown): number | null => {
-    if (d == null) return null;
+    if (d == null) {
+      return null;
+    }
     const m = /^([-+])?P(?!$)(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?=\\d)(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)(?:\\.(\\d+))?S)?)?$/.exec(String(d));
-    if (m === null) return null;
+    if (m === null) {
+      return null;
+    }
     const hours = (Number(m[2] ?? 0) * 7 + Number(m[3] ?? 0)) * 24 + Number(m[4] ?? 0);
     const us = ((hours * 60 + Number(m[5] ?? 0)) * 60 + Number(m[6] ?? 0)) * 1e6 + Number((m[7] ?? "").padEnd(6, "0").slice(0, 6));
     return m[1] === "-" ? -us : us;
@@ -530,7 +540,7 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
         push(v,
           `  {\n    const l: unknown = ${asKind(acc(left), readKind)};\n    const r: unknown = ${asKind(acc(right), readKind)};\n` +
           `    if (l != null && r != null) {\n      const c = ${c};\n` +
-          `      if (!(c ${op} 0)) ${issue(JSON.stringify(left.name), `${left.name} must be ${opName} ${right.name}`)}\n    }\n  }`,
+          `      if (!(c ${op} 0)) {\n        ${issue(JSON.stringify(left.name), `${left.name} must be ${opName} ${right.name}`)}\n      }\n    }\n  }`,
         );
         break;
       }
@@ -544,9 +554,9 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
         const path = JSON.stringify(target.name);
         const decl = `    const g: unknown = ${acc(when)};\n    const t: unknown = ${acc(target)};\n    const open = ${gate};\n`;
         if (v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN) {
-          push(v, `  {\n${decl}    if (open && t == null) ${issue(path, `${target.name} is required when ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n  }`);
+          push(v, `  {\n${decl}    if (open && t == null) {\n      ${issue(path, `${target.name} is required when ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n    }\n  }`);
         } else {
-          push(v, `  {\n${decl}    if ((t != null) !== open) ${issue(path, `${target.name} must be present if and only if ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n  }`);
+          push(v, `  {\n${decl}    if ((t != null) !== open) {\n      ${issue(path, `${target.name} must be present if and only if ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n    }\n  }`);
         }
         break;
       }
@@ -554,14 +564,14 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
         const fields = fieldList(v.attr(VALIDATOR_ATTR_FIELDS));
         if (fields === undefined) break;
         const anyPresent = fields.map((f) => `${acc(f)} != null`).join(" || ");
-        push(v, `  if (!(${anyPresent})) ${issue(JSON.stringify(fields[0]!.name), `at least one of ${fields.map((f) => f.name).join(", ")} is required`)}`);
+        push(v, `  if (!(${anyPresent})) {\n    ${issue(JSON.stringify(fields[0]!.name), `at least one of ${fields.map((f) => f.name).join(", ")} is required`)}\n  }`);
         break;
       }
       case VALIDATOR_SUBTYPE_EXACTLY_ONE: {
         const fields = fieldList(v.attr(VALIDATOR_ATTR_FIELDS));
         if (fields === undefined) break;
         const present = fields.map((f) => `${acc(f)}`).join(", ");
-        push(v, `  if ([${present}].filter((x) => x != null).length !== 1) ${issue(JSON.stringify(fields[0]!.name), `exactly one of ${fields.map((f) => f.name).join(", ")} is required`)}`);
+        push(v, `  if ([${present}].filter((x) => x != null).length !== 1) {\n    ${issue(JSON.stringify(fields[0]!.name), `exactly one of ${fields.map((f) => f.name).join(", ")} is required`)}\n  }`);
         break;
       }
       default:

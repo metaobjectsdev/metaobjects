@@ -8,7 +8,8 @@
 // without the superfluous `| null` that Drizzle nullable columns introduce).
 
 import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import type { Code } from "@metaobjectsdev/codegen-ts/engine";
+import { TsWriter } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_ENUM,
@@ -40,7 +41,7 @@ import { valueObjectFieldImport } from "@metaobjectsdev/codegen-ts/engine";
 import { stripPackage } from "@metaobjectsdev/metadata";
 import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumZodConstName } from "./enums-file.js";
-import { renderDocsFor } from "./jsdoc.js";
+import { writeDocsFor } from "./jsdoc.js";
 import { isTphReadNullTolerant } from "./zod-validators.js";
 import { sharedEnumForField } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "@metaobjectsdev/codegen-ts/engine";
@@ -63,35 +64,39 @@ export function renderInferredTypes(
   ctx?: RenderContext,
   skipRow = false,
 ): Code {
+  const w = new TsWriter();
+  writeInferredTypes(w, entity, tphBase, ctx, skipRow);
+  return w.toCode();
+}
+
+/** Write {@link renderInferredTypes}'s aliases into `w`. */
+export function writeInferredTypes(
+  w: TsWriter,
+  entity: MetaObject,
+  tphBase = false,
+  ctx?: RenderContext,
+  skipRow = false,
+): void {
   // The inferred Row/Insert types reference the Drizzle table var, so they must
   // resolve to the SAME (possibly overridden) collection name the schema emits.
   // ctx is optional for bare unit-test calls — those fall back to the default
   // always-pluralize spelling.
   const varName = ctx ? ctx.collectionName(entity.name) : variableNameFromEntity(entity.name);
-  // Type-only symbols (t: prefix) so ts-poet emits `import type` — otherwise a
-  // value import of these types fails tsc under `verbatimModuleSyntax` (TS1484). (#165)
-  const selectSym = imp("t:InferSelectModel@drizzle-orm");
-  const insertSym = imp("t:InferInsertModel@drizzle-orm");
-  const docs = renderDocsFor(entity);
-  const docsPrefix = docs ? `${docs}\n` : "";
   const { row: rowName, insert: insertName, update: updateName } = entityTypeNames(entity, { tphBase });
+  w.blank();
   // #214 — a write-through entity read-view routes READS to the replica view, so the
   // read row type <Entity> is emitted from the VIEW's read schema (z.infer, carrying
   // the derived fields) by the entity-file composer, NOT here. `skipRow` suppresses
-  // the table-inferred Row so there is no duplicate `export type <Entity>` (selectSym
-  // then goes unreferenced and ts-poet drops its import). Insert/Update always stay
-  // inferred from the write TABLE (derived-free, #213).
-  if (skipRow) {
-    return code`
-export type ${insertName} = ${insertSym}<typeof ${varName}>;
-export type ${updateName} = Partial<${insertName}>;
-`;
+  // the table-inferred Row so there is no duplicate `export type <Entity>`.
+  // Insert/Update always stay inferred from the write TABLE (derived-free, #213).
+  if (!skipRow) {
+    writeDocsFor(w, entity);
+    // Type-only imports — a value import of these types fails tsc under
+    // `verbatimModuleSyntax` (TS1484). (#165)
+    w.line(`export type ${rowName} = ${w.useType("InferSelectModel", "drizzle-orm")}<typeof ${varName}>;`);
   }
-  return code`
-${docsPrefix}export type ${rowName} = ${selectSym}<typeof ${varName}>;
-export type ${insertName} = ${insertSym}<typeof ${varName}>;
-export type ${updateName} = Partial<${insertName}>;
-`;
+  w.line(`export type ${insertName} = ${w.useType("InferInsertModel", "drizzle-orm")}<typeof ${varName}>;`);
+  w.line(`export type ${updateName} = Partial<${insertName}>;`);
 }
 
 /**
@@ -138,9 +143,15 @@ export function enumUnionString(values: string[]): string {
  * null when the entity has no enum-alias lines to emit.
  */
 export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): Code | null {
+  const w = new TsWriter();
+  return writeEnumTypeAliases(w, entity, ctx) ? w.toCode() : null;
+}
+
+/** Write {@link renderEnumTypeAliases}'s section into `w`; false, with nothing written, when there is none. */
+export function writeEnumTypeAliases(w: TsWriter, entity: MetaObject, ctx?: RenderContext): boolean {
   // De-duplicate by type-alias name — multiple fields can extend the same abstract enum.
   const seen = new Set<string>();
-  const lines: Code[] = [];
+  const lines: string[] = [];
   // ADR-0044/#228 — an inline enum's alias is `<Owner><Field>`; `<Owner>` is this
   // object's EMITTED name so a collision-qualified value object declares (and its
   // interface references) `AcmeAlphaNoteStatus`, not a bare `NoteStatus`. Entities
@@ -175,9 +186,9 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
       //
       // `.options` is the member array and `.enum.<Member>` the individual symbol, in
       // both Zod 3 and Zod 4 — generated code here must be safe on both.
-      lines.push(code`export type ${typeName} = ${enumUnionString(values)};`);
+      lines.push(`export type ${typeName} = ${enumUnionString(values)};`);
       lines.push(
-        code`export const ${sharedEnumZodConstName(typeName)} = ${imp("z@zod")}.enum([${values
+        `export const ${sharedEnumZodConstName(typeName)} = ${w.use("z", "zod")}.enum([${values
           .map((v) => JSON.stringify(v))
           .join(", ")}]);`,
       );
@@ -198,12 +209,15 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
     // Only the type is contracted for a provided enum, and only the type is re-exported.
     lines.push(
       shared.provided
-        ? code`export { type ${shared.name} } from ${JSON.stringify(spec)};`
-        : code`export { type ${shared.name}, ${sharedEnumZodConstName(shared.name)} } from ${JSON.stringify(spec)};`,
+        ? `export { type ${shared.name} } from ${JSON.stringify(spec)};`
+        : `export { type ${shared.name}, ${sharedEnumZodConstName(shared.name)} } from ${JSON.stringify(spec)};`,
     );
   }
 
-  return lines.length > 0 ? joinCode(lines, { on: "\n" }) : null;
+  if (lines.length === 0) return false;
+  w.blank();
+  for (const l of lines) w.line(l);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -237,8 +251,7 @@ const SCALAR_TS_BY_SUBTYPE: Record<string, string> = {
 /**
  * The PLAIN-STRING TS type expression for a field — the SINGLE source of truth
  * for "what TS type does the codegen give this field". `valueObjectFieldType`
- * (which returns a `Code` so cross-module `field.object` refs hoist via
- * `imp(...)`) makes the SAME per-branch decisions; this string form exists for
+ * (which imports a cross-module `field.object` ref through the writer) makes the SAME per-branch decisions; this string form exists for
  * consumers (the api-docs field-shape builder) that need the type name as text,
  * not a hoisting `Code`. The branch logic MUST stay in lock-step with
  * `valueObjectFieldType` below.
@@ -287,11 +300,11 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
 }
 
 /**
- * One-line TS type expression for a field on a value-only object.
- * Returns a `Code` so cross-module `field.object` refs can be hoisted via
- * ts-poet `imp(...)` — matching how the Zod emitter hoists `<Ref>InsertSchema`.
+ * One-line TS type expression for a field on a value-only object. A cross-module
+ * `field.object` ref is imported through `w` — matching how the Zod emitter imports
+ * `<Ref>InsertSchema`.
  */
-function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: RenderContext): Code {
+function valueObjectFieldType(w: TsWriter, entity: MetaObject, field: MetaField, ctx?: RenderContext): string {
   // ADR-0044/#228 — the owning value-object's EMITTED name (bare when unique in
   // the run, package-qualified on a cross-package short-name collision). Drives
   // the inline enum-union alias so it matches the alias declared for this object.
@@ -299,7 +312,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   // `@dbColumnType: jsonb` (open JSON bag) → `unknown`, in lock-step with
   // fieldTsTypeString above and the `z.unknown()` Zod emission.
   if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
-    return field.resolvedIsArray() ? code`unknown[]` : code`unknown`;
+    return field.resolvedIsArray() ? `unknown[]` : `unknown`;
   }
   // field.object: import the referenced TS interface from its sibling module
   // so ts-poet hoists the import. Mirrors zod-validators.ts's `<Ref>InsertSchema`
@@ -319,10 +332,11 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       // the shared-enum branch below (#341).
       const refImp = ctx
         ? valueObjectFieldImport(ctx, field, effectivePackage(entity), "", true)
-        : imp(`t:${stripPackage(ref)}@./${stripPackage(ref)}.js`);
-      return field.resolvedIsArray() ? code`${refImp}[]` : code`${refImp}`;
+        : undefined;
+      const refName = refImp === undefined ? w.useType(stripPackage(ref), `./${stripPackage(ref)}.js`) : w.useImport(refImp);
+      return field.resolvedIsArray() ? `${refName}[]` : refName;
     }
-    return field.resolvedIsArray() ? code`unknown[]` : code`unknown`;
+    return field.resolvedIsArray() ? `unknown[]` : `unknown`;
   }
 
   // field.map: Record<string, V> — V is a value-object (@objectRef) or a scalar (@valueType).
@@ -331,12 +345,13 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
     if (typeof ref === "string" && ref.length > 0) {
       const refImp = ctx
         ? valueObjectFieldImport(ctx, field, effectivePackage(entity), "", true)
-        : imp(`t:${stripPackage(ref)}@./${stripPackage(ref)}.js`);
-      return code`Record<string, ${refImp}>`;
+        : undefined;
+      const refName = refImp === undefined ? w.useType(stripPackage(ref), `./${stripPackage(ref)}.js`) : w.useImport(refImp);
+      return `Record<string, ${refName}>`;
     }
     const vt = field.attr(FIELD_ATTR_VALUE_TYPE);
     const scalar = (typeof vt === "string" ? SCALAR_TS_BY_SUBTYPE[vt] : undefined) ?? "string";
-    return code`Record<string, ${scalar}>`;
+    return `Record<string, ${scalar}>`;
   }
 
   // field.enum: use the same type-alias name as renderEnumTypeAliases emits.
@@ -358,17 +373,17 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
           const spec = shared.provided
             ? providedEnumImportSpecifier(ctx, shared.name)
             : sharedEnumImportSpecifier(ctx, effectivePackage(entity));
-          const sym = imp(`t:${shared.name}@${spec}`);
-          return field.resolvedIsArray() ? code`${sym}[]` : code`${sym}`;
+          const sym = w.useType(shared.name, spec);
+          return field.resolvedIsArray() ? `${sym}[]` : sym;
         }
       }
-      return field.resolvedIsArray() ? code`${alias}[]` : code`${alias}`;
+      return field.resolvedIsArray() ? `${alias}[]` : `${alias}`;
     }
-    return field.resolvedIsArray() ? code`string[]` : code`string`;
+    return field.resolvedIsArray() ? `string[]` : `string`;
   }
 
   const scalar = SCALAR_TS_BY_SUBTYPE[field.subType] ?? "unknown";
-  return field.resolvedIsArray() ? code`${scalar}[]` : code`${scalar}`;
+  return field.resolvedIsArray() ? `${scalar}[]` : `${scalar}`;
 }
 
 /**
@@ -387,31 +402,31 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
  * two spellings are the same type, so nothing else changes.
  */
 export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderContext): Code {
-  const docs = renderDocsFor(entity);
-  const docsPrefix = docs ? `${docs}\n` : "";
+  const w = new TsWriter();
+  writeValueObjectInterface(w, entity, ctx);
+  return w.toCode();
+}
+
+/** Write {@link renderValueObjectInterface}'s interface into `w`. */
+export function writeValueObjectInterface(w: TsWriter, entity: MetaObject, ctx?: RenderContext): void {
   // ADR-0044/#228 — the declared interface name is this value object's EMITTED
   // name (bare when unique in the run, package-qualified on a cross-package
   // short-name collision). Byte-identical (bare) when there is no collision.
   const objName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
-
-  const lines: Code[] = [];
-  for (const field of flatSurfaceFields(entity)) {
-    const required = field.attr(FIELD_ATTR_REQUIRED) === true;
-    const optional = required ? "" : "?";
-    const undefinedArm = required ? "" : " | undefined";
-    const tsType = valueObjectFieldType(entity, field, ctx);
-    // A TPH subtype's read schema accepts `null` for a column that is NULL on a
-    // sibling subtype's row; the declared type has to admit the same values, or
-    // `parse<Base>()` returns something this interface rejects. One predicate
-    // answers it for both emitters (ADR-style single source, see its docblock).
-    const nullable = isTphReadNullTolerant(entity, field) ? " | null" : "";
-    lines.push(code`  ${field.name}${optional}: ${tsType}${nullable}${undefinedArm};`);
-  }
-
-  // joinCode with "\n" interpolates each Code segment on its own line and
-  // keeps the imp() registrations intact so ts-poet hoists the imports.
-  return code`${docsPrefix}export interface ${objName} {
-${joinCode(lines, { on: "\n" })}
-}
-`;
+  w.blank();
+  writeDocsFor(w, entity);
+  w.block(`export interface ${objName} {`, () => {
+    for (const field of flatSurfaceFields(entity)) {
+      const required = field.attr(FIELD_ATTR_REQUIRED) === true;
+      const optional = required ? "" : "?";
+      const undefinedArm = required ? "" : " | undefined";
+      const tsType = valueObjectFieldType(w, entity, field, ctx);
+      // A TPH subtype's read schema accepts `null` for a column that is NULL on a
+      // sibling subtype's row; the declared type has to admit the same values, or
+      // `parse<Base>()` returns something this interface rejects. One predicate
+      // answers it for both emitters (ADR-style single source, see its docblock).
+      const nullable = isTphReadNullTolerant(entity, field) ? " | null" : "";
+      w.line(`${field.name}${optional}: ${tsType}${nullable}${undefinedArm};`);
+    }
+  });
 }
