@@ -45,10 +45,7 @@ export const SubscriberInsertSchema = z.object({
   firstName: z.string().min(1).max(100),
   lastName: z.string().max(100).optional(),
   subscribed: z.boolean().optional(),
-  createdAt: z.string().regex(
-    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-  ).transform(utcIsoTimestamp).optional(),
+  createdAt: z.string().regex(/^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/, "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])").transform(utcIsoTimestamp).optional(),
 });
 
 export const SubscriberUpdateSchema = z.object({
@@ -56,19 +53,20 @@ export const SubscriberUpdateSchema = z.object({
   firstName: z.string().min(1).max(100).optional(),
   lastName: z.string().max(100).optional().nullable(),
   subscribed: z.boolean().optional(),
-  createdAt: z.string().regex(
-    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-  ).transform(utcIsoTimestamp).optional(),
+  createdAt: z.string().regex(/^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/, "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])").transform(utcIsoTimestamp).optional(),
 });
 
-/** Typed create shape for Subscriber: the insert schema's INPUT (pre-transform) type. A
+/**
+ * Typed create shape for Subscriber: the insert schema's INPUT (pre-transform) type. A
  * renamed/dropped/misspelt field is a compile error at every `createSubscriber` call site;
- * the schema still validates at runtime. */
+ * the schema still validates at runtime.
+ */
 export type SubscriberCreate = z.input<typeof SubscriberInsertSchema>;
 
-/** Typed patch shape for Subscriber: every settable field, optional (FR-035 PATCH). A
- * renamed/dropped field is a compile error at every `updateSubscriber` call site. */
+/**
+ * Typed patch shape for Subscriber: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateSubscriber` call site.
+ */
 export type SubscriberPatch = z.input<typeof SubscriberUpdateSchema>;
 
 /**

@@ -11,7 +11,9 @@
 
 import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
 import { entityTypeNames } from "./entity-type-names.js";
-import { code, joinCode, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { code, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { CodeWriter } from "@metaobjectsdev/codegen-ts/engine";
+import { TsWriter } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject, MetaField, type MetaRoot, stripPackage } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
@@ -43,16 +45,16 @@ import { enumValues } from "@metaobjectsdev/codegen-ts/engine";
 import { zodEnumExpr } from "./zod-enum.js";
 import { ZOD_INET_EXPR } from "./net-regex.js";
 import {
-  UTC_TIMESTAMP_HELPER_DECL,
+  writeUtcTimestampHelper,
   ZOD_DATE_EXPR,
   ZOD_TIME_EXPR,
   ZOD_TIME_NO_OFFSET_EXPR,
   ZOD_TIMESTAMP_EXPR,
   ZOD_TIMESTAMP_UTC_EXPR,
 } from "./date-time-regex.js";
-import { renderDocsFor } from "./jsdoc.js";
-import { DECIMAL_WRITE_HELPER_DECL, zodDecimalWriteExpr } from "./decimal-wire-helper.js";
-import { DURATION_WRITE_HELPER_DECL, ZOD_DURATION_EXPR, ZOD_DURATION_WRITE_EXPR } from "./duration-wire-helper.js";
+import { writeDocsFor } from "./jsdoc.js";
+import { writeDecimalWriteHelper, zodDecimalWriteExpr } from "./decimal-wire-helper.js";
+import { writeDurationWriteHelper, ZOD_DURATION_EXPR, ZOD_DURATION_WRITE_EXPR } from "./duration-wire-helper.js";
 import { sharedEnumForField } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumImportSpecifier } from "@metaobjectsdev/codegen-ts/engine";
 import { sharedEnumZodConstName } from "./enums-file.js";
@@ -78,26 +80,36 @@ export {
 // exactly when a line references it, so the helper is never emitted unused. (Rendering is
 // synchronous; each module is rendered by exactly one schema emitter.)
 let utcTimestampUses = 0;
-
-/** The normalizer's declaration when `since` is behind the running count, else nothing. */
-function utcTimestampHelperSince(since: number): string {
-  return utcTimestampUses > since ? `${UTC_TIMESTAMP_HELPER_DECL}\n\n` : "";
-}
-
-// The same device for the decimal write rule (decimal-wire-helper.ts).
+// The same device for the decimal write rule (decimal-wire-helper.ts)...
 let decimalWriteUses = 0;
-
-function decimalHelperSince(since: number): string {
-  return decimalWriteUses > since ? `${DECIMAL_WRITE_HELPER_DECL}\n\n` : "";
-}
-
-// The same device for the duration write rule (duration-wire-helper.ts).
+// ...and for the duration write rule (duration-wire-helper.ts).
 let durationWriteUses = 0;
 
-function durationHelperSince(since: number): string {
-  return durationWriteUses > since ? `${DURATION_WRITE_HELPER_DECL}\n\n` : "";
+/** The running use counts, taken before a schema emitter builds its field lines. */
+interface HelperUses { readonly utc: number; readonly decimal: number; readonly duration: number }
+
+function helperUses(): HelperUses {
+  return { utc: utcTimestampUses, decimal: decimalWriteUses, duration: durationWriteUses };
 }
 
+/** Write each local helper a field line built since `since` references, a blank line after each. */
+function writeHelpersSince(w: CodeWriter, since: HelperUses): void {
+  if (utcTimestampUses > since.utc) writeUtcTimestampHelper(w.blank());
+  if (decimalWriteUses > since.decimal) writeDecimalWriteHelper(w.blank());
+  if (durationWriteUses > since.duration) writeDurationWriteHelper(w.blank());
+  w.blank();
+}
+
+/** `head`, then one `name: expr,` line per field, then `close`: a Zod object written open. */
+function writeZodObject(w: CodeWriter, head: readonly unknown[], fieldLines: readonly Code[], close: string): void {
+  if (fieldLines.length === 0) {
+    w.line(...head, "{", close);
+    return;
+  }
+  w.open(...head, "{");
+  for (const l of fieldLines) w.line(l, ",");
+  w.close(close);
+}
 
 /** True when this object declares at least one @autoSet timestamp field
  *  (onCreate or onUpdate). Drives whether codegen emits the #203
@@ -166,13 +178,19 @@ export function isTphReadNullTolerant(obj: MetaObject, field: MetaField): boolea
  * accept null (the insert schema, by contrast, makes them `.optional()`).
  */
 export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext): Code {
-  const z = imp("z@zod");
+  const w = new TsWriter();
+  writeTphSubtypeReadSchema(w, obj, ctx);
+  return w.toCode();
+}
+
+/** Write {@link renderTphSubtypeReadSchema}'s declaration into `w`. */
+export function writeTphSubtypeReadSchema(w: TsWriter, obj: MetaObject, ctx?: RenderContext): void {
   const tphPin = tphDiscriminatorPin(obj);
 
   const fieldLines: Code[] = [];
   for (const child of flatSurfaceFields(obj)) {
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
-      fieldLines.push(code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
+      fieldLines.push(code`${child.name}: z.literal(${JSON.stringify(tphPin.value)})`);
       continue;
     }
     // forceRequired: a row selected from the table carries every column as a KEY —
@@ -187,19 +205,14 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
     const expr = zodFieldExpr(child, obj, ctx, !child.isDerived(), true);
     fieldLines.push(
       isTphReadNullTolerant(obj, child)
-        ? code`  ${child.name}: ${expr}.nullable()`
-        : code`  ${child.name}: ${expr}`,
+        ? code`${child.name}: ${expr}.nullable()`
+        : code`${child.name}: ${expr}`,
     );
   }
 
   const objName = ctx ? ctx.valueObjectEmittedName(obj) : obj.name;
-  const docs = renderDocsFor(obj);
-  const docsPrefix = docs ? `${docs}\n` : "";
-  return code`
-${docsPrefix}export const ${objName}Schema = ${z}.object({
-${joinCode(fieldLines, { on: ",\n" })}
-});
-`;
+  writeDocsFor(w, obj);
+  writeZodObject(w, [`export const ${objName}Schema = ${w.use("z", "zod")}.object(`], fieldLines, "});");
 }
 
 /** Field names participating in the object's PRIMARY identity, normalized to a
@@ -344,7 +357,7 @@ function crossFieldLiteral(raw: unknown, when: MetaField): { lit: string; numeri
  *  subtype also exports `<Name>InsertBaseSchema` (unrefined) and `<Name>InsertBodySchema`
  *  (refined, pinned discriminator omitted). */
 export function hasInsertRefinements(obj: MetaObject): boolean {
-  return crossFieldRefinement(obj).blocks.length > 0;
+  return crossFieldRefinement(obj).rules.length > 0;
 }
 
 /**
@@ -362,37 +375,51 @@ function compareKind(f: MetaField | undefined): CompareKind {
 }
 
 /** The local helpers a refinement body uses, declared once at its top when needed. */
-const HELPER_CMP = `  const cmp = (a: unknown, b: unknown): number | null => {
-    if (a == null || b == null) {
-      return null;
-    }
-    if (typeof a === "number" || typeof b === "number") {
-      return Number(a) - Number(b);
-    }
-    if (a instanceof Date || b instanceof Date) {
-      return new Date(a as string).getTime() - new Date(b as string).getTime();
-    }
-    return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
-  };`;
-const HELPER_TRI = `  const all = (...v: Array<boolean | null>): boolean | null => v.includes(false) ? false : v.includes(null) ? null : true;
-  const any = (...v: Array<boolean | null>): boolean | null => v.includes(true) ? true : v.includes(null) ? null : false;
-  const not = (v: boolean | null): boolean | null => v === null ? null : !v;`;
-// An ISO-8601 duration (weeks, days, hours, minutes, seconds) as microseconds, or null when the
-// text is not one (the accepted form: `P`, `PT` and `P1DT` are not durations).
-const HELPER_MICROS = `  const micros = (d: unknown): number | null => {
-    if (d == null) {
-      return null;
-    }
-    const m = /^([-+])?P(?!$)(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?=\\d)(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)(?:\\.(\\d+))?S)?)?$/.exec(String(d));
-    if (m === null) {
-      return null;
-    }
-    const hours = (Number(m[2] ?? 0) * 7 + Number(m[3] ?? 0)) * 24 + Number(m[4] ?? 0);
-    const us = ((hours * 60 + Number(m[5] ?? 0)) * 60 + Number(m[6] ?? 0)) * 1e6 + Number((m[7] ?? "").padEnd(6, "0").slice(0, 6));
-    return m[1] === "-" ? -us : us;
-  };`;
+type RefinementHelper = "cmp" | "tri" | "micros";
 
-interface RefinementBuild { blocks: string[]; helpers: Set<string> }
+/** Each helper's declaration, in the fixed order they are declared in. */
+const REFINEMENT_HELPERS: ReadonlyArray<readonly [RefinementHelper, (w: CodeWriter) => void]> = [
+  ["cmp", (w) => w.text(`
+    const cmp = (a: unknown, b: unknown): number | null => {
+      if (a == null || b == null) {
+        return null;
+      }
+      if (typeof a === "number" || typeof b === "number") {
+        return Number(a) - Number(b);
+      }
+      if (a instanceof Date || b instanceof Date) {
+        return new Date(a as string).getTime() - new Date(b as string).getTime();
+      }
+      return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+    };
+  `)],
+  ["tri", (w) => w.text(`
+    const all = (...v: Array<boolean | null>): boolean | null => v.includes(false) ? false : v.includes(null) ? null : true;
+    const any = (...v: Array<boolean | null>): boolean | null => v.includes(true) ? true : v.includes(null) ? null : false;
+    const not = (v: boolean | null): boolean | null => v === null ? null : !v;
+  `)],
+  // An ISO-8601 duration (weeks, days, hours, minutes, seconds) as microseconds, or null when the
+  // text is not one (the accepted form: `P`, `PT` and `P1DT` are not durations).
+  ["micros", (w) => w.text(`
+    const micros = (d: unknown): number | null => {
+      if (d == null) {
+        return null;
+      }
+      const m = /^([-+])?P(?!$)(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?=\\d)(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)(?:\\.(\\d+))?S)?)?$/.exec(String(d));
+      if (m === null) {
+        return null;
+      }
+      const hours = (Number(m[2] ?? 0) * 7 + Number(m[3] ?? 0)) * 24 + Number(m[4] ?? 0);
+      const us = ((hours * 60 + Number(m[5] ?? 0)) * 60 + Number(m[6] ?? 0)) * 1e6 + Number((m[7] ?? "").padEnd(6, "0").slice(0, 6));
+      return m[1] === "-" ? -us : us;
+    };
+  `)],
+];
+
+/** One rule of the refinement body, written into the writer at the body's indent. */
+type Rule = (w: CodeWriter) => void;
+
+interface RefinementBuild { rules: Rule[]; helpers: Set<RefinementHelper> }
 
 function crossFieldRefinement(obj: MetaObject): RefinementBuild {
   const inSchema = insertSchemaFieldNameSet(obj);
@@ -414,12 +441,12 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
     `ctx.addIssue({ code: "custom", path: [${path}], message: ${JSON.stringify(msg)} });`;
   // The helpers the rule being built uses; merged into `helpers` only when the rule is kept,
   // so a rule left to the database declares nothing that nothing reads.
-  const helpers = new Set<string>();
-  let ruleHelpers = new Set<string>();
+  const helpers = new Set<RefinementHelper>();
+  let ruleHelpers = new Set<RefinementHelper>();
   /** A value compared as `kind`. */
   const asKind = (expr: string, kind: CompareKind): string => {
     if (kind === "number") return `(${expr} == null ? null : Number(${expr}))`;
-    if (kind === "duration") { ruleHelpers.add(HELPER_MICROS); return `micros(${expr})`; }
+    if (kind === "duration") { ruleHelpers.add("micros"); return `micros(${expr})`; }
     return expr;
   };
 
@@ -478,7 +505,7 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
       const l = valueTs(n["left"], kind);
       const r = valueTs(n["right"], kind);
       if (l === undefined || r === undefined) return undefined;
-      ruleHelpers.add(HELPER_CMP);
+      ruleHelpers.add("cmp");
       return `((c) => c === null ? null : c ${CROSS_FIELD_OPS[op]} 0)(cmp(${l}, ${r}))`;
     }
     if (op === FILTER_OP_IS_NULL || op === EXPR_OP_IS_NOT_NULL) {
@@ -489,28 +516,26 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
     if (op === EXPR_OP_NOT) {
       const a = condTs(n["arg"]);
       if (a === undefined) return undefined;
-      ruleHelpers.add(HELPER_TRI);
+      ruleHelpers.add("tri");
       return `not(${a})`;
     }
     if ((op === FILTER_COMPOSE_AND || op === FILTER_COMPOSE_OR) && Array.isArray(n["args"])) {
       const args = (n["args"] as unknown[]).map(condTs);
       if (args.some((a) => a === undefined)) return undefined;
-      ruleHelpers.add(HELPER_TRI);
+      ruleHelpers.add("tri");
       return `${op === FILTER_COMPOSE_AND ? "all" : "any"}(${args.join(", ")})`;
     }
     return undefined;
   };
 
-  const blocks: string[] = [];
-  /** Add a rule's block, guarded by its @condition when it has one. */
-  const push = (v: { attr(name: string): unknown }, block: string): void => {
+  const rules: Rule[] = [];
+  /** Add a rule, guarded by its @condition when it has one. */
+  const push = (v: { attr(name: string): unknown }, rule: Rule): void => {
     const condition = v.attr(VALIDATOR_ATTR_CONDITION);
     const guard = condition === undefined ? undefined : condTs(condition);
     if (condition !== undefined && guard === undefined) return;
     for (const h of ruleHelpers) helpers.add(h);
-    if (guard === undefined) { blocks.push(block); return; }
-    const inner = block.split("\n").map((l) => (l === "" ? l : `  ${l}`)).join("\n");
-    blocks.push(`  if (${guard} === true) {\n${inner}\n  }`);
+    rules.push(guard === undefined ? rule : (w) => w.block(`if (${guard} === true) {`, () => rule(w)));
   };
   /** The @fields of an atLeastOne / exactlyOne, each in the body, or undefined. */
   const fieldList = (raw: unknown): MetaField[] | undefined => {
@@ -521,7 +546,7 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
   };
   // ADR-0039: entity.validators() is the resolving accessor (never ownValidators).
   for (const v of obj.validators()) {
-    ruleHelpers = new Set<string>();
+    ruleHelpers = new Set<RefinementHelper>();
     switch (v.subType) {
       case VALIDATOR_SUBTYPE_COMPARISON: {
         const left = ref(v.attr(VALIDATOR_ATTR_LEFT));
@@ -537,11 +562,17 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
         // A duration side is read as its microseconds; text that is not a duration reads as
         // null, so the rule is not checked (the field's own schema refuses that text).
         const readKind: CompareKind = kind === "duration" ? "duration" : "plain";
-        push(v,
-          `  {\n    const l: unknown = ${asKind(acc(left), readKind)};\n    const r: unknown = ${asKind(acc(right), readKind)};\n` +
-          `    if (l != null && r != null) {\n      const c = ${c};\n` +
-          `      if (!(c ${op} 0)) {\n        ${issue(JSON.stringify(left.name), `${left.name} must be ${opName} ${right.name}`)}\n      }\n    }\n  }`,
-        );
+        const l = asKind(acc(left), readKind);
+        const r = asKind(acc(right), readKind);
+        const raise = issue(JSON.stringify(left.name), `${left.name} must be ${opName} ${right.name}`);
+        push(v, (w) => w.block("{", () => {
+          w.line(`const l: unknown = ${l};`);
+          w.line(`const r: unknown = ${r};`);
+          w.block("if (l != null && r != null) {", () => {
+            w.line(`const c = ${c};`);
+            w.block(`if (!(c ${op} 0)) {`, () => w.line(raise));
+          });
+        }));
         break;
       }
       case VALIDATOR_SUBTYPE_REQUIRED_WHEN:
@@ -552,43 +583,81 @@ function crossFieldRefinement(obj: MetaObject): RefinementBuild {
         const { lit, numeric } = crossFieldLiteral(v.attr(VALIDATOR_ATTR_EQUALS), when);
         const gate = numeric ? `g != null && Number(g) === ${lit}` : `g === ${lit}`;
         const path = JSON.stringify(target.name);
-        const decl = `    const g: unknown = ${acc(when)};\n    const t: unknown = ${acc(target)};\n    const open = ${gate};\n`;
-        if (v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN) {
-          push(v, `  {\n${decl}    if (open && t == null) {\n      ${issue(path, `${target.name} is required when ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n    }\n  }`);
-        } else {
-          push(v, `  {\n${decl}    if ((t != null) !== open) {\n      ${issue(path, `${target.name} must be present if and only if ${when.name} is ${String(v.attr(VALIDATOR_ATTR_EQUALS))}`)}\n    }\n  }`);
-        }
+        const g = acc(when);
+        const t = acc(target);
+        const equals = String(v.attr(VALIDATOR_ATTR_EQUALS));
+        const [test, raise] = v.subType === VALIDATOR_SUBTYPE_REQUIRED_WHEN
+          ? ["open && t == null", issue(path, `${target.name} is required when ${when.name} is ${equals}`)]
+          : ["(t != null) !== open", issue(path, `${target.name} must be present if and only if ${when.name} is ${equals}`)];
+        push(v, (w) => w.block("{", () => {
+          w.line(`const g: unknown = ${g};`);
+          w.line(`const t: unknown = ${t};`);
+          w.line(`const open = ${gate};`);
+          w.block(`if (${test}) {`, () => w.line(raise));
+        }));
         break;
       }
       case VALIDATOR_SUBTYPE_AT_LEAST_ONE: {
         const fields = fieldList(v.attr(VALIDATOR_ATTR_FIELDS));
         if (fields === undefined) break;
         const anyPresent = fields.map((f) => `${acc(f)} != null`).join(" || ");
-        push(v, `  if (!(${anyPresent})) {\n    ${issue(JSON.stringify(fields[0]!.name), `at least one of ${fields.map((f) => f.name).join(", ")} is required`)}\n  }`);
+        const raise = issue(JSON.stringify(fields[0]!.name), `at least one of ${fields.map((f) => f.name).join(", ")} is required`);
+        push(v, (w) => w.block(`if (!(${anyPresent})) {`, () => w.line(raise)));
         break;
       }
       case VALIDATOR_SUBTYPE_EXACTLY_ONE: {
         const fields = fieldList(v.attr(VALIDATOR_ATTR_FIELDS));
         if (fields === undefined) break;
         const present = fields.map((f) => `${acc(f)}`).join(", ");
-        push(v, `  if ([${present}].filter((x) => x != null).length !== 1) {\n    ${issue(JSON.stringify(fields[0]!.name), `exactly one of ${fields.map((f) => f.name).join(", ")} is required`)}\n  }`);
+        const raise = issue(JSON.stringify(fields[0]!.name), `exactly one of ${fields.map((f) => f.name).join(", ")} is required`);
+        push(v, (w) => w.block(`if ([${present}].filter((x) => x != null).length !== 1) {`, () => w.line(raise)));
         break;
       }
       default:
         break;
     }
   }
-  return { blocks, helpers };
+  return { rules, helpers };
 }
 
-/** `.superRefine(...)` suffix for an insert-shaped schema, or "" when the object has no
- *  enforceable cross-field validator (output is then byte-identical to before). */
-function insertRefinementSuffix(obj: MetaObject): string {
-  const { blocks, helpers } = crossFieldRefinement(obj);
-  if (blocks.length === 0) return "";
-  // Declared in a fixed order, so the output does not depend on which rule needed one first.
-  const decls = [HELPER_CMP, HELPER_TRI, HELPER_MICROS].filter((h) => helpers.has(h));
-  return `.superRefine((row, ctx) => {\n${[...decls, ...blocks].join("\n")}\n})`;
+/** The refinement body: the helpers its rules use, in a fixed order (so the output does not
+ *  depend on which rule needed one first), then each rule. */
+function writeRefinementBody(w: CodeWriter, { rules, helpers }: RefinementBuild): void {
+  for (const [name, write] of REFINEMENT_HELPERS) if (helpers.has(name)) write(w);
+  for (const rule of rules) rule(w);
+}
+
+/**
+ * Close an insert-shaped Zod object that is open in `w`: `});`, or, when the object has an
+ * enforceable cross-field validator, `}).superRefine((row, ctx) => { ... });`.
+ */
+function closeInsertObject(w: TsWriter, obj: MetaObject): void {
+  const refinement = crossFieldRefinement(obj);
+  if (refinement.rules.length === 0) {
+    w.close("});");
+    return;
+  }
+  w.reopen("}).superRefine((row, ctx) => {");
+  writeRefinementBody(w, refinement);
+  w.close("});");
+}
+
+/** An insert-shaped Zod object: `head`, a field per line, then its close (closeInsertObject). */
+function writeInsertObject(w: TsWriter, head: string, fieldLines: readonly Code[], obj: MetaObject): void {
+  if (fieldLines.length === 0 && !hasInsertRefinements(obj)) {
+    w.line(head, "{});");
+    return;
+  }
+  w.open(head, "{");
+  for (const l of fieldLines) w.line(l, ",");
+  closeInsertObject(w, obj);
+}
+
+/** `export const <name> = <base>` refined by the object's cross-field validators (it has some). */
+function writeRefinedAlias(w: TsWriter, name: string, base: string, obj: MetaObject): void {
+  w.open(`export const ${name} = ${base}.superRefine((row, ctx) => {`);
+  writeRefinementBody(w, crossFieldRefinement(obj));
+  w.close("});");
 }
 
 /**
@@ -601,10 +670,14 @@ function insertRefinementSuffix(obj: MetaObject): string {
  * alias for clarity.
  */
 export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Code {
-  const z = imp("z@zod");
-  const utcUsesBefore = utcTimestampUses;
-  const decimalUsesBefore = decimalWriteUses;
-  const durationUsesBefore = durationWriteUses;
+  const w = new TsWriter();
+  writeInsertSchemaOnly(w, obj, ctx);
+  return w.toCode();
+}
+
+/** Write {@link renderInsertSchemaOnly}'s declarations (and the local helpers they use) into `w`. */
+export function writeInsertSchemaOnly(w: TsWriter, obj: MetaObject, ctx?: RenderContext): void {
+  const usesBefore = helperUses();
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
@@ -623,7 +696,7 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
     // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
       insertFieldLines.push(
-        code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`,
+        code`${child.name}: z.literal(${JSON.stringify(tphPin.value)})`,
       );
       continue;
     }
@@ -637,12 +710,12 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
           // timestamps are ISO strings), never a live `Date` — z.coerce.date()
           // (not z.date()) so a string round-trips; z.date() rejects every JSON
           // wire value outright (verified: z.date().safeParse(isoString) is false).
-          ? code`  ${child.name}: z.coerce.date().optional().transform(() => new Date())`
-          : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+          ? code`${child.name}: z.coerce.date().optional().transform(() => new Date())`
+          : code`${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
       insertFieldLines.push(
-        code`  ${child.name}: ${zodFieldExpr(child, obj, ctx, isInsertRequiredPk(child, assignedPkFields))}`,
+        code`${child.name}: ${zodFieldExpr(child, obj, ctx, isInsertRequiredPk(child, assignedPkFields))}`,
       );
     }
   }
@@ -652,14 +725,10 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   // collision) so importers (entity/extract tiers) resolve the same symbol.
   const objName = ctx ? ctx.valueObjectEmittedName(obj) : obj.name;
   const insertSchemaName = `${objName}InsertSchema`;
-  const docs = renderDocsFor(obj);
-  const docsPrefix = docs ? `${docs}\n` : "";
 
-  return code`
-${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${durationHelperSince(durationUsesBefore)}${docsPrefix}export const ${insertSchemaName} = ${z}.object({
-${joinCode(insertFieldLines, { on: ",\n" })}
-})${insertRefinementSuffix(obj)};
-`;
+  writeHelpersSince(w, usesBefore);
+  writeDocsFor(w, obj);
+  writeInsertObject(w, `export const ${insertSchemaName} = ${w.use("z", "zod")}.object(`, insertFieldLines, obj);
 }
 
 /** One documented field in an Insert/Update schema's accepted shape. */
@@ -768,10 +837,17 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
 }
 
 export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code {
-  const z = imp("z@zod");
-  const utcUsesBefore = utcTimestampUses;
-  const decimalUsesBefore = decimalWriteUses;
-  const durationUsesBefore = durationWriteUses;
+  const w = new TsWriter();
+  writeZodValidators(w, obj, ctx);
+  return w.toCode();
+}
+
+/**
+ * Write the insert and update schemas, their input types and (for an @autoSet entity) the
+ * preserving insert shape into `w`, after the local helpers their field lines use.
+ */
+export function writeZodValidators(w: TsWriter, obj: MetaObject, ctx?: RenderContext): void {
+  const usesBefore = helperUses();
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const pkFields = primaryKeyFieldNames(obj);
   const assignedPkFields = assignedPkFieldNames(obj);
@@ -799,7 +875,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // path) — the app never writes it via the body and never updates it.
     // Insert: pinned literal. Update: omitted entirely (clients can't change subtype).
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
-      const litLine = code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`;
+      const litLine = code`${child.name}: z.literal(${JSON.stringify(tphPin.value)})`;
       insertFieldLines.push(litLine);
       preservingFieldLines.push(litLine);
       continue;
@@ -815,16 +891,16 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
           // timestamps are ISO strings), never a live `Date` — z.coerce.date()
           // (not z.date()) so a string round-trips; z.date() rejects every JSON
           // wire value outright (verified: z.date().safeParse(isoString) is false).
-          ? code`  ${child.name}: z.coerce.date().optional().transform(() => new Date())`
-          : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+          ? code`${child.name}: z.coerce.date().optional().transform(() => new Date())`
+          : code`${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
       // Preserving schema: the @autoSet column is validated verbatim (its natural
       // field expr) so an import/restore keeps the caller's original timestamp.
-      preservingFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
+      preservingFieldLines.push(code`${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
     } else {
       // The preserving schema is an INSERT shape (import / restore / replication),
       // so an assigned PK is required there for the same typing reason.
-      const fieldLine = code`  ${child.name}: ${zodFieldExpr(child, obj, ctx, isInsertRequiredPk(child, assignedPkFields))}`;
+      const fieldLine = code`${child.name}: ${zodFieldExpr(child, obj, ctx, isInsertRequiredPk(child, assignedPkFields))}`;
       insertFieldLines.push(fieldLine);
       preservingFieldLines.push(fieldLine);
     }
@@ -848,8 +924,8 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
           // timestamps are ISO strings), never a live `Date` — z.coerce.date()
           // (not z.date()) so a string round-trips; z.date() rejects every JSON
           // wire value outright (verified: z.date().safeParse(isoString) is false).
-          ? code`  ${child.name}: z.coerce.date().optional().transform(() => new Date())`
-          : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+          ? code`${child.name}: z.coerce.date().optional().transform(() => new Date())`
+          : code`${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
       // All non-autoSet fields are optional in the update schema (PATCH semantics).
@@ -863,7 +939,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // field stays non-nullable so an explicit null on it is a 400 (validation),
       // never a silent clear.
       if (!isRequired(child)) expr = code`${expr}.nullable()`;
-      updateFieldLines.push(code`  ${child.name}: ${expr}`);
+      updateFieldLines.push(code`${child.name}: ${expr}`);
     }
   }
 
@@ -876,60 +952,61 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const preservingSchemaName = `${objName}InsertPreservingSchema`;
   const { create: createName, patch: patchName } = entityTypeNames(obj, { name: objName });
 
-  const docs = renderDocsFor(obj);
-  const docsPrefix = docs ? `${docs}\n` : "";
+  const z = w.use("z", "zod");
+  writeHelpersSince(w, usesBefore);
 
   // A Zod object carrying refinements cannot be `.omit()`ed or `.partial()`ed, and a TPH
   // subtype's route and form omit the pinned discriminator while its update query takes a
   // partial. So when both apply, the unrefined shape is exported as `<Name>InsertBaseSchema`
   // and refined twice: as `<Name>InsertSchema` and, discriminator omitted, as
   // `<Name>InsertBodySchema`.
-  const refineSuffix = insertRefinementSuffix(obj);
-  const insertDecl = refineSuffix !== "" && tphPin !== undefined
-    ? code`export const ${objName}InsertBaseSchema = ${z}.object({
-${joinCode(insertFieldLines, { on: ",\n" })}
-});
+  if (tphPin !== undefined && hasInsertRefinements(obj)) {
+    const base = `${objName}InsertBaseSchema`;
+    writeZodObject(w, [`export const ${base} = ${z}.object(`], insertFieldLines, "});");
+    w.blank();
+    writeDocsFor(w, obj);
+    writeRefinedAlias(w, insertSchemaName, base, obj);
+    w.blank();
+    w.doc(`${insertSchemaName} without the pinned \`${tphPin.fieldName}\` — the body a per-subtype route accepts.`);
+    writeRefinedAlias(w, `${objName}InsertBodySchema`, `${base}.omit({ ${tphPin.fieldName}: true })`, obj);
+  } else {
+    writeDocsFor(w, obj);
+    writeInsertObject(w, `export const ${insertSchemaName} = ${z}.object(`, insertFieldLines, obj);
+  }
 
-${docsPrefix}export const ${insertSchemaName} = ${objName}InsertBaseSchema${refineSuffix};
+  w.blank();
+  writeDocsFor(w, obj);
+  writeZodObject(w, [`export const ${updateSchemaName} = ${z}.object(`], updateFieldLines, "});");
 
-/** ${insertSchemaName} without the pinned \`${tphPin.fieldName}\` — the body a per-subtype route accepts. */
-export const ${objName}InsertBodySchema = ${objName}InsertBaseSchema.omit({ ${tphPin.fieldName}: true })${refineSuffix};`
-    : code`${docsPrefix}export const ${insertSchemaName} = ${z}.object({
-${joinCode(insertFieldLines, { on: ",\n" })}
-})${refineSuffix};`;
+  w.blank();
+  w.doc(
+    `Typed create shape for ${objName}: the insert schema's INPUT (pre-transform) type. A`,
+    `renamed/dropped/misspelt field is a compile error at every \`create${objName}\` call site;`,
+    "the schema still validates at runtime.",
+  );
+  w.line(`export type ${createName} = ${z}.input<typeof ${insertSchemaName}>;`);
+
+  w.blank();
+  w.doc(
+    `Typed patch shape for ${objName}: every settable field, optional (FR-035 PATCH). A`,
+    `renamed/dropped field is a compile error at every \`update${objName}\` call site.`,
+  );
+  w.line(`export type ${patchName} = ${z}.input<typeof ${updateSchemaName}>;`);
 
   // #203 — emit the preserving insert-shape only for @autoSet entities (nothing to
   // preserve otherwise). Backs `insertPreserving<Entity>` (import/restore/replication).
-  const preservingBlock = emitPreserving
-    ? code`
-
-/** Insert-shape for import / restore / replication of ${objName}: identical to
- * ${insertSchemaName}, but the @autoSet timestamp columns are written VERBATIM
- * (no create-time now() stamp) so the caller's original values are preserved. */
-export const ${preservingSchemaName} = ${z}.object({
-${joinCode(preservingFieldLines, { on: ",\n" })}
-})${insertRefinementSuffix(obj)};
-
-/** Typed input of \`insertPreserving${objName}\` — ${preservingSchemaName}'s pre-transform shape. */
-export type ${objName}CreatePreserving = ${z}.input<typeof ${preservingSchemaName}>;`
-    : code``;
-
-  return code`
-${utcTimestampHelperSince(utcUsesBefore)}${decimalHelperSince(decimalUsesBefore)}${durationHelperSince(durationUsesBefore)}${insertDecl}
-
-${docsPrefix}export const ${updateSchemaName} = ${z}.object({
-${joinCode(updateFieldLines, { on: ",\n" })}
-});
-
-/** Typed create shape for ${objName}: the insert schema's INPUT (pre-transform) type. A
- * renamed/dropped/misspelt field is a compile error at every \`create${objName}\` call site;
- * the schema still validates at runtime. */
-export type ${createName} = ${z}.input<typeof ${insertSchemaName}>;
-
-/** Typed patch shape for ${objName}: every settable field, optional (FR-035 PATCH). A
- * renamed/dropped field is a compile error at every \`update${objName}\` call site. */
-export type ${patchName} = ${z}.input<typeof ${updateSchemaName}>;${preservingBlock}
-`;
+  if (emitPreserving) {
+    w.blank();
+    w.doc(
+      `Insert-shape for import / restore / replication of ${objName}: identical to`,
+      `${insertSchemaName}, but the @autoSet timestamp columns are written VERBATIM`,
+      "(no create-time now() stamp) so the caller's original values are preserved.",
+    );
+    writeInsertObject(w, `export const ${preservingSchemaName} = ${z}.object(`, preservingFieldLines, obj);
+    w.blank();
+    w.doc(`Typed input of \`insertPreserving${objName}\` — ${preservingSchemaName}'s pre-transform shape.`);
+    w.line(`export type ${objName}CreatePreserving = ${z}.input<typeof ${preservingSchemaName}>;`);
+  }
 }
 
 /**

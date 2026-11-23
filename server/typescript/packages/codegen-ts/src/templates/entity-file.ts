@@ -17,7 +17,7 @@ import { SOURCE_ROLE_REPLICA } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { writeDrizzleSchema } from "./drizzle-schema.js";
 import { writeInferredTypes, writeEnumTypeAliases } from "./inferred-types.js";
-import { renderZodValidators, primaryIdentityFieldNames } from "./zod-validators.js";
+import { writeZodValidators, primaryIdentityFieldNames } from "./zod-validators.js";
 import { isTphSubtype } from "../tph.js";
 import { writeEntityConstants } from "./entity-constants.js";
 import { writeFilterAllowlist, writeSortAllowlist } from "./filter-allowlist.js";
@@ -284,7 +284,7 @@ export class EntityFileWriter extends TsWriter {
 
   /** The Zod insert and update schemas (zod-validators.ts). */
   protected writeValidators(): void {
-    this.blank().code(renderZodValidators(this.entity, this.ctx), { format: true });
+    writeZodValidators(this.blank(), this.entity, this.ctx);
   }
 
   /** The `<Entity>` constants object: table, path and field descriptors (entity-constants.ts). */

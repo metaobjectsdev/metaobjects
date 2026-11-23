@@ -5,7 +5,7 @@
 // (src/poet.ts, the vendored ts-poet printer), harvesting their `imp()` imports, so a generator
 // can move to the writer one function at a time while the rest of it still returns `Code`.
 
-import { Code, formatFragment, Import, ImportsAll, ImportsDefault, ImportsName, Node, SideEffect } from "../poet.js";
+import { Code, Import, ImportsAll, ImportsDefault, ImportsName, Node, SideEffect } from "../poet.js";
 import { CodeWriter, type CodeWriterOptions, flat, Group, type Piece, WRITER_ERRORS, WriterError } from "./code-writer.js";
 
 /** A correctly quoted TypeScript string literal. */
@@ -115,6 +115,19 @@ export class TsWriter extends CodeWriter {
     this.module(from).sideEffect = true;
   }
 
+  /**
+   * Close the open block and open the next one on the same line: dedent, write the line, indent
+   * again. For a line that ends one block and starts another, such as
+   * `}).superRefine((row, ctx) => {` or `} else {`.
+   */
+  reopen(...parts: readonly unknown[]): this {
+    const p = this.piece(parts);
+    this.closePiece(p);
+    this.openers.push(flat(p).trim());
+    this.atBlockStart = true;
+    return this;
+  }
+
   /** Lines printed at the very top, before the imports: a banner comment or a `"use client";` directive. */
   header(...lines: readonly string[]): this {
     this.headLines.push(...lines);
@@ -132,14 +145,9 @@ export class TsWriter extends CodeWriter {
     return this.line(" */");
   }
 
-  /**
-   * A ts-poet `Code` fragment, possibly many lines: its imports are collected, its text re-indented.
-   * `format: true` first lays the fragment out with the printer's dprint pass, for a template
-   * not yet on the writer that typed no layout of its own (removed with dprint, W-TS-9).
-   */
-  code(fragment: Code, opts: { readonly format?: boolean } = {}): this {
-    const text = fragment instanceof Code ? this.harvest(fragment) : flat(this.piece(fragment));
-    return this.text(opts.format === true ? formatFragment(text) : text);
+  /** A ts-poet `Code` fragment, possibly many lines: its imports are collected, its text re-indented. */
+  code(fragment: Code): this {
+    return this.text(fragment instanceof Code ? this.harvest(fragment) : flat(this.piece(fragment)));
   }
 
   /**

@@ -111,6 +111,9 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
   breaks.
 - One local name imported from two modules, or naming two different exports, is
   **`ERR_WRITER_IMPORT_CONFLICT`**.
+- **`reopen(parts...)`** closes the open block and opens the next on one line: it dedents,
+  writes the line, and indents again, as in `}).superRefine((row, ctx) => {` or `} else {`. With
+  no block open it is **`ERR_WRITER_UNBALANCED_CLOSE`**.
 - **`doc(lines...)`** writes `/** text */` when there is one entry and it fits. Otherwise it
   writes a block of ` * ` lines, with a bare ` *` line for an empty entry. A `*/` inside the
   text is written as `*\/`.

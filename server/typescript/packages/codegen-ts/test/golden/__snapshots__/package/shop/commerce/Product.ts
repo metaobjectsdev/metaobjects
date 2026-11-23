@@ -23,20 +23,27 @@ export type Product = InferSelectModel<typeof products>;
 export type ProductInsert = InferInsertModel<typeof products>;
 export type ProductUpdate = Partial<ProductInsert>;
 
-export const ProductInsertSchema = z.object({ name: z.string().min(1).max(200), tagId: z.number().int() });
+export const ProductInsertSchema = z.object({
+  name: z.string().min(1).max(200),
+  tagId: z.number().int(),
+});
 
 export const ProductUpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   tagId: z.number().int().optional(),
 });
 
-/** Typed create shape for Product: the insert schema's INPUT (pre-transform) type. A
+/**
+ * Typed create shape for Product: the insert schema's INPUT (pre-transform) type. A
  * renamed/dropped/misspelt field is a compile error at every `createProduct` call site;
- * the schema still validates at runtime. */
+ * the schema still validates at runtime.
+ */
 export type ProductCreate = z.input<typeof ProductInsertSchema>;
 
-/** Typed patch shape for Product: every settable field, optional (FR-035 PATCH). A
- * renamed/dropped field is a compile error at every `updateProduct` call site. */
+/**
+ * Typed patch shape for Product: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateProduct` call site.
+ */
 export type ProductPatch = z.input<typeof ProductUpdateSchema>;
 
 /**

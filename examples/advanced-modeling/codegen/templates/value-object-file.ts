@@ -18,9 +18,9 @@ import { OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
 import { writeValueObjectInterface, writeEnumTypeAliases } from "./inferred-types.js";
 import {
-  renderInsertSchemaOnly,
-  renderZodValidators,
-  renderTphSubtypeReadSchema,
+  writeInsertSchemaOnly,
+  writeZodValidators,
+  writeTphSubtypeReadSchema,
 } from "./zod-validators.js";
 import { isTphSubtype, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts/engine";
 import { writeEntityConstants, writeValueObjectConstants } from "./entity-constants.js";
@@ -61,14 +61,15 @@ export function writeValueObjectFile(w: TsWriter, obj: MetaObject, ctx?: RenderC
   // FR-017 Tier 2: a TPH subtype lands here (it inherits the base's source.rdb
   // but declares none of its own). In addition to the insert schema it emits a
   // full read schema `<Sub>Schema` so parse<Base>(row) can dispatch to it.
-  if (tphSubtype) w.blank().code(renderTphSubtypeReadSchema(obj, ctx), { format: true });
+  if (tphSubtype) writeTphSubtypeReadSchema(w.blank(), obj, ctx);
   // FR-036 Program B: a TPH subtype needs BOTH schemas — its per-subtype PATCH
   // route must carry the FR-035 present-key tristate (a non-@required subtype
   // column accepts an explicit null → clears), which lives in the UpdateSchema
   // (.nullable() for non-required). renderZodValidators emits <Sub>InsertSchema +
   // <Sub>UpdateSchema (the update omits the pinned discriminator). A pure value
   // object stays insert-only (no PATCH semantics — an UpdateSchema would mislead).
-  w.blank().code(tphSubtype || sourceless ? renderZodValidators(obj, ctx) : renderInsertSchemaOnly(obj, ctx), { format: true });
+  if (tphSubtype || sourceless) writeZodValidators(w.blank(), obj, ctx);
+  else writeInsertSchemaOnly(w.blank(), obj, ctx);
   if (tphSubtype) {
     // FR-017 Tier 3: a TPH subtype also emits its field-metadata constants object
     // (the `<Sub>` const), so the React form generator can render per-field

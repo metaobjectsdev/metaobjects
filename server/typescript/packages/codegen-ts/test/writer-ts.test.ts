@@ -153,3 +153,22 @@ describe("the writer is extended by subclassing (ADR-0063)", () => {
     );
   });
 });
+
+describe("TsWriter.reopen", () => {
+  test("closes the open block and opens the next on one line", () => {
+    const w = new TsWriter();
+    w.open("const s = z.object({");
+    w.line("a: z.string(),");
+    w.reopen("}).superRefine((row, ctx) => {");
+    w.blank();
+    w.line("check(row, ctx);");
+    w.close("});");
+    expect(w.toString()).toBe(
+      ["const s = z.object({", "  a: z.string(),", "}).superRefine((row, ctx) => {", "  check(row, ctx);", "});", ""].join("\n"),
+    );
+  });
+
+  test("with no block open is an unbalanced close", () => {
+    expect(errorCode(() => new TsWriter().reopen("} else {"))).toBe(WRITER_ERRORS.unbalancedClose);
+  });
+});

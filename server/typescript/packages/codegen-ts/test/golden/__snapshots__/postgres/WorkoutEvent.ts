@@ -49,30 +49,28 @@ function utcIsoTimestamp(v: string): string {
 export const WorkoutEventInsertSchema = z.object({
   subscriberId: z.number().int(),
   workoutId: z.number().int(),
-  completedAt: z.string().regex(
-    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-  ).transform(utcIsoTimestamp).optional(),
+  completedAt: z.string().regex(/^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/, "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])").transform(utcIsoTimestamp).optional(),
   durationMinutes: z.number().int().optional(),
 });
 
 export const WorkoutEventUpdateSchema = z.object({
   subscriberId: z.number().int().optional(),
   workoutId: z.number().int().optional(),
-  completedAt: z.string().regex(
-    /^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/,
-    "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])",
-  ).transform(utcIsoTimestamp).optional(),
+  completedAt: z.string().regex(/^(?:\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|02-(?:0[1-9]|1\d|2[0-8]))|(?:\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)(?:[Tt ](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:[Zz]|[+-](?:[01]\d|2[0-3])(?::?[0-5]\d)?)?)?$/, "must be an ISO 8601 timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])").transform(utcIsoTimestamp).optional(),
   durationMinutes: z.number().int().optional().nullable(),
 });
 
-/** Typed create shape for WorkoutEvent: the insert schema's INPUT (pre-transform) type. A
+/**
+ * Typed create shape for WorkoutEvent: the insert schema's INPUT (pre-transform) type. A
  * renamed/dropped/misspelt field is a compile error at every `createWorkoutEvent` call site;
- * the schema still validates at runtime. */
+ * the schema still validates at runtime.
+ */
 export type WorkoutEventCreate = z.input<typeof WorkoutEventInsertSchema>;
 
-/** Typed patch shape for WorkoutEvent: every settable field, optional (FR-035 PATCH). A
- * renamed/dropped field is a compile error at every `updateWorkoutEvent` call site. */
+/**
+ * Typed patch shape for WorkoutEvent: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateWorkoutEvent` call site.
+ */
 export type WorkoutEventPatch = z.input<typeof WorkoutEventUpdateSchema>;
 
 /**

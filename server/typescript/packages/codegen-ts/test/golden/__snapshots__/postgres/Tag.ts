@@ -17,20 +17,27 @@ export type Tag = InferSelectModel<typeof tags>;
 export type TagInsert = InferInsertModel<typeof tags>;
 export type TagUpdate = Partial<TagInsert>;
 
-export const TagInsertSchema = z.object({ name: z.string().min(1).max(50), slug: z.string().min(1).max(50) });
+export const TagInsertSchema = z.object({
+  name: z.string().min(1).max(50),
+  slug: z.string().min(1).max(50),
+});
 
 export const TagUpdateSchema = z.object({
   name: z.string().min(1).max(50).optional(),
   slug: z.string().min(1).max(50).optional(),
 });
 
-/** Typed create shape for Tag: the insert schema's INPUT (pre-transform) type. A
+/**
+ * Typed create shape for Tag: the insert schema's INPUT (pre-transform) type. A
  * renamed/dropped/misspelt field is a compile error at every `createTag` call site;
- * the schema still validates at runtime. */
+ * the schema still validates at runtime.
+ */
 export type TagCreate = z.input<typeof TagInsertSchema>;
 
-/** Typed patch shape for Tag: every settable field, optional (FR-035 PATCH). A
- * renamed/dropped field is a compile error at every `updateTag` call site. */
+/**
+ * Typed patch shape for Tag: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateTag` call site.
+ */
 export type TagPatch = z.input<typeof TagUpdateSchema>;
 
 /**
