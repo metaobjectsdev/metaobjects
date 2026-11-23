@@ -80,6 +80,9 @@
     <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterParser.cs" LogicalName="MetaObjects.AspNetCore.FilterParser.cs" Visible="false" />
     <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterParseResult.cs" LogicalName="MetaObjects.AspNetCore.FilterParseResult.cs" Visible="false" />
     <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterPredicate.cs" LogicalName="MetaObjects.AspNetCore.FilterPredicate.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterRules.cs" LogicalName="MetaObjects.AspNetCore.FilterRules.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterValueFormat.cs" LogicalName="MetaObjects.AspNetCore.FilterValueFormat.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/ListQuery.cs" LogicalName="MetaObjects.AspNetCore.ListQuery.cs" Visible="false" />
     <EmbeddedResource Include="../MetaObjects.AspNetCore/EfCoreFilterDispatch.cs" LogicalName="MetaObjects.AspNetCore.EfCoreFilterDispatch.cs" Visible="false" />
     <EmbeddedResource Include="../MetaObjects.AspNetCore/ValueObjectValidator.cs" LogicalName="MetaObjects.AspNetCore.ValueObjectValidator.cs" Visible="false" />
     <EmbeddedResource Include="../MetaObjects.AspNetCore/ConstraintErrors.cs" LogicalName="MetaObjects.AspNetCore.ConstraintErrors.cs" Visible="false" />

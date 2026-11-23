@@ -92,20 +92,162 @@ public static class EfCoreFilterDispatch
     private static Expression<Func<T, bool>> BuildLambda<T>(FilterPredicate p, IReadOnlyDictionary<string, string>? propertyByField)
     {
         var x = Expression.Parameter(typeof(T), "x");
-        var prop = ResolveProperty(typeof(T), p.Field, propertyByField);
+        return Expression.Lambda<Func<T, bool>>(LeafBody(x, typeof(T), p.Field, p.Op, p.Value, propertyByField), x);
+    }
+
+    /// <summary>
+    /// Apply a parsed list query's filter tree and search (<see cref="ListQueryParser"/>) to
+    /// <paramref name="source"/>: and/or groups become <c>AndAlso</c>/<c>OrElse</c> in one
+    /// <c>Where</c>, and the search one more <c>Where</c> ORing a case-insensitive pattern match over
+    /// its fields. Sort and page are the caller's. Run <see cref="Validate{T}(ListQuery, IReadOnlyDictionary{string, string}?)"/>
+    /// first, so an operand the column cannot hold is a 400 and not an exception here.
+    /// </summary>
+    public static IQueryable<T> Apply<T>(
+        IQueryable<T> source,
+        ListQuery query,
+        IReadOnlyDictionary<string, FilterFieldRule> rules,
+        IReadOnlyDictionary<string, string>? propertyByField = null) where T : class
+    {
+        var x = Expression.Parameter(typeof(T), "x");
+        if (query.Filter is not null)
+            source = source.Where(Expression.Lambda<Func<T, bool>>(NodeBody(x, typeof(T), query.Filter, propertyByField), x));
+        if (query.Search is not null)
+            source = source.Where(Expression.Lambda<Func<T, bool>>(SearchBody(x, typeof(T), query.Search, rules, propertyByField), x));
+        return source;
+    }
+
+    /// <summary>
+    /// Check every operand of a parsed list query against the CLR type of its property (a value
+    /// out of an <c>int</c> column's range, an enum symbol the CLR enum does not carry). Null when
+    /// every operand converts, else the <c>invalid_filter_value</c> refusal for the first that does not.
+    /// </summary>
+    public static ListQueryError? Validate<T>(ListQuery query, IReadOnlyDictionary<string, string>? propertyByField = null)
+    {
+        foreach (var leaf in Leaves(query.Filter))
+        {
+            if (leaf.Op is "isNull" or "like") continue;
+            var prop = ResolveProperty(typeof(T), leaf.Field, propertyByField);
+            if (prop is null) continue;
+            var memberType = prop.PropertyType;
+            var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
+            var operands = leaf.Value is IReadOnlyList<object> list ? list : new[] { leaf.Value };
+            foreach (var operand in operands)
+            {
+                try
+                {
+                    CoerceTo(OperandText(operand), memberType, underlying);
+                }
+                catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
+                {
+                    var text = OperandText(operand);
+                    return new ListQueryError("invalid_filter_value",
+                        $"Field \"{leaf.Field}\" op \"{leaf.Op}\" requires a value of the field's type, got \"{text}\".",
+                        new[]
+                        {
+                            new KeyValuePair<string, object?>("field", leaf.Field),
+                            new KeyValuePair<string, object?>("op", leaf.Op),
+                            new KeyValuePair<string, object?>("expected", "a value of the field's type"),
+                        });
+                }
+            }
+        }
+        return null;
+    }
+
+    private static IEnumerable<FilterLeaf> Leaves(FilterNode? node) => node switch
+    {
+        null => Array.Empty<FilterLeaf>(),
+        FilterLeaf leaf => new[] { leaf },
+        FilterAnd and => and.Nodes.SelectMany(Leaves),
+        FilterOr or => or.Nodes.SelectMany(Leaves),
+        _ => throw new InvalidOperationException("unknown filter node: " + node.GetType().Name),
+    };
+
+    private static Expression NodeBody(ParameterExpression x, Type entityType, FilterNode node, IReadOnlyDictionary<string, string>? propertyByField) => node switch
+    {
+        FilterLeaf leaf => LeafBody(x, entityType, leaf.Field, leaf.Op, leaf.Value, propertyByField),
+        FilterAnd and => and.Nodes.Select(n => NodeBody(x, entityType, n, propertyByField)).Aggregate(Expression.AndAlso),
+        FilterOr or => or.Nodes.Select(n => NodeBody(x, entityType, n, propertyByField)).Aggregate(Expression.OrElse),
+        _ => throw new InvalidOperationException("unknown filter node: " + node.GetType().Name),
+    };
+
+    // `?search` is case-INSENSITIVE (a search box, not the contract's case-sensitive `like`):
+    // LOWER(column) LIKE LOWER('%term%') on a text column. The term is a like pattern, as in
+    // TypeScript. An enum column is matched in memory against its declared members, and the
+    // members that match become `column IN (...)`: a string-backed enum's stored text is its symbol.
+    private static Expression SearchBody(ParameterExpression x, Type entityType, ListSearch search,
+        IReadOnlyDictionary<string, FilterFieldRule> rules, IReadOnlyDictionary<string, string>? propertyByField)
+    {
+        var pattern = "%" + search.Term + "%";
+        var parts = new List<Expression>();
+        foreach (var field in search.Fields)
+        {
+            var prop = ResolveProperty(entityType, field, propertyByField)
+                ?? throw new InvalidOperationException($"search field \"{field}\" has no matching property on {entityType.Name}");
+            Expression member = Expression.Property(x, prop);
+            var underlying = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+            if (underlying.IsEnum)
+            {
+                var members = rules.TryGetValue(field, out var rule) && rule.EnumValues is { } declared ? declared : Enum.GetNames(underlying);
+                var matched = members.Where(m => LikeMatches(m, pattern)).ToList();
+                parts.Add(LeafBody(x, entityType, field, "in", matched.Cast<object>().ToList(), propertyByField));
+                continue;
+            }
+            if (underlying != typeof(string)) member = Expression.Call(member, typeof(object).GetMethod(nameof(object.ToString))!);
+            var lowered = Expression.Call(member, typeof(string).GetMethod(nameof(string.ToLower), Type.EmptyTypes)!);
+            var call = Expression.Call(LikeMethod, EfFunctions, lowered, Expression.Constant(pattern.ToLowerInvariant(), typeof(string)));
+            // A null column matches nothing (and is not dereferenced in memory).
+            parts.Add(prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) is null
+                ? call
+                : Expression.AndAlso(Expression.NotEqual(Expression.Convert(Expression.Property(x, prop), typeof(object)), Expression.Constant(null)), call));
+        }
+        return parts.Count == 0 ? Expression.Constant(false) : parts.Aggregate(Expression.OrElse);
+    }
+
+    private static readonly MethodInfo LikeMethod = typeof(DbFunctionsExtensions).GetMethod(
+        nameof(DbFunctionsExtensions.Like), new[] { typeof(DbFunctions), typeof(string), typeof(string) })!;
+
+    private static readonly Expression EfFunctions = Expression.Property(null, typeof(EF).GetProperty(nameof(EF.Functions))!);
+
+    // A SQL LIKE pattern (`%` any run, `_` one character) matched case-insensitively in memory.
+    private static bool LikeMatches(string value, string pattern)
+    {
+        var re = new System.Text.StringBuilder("^");
+        foreach (var ch in pattern)
+            re.Append(ch switch { '%' => ".*", '_' => ".", _ => System.Text.RegularExpressions.Regex.Escape(ch.ToString()) });
+        re.Append('$');
+        return System.Text.RegularExpressions.Regex.IsMatch(value, re.ToString(),
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    }
+
+    // A neutral operand (string, long, double, bool) as the text CoerceTo reads.
+    private static string OperandText(object? value) => value switch
+    {
+        null => "",
+        string s => s,
+        bool b => b ? "true" : "false",
+        double d => d.ToString("R", CultureInfo.InvariantCulture),
+        IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? "",
+    };
+
+    /// <summary>One condition on the resolved CLR property, as an expression over <paramref name="x"/>.</summary>
+    private static Expression LeafBody(ParameterExpression x, Type entityType, string field, string op, object? value, IReadOnlyDictionary<string, string>? propertyByField)
+    {
+        var prop = ResolveProperty(entityType, field, propertyByField);
         // The metadata field name must map to a CLR property — the allowlist gate
         // upstream guarantees the field exists on the entity, so a miss here is a
         // generator/runtime contract violation, not user input.
         if (prop is null)
             throw new InvalidOperationException(
-                $"filter field \"{p.Field}\" has no matching property on {typeof(T).Name}");
+                $"filter field \"{field}\" has no matching property on {entityType.Name}");
 
         Expression member = Expression.Property(x, prop);
         // The non-nullable underlying type the raw string coerces to.
         var memberType = prop.PropertyType;
         var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
 
-        switch (p.Op)
+        switch (op)
         {
             case "isNull":
             {
@@ -114,27 +256,21 @@ public static class EfCoreFilterDispatch
                 // members.
                 var asObj = Expression.Convert(member, typeof(object));
                 var nullConst = Expression.Constant(null, typeof(object));
-                Expression body = (p.Value is true)
-                    ? Expression.Equal(asObj, nullConst)
-                    : Expression.NotEqual(asObj, nullConst);
-                return Expression.Lambda<Func<T, bool>>(body, x);
+                return value is true ? Expression.Equal(asObj, nullConst) : Expression.NotEqual(asObj, nullConst);
             }
 
             case "in":
             {
-                var items = (IReadOnlyList<string>)p.Value!;
-                if (items.Count == 0)
-                    return Expression.Lambda<Func<T, bool>>(Expression.Constant(false), x);
+                var items = ((IEnumerable)value!).Cast<object?>().ToList();
+                if (items.Count == 0) return Expression.Constant(false);
 
                 // Build a typed List<TMember> and call list.Contains(x.Property),
                 // which EF translates to SQL `IN (...)`.
                 var listType = typeof(List<>).MakeGenericType(memberType);
                 var typedList = (IList)Activator.CreateInstance(listType)!;
-                foreach (var item in items) typedList.Add(CoerceTo(item, memberType, underlying));
+                foreach (var item in items) typedList.Add(CoerceTo(OperandText(item), memberType, underlying));
                 var containsMethod = listType.GetMethod("Contains", new[] { memberType })!;
-                var listConst = Expression.Constant(typedList, listType);
-                var call = Expression.Call(listConst, containsMethod, member);
-                return Expression.Lambda<Func<T, bool>>(call, x);
+                return Expression.Call(Expression.Constant(typedList, listType), containsMethod, member);
             }
 
             case "like":
@@ -143,22 +279,16 @@ public static class EfCoreFilterDispatch
                 var memberStr = (underlying == typeof(string))
                     ? member
                     : Expression.Call(member, typeof(object).GetMethod(nameof(object.ToString))!);
-                var pattern = Expression.Constant((string)(p.Value ?? ""), typeof(string));
-                var efFunctions = Expression.Property(null, typeof(EF).GetProperty(nameof(EF.Functions))!);
-                var likeMethod = typeof(DbFunctionsExtensions).GetMethod(
-                    nameof(DbFunctionsExtensions.Like),
-                    new[] { typeof(DbFunctions), typeof(string), typeof(string) })!;
-                var call = Expression.Call(likeMethod, efFunctions, memberStr, pattern);
-                return Expression.Lambda<Func<T, bool>>(call, x);
+                var pattern = Expression.Constant(OperandText(value), typeof(string));
+                return Expression.Call(LikeMethod, EfFunctions, memberStr, pattern);
             }
 
             default:
             {
                 // eq / ne / gt / gte / lt / lte — typed comparison against the
                 // coerced constant. EF translates each to the SQL operator.
-                var value = CoerceTo((string)(p.Value ?? ""), memberType, underlying);
-                var constant = Expression.Constant(value, memberType);
-                Expression body = p.Op switch
+                var constant = Expression.Constant(CoerceTo(OperandText(value), memberType, underlying), memberType);
+                return op switch
                 {
                     "eq"  => Expression.Equal(member, constant),
                     "ne"  => Expression.NotEqual(member, constant),
@@ -166,9 +296,8 @@ public static class EfCoreFilterDispatch
                     "gte" => Expression.GreaterThanOrEqual(member, constant),
                     "lt"  => Expression.LessThan(member, constant),
                     "lte" => Expression.LessThanOrEqual(member, constant),
-                    _ => throw new InvalidOperationException("unknown filter op: " + p.Op),
+                    _ => throw new InvalidOperationException("unknown filter op: " + op),
                 };
-                return Expression.Lambda<Func<T, bool>>(body, x);
             }
         }
     }
@@ -194,8 +323,15 @@ public static class EfCoreFilterDispatch
     {
         if (underlying == typeof(string)) return raw;
         if (underlying == typeof(Guid)) return Guid.Parse(raw);
+        // A timestamp instant (DateTimeOffset, timestamptz) binds at offset zero; a @localTime wall
+        // clock (DateTime, timestamp without time zone) binds with an unspecified kind, which is
+        // what Npgsql requires of each. The list query parser has already spelled a zoned bound in UTC.
+        if (underlying == typeof(DateTimeOffset))
+            return DateTimeOffset.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal).ToUniversalTime();
         if (underlying == typeof(DateTime))
-            return DateTime.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None);
+            return DateTime.SpecifyKind(
+                DateTime.Parse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+                DateTimeKind.Unspecified);
         if (underlying == typeof(DateOnly))
             return DateOnly.Parse(raw, CultureInfo.InvariantCulture);
         if (underlying == typeof(TimeOnly))

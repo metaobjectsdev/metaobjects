@@ -78,7 +78,7 @@ public class HelperRuntimeTests
             .Where(e => HelperRuntime.UsedBy(EjectableGenerators.ReadSourceFile(e.SourceFileName!)))
             .Select(e => e.Name)
             .ToList();
-        Assert.Equal(["routes"], users);
+        Assert.Equal(["filter-allowlist", "routes"], users);
 
         var rewritten = EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSource("routes")!);
         Assert.DoesNotContain(HelperRuntime.GeneratorMarkerLine, rewritten);
@@ -150,8 +150,9 @@ public class HelperRuntimeTests
             "does not hand over:\n" + string.Join("\n", errors));
     }
 
-    /// <summary>What an adopter who ejected routes generates: the packaged entity /
-    /// db-context / filter-allowlist / names output plus the OWNED routes copy's output.</summary>
+    /// <summary>What an adopter who ejected routes and the filter allowlist generates: the packaged
+    /// entity / db-context / names output plus the OWNED routes and allowlist copies' output (the
+    /// allowlist's rules are helper-runtime types, so it binds to the owned runtime too).</summary>
     private static List<EmittedFile> GenerateWithEjectedRoutes()
     {
         var root = EjectedGeneratorCompileTests.LoadCorpus();
@@ -162,9 +163,10 @@ public class HelperRuntimeTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
         };
         var ownedRoutes = EjectedGeneratorsAloneTests.EjectAlone("routes").Generator;
+        var ownedAllowlist = EjectedGeneratorsAloneTests.EjectAlone("filter-allowlist").Generator;
         var generators = new List<IGenerator>
         {
-            new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(), ownedRoutes,
+            new EntityGenerator(), new DbContextGenerator(), ownedAllowlist, new NamesGenerator(), ownedRoutes,
         };
         return generators.SelectMany(g => g.Generate(ctx)).ToList();
     }

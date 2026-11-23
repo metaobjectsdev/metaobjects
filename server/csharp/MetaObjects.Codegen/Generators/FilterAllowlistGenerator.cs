@@ -28,6 +28,10 @@ public class FilterAllowlistGenerator : PerEntityGenerator
 {
     public override string Name => "filter-allowlist-generator";
 
+    // Where the emitted allowlist imports FilterFieldRule / SortFieldRule from. `dotnet meta eject`
+    // rewrites this one line to "Codegen.Runtime" and copies the helpers into codegen/runtime/.
+    private const string HelperRuntimeNamespace = "MetaObjects.AspNetCore";
+
     public override bool Filter(MetaObject entity) => AppliesTo(entity);
 
     /// <summary>
@@ -92,6 +96,12 @@ public class FilterAllowlistGenerator : PerEntityGenerator
             WriteFields(w, opsByField);
             w.Blank();
             WriteOpsByField(w, opsByField);
+            w.Blank();
+            WriteRules(w, RulesFrom(entity, opsByField));
+            w.Blank();
+            WriteSortRules(w, SortRules(entity, ctx.Root));
+            w.Blank();
+            WriteFieldNames(w, FieldNames(entity, ctx.Root));
             // The field -> CLR property map, only when a property-naming resolver renamed a property
             // beyond case (the runtime matches a field to its property case-insensitively, which
             // covers every other spelling). Nothing is emitted otherwise, so default output is unchanged.
@@ -117,13 +127,16 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     {
         w.GeneratedFileHeader("filter-allowlist-generator");
         w.Using("System.Collections.Generic");
+        w.Using(HelperRuntimeNamespace);
     }
 
     /// <summary>The XML doc on the allowlist class.</summary>
     protected virtual void WriteTypeDoc(CsWriter w, string cls) => w.DocSummary(
         $"GENERATED — per-entity FR-009 filter allowlist for {cls}.",
         "<see cref=\"Fields\"/> lists the filterable field names; <see cref=\"OpsByField\"/>",
-        "constrains the operator vocabulary for each field by its subtype.");
+        "constrains the operator vocabulary for each field by its subtype.",
+        "<see cref=\"Rules\"/>, <see cref=\"Sort\"/> and <see cref=\"FieldNames\"/> are what",
+        "<c>ListQueryParser</c> reads a list route's query string against.");
 
     /// <summary>The <c>Fields</c> set: the filterable field names. Ordinal comparison, because the URL grammar is case-exact.</summary>
     protected virtual void WriteFields(CsWriter w, IReadOnlyDictionary<string, IReadOnlyList<string>> opsByField)
@@ -144,6 +157,66 @@ public class FilterAllowlistGenerator : PerEntityGenerator
         }
     }
 
+    /// <summary>
+    /// The <c>Rules</c> dictionary the list query parser (<c>ListQueryParser</c>) reads: per filterable
+    /// field its operators, value kind and value checks.
+    /// </summary>
+    protected virtual void WriteRules(CsWriter w, IReadOnlyList<(string Field, FilterRuleSpec Rule)> rules)
+    {
+        w.Line("/// <summary>Each filterable field's rule: its operators, how its values are typed and checked.</summary>");
+        using (w.Braced("public static readonly IReadOnlyDictionary<string, FilterFieldRule> Rules = new Dictionary<string, FilterFieldRule>(System.StringComparer.Ordinal)", "};"))
+        {
+            foreach (var (field, rule) in rules)
+            {
+                var init = new List<string>();
+                if (rule.Format is not null) init.Add($"Format = FilterValueFormats.{CSharpNaming.Pascal(rule.Format)}");
+                if (rule.Instant) init.Add("Instant = true");
+                if (rule.Integer) init.Add("Integer = true");
+                if (rule.EnumValues is not null) init.Add($"EnumValues = new[] {{ {string.Join(", ", rule.EnumValues.Select(m => $"\"{m}\""))} }}");
+                var ops = string.Join(", ", rule.Ops.Select(op => $"\"{op}\""));
+                var tail = init.Count == 0 ? "" : $" {{ {string.Join(", ", init)} }}";
+                w.Line($"[\"{field}\"] = new(FilterValueKind.{rule.Kind}, {ops}){tail},");
+            }
+        }
+    }
+
+    /// <summary>The <c>Sort</c> dictionary: the sortable fields, each with its declared default order.</summary>
+    protected virtual void WriteSortRules(CsWriter w, IReadOnlyList<(string Field, string? DefaultOrder)> rules)
+    {
+        w.Line("/// <summary>The sortable fields, each with its declared <c>@sortableDefaultOrder</c>.</summary>");
+        using (w.Braced("public static readonly IReadOnlyDictionary<string, SortFieldRule> Sort = new Dictionary<string, SortFieldRule>(System.StringComparer.Ordinal)", "};"))
+        {
+            foreach (var (field, order) in rules)
+                w.Line(order is null ? $"[\"{field}\"] = new()," : $"[\"{field}\"] = new(\"{order}\"),");
+        }
+    }
+
+    /// <summary>
+    /// The <c>FieldNames</c> set: every field of the entity, so a bare <c>?notes=x</c> for a field that
+    /// is not filterable is refused with a reason instead of ignored.
+    /// </summary>
+    protected virtual void WriteFieldNames(CsWriter w, IReadOnlyList<string> names)
+    {
+        w.Line("/// <summary>Every field of the entity, filterable or not, except a credential.</summary>");
+        using (w.Braced("public static readonly IReadOnlySet<string> FieldNames = new HashSet<string>(System.StringComparer.Ordinal)", "};"))
+        {
+            foreach (var name in names) w.Line($"\"{name}\",");
+        }
+    }
+
+    /// <summary>
+    /// The names <c>FieldNames</c> lists: every field of <paramref name="entity"/> but a credential
+    /// (its own, or a column a sibling TPH subtype marks as one). A bare parameter naming a
+    /// credential is ignored like any unknown parameter, so the refusal never confirms the column.
+    /// </summary>
+    public static IReadOnlyList<string> FieldNames(MetaObject entity, MetaRoot root)
+    {
+        var hierarchyCredentials = TphPlanBuilder.HierarchyCredentialNames(entity, root);
+        return entity.Fields()
+            .Where(f => !InstanceArtifacts.IsCredentialField(f) && !hierarchyCredentials.Contains(f.Name))
+            .Select(f => f.Name).ToList();
+    }
+
     /// <summary>The <c>PropertyByField</c> map, for a field whose CLR property is named beyond case.</summary>
     protected virtual void WritePropertyByField(CsWriter w, IReadOnlyDictionary<string, string> renamed)
     {
@@ -160,7 +233,9 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     /// FR-009 vocabulary (object/class) collapse to the empty op-set and are
     /// dropped.
     /// </summary>
-    protected virtual Dictionary<string, IReadOnlyList<string>> ComputeFilterableOps(MetaObject entity)
+    protected virtual Dictionary<string, IReadOnlyList<string>> ComputeFilterableOps(MetaObject entity) => ComputeOps(entity);
+
+    private static Dictionary<string, IReadOnlyList<string>> ComputeOps(MetaObject entity)
     {
         var out_ = new Dictionary<string, IReadOnlyList<string>>(System.StringComparer.Ordinal);
         foreach (var field in entity.Fields())
@@ -175,6 +250,100 @@ public class FilterAllowlistGenerator : PerEntityGenerator
             out_[field.Name] = ops;
         }
         return out_;
+    }
+
+    /// <summary>
+    /// The filter rules of <paramref name="entity"/>, as data: what <c>&lt;Entity&gt;FilterAllowlist.Rules</c>
+    /// carries, in field order. The same derivation as TypeScript's <c>filterAllowlistRules</c>, so both
+    /// ports hold the shared list-query parse cases. Public so a runner, or an owned generator, derives
+    /// the allowlist this one emits.
+    /// </summary>
+    public static IReadOnlyList<(string Field, FilterRuleSpec Rule)> FilterRules(MetaObject entity, MetaRoot root)
+    {
+        var hierarchyCredentials = TphPlanBuilder.HierarchyCredentialNames(entity, root);
+        return RulesFrom(entity, ComputeOps(entity).Where(kv => !hierarchyCredentials.Contains(kv.Key))
+            .ToDictionary(kv => kv.Key, kv => kv.Value, System.StringComparer.Ordinal));
+    }
+
+    // Each field of the operator map, with its rule; the map is the generator's (overridable) answer.
+    private static IReadOnlyList<(string Field, FilterRuleSpec Rule)> RulesFrom(
+        MetaObject entity, IReadOnlyDictionary<string, IReadOnlyList<string>> opsByField)
+    {
+        var fields = new Dictionary<string, MetaField>(System.StringComparer.Ordinal);
+        foreach (var f in entity.Fields()) fields.TryAdd(f.Name, f);
+        return opsByField
+            .Select(kv => (kv.Key, fields.TryGetValue(kv.Key, out var f) ? RuleFor(f, kv.Value) : new FilterRuleSpec(kv.Value, "String")))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The sortable fields of <paramref name="entity"/> and their declared default order: explicit
+    /// <c>@sortable: true</c>, or no <c>@sortable</c> and <c>@filterable: true</c>. Never a credential,
+    /// an array, or a field with no scalar column (a value object, a map).
+    /// </summary>
+    public static IReadOnlyList<(string Field, string? DefaultOrder)> SortRules(MetaObject entity, MetaRoot root)
+    {
+        var hierarchyCredentials = TphPlanBuilder.HierarchyCredentialNames(entity, root);
+        var out_ = new List<(string, string?)>();
+        foreach (var f in entity.Fields())
+        {
+            if (f.SubType is FIELD_SUBTYPE_OBJECT or FIELD_SUBTYPE_MAP || f.ResolvedIsArray()) continue;
+            if (InstanceArtifacts.IsCredentialField(f) || hierarchyCredentials.Contains(f.Name)) continue;
+            var sortable = AttrBool(f.Attr(FIELD_ATTR_SORTABLE)) ?? IsFilterable(f);
+            if (!sortable) continue;
+            var order = f.Attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) as string;
+            out_.Add((f.Name, order is "asc" or "desc" ? order : null));
+        }
+        return out_;
+    }
+
+    private static bool? AttrBool(object? v) => v switch
+    {
+        bool b => b,
+        string s when string.Equals(s, "true", StringComparison.OrdinalIgnoreCase) => true,
+        string s when string.Equals(s, "false", StringComparison.OrdinalIgnoreCase) => false,
+        _ => null,
+    };
+
+    private static readonly HashSet<string> NumberSubtypes = new(System.StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_CURRENCY,
+    };
+
+    private static readonly HashSet<string> IntegerSubtypes = new(System.StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_CURRENCY,
+    };
+
+    private static readonly HashSet<string> FormatSubtypes = new(System.StringComparer.Ordinal)
+    {
+        FIELD_SUBTYPE_DATE, FIELD_SUBTYPE_TIME, FIELD_SUBTYPE_TIMESTAMP, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_DECIMAL, FIELD_SUBTYPE_DURATION,
+    };
+
+    private static FilterRuleSpec RuleFor(MetaField f, IReadOnlyList<string> ops)
+    {
+        var kind = f.SubType == FIELD_SUBTYPE_BOOLEAN ? "Boolean"
+            : NumberSubtypes.Contains(f.SubType) ? "Number"
+            : f.SubType is FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIME or FIELD_SUBTYPE_TIMESTAMP ? "Datetime"
+            : "String";
+        // Value checks hold for a scalar field only: an array field's operand is not one element.
+        if (f.ResolvedIsArray()) return new FilterRuleSpec(ops, kind);
+        if (IntegerSubtypes.Contains(f.SubType)) return new FilterRuleSpec(ops, kind, Integer: true);
+        if (FormatSubtypes.Contains(f.SubType))
+            return new FilterRuleSpec(ops, kind, Format: f.SubType, Instant: f.SubType == FIELD_SUBTYPE_TIMESTAMP && !CSharpNaming.IsLocalTime(f));
+        if (f.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            // Member SYMBOLS for string- and int-backed enums alike.
+            // ADR-0039: resolving — @values may be inherited from an abstract enum base via extends.
+            var members = f.Attr(FIELD_ATTR_VALUES) switch
+            {
+                IReadOnlyList<string> ss => ss,
+                IReadOnlyList<object?> os => os.Select(o => o?.ToString() ?? "").ToList(),
+                _ => new List<string>(),
+            };
+            if (members.Count > 0) return new FilterRuleSpec(ops, kind, EnumValues: members);
+        }
+        return new FilterRuleSpec(ops, kind);
     }
 
     /// <summary>True iff <paramref name="field"/> carries <c>@filterable: true</c> (bool true or case-insensitive "true" — matches Java/Kotlin/Python tolerance).</summary>
@@ -208,3 +377,16 @@ public class FilterAllowlistGenerator : PerEntityGenerator
     public static IReadOnlyList<string> OpsForField(MetaField field) =>
         MetaObjects.Core.Query.QueryConstants.OpsForField(field);
 }
+
+/// <summary>
+/// One filterable field's rule as data (the runtime's <c>FilterFieldRule</c>, kept structural so
+/// codegen does not depend on the runtime package). <see cref="Kind"/> names a <c>FilterValueKind</c>
+/// member; <see cref="Format"/> is the subtype whose wire format values must match.
+/// </summary>
+public sealed record FilterRuleSpec(
+    IReadOnlyList<string> Ops,
+    string Kind,
+    string? Format = null,
+    bool Instant = false,
+    bool Integer = false,
+    IReadOnlyList<string>? EnumValues = null);

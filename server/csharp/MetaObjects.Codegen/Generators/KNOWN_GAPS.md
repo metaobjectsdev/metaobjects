@@ -23,7 +23,7 @@ Update when a gap closes or a new one surfaces.
 
 **Contract.** `filter[or]=[...]` and `filter[and]=[...]` keys nest disjunctions / conjunctions. Reference: [`api-contract.md` "Filter operators (8)"](../../../../docs/features/api-contract.md).
 
-**Today.** Out of scope of FR-009 (which ships the flat 9-operator surface). Boolean grouping would need a richer URL grammar; defer until a real consumer demand surfaces.
+**Today.** Half closed. Since 1.3.0, `MetaObjects.AspNetCore` has `ListQueryParser`, which parses the whole list query: or/and groups to a depth of five, search, the bare-field and leading-`%` refusals, value-format checks and the named error details. `EfCoreFilterDispatch.Apply` turns the parsed tree into one `Where`. Each generated `<Entity>FilterAllowlist` carries the `Rules`, `Sort` and `FieldNames` the parser reads. All 95 shared parse cases in `fixtures/list-query-conformance/` pass (`ListQueryConformanceTests`). The generated list routes do not call any of this yet; they still use the flat `FilterParser`. Wiring them up, and turning on the api-contract `list-query/` scenarios the C# runner holds back, closes this gap.
 
 ### G3 — Multi-field sort
 
