@@ -246,6 +246,7 @@ export {
   TsWriter,
   type TsWriterOptions,
 } from "./writer/ts-writer.js";
+export { YamlWriter, type YamlWriterOptions } from "./writer/yaml-writer.js";
 
 export {
   writeFindByIdFn,

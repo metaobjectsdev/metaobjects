@@ -6,6 +6,7 @@ import { OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { code, Import, imp, joinCode } from "../src/poet.js";
 import { renderInferredTypes } from "../src/templates/inferred-types.js";
 import { CodeWriter, WRITER_ERRORS, WriterError } from "../src/writer/code-writer.js";
+import { YamlWriter } from "../src/writer/yaml-writer.js";
 import { arr, call, docSample, json, key, legacyMemberLines, props, str, TsWriter } from "../src/writer/ts-writer.js";
 import { metaObject } from "./_meta-build.js";
 
@@ -222,5 +223,36 @@ describe("TsWriter json", () => {
     const broken = new TsWriter({ width: 30 });
     broken.line("const f = ", json({ alpha: "x", beta: [1, 2] }), ";");
     expect(broken.toString()).toBe('const f = {\n  "alpha": "x",\n  "beta": [1, 2],\n};\n');
+  });
+});
+
+describe("indentation-delimited blocks", () => {
+  test("indented() writes the body one level in and no line around it", () => {
+    const w = new CodeWriter();
+    w.line("CREATE VIEW v AS");
+    w.indented(() => {
+      w.line("SELECT");
+      w.indented(() => w.line("a,").line("b"));
+      w.line("FROM t");
+    });
+    w.line("-- after");
+    expect(w.toString()).toBe("CREATE VIEW v AS\n  SELECT\n    a,\n    b\n  FROM t\n-- after\n");
+  });
+
+  test("YamlWriter keys indent their block and items carry the dash on their first line", () => {
+    const w = new YamlWriter();
+    w.key("cubes", () => {
+      w.item(() => {
+        w.line("name: orders");
+        w.key("joins", () => {
+          w.item(() => w.line("name: a").line("sql: x"));
+          w.item(() => w.line("name: b"));
+        });
+        w.key("meta", () => w.line(`grains: [${"day"}, ${"month"}]`));
+      });
+    });
+    expect(w.toString()).toBe(
+      "cubes:\n  - name: orders\n    joins:\n      - name: a\n        sql: x\n      - name: b\n    meta:\n      grains: [day, month]\n",
+    );
   });
 });

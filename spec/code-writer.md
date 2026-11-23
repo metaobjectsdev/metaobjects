@@ -134,6 +134,21 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
 - `legacyMemberLines(members, indent)` is the 1.2 string form of a member list (a line break
   before each member, at `indent`). It exists only for the deprecated `*Line` helpers an owned
   1.2 generator still calls; new code spreads the members into the writer.
+- **`indented(body)`** writes nothing itself and writes the body one level in. It is a block
+  delimited by indentation alone, as C#'s `Hanging()` and Python's suites are, and is used
+  where no line closes the block: the clauses of a SQL view body, or a YAML mapping. The
+  TypeScript port's `CodeWriter` has it, so every TypeScript writer inherits it.
+
+### YAML (`YamlWriter`, TypeScript port only)
+
+The TypeScript port also writes YAML (the Cube data model). It has no conformance cases, since
+no other port writes YAML. Defaults: two-space indent, no width limit (a flow list is written as
+the generator gives it), and no trailing comma.
+
+- **`key(name, body)`** writes `name:` and the body under it, one level in, with no closing
+  line.
+- **`item(body)`** writes one block-list entry. The first line the body writes carries `- `, and
+  the entry's other lines align under that line's text.
 
 ## Java dialect (`JavaWriter`)
 
