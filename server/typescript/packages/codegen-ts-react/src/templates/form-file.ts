@@ -549,7 +549,7 @@ ${control}
     (f) => viewForContext(f, VIEW_CONTEXT_FORM)?.subType === VIEW_SUBTYPE_IMAGE,
   );
   const imageImports = hasImage
-    ? `import { Controller } from "react-hook-form";\nimport { ImageUpload } from "@metaobjectsdev/react";\n`
+    ? `import { Controller } from "react-hook-form";\nimport { ImageUpload } from "@metaobjectsdev/react/image-upload";\n`
     : "";
 
   const literalImports = code`

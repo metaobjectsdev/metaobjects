@@ -18,16 +18,18 @@ import {
   type ApiSettingsSeed,
 } from "../src/api-contract-api-settings-generated-server.ts";
 
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
+
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_API_SETTINGS_DIR, "seed.json"), "utf8")) as ApiSettingsSeed;
 const META_PATH = join(API_CONTRACT_API_SETTINGS_DIR, "meta.json");
 
-describe("api contract api-settings — GENERATED routes lane", () => {
+for (const lane of API_LANES) describe(`api contract api-settings — ${laneLabel(lane)}`, () => {
   for (const scenario of loadScenarios(API_CONTRACT_API_SETTINGS_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startPostgres();
       let server: GeneratedApiSettingsServerHandle | null = null;
       try {
-        server = await startGeneratedApiSettingsServer(pg.connectionUri, META_PATH);
+        server = await startGeneratedApiSettingsServer(pg.connectionUri, META_PATH, lane);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
       } finally {

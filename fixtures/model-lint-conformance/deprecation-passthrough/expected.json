@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::AddressView.countryName",
+      "message": "origin.passthrough @from references deprecated field.string acme::app::Country.name: use isoName. Replaced by isoName."
+    }
+  ]
+}

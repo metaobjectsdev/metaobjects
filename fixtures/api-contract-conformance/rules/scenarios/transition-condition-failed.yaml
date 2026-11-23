@@ -1,0 +1,21 @@
+name: transition-condition-failed
+description: >
+  The guarded update carries the transition's `@condition`. Request 3's amount (900000) is over
+  its limit (100000), so `approve` matches no row: the row is still in `@from`, so the answer is
+  409 `transition_condition_failed`, and the row keeps its state.
+requests:
+  - id: r1
+    method: PUT
+    path: /api/purchase-requests/3/decision
+    headers: { x-actor: "rita", x-grants: "purchasing.decide" }
+    body: { approve: true }
+    expect:
+      status: 409
+      body: { error: "transition_condition_failed" }
+  - id: r2
+    method: GET
+    path: /api/purchase_requests/3
+    expect:
+      status: 200
+      body:
+        row: { id: 3, status: "submitted" }

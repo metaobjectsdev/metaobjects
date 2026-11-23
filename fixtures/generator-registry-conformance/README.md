@@ -24,7 +24,7 @@ spelled identically everywhere** (e.g. the REST surface is `routes` in every
 port, never `controller`/`router`). That cross-port spelling stability is the
 whole point.
 
-## `layer` — the six values, and why six
+## `layer` — the seven values, and why seven
 
 `layer` is the grouping an adopter (increasingly an LLM in their repo) **selects
 by**. Codegen is opt-in: nothing runs until it is chosen, so the catalog's job is
@@ -32,17 +32,18 @@ to make the choice cheap, and `layer` is the axis it is cheap along.
 
 | layer | members | chosen by |
 |---|---|---|
-| `model` | entity, names, barrel, dto, value-object | app shape |
+| `model` | entity, names, rules-names, contract-types, barrel, dto, value-object | app shape |
 | `persistence` | queries, prisma-schema, db-context, repository, exposed-table, relations, stored-proc | app shape |
-| `api` | routes, routes-hono, filter-allowlist, validator, spring-config, contract-schema, openapi | app shape |
+| `service` | service | app shape: the operations a route, a job or an agent tool calls (ADR-0067 §5.6) |
+| `api` | routes, routes-hono, service-routes, service-routes-hono, filter-allowlist, validator, spring-config, contract-schema, openapi | app shape |
 | `client` | form, hooks, grid, grid-hook, client, commands | app shape |
 | `docs` | docs, api-docs, requirements, agent-docs, metamodel-docs, docs-site, plantuml, html-docs, ai-docs | declared in the project's generator list like any other; nothing is generated that the list does not declare (ADR-0034 Amendment 9) |
 | `capability` | prompt-render, output-parser, output-prompt, extractor, render-helper, trace-helper, requirement-tests, cube-model, shared-model, template, callable, json-schema, mustache | `meta gen --list --probe` |
 
-Six, not ten. An earlier draft split `capability` into `trace` / `requirements` /
+Seven, not ten. An earlier draft split `capability` into `trace` / `requirements` /
 `publish` / `primitive`, each with **one member** — a layer with one member does
 no grouping work, and the split conflated two different kinds of choice. The
-first four layers are app-shape decisions a builder makes. `capability` holds the
+first five layers are app-shape decisions a builder makes. `capability` holds the
 ones the **model has already made**: nobody picks `prompt-render` by browsing a
 taxonomy, they pick it because they declared a `template.prompt`. `--probe`
 constructs every generator and dry-runs it against the real model, so
@@ -51,7 +52,12 @@ information than a category name — and unlike a category name it cannot go sta
 because it does not describe the generators, it runs them.
 
 `capability` looking like a large undifferentiated bucket is therefore the point,
-not a defect to be tidied. Do not add a seventh value to make it look tidier.
+not a defect to be tidied. Do not add a value to make it look tidier.
+
+`service` is the one value added since, and not for tidiness: ADR-0067 §5.6 names it. It is
+the layer between persistence and the transport (the operations, each write in one
+transaction), a choice a builder makes on its own (a project can serve the flat `routes` with
+no service at all), and it will hold one generator per port as each port adds its own.
 
 `layer` rather than a reuse of "tier", which is already taken twice
 (native/neutral in ADR-0020, and server/UI elsewhere).
@@ -121,6 +127,19 @@ reqwest client for the REST surface the other ports' `routes` serve) and `comman
 port that adopts either name adds itself to that entry's `ports`; the name is then
 shared like the others. (`payload` was one until ADR-0056 removed it: a value
 object's type now comes from the value-object generator, so the template tier declares none.)
+
+Two names are **TypeScript and C# only for now**: `rules-names`, the first rules layer of
+ADR-0067 (the names of a package's lifecycle states, transitions, commands, operations,
+permissions and business errors), and `contract-types`, layer 1 (the read, create and update
+shapes, the operations' inputs and outputs, and the wire error bodies, with no persistence
+mapping; C# so far writes the create and update records). Each other port adds itself to their
+`ports` with its own rules-layer work.
+
+Three names are **TypeScript only**. Two are TypeScript only for now: `service`, layer 4 (one
+module per package, a function per operation, each write in one transaction with the declared
+write rules), and `service-routes`, its thin Fastify transport (layer 5); each other port adds
+itself with its own service-layer work. The third, `service-routes-hono`, its Hono transport, is
+TypeScript only by design, as `routes-hono` is: Hono is a TypeScript framework.
 
 ## Changing the surface
 

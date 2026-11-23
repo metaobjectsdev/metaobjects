@@ -287,6 +287,8 @@ const CORPORA: Corpus[] = [
   // The grid tier is TypeScript-only, so its model is this port's own fixture.
   { label: "data-grid", files: [join(PACKAGES, "codegen-ts-tanstack", "test", "fixtures", "single-entity.json")] },
   { label: "llm-call", files: inputs("conformance", "ai-trace-prompt-nested", "input") },
+  // Lifecycles, a claimed and an unclaimed transition, and an API with a command and queries.
+  { label: "rules", files: [join(FIXTURES, "codegen-noop", "rules", "with", "meta.purchasing.json")] },
 ];
 
 /** The options a factory cannot be called without. `shared-model` publishes nothing until told what to include. */
@@ -294,7 +296,7 @@ const REQUIRED_OPTIONS: Record<string, unknown> = {
   "shared-model": { name: "shared", include: ["**"], version: "1.0.0" },
 };
 /**
- * The three owned generators whose OUTPUT imports the HTTP adapter default to the copy
+ * The owned generators whose OUTPUT imports the runtime tier default to the copy
  * `meta eject` places under `codegen/runtime/`. The packaged ones import the package, so the
  * comparison binds the owned ones to it through the option that exists for the choice; what
  * is compared is the composition. (The local-copy spelling is gated by runtime-eject.test.ts.)
@@ -303,6 +305,9 @@ const OWNED_OPTIONS: Record<string, unknown> = {
   entity: { runtimeImport: HTTP_RUNTIME_PACKAGE },
   routes: { runtimeImport: HTTP_RUNTIME_PACKAGE },
   "routes-hono": { runtimeImport: HTTP_RUNTIME_PACKAGE },
+  service: { runtimeImport: HTTP_RUNTIME_PACKAGE },
+  "service-routes": { runtimeImport: HTTP_RUNTIME_PACKAGE },
+  "service-routes-hono": { runtimeImport: HTTP_RUNTIME_PACKAGE },
 };
 
 type Factory = (opts?: unknown) => Generator;

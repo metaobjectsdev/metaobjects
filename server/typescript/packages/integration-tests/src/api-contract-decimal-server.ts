@@ -10,13 +10,14 @@
 // between the HTTP request and the database, which is the point: the wire rule is a property of
 // the deployed artifact.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import mysql from "mysql2/promise";
 import pg from "pg";
 import { startLocalD1 } from "./query-scenario-d1.ts";
@@ -81,8 +82,9 @@ export function startDecimalServer(
   /** The Postgres or MySQL connection URL; unused by SQLite and D1. */
   connectionUrl?: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<DecimalServerHandle> {
-  return startGeneratedCorpusServer(DECIMAL, engine, metaPath, connectionUrl, outputLayout);
+  return startGeneratedCorpusServer(DECIMAL, engine, metaPath, connectionUrl, outputLayout, lane);
 }
 
 /** Generate, provision and mount one generated-lane sub-corpus on `engine`. */
@@ -93,6 +95,7 @@ export async function startGeneratedCorpusServer(
   /** The Postgres or MySQL connection URL; unused by SQLite and D1. */
   connectionUrl?: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<DecimalServerHandle> {
   const SERVED = spec.served;
   const TABLES = spec.tables;
@@ -116,27 +119,28 @@ export async function startGeneratedCorpusServer(
       dbImport: "./db",
       dialect: engine === "d1" ? "sqlite" : engine, // codegen has no d1 dialect: D1 is SQLite to Drizzle
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()], { interactiveTransactions: engine !== "d1" }),
     }),
     metadata: root,
   });
   let emitted: EmittedFiles;
   try { emitted = indexEmitted(tmp, lr.files, outputLayout); } catch (e) { return fail(e instanceof Error ? e.message : String(e)); }
-  for (const name of SERVED) if (!emitted.has(`${name}.routes.ts`)) fail(`codegen emitted no ${name}.routes.ts`);
+  if (lane === "routes") for (const name of SERVED) if (!emitted.has(`${name}.routes.ts`)) fail(`codegen emitted no ${name}.routes.ts`);
   if (lr.warnings.length > 0) fail(`codegen produced warnings: ${lr.warnings.join("; ")}`);
 
   const client = await openEngine(spec, engine, tmp, connectionUrl);
   for (const stmt of splitStatements(readFileSync(spec.schemaPath[engine], "utf8"))) await client.run(stmt);
 
-  const fastify = Fastify();
-  for (const name of SERVED) {
-    const mod = (await import(pathToFileURL(emitted.locate(`${name}.routes.ts`)).href)) as Record<string, unknown>;
-    const registrar = Object.values(mod).find((v): v is (f: FastifyInstance) => Promise<void> => typeof v === "function");
-    if (registrar === undefined) fail(`${name}.routes.ts exports no registrar`);
-    await fastify.register(registrar!);
-  }
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const { db } = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { db: unknown };
+  const served = await serveApi(lane, tmp, db, async (fastify) => {
+    for (const name of SERVED) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${name}.routes.ts`)).href)) as Record<string, unknown>;
+      const registrar = Object.values(mod).find((v): v is (f: FastifyInstance) => Promise<void> => typeof v === "function");
+      if (registrar === undefined) fail(`${name}.routes.ts exports no registrar`);
+      await fastify.register(registrar!);
+    }
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -155,7 +159,7 @@ export async function startGeneratedCorpusServer(
       await client.afterSeed();
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await client.close();
       rmSync(tmp, { recursive: true, force: true });
     },

@@ -1,0 +1,102 @@
+{
+  "metadata.root": {
+    "package": "acme::purchasing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "PurchaseRequest",
+          "children": [
+            { "source.rdb": { "@table": "purchase_requests" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "field.string": { "name": "title", "@maxLength": 80, "@required": true } },
+            { "field.long": { "name": "amountCents", "@required": true } },
+            { "field.long": { "name": "limitCents" } },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": ["draft", "submitted", "approved", "rejected", "cancelled"],
+                "@default": "draft",
+                "children": [
+                  { "transition.action": { "name": "submit", "@from": ["draft"], "@to": "submitted" } },
+                  {
+                    "transition.action": {
+                      "name": "approve",
+                      "@from": ["submitted"],
+                      "@to": "approved",
+                      "@condition": {
+                        "op": "lte",
+                        "left": { "field": "amountCents" },
+                        "right": { "fn": "coalesce", "args": [{ "field": "limitCents" }, { "value": 0 }] }
+                      }
+                    }
+                  },
+                  { "transition.action": { "name": "reject", "@from": ["submitted"], "@to": "rejected" } },
+                  { "transition.action": { "name": "cancel", "@from": ["draft", "submitted"], "@to": "cancelled", "@public": true } },
+                  { "transition.action": { "name": "reopen", "@from": ["rejected"], "@to": "draft", "@permission": "purchasing.reopen" } }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "AuditEntry",
+          "children": [
+            { "source.rdb": { "@table": "audit_entries" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "field.string": { "name": "kind", "@maxLength": 20, "@required": true } },
+            { "field.string": { "name": "detail", "@maxLength": 200, "@required": true } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "DecisionInput",
+          "children": [
+            { "field.long": { "name": "requestId", "extends": "PurchaseRequest.id" } },
+            { "field.boolean": { "name": "approve", "@required": true } },
+            { "field.string": { "name": "note", "@maxLength": 200 } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "RequestTotals",
+          "children": [
+            { "field.long": { "name": "count" } },
+            { "field.long": { "name": "totalCents" } }
+          ]
+        }
+      },
+      {
+        "api.operational": {
+          "name": "Purchasing",
+          "children": [
+            {
+              "operation.command": {
+                "name": "decide",
+                "@inputRef": "DecisionInput",
+                "@outputRef": "PurchaseRequest",
+                "@transitions": ["approve", "reject"],
+                "@permission": "purchasing.decide",
+                "@errors": ["note_required"],
+                "children": [{ "binding.rest": { "@method": "PUT", "@path": "/purchase-requests/{id}/decision" } }]
+              }
+            },
+            {
+              "operation.query": {
+                "name": "requestTotals",
+                "@objectRef": "PurchaseRequest",
+                "@outputRef": "RequestTotals",
+                "@public": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

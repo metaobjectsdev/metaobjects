@@ -1,5 +1,6 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.generator.writer.CodeWriter;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -34,40 +35,45 @@ public final class SpringRecordBuilder {
     private SpringRecordBuilder() {}
 
     /**
-     * The record-body members: a {@code public static Builder builder()} factory and the nested
-     * {@code Builder}. Empty when there is nothing to build, or when emitting it would not compile:
-     * a component named {@code builder} (its accessor and the factory share a signature), a record
-     * named {@code Builder} (a nested class may not share its enclosing class's name), or a component
+     * Write the record-body members: a {@code public static Builder builder()} factory and the
+     * nested {@code Builder}, each after a blank line, at the writer's current indent. Writes
+     * nothing when there is nothing to build, or when emitting it would not compile: a component
+     * named {@code builder} (its accessor and the factory share a signature), a record named
+     * {@code Builder} (a nested class may not share its enclosing class's name), or a component
      * type named {@code Builder} (the nested class would shadow it inside the builder).
      *
      * @param recordName the record's simple name
      * @param components {@code [type, name]} pairs in canonical-constructor order
+     * @return whether anything was written
      */
-    public static String members(String recordName, List<String[]> components) {
-        if (components.isEmpty() || BUILDER_CLASS.equals(recordName)) return "";
-        for (String[] c : components) {
-            if (FACTORY.equals(c[1]) || MENTIONS_BUILDER_CLASS.matcher(c[0]).find()) return "";
+    public static boolean writeMembers(CodeWriter w, String recordName, List<String[]> components) {
+        if (!applies(recordName, components)) return false;
+        w.blank();
+        w.line("/** A fluent builder, so a caller can set a subset of the components. */");
+        w.line("public static Builder " + FACTORY + "() { return new Builder(); }");
+        w.blank();
+        w.line("/** Builds a {@link " + recordName + "}; an unset component stays null. */");
+        try (CodeWriter.Block b = w.block("public static final class " + BUILDER_CLASS + " {")) {
+            for (String[] c : components) w.line("private " + c[0] + " " + c[1] + ";");
+            w.blank();
+            w.line("private Builder() {}");
+            w.blank();
+            for (String[] c : components) {
+                w.line("public Builder " + c[1] + "(" + c[0] + " v) { this." + c[1] + " = v; return this; }");
+            }
+            w.blank();
+            String args = components.stream().map(c -> c[1]).collect(Collectors.joining(", "));
+            w.line("public " + recordName + " build() { return new " + recordName + "(" + args + "); }");
         }
-        StringBuilder b = new StringBuilder();
-        b.append('\n')
-         .append("    /** A fluent builder, so a caller can set a subset of the components. */\n")
-         .append("    public static Builder ").append(FACTORY).append("() { return new Builder(); }\n")
-         .append('\n')
-         .append("    /** Builds a {@link ").append(recordName).append("}; an unset component stays null. */\n")
-         .append("    public static final class Builder {\n");
+        return true;
+    }
+
+    /** Whether a builder is written for {@code recordName} over {@code components} (see {@link #writeMembers}). */
+    public static boolean applies(String recordName, List<String[]> components) {
+        if (components.isEmpty() || BUILDER_CLASS.equals(recordName)) return false;
         for (String[] c : components) {
-            b.append("        private ").append(c[0]).append(' ').append(c[1]).append(";\n");
+            if (FACTORY.equals(c[1]) || MENTIONS_BUILDER_CLASS.matcher(c[0]).find()) return false;
         }
-        b.append('\n').append("        private Builder() {}\n").append('\n');
-        for (String[] c : components) {
-            b.append("        public Builder ").append(c[1]).append('(').append(c[0]).append(" v) { this.")
-             .append(c[1]).append(" = v; return this; }\n");
-        }
-        String args = components.stream().map(c -> c[1]).collect(Collectors.joining(", "));
-        b.append('\n')
-         .append("        public ").append(recordName).append(" build() { return new ")
-         .append(recordName).append('(').append(args).append("); }\n")
-         .append("    }\n");
-        return b.toString();
+        return true;
     }
 }

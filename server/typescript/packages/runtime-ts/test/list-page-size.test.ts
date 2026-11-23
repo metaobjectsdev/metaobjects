@@ -15,6 +15,7 @@ import {
   pageLimit,
   ERROR_CODE_LIMIT_TOO_LARGE,
 } from "../src/drizzle-fastify/index.js";
+import { DEFAULT_PAGE_LIMIT } from "@metaobjectsdev/metadata";
 import { FilterParseError } from "../src/drizzle-fastify/filter-parser.js";
 import { mountCrudRoutes as mountHonoCrud } from "../src/hono/index.js";
 
@@ -29,13 +30,14 @@ function itemsTable() {
 async function seeded(): Promise<Client> {
   const client = createClient({ url: ":memory:" });
   await client.execute(`CREATE TABLE items (id INTEGER PRIMARY KEY, title TEXT NOT NULL)`);
-  for (let i = 1; i <= 5; i++) await client.execute(`INSERT INTO items (id, title) VALUES (${i}, 'item ${i}')`);
+  for (let i = 1; i <= 55; i++) await client.execute(`INSERT INTO items (id, title) VALUES (${i}, 'item ${i}')`);
   return client;
 }
 
 describe("pageLimit", () => {
-  test("no page size: the request's limit, or none", () => {
-    expect(pageLimit(undefined, undefined)).toBeUndefined();
+  test("no page size: the request's limit, or the default page of 50", () => {
+    expect(pageLimit(undefined, undefined)).toBe(DEFAULT_PAGE_LIMIT);
+    expect(DEFAULT_PAGE_LIMIT).toBe(50);
     expect(pageLimit(100000, undefined)).toBe(100000);
   });
   test("no limit: the default page size", () => {
@@ -77,14 +79,14 @@ function listBehaviour(name: string, setup: (pagination: typeof PAGE | undefined
       expect(r.body).toEqual({ error: "limit_too_large", maxLimit: 4 });
     });
     test("offset pages past the default", async () => {
-      const r = await h.get("/items?offset=4");
-      expect((r.body as Array<{ id: number }>).map((x) => x.id)).toEqual([5]);
+      const r = await h.get("/items?offset=54");
+      expect((r.body as Array<{ id: number }>).map((x) => x.id)).toEqual([55]);
     });
     test("withCount reports the full total with the default page", async () => {
       const r = await h.get("/items?withCount=1");
       const body = r.body as { rows: unknown[]; total: number };
       expect(body.rows.length).toBe(2);
-      expect(body.total).toBe(5);
+      expect(body.total).toBe(55);
     });
   });
 
@@ -93,13 +95,13 @@ function listBehaviour(name: string, setup: (pagination: typeof PAGE | undefined
     beforeAll(async () => { h = await setup(undefined); });
     afterAll(async () => { await h.close(); });
 
-    test("no ?limit= answers every row, as before", async () => {
-      expect(((await h.get("/items")).body as unknown[]).length).toBe(5);
+    test("no ?limit= answers the default page of 50, not the whole table", async () => {
+      expect(((await h.get("/items")).body as unknown[]).length).toBe(50);
     });
-    test("a large ?limit= is accepted, as before", async () => {
+    test("a large ?limit= is accepted: there is no maximum without the setting", async () => {
       const r = await h.get("/items?limit=100000");
       expect(r.status).toBe(200);
-      expect((r.body as unknown[]).length).toBe(5);
+      expect((r.body as unknown[]).length).toBe(55);
     });
   });
 }

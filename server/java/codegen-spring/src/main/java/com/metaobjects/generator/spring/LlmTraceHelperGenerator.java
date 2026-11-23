@@ -4,6 +4,7 @@ package com.metaobjects.generator.spring;
 // com.metaobjects.generator.spring when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.generator.spring.SpringJavaWriter;
 import com.metaobjects.generator.spring.FindInbound;
 import com.metaobjects.generator.spring.SpringNaming;
 
@@ -201,92 +202,96 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         String resultClass = shortName + "TraceResult";
         String fnName = "record" + SpringNaming.capitalize(shortName);
 
-        StringBuilder src = new StringBuilder();
-        src.append("// GENERATED — DO NOT EDIT — LLM-trace helper for object.entity `")
-           .append(entity.getName()).append("`\n");
-        if (!pkg.isEmpty()) {
-            src.append("package ").append(pkg).append(";\n\n");
+        SpringJavaWriter w = new SpringJavaWriter();
+        w.header("// GENERATED — DO NOT EDIT — LLM-trace helper for object.entity `" + entity.getName() + "`");
+        if (!pkg.isEmpty()) w.packageName(pkg);
+        w.line("/**");
+        w.line(" * Typed LLM-trace helper for {@code " + shortName + "}.");
+        w.line(" *");
+        w.line(" * <p>Extracts the typed response VO from {@code input.llmResponseText()} and");
+        w.line(" * persists ONE trace row (base envelope + raw I/O + typed voRequest/voResponse)");
+        w.line(" * via the supplied recorder. The render-call-record helper is intentionally");
+        w.line(" * not emitted (BYO vendor-neutral caller; Java LlmClient seam not ported).</p>");
+        w.line(" */");
+        try (var cls = w.block("public final class " + helperClass + " {")) {
+            w.line("private " + helperClass + "() { /* no instances */ }");
+            w.blank();
+            // Typed result record.
+            w.line("/** Typed result of " + fnName
+                + ": derived status/errorDetail + the parsed response VO (null when lost-required). */");
+            w.line("public record " + resultClass + "(String status, String errorDetail, Object voResponse) {}");
+            w.blank();
+            writeRecordMethod(w, entity, responseVo, shortName, resultClass, fnName, formatEnum);
         }
-        src.append("/**\n");
-        src.append(" * Typed LLM-trace helper for {@code ").append(shortName).append("}.\n");
-        src.append(" *\n");
-        src.append(" * <p>Extracts the typed response VO from {@code input.llmResponseText()} and\n");
-        src.append(" * persists ONE trace row (base envelope + raw I/O + typed voRequest/voResponse)\n");
-        src.append(" * via the supplied recorder. The render-call-record helper is intentionally\n");
-        src.append(" * not emitted (BYO vendor-neutral caller; Java LlmClient seam not ported).</p>\n");
-        src.append(" */\n");
-        src.append("public final class ").append(helperClass).append(" {\n\n");
-        src.append("    private ").append(helperClass).append("() { /* no instances */ }\n\n");
-
-        // Typed result record.
-        src.append("    /** Typed result of ").append(fnName)
-           .append(": derived status/errorDetail + the parsed response VO (null when lost-required). */\n");
-        src.append("    public record ").append(resultClass)
-           .append("(String status, String errorDetail, Object voResponse) {}\n\n");
-
-        // record<Entity>(...)
-        src.append("    /**\n");
-        src.append("     * Record a single {@code ").append(shortName)
-           .append("} LLM call: extract the response VO and persist a\n");
-        src.append("     * trace row via {@code recorder} regardless of whether extraction succeeded.\n");
-        src.append("     *\n");
-        src.append("     * @param loader   the loader the trace + response MetaObjects resolve against\n");
-        src.append("     * @param recorder the never-throwing write-side seam (Slice-1 OMDB recorder)\n");
-        src.append("     * @param input    the LLM call fields; {@code llmRequest()} is the typed request payload,\n");
-        src.append("     *                 threaded through as voRequest and JSON-stringified into the raw column\n");
-        src.append("     */\n");
-        src.append("    public static ").append(resultClass).append(" ").append(fnName).append("(\n");
-        src.append("            ").append(LOADER_FQN).append(" loader,\n");
-        src.append("            ").append(RECORDER_FQN).append(" recorder,\n");
-        src.append("            ").append(CALL_INPUT_FQN).append(" input) {\n");
-        // Resolve MetaObjects by their loaded FQNs (baked at codegen time).
-        src.append("        com.metaobjects.object.MetaObject traceMo = loader.getMetaObjectByName(")
-           .append(quote(entity.getName())).append(");\n");
-        src.append("        com.metaobjects.object.MetaObject responseMo = loader.getMetaObjectByName(")
-           .append(quote(responseVo.getName())).append(");\n");
-        // Tolerant extract → typed voResponse + lost-required gate.
-        src.append("        com.metaobjects.render.extract.ExtractionResult<Object> outcome =\n");
-        src.append("            ").append(META_OBJECT_EXTRACT_FQN)
-           .append(".extract(responseMo, input.llmResponseText(), ")
-           .append(formatEnum).append(");\n");
-        // A required field that is lost OR malformed (present but unusable) has no value, so
-        // either fails the call — the response is never handed back typed as the VO.
-        src.append("        java.util.List<String> unusable = new java.util.ArrayList<>();\n");
-        src.append("        if (outcome.report().hasLostRequired()) unusable.add(\"lost required: \" + String.join(\", \", outcome.report().lostRequired()));\n");
-        src.append("        if (outcome.report().hasMalformedRequired()) unusable.add(\"malformed required: \" + String.join(\", \", outcome.report().malformedRequired()));\n");
-        src.append("        boolean failed = !unusable.isEmpty();\n");
-        src.append("        String status = failed ? ").append(CALL_INPUT_FQN).append(".STATUS_ERROR : ")
-           .append(CALL_INPUT_FQN).append(".STATUS_OK;\n");
-        src.append("        String errorDetail = failed ? String.join(\"; \", unusable) : null;\n");
-        // Rebuild the input with derived status/errorDetail (extraction owns them).
-        src.append("        ").append(CALL_INPUT_FQN).append(" effective = new ")
-           .append(CALL_INPUT_FQN).append("(\n");
-        src.append("            input.spanId(), input.traceId(), input.parentSpanId(), input.sessionId(),\n");
-        src.append("            input.callType(), input.system(), input.startedAt(), input.llmRequest(),\n");
-        src.append("            input.llmResponseText(), input.requestModel(), input.responseModel(),\n");
-        src.append("            input.inputTokens(), input.outputTokens(), input.costMinor(), input.latencyMs(),\n");
-        src.append("            input.finishReason(), status, errorDetail);\n");
-        // Build base row + set typed voRequest/voResponse via the field SPI.
-        src.append("        ").append(VALUE_OBJECT_FQN).append(" row = ").append(ROW_BUILDER_FQN)
-           .append(".buildLlmCallRow(traceMo, effective);\n");
-        src.append("        traceMo.getMetaField(\"voRequest\").setObject(row, input.llmRequest());\n");
-        src.append("        Object voResponse = failed ? null : outcome.data();\n");
-        src.append("        traceMo.getMetaField(\"voResponse\").setObject(row, voResponse);\n");
-        // Persist once via the recorder (never throws).
-        src.append("        recorder.record(row);\n");
-        src.append("        return new ").append(resultClass)
-           .append("(status, errorDetail, voResponse);\n");
-        src.append("    }\n");
-        src.append("}\n");
 
         try {
             Path outFile = pkg.isEmpty()
                 ? outRoot.resolve(helperClass + ".java")
                 : outRoot.resolve(pkg.replace('.', '/')).resolve(helperClass + ".java");
-            GeneratedFileWriter.write(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, w.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + helperClass + ".java for entity " + entity.getName() + ": " + e, e);
+        }
+    }
+
+    /**
+     * {@code record<Entity>(loader, recorder, input)}: extract the response value object, derive
+     * the call's status from what was lost or malformed, and persist one trace row.
+     */
+    protected void writeRecordMethod(SpringJavaWriter w, MetaObject entity, MetaObject responseVo, String shortName,
+                                     String resultClass, String fnName, String formatEnum) {
+        w.line("/**");
+        w.line(" * Record a single {@code " + shortName + "} LLM call: extract the response VO and persist a");
+        w.line(" * trace row via {@code recorder} regardless of whether extraction succeeded.");
+        w.line(" *");
+        w.line(" * @param loader   the loader the trace + response MetaObjects resolve against");
+        w.line(" * @param recorder the never-throwing write-side seam (Slice-1 OMDB recorder)");
+        w.line(" * @param input    the LLM call fields; {@code llmRequest()} is the typed request payload,");
+        w.line(" *                 threaded through as voRequest and JSON-stringified into the raw column");
+        w.line(" */");
+        w.line("public static " + resultClass + " " + fnName + "(");
+        w.continuation(LOADER_FQN + " loader,");
+        w.continuation(RECORDER_FQN + " recorder,");
+        w.continuation(CALL_INPUT_FQN + " input) {");
+        try (var m = w.bodyBlock()) {
+            // Resolve MetaObjects by their loaded FQNs (baked at codegen time).
+            w.line("com.metaobjects.object.MetaObject traceMo = loader.getMetaObjectByName("
+                + quote(entity.getName()) + ");");
+            w.line("com.metaobjects.object.MetaObject responseMo = loader.getMetaObjectByName("
+                + quote(responseVo.getName()) + ");");
+            // Tolerant extract → typed voResponse + lost-required gate.
+            w.line("com.metaobjects.render.extract.ExtractionResult<Object> outcome =");
+            w.deeper(1, () -> w.line(META_OBJECT_EXTRACT_FQN + ".extract(responseMo, input.llmResponseText(), "
+                + formatEnum + ");"));
+            // A required field that is lost OR malformed (present but unusable) has no value, so
+            // either fails the call — the response is never handed back typed as the VO.
+            w.text("""
+                java.util.List<String> unusable = new java.util.ArrayList<>();
+                if (outcome.report().hasLostRequired()) unusable.add("lost required: " + String.join(", ", outcome.report().lostRequired()));
+                if (outcome.report().hasMalformedRequired()) unusable.add("malformed required: " + String.join(", ", outcome.report().malformedRequired()));
+                boolean failed = !unusable.isEmpty();
+                """);
+            w.line("String status = failed ? " + CALL_INPUT_FQN + ".STATUS_ERROR : " + CALL_INPUT_FQN + ".STATUS_OK;");
+            w.line("String errorDetail = failed ? String.join(\"; \", unusable) : null;");
+            // Rebuild the input with derived status/errorDetail (extraction owns them).
+            w.line(CALL_INPUT_FQN + " effective = new " + CALL_INPUT_FQN + "(");
+            w.deeper(1, () -> w.text("""
+                input.spanId(), input.traceId(), input.parentSpanId(), input.sessionId(),
+                input.callType(), input.system(), input.startedAt(), input.llmRequest(),
+                input.llmResponseText(), input.requestModel(), input.responseModel(),
+                input.inputTokens(), input.outputTokens(), input.costMinor(), input.latencyMs(),
+                input.finishReason(), status, errorDetail);
+                """));
+            // Build base row + set typed voRequest/voResponse via the field SPI.
+            w.line(VALUE_OBJECT_FQN + " row = " + ROW_BUILDER_FQN + ".buildLlmCallRow(traceMo, effective);");
+            w.text("""
+                traceMo.getMetaField("voRequest").setObject(row, input.llmRequest());
+                Object voResponse = failed ? null : outcome.data();
+                traceMo.getMetaField("voResponse").setObject(row, voResponse);
+                recorder.record(row);
+                """);
+            w.line("return new " + resultClass + "(status, errorDetail, voResponse);");
         }
     }
 

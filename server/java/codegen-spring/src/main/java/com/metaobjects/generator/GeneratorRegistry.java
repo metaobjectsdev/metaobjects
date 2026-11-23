@@ -82,11 +82,11 @@ public final class GeneratorRegistry {
     }
 
     /**
-     * The six layers a generator can belong to — the axis an adopter SELECTS BY,
+     * The seven layers a generator can belong to — the axis an adopter SELECTS BY,
      * mirroring the manifest's {@code layer} field and gated against it exactly as
      * {@link Tier} is.
      *
-     * <p>Six, not ten. An earlier draft split {@code CAPABILITY} four ways, each with
+     * <p>Seven, not ten: the six below plus {@code SERVICE}, the shells of ADR-0067 layer 4. An earlier draft split {@code CAPABILITY} four ways, each with
      * ONE member — a layer with one member does no grouping work. The first four layers
      * are app-shape decisions a builder makes; {@code CAPABILITY} holds the ones the
      * MODEL has already made (you declared a {@code template.prompt}), which is why they
@@ -97,6 +97,8 @@ public final class GeneratorRegistry {
         MODEL,
         /** Query helpers, DbContext, repositories, table objects. */
         PERSISTENCE,
+        /** The service shells that enforce the declared rules (ADR-0067 layer 4). */
+        SERVICE,
         /** HTTP surface: routes, filter allowlists, validators, wiring. */
         API,
         /** Browser tier: forms, hooks, grids. */

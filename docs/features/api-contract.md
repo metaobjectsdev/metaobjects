@@ -87,6 +87,18 @@ every field. The TS mounts can restrict the update to one verb with
 |---|---|---|
 | `GET` | `/<apiPrefix>/_meta` | Serves the loaded model's shape (entities, fields, types, validators, layouts) as JSON — a separate contract, see [`docs/features/metadata-api.md`](metadata-api.md) |
 
+#### Operations and transitions (ADR-0066)
+
+A generated service (ADR-0067) adds the routes of a model's rules: `POST
+/<apiPrefix>/<entity>/{id}/<transition>` for each transition that derives a command, and each
+declared command or query at its `binding.rest` method and path or its derived one. They answer
+four codes of their own: 403 `forbidden` (the policy refused), 409 `invalid_transition` (the row
+is in no `@from` state), 409 `transition_condition_failed` (the `@condition` did not hold) and 409
+`state_managed` (a write named a lifecycle field). A declared business error is 409 with its code.
+Each is `{ "error": "<code>" }`. The rules are [business-rules.md](business-rules.md); the
+`rules/` sub-corpus pins the answers, generated lane, TypeScript only until each port's 1.3.0
+service work.
+
 #### The `<entity>` segment
 
 `<entity>` is the **entity name** `snake_case`d and then pluralized. One rule, the
@@ -227,7 +239,7 @@ routes those helpers mount: an adopter's own routes, and a Fastify `setErrorHand
 | Response | When |
 |---|---|
 | malformed JSON body | a `POST`/`PATCH`/`PUT` body that does not parse as JSON (an empty body sent as `application/json` included) → HTTP 400 `{ "error": "invalid_json" }`. An EMPTY body on a method that takes none (`GET`, `DELETE`, `HEAD`) is accepted even when the request declares `content-type: application/json`, as many clients do on every request; a non-empty `DELETE` body is still parsed. Before, Fastify answered its own `{ "statusCode": 400, "code": "FST_ERR_CTP_INVALID_JSON_BODY", … }` and Hono a Zod `validation` error about a missing object |
-| malformed id | a `:id` the key column cannot hold (a malformed uuid on a Postgres uuid key, a non-numeric id on an integer key, or numeric text that is not the canonical spelling of a number, such as `0x1` or `1e0`) → HTTP 400 `{ "error": "invalid_id" }` on GET, PATCH and DELETE. A malformed uuid in a POST or PATCH body's foreign key → HTTP 400 `{ "error": "validation" }`, from the insert/update schema's `8-4-4-4-12` hex check. Postgres used to answer 500 for both. The TypeScript, Java and Python ObjectManagers apply the numeric rule to a key passed as text to `findById`, `update`, `delete` and `load`: an optional `-` and ASCII digits with no leading zero (a decimal key may add `.` and digits), and no exponent, hex, plus sign, whitespace or negative zero, so the caller passes the decimal spelling. A string or uuid key is untouched |
+| malformed id | a `:id` the key column cannot hold (a malformed uuid on a Postgres uuid key, a non-numeric id on an integer key, or numeric text that is not the canonical spelling of a number, such as `0x1` or `1e0`) → HTTP 400 `{ "error": "invalid_id" }` on GET, PATCH, PUT and DELETE. A malformed uuid in a POST or PATCH body's foreign key → HTTP 400 `{ "error": "validation" }`, from the insert/update schema's `8-4-4-4-12` hex check. Postgres used to answer 500 for both. The TypeScript, Java and Python ObjectManagers apply the numeric rule to a key passed as text to `findById`, `update`, `delete` and `load`: an optional `-` and ASCII digits with no leading zero (a decimal key may add `.` and digits), and no exponent, hex, plus sign, whitespace or negative zero, so the caller passes the decimal spelling. A string or uuid key is untouched |
 | malformed page bound | a `?limit=` or `?offset=` that is not a non-negative integer (`abc`, `-5`, `1.5`, an empty value) → HTTP 400 `{ "error": "pagination.invalid_value", "param": "limit", "value": "abc", "expected": "a non-negative integer (0 or more)" }`. Before, a non-numeric bound was dropped (every row came back) and a negative or fractional one reached SQL. An entity or a projection with declared columns has no page-size maximum unless the project sets `api.pagination` (see "A page size is a project setting" below, which answers `limit_too_large`); an opaque view (no declared columns, served by raw SQL) pages to at most 1000 rows, so there a `limit` above 1000 is refused too, with `"expected": "an integer from 0 to 1000"` (it used to be clamped silently). The same answer comes from the Drizzle mounts and the ObjectManager Fastify mount. The corpus pins it on an entity (`list-query/pagination-invalid-value`) and on a report (`report/bad-page-bound`, where `limit=0` is refused too) |
 | database constraint violation | a write the database itself rejects → `{ "error": "constraint_violation", "constraint": "<kind>" }`, HTTP **409** for `unique` and `foreign_key` (a conflict with another row) and HTTP **400** for `check` and `not_null` (the request's own value), per the status rule under "Error response". The body names the constraint KIND only — never the SQL, the table or the bound values. A `CHECK` the model derives (an enum, a `validator.numeric`/`length`/`regex` range) is normally refused earlier by the route's own validation, as the corpus's `{ "error": "validation" }` 400; this row is the database's backstop |
 | schema validation failure | a body that fails the insert/update schema → HTTP 400 `{ "error": "validation", "issues": [...] }` (see "A validation error lists every issue" below). In TypeScript each issue is as Zod reports it **minus `pattern`**: Zod 4 attaches a failed `.regex()` check's source there, which for a generated `field.date` / `field.time` / `field.timestamp` check is a ~300-character calendar regex (and an authored `validator.regex` pattern is the server's to keep). The generated temporal checks carry a short `message` naming the expected format instead (`"must be an ISO date (YYYY-MM-DD)"`) |
@@ -308,15 +320,16 @@ each handler they register instead; an `HTTPException` is rethrown to your
   traversal route (`GET /<source>/{id}/<relation>`) takes no `limit` or `offset` in any port
   and is not paged by the setting: it answers the whole related set, as it always has.
 
-  **Without the setting nothing changes, and the default is per port.** With `limit` omitted,
-  the TypeScript mounts and the C# routes return **every** matching row, while the Java, Kotlin
-  and Python controllers return the first **50**, and no port caps an explicit `limit` on an
-  entity (`limit=100000` is honoured as asked). That is the behaviour every existing project
-  has, so the setting is opt-in: adding a cap on upgrade would silently truncate a client that
-  reads a whole list. Each port's verify advises (rule `unbounded-list-pages`, never a failure)
-  when a routes generator is wired and the project sets no page size: `meta verify`,
-  `metaobjects verify`, `mvn metaobjects:verify` (Java and Kotlin) and `dotnet meta verify
-  --codegen` (C# knows its generator list only when it runs it).
+  **Without the setting a list still pages: 50 rows, and no maximum.** With `limit` omitted, a
+  list answers the first **50** matching rows (`list-query/default-page-of-fifty`, over a 60-row
+  seed), and no port caps an explicit `limit` on an entity (`limit=100000` is honoured as asked).
+  The Java, Kotlin and Python controllers have always answered 50; the TypeScript mounts did so
+  from 1.3.0 (before, they returned **every** matching row), and the C# routes still return every
+  row until the same change lands there. A client that read a whole list with no `limit` now gets
+  the first page: send `limit`, or page with `offset` and `withCount=1`. `meta verify` no longer
+  advises `unbounded-list-pages`; `metaobjects verify`, `mvn metaobjects:verify` (Java and Kotlin)
+  and `dotnet meta verify --codegen` still name a wired routes generator with no page size (never
+  a failure).
 
   **Every port reads it:** the TypeScript Fastify and Hono routes, the C# minimal-API routes, the
   Java and Kotlin Spring controllers and the Python FastAPI routers, packaged and ejected (an owned

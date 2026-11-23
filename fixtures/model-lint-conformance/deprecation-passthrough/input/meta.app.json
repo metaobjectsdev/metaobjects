@@ -1,0 +1,128 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Country",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@deprecated": "use isoName",
+                "@replacedBy": "isoName"
+              }
+            },
+            {
+              "field.string": {
+                "name": "isoName"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "source.rdb": {
+                "@table": "countries"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Address",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "countryId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "source.rdb": {
+                "@table": "addresses"
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "country_fk",
+                "@fields": [
+                  "countryId"
+                ],
+                "@references": "Country"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "country",
+                "@objectRef": "Country",
+                "@cardinality": "one"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AddressView",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_address"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "Address.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "countryName",
+                "children": [
+                  {
+                    "origin.passthrough": {
+                      "@from": "Country.name",
+                      "@via": "Address.country"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "extends": "Address.pk"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

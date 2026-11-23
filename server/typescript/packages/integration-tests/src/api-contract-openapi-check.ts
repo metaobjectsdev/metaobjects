@@ -18,24 +18,21 @@ const CONTRACT_CORPUS_DIR = resolve(import.meta.dir, "..", "..", "..", "..", "..
 const DOCUMENT_ID = "openapi";
 const JSON_MEDIA_TYPE = "application/json";
 
-/**
- * The list-query parameters the OpenAPI document does not describe yet: `?search` and the
- * `filter[or]` / `filter[and]` combinators (docs/features/api-contract.md, "The list query:
- * search, combinators and refusals"). They are part of the REST contract since 1.3.0, but the
- * generated document still lists only the per-field `filter[<field>][<op>]` parameters, so a
- * scenario that sends one is outside what this check can hold.
- */
-const UNDOCUMENTED_QUERY = /^(search|filter\[(or|and)\])/;
-
 type JsonObject = Record<string, unknown>;
 
+interface Parameter {
+  name: string;
+  in: string;
+  style?: string;
+}
+
 interface Operation {
-  parameters?: Array<{ name: string; in: string }>;
+  parameters?: Parameter[];
   requestBody?: { content?: Record<string, { schema?: JsonObject }> };
   responses: Record<string, { content?: Record<string, { schema?: JsonObject }> }>;
 }
 
-type PathItem = Record<string, unknown> & { parameters?: Array<{ name: string; in: string }> };
+type PathItem = Record<string, unknown> & { parameters?: Parameter[] };
 
 export type ContractCheck = (req: ApiRequest, status: number, bodyText: string) => void;
 
@@ -55,14 +52,33 @@ function pointerToken(token: string): string {
   return token.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
+/**
+ * Whether the document declares the query key `name`: by its own name, or as a key inside a
+ * `deepObject` parameter (`filter[or][0][title][eq]` is a key of `filter[or]`, the combinator that
+ * nests, so the document cannot list each key).
+ */
+function declaresQuery(params: readonly Parameter[], name: string): boolean {
+  return params.some((p) => p.name === name || (p.style === "deepObject" && name.startsWith(`${p.name}[`)));
+}
+
 function queryNames(path: string): string[] {
   const at = path.indexOf("?");
   if (at < 0) return [];
   return [...new URLSearchParams(path.slice(at + 1)).keys()];
 }
 
+/** What a lane tells the check about its scenarios. */
+export interface OpenApiCheckOptions {
+  /**
+   * Query parameters a scenario sends to show they are IGNORED (a cache-buster): the contract
+   * says a server ignores an unknown parameter, so the document is right not to state it.
+   */
+  readonly ignoredQuery?: readonly string[];
+}
+
 /** A checker over one contract case's golden document. */
-export function openApiCheck(caseName: string): ContractCheck {
+export function openApiCheck(caseName: string, options: OpenApiCheckOptions = {}): ContractCheck {
+  const ignored = new Set(options.ignoredQuery ?? []);
   const document = JSON.parse(readFileSync(resolve(CONTRACT_CORPUS_DIR, caseName, "expected", "openapi.json"), "utf8")) as {
     paths: Record<string, PathItem>;
   };
@@ -103,9 +119,9 @@ export function openApiCheck(caseName: string): ContractCheck {
     if (documented === undefined) fail(req, `answered ${status}, which the document does not list`);
 
     if (status >= 200 && status < 300) {
-      const declared = new Set([...(item?.parameters ?? []), ...(operation.parameters ?? [])].map((p) => p.name));
+      const declared = [...(item?.parameters ?? []), ...(operation.parameters ?? [])];
       for (const name of queryNames(req.path)) {
-        if (!declared.has(name) && !UNDOCUMENTED_QUERY.test(name)) fail(req, `query parameter '${name}' is not in the document`);
+        if (!ignored.has(name) && !declaresQuery(declared, name)) fail(req, `query parameter '${name}' is not in the document`);
       }
       const request = operation.requestBody?.content?.[JSON_MEDIA_TYPE]?.schema;
       if (request !== undefined && req.body !== undefined) {

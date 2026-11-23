@@ -64,7 +64,8 @@ export interface MountReadOnlyOptions extends WireOptions {
    * The list page size of a projection (`api.pagination` in `.metaobjects/config.json`; ignored
    * for a report, which has `reportMaxRows`, and for a raw view, which pages to at most 1000).
    * A list with no `limit` returns `defaultLimit` rows; a `limit` above `maxLimit` answers
-   * `400 { "error": "limit_too_large", "maxLimit": N }`.
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns
+   * 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
    */
   readonly pagination?: PageSize;
   /** Report export, as on the Fastify mount: `?format=csv|json|xml`, capped by `export.maxRows`. */

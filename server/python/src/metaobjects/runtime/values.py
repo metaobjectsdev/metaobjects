@@ -180,15 +180,11 @@ def coerce_write_value(field: MetaField, value: Any, *, for_filter: bool = False
     # driven by the field so the driver binds the correct physical type. ADR-0036
     # Wave 2: field.timestamp is instant / tz-aware BY DEFAULT (→ timestamptz); the
     # rare naive wall-clock case opts out with @localTime:true (→ plain timestamp).
-    if sub == fc.FIELD_SUBTYPE_DATE:
-        return value if isinstance(value, _dt.date) else _dt.date.fromisoformat(str(value))
-    if sub == fc.FIELD_SUBTYPE_TIME:
-        return value if isinstance(value, _dt.time) else _dt.time.fromisoformat(str(value))
-    if sub == fc.FIELD_SUBTYPE_TIMESTAMP:
-        if isinstance(value, _dt.datetime):
-            return value
-        is_tz = field.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True  # ADR-0039 resolving: @localTime may be inherited
-        return _parse_datetime(str(value), tz_aware=is_tz)
+    # An array of them is parsed element by element.
+    if sub in (fc.FIELD_SUBTYPE_DATE, fc.FIELD_SUBTYPE_TIME, fc.FIELD_SUBTYPE_TIMESTAMP):
+        if field_is_array(field) and isinstance(value, list):
+            return [None if v is None else _temporal_write_value(field, v) for v in value]
+        return _temporal_write_value(field, value)
 
     # field.object / field.map stored as a single jsonb column: serialize to a
     # JSON text string so pg8000 sends it as jsonb text (PG assignment-casts text
@@ -247,6 +243,19 @@ def coerce_write_value(field: MetaField, value: Any, *, for_filter: bool = False
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
     return value
+
+
+def _temporal_write_value(field: MetaField, value: Any) -> Any:
+    """One ``field.date`` / ``field.time`` / ``field.timestamp`` value, as its native type."""
+    sub = field.sub_type
+    if sub == fc.FIELD_SUBTYPE_DATE:
+        return value if isinstance(value, _dt.date) else _dt.date.fromisoformat(str(value))
+    if sub == fc.FIELD_SUBTYPE_TIME:
+        return value if isinstance(value, _dt.time) else _dt.time.fromisoformat(str(value))
+    if isinstance(value, _dt.datetime):
+        return value
+    is_tz = field.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True  # ADR-0039 resolving: @localTime may be inherited
+    return _parse_datetime(str(value), tz_aware=is_tz)
 
 
 def _write_duration_member(field: MetaField, value: Any) -> str:

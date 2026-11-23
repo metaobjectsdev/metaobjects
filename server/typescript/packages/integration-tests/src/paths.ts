@@ -54,6 +54,9 @@ export const API_CONTRACT_SECRET_FIELDS_TPH_SCENARIOS_DIR = resolve(API_CONTRACT
 // Enum @default applied on create subcorpus (GENERATED lane only, every port).
 export const API_CONTRACT_ENUM_DEFAULT_DIR = resolve(API_CONTRACT_DIR, "enum-default");
 export const API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR = resolve(API_CONTRACT_ENUM_DEFAULT_DIR, "scenarios");
+export const API_CONTRACT_RULES_DIR = resolve(API_CONTRACT_DIR, "rules");
+export const API_CONTRACT_RULES_SCENARIOS_DIR = resolve(API_CONTRACT_RULES_DIR, "scenarios");
+export const API_CONTRACT_RULES_SETTINGS_DIR = resolve(API_CONTRACT_RULES_DIR, "settings");
 
 // `api` settings subcorpus (GENERATED lane only): `api.pagination` and `api.unknownFields: drop`.
 export const API_CONTRACT_API_SETTINGS_DIR = resolve(API_CONTRACT_DIR, "api-settings");

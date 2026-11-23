@@ -150,6 +150,10 @@ describe("catalog declarations are resolved against what the generators emit", (
     //                   declares no report. Its files import nothing outside their own pair
     //                   (`requires: []`, no runtime packages), and the reference byte-identical
     //                   test runs it over the report corpus.
+    //   rules-names     writes `rules.names.ts` only for a package that declares a lifecycle or
+    //                   an operation (ADR-0066); this fixture declares neither. The file it
+    //                   writes imports nothing (`requires: []`, no runtime packages), and the
+    //                   inert test (rules-inert.test.ts) runs it over a model that declares them.
     const silent = [...emissions.entries()].filter(([, e]) => e.size === 0).map(([n]) => n).sort();
     expect(silent).toEqual([
       "agent-docs",
@@ -161,6 +165,7 @@ describe("catalog declarations are resolved against what the generators emit", (
       "render-helper",
       "report-export",
       "requirements",
+      "rules-names",
       "shared-model",
       "template",
       "trace-helper",

@@ -43,6 +43,13 @@ export const HTTP_RUNTIME_MODULES = {
   "drizzle-fastify": { subpath: "drizzle-fastify", file: "drizzle-fastify/index" },
   hono: { subpath: "hono", file: "hono/index" },
   allowlists: { subpath: "drizzle-fastify", file: "drizzle-fastify/filter-allowlist" },
+  // The store mechanics a generated service shell calls (ADR-0067 layer 4): no web framework.
+  service: { subpath: "service", file: "service/index" },
+  // What the service layer's thin Fastify transport (ADR-0067 layer 5) imports: its own entry, so
+  // the flat routes' adapter is untouched.
+  "service-fastify": { subpath: "service/fastify", file: "service/fastify" },
+  // Its Hono twin, so a Hono app imports no Fastify.
+  "service-hono": { subpath: "service/hono", file: "service/hono" },
 } as const;
 
 export type HttpRuntimeModule = keyof typeof HTTP_RUNTIME_MODULES;

@@ -196,6 +196,17 @@ Flags:
 
 **Requirements for D1:** `wrangler` >= 3 on PATH (`npm i -D wrangler`).
 
+### `meta schema`
+
+Prints the expected schema the metadata implies, without touching a database: the `CREATE` statements `meta migrate` would write for an empty database (default), or the neutral JSON document with `--as json`. Built the same way as `meta migrate`; reads no database and no snapshot, and writes nothing unless `--out <file>` is given. Use it to hand the schema to a native migration tool.
+
+Flags:
+- `--dialect postgres|sqlite|d1` — default: `migrate.dialect`, else the dialect in `metaobjects.config.ts`
+- `--as ddl|json` — default `ddl`
+- `--out <file>` — write to a file instead of stdout
+
+The JSON document is described in [schema-snapshot-format.md](../../../../docs/features/schema-snapshot-format.md).
+
 ## Configuration
 
 Two config files, by design:

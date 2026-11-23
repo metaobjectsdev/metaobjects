@@ -3,11 +3,19 @@ package acme.shop;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.metaobjects.generator.spring.runtime.ConstraintErrors;
+import com.metaobjects.generator.spring.runtime.FilterParseResult;
+import com.metaobjects.generator.spring.runtime.FilterParser;
+import com.metaobjects.generator.spring.runtime.FilterPredicate;
 import com.metaobjects.generator.spring.runtime.PatchValidationException;
-import com.metaobjects.generator.spring.runtime.UnreadableBody;
-import com.metaobjects.generator.spring.runtime.UnknownBodyKeys;
-import com.metaobjects.generator.spring.runtime.ValidationIssues;
 import com.metaobjects.generator.spring.runtime.RecordComponentNames;
+import com.metaobjects.generator.spring.runtime.UnknownBodyKeys;
+import com.metaobjects.generator.spring.runtime.UnreadableBody;
+import com.metaobjects.generator.spring.runtime.ValidationIssues;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Validator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,14 +27,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import com.metaobjects.generator.spring.runtime.FilterParseResult;
-import com.metaobjects.generator.spring.runtime.FilterParser;
-import com.metaobjects.generator.spring.runtime.FilterPredicate;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Validator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * GENERATED — REST controller for Order entity. Implements the cross-port API contract.
@@ -41,7 +41,6 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
-
     private static final Set<String> SORT_ALLOWLIST = Set.of("id", "customerId", "total", "placedOn", "rush");
 
     private static final Map<String, String> SORT_DEFAULT_ORDER = Map.ofEntries();

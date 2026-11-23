@@ -22,6 +22,11 @@ const EXPECTED_NATIVE = [
   "routes-hono",
   "barrel",
   "names",
+  "rules-names",
+  "contract-types",
+  "service",
+  "service-routes",
+  "service-routes-hono",
   "report-export",
   "prompt-render",
   "output-parser",
@@ -179,13 +184,14 @@ describe("generator-registry (ADR-0021 D3)", () => {
     }
   });
 
-  test("no entry declares a framework — every codegen-ts generator but routes is neutral", () => {
-    // The two `api`-layer route generators are the only framework-bearing entries in
-    // this package; `client` (react/tanstack) lives in the other two slices.
+  test("no entry declares a framework — every codegen-ts generator but the route tier is neutral", () => {
+    // The four `api`-layer route generators (the flat Fastify and Hono routes, and the service
+    // layer's Fastify and Hono transports) are the only framework-bearing entries in this package;
+    // `client` (react/tanstack) lives in the other two slices.
     const framed = Object.values(generatorRegistry)
       .filter((e) => e.framework !== undefined)
       .map((e) => `${e.name}=${e.framework}`)
       .sort();
-    expect(framed).toEqual(["routes-hono=hono", "routes=fastify"]);
+    expect(framed).toEqual(["routes-hono=hono", "routes=fastify", "service-routes-hono=hono", "service-routes=fastify"]);
   });
 });

@@ -24,6 +24,7 @@ import {
   inArray as drzInArray,
   isNull as drzIsNull,
   isNotNull as drzIsNotNull,
+  not as drzNot,
   asc as drzAsc,
   desc as drzDesc,
   count as drzCount,
@@ -44,7 +45,7 @@ import type {
   UpdateManySpec,
   DeleteSpec,
   DeleteManySpec,
-  WhereClause, PrimitiveValue,
+  WhereClause, PrimitiveValue, CompareOp, Operand,
   Row,
 } from "../persistence-driver.js";
 import { ConstraintViolationError } from "../errors.js";
@@ -333,10 +334,12 @@ function makeDrizzleDriver(
         const w = applyWhere(table, spec.where, table);
         if (w !== undefined) q = q.where(w);
         if (dialect === "mysql") {
-          await q;
+          const changed = extractRowCount(await q);
+          if (spec.key !== undefined && changed === 0) return null;
           const selectArg = buildSelectMap(table, spec.returning);
           let s = db.select(selectArg).from(table);
-          if (w !== undefined) s = s.where(w);
+          const readBack = spec.key === undefined ? w : applyWhere(table, spec.key, table);
+          if (readBack !== undefined) s = s.where(readBack);
           const found = ((await s.limit(1)) as Row[])[0];
           return found ? toDbKeyedRow(table, jsKeyedFromSelect(found, selectArg)) : null;
         }
@@ -429,6 +432,14 @@ function jsKeyedFromSelect(row: Row, _selectMap: Record<string, AnyColumn>): Row
 }
 
 
+const DRIZZLE_COMPARE = { eq: "=", ne: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const satisfies Record<CompareOp, string>;
+
+function drizzleOperand(o: Operand, cols: Map<string, AnyColumn>): SQL | AnyColumn {
+  if ("column" in o) return cols.get(o.column);
+  if ("value" in o) return sql`${o.value}`;
+  return sql`COALESCE(${sql.join(o.coalesce.map((x) => sql`${drizzleOperand(x, cols)}`), sql`, `)})`;
+}
+
 function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>, dialect: "sqlite" | "postgres" | "mysql"): unknown {
   switch (w.kind) {
     case "eq": {
@@ -471,6 +482,10 @@ function buildExpression(w: WhereClause, cols: Map<string, AnyColumn>, dialect: 
       const parts = w.clauses.map((c) => buildExpression(c, cols, dialect)) as SQL[];
       return drzOr(...parts);
     }
+    case "not": return drzNot(buildExpression(w.clause, cols, dialect) as SQL);
+    case "compare":
+      return sql`${drizzleOperand(w.left, cols)} ${sql.raw(DRIZZLE_COMPARE[w.op])} ${drizzleOperand(w.right, cols)}`;
+    case "nullTest": return sql`${drizzleOperand(w.operand, cols)} ${sql.raw(w.not ? "IS NOT NULL" : "IS NULL")}`;
     default: {
       const exhaustive: never = w;
       throw new Error(`Unhandled WhereClause kind: ${JSON.stringify(exhaustive)}`);

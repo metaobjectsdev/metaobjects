@@ -23,6 +23,7 @@ export function detectStack(probe: ProjectProbe): { servers: ServerLang[]; clien
   if (probe.hasFileMatching(/(^|\/)pom\.xml$/)) servers.push("java");
   if (probe.hasFileMatching(/\.csproj$/)) servers.push("csharp");
   if (probe.hasFileMatching(/(^|\/)(pyproject\.toml|setup\.py)$/)) servers.push("python");
+  if (probe.hasFileMatching(/(^|\/)Cargo\.toml$/)) servers.push("rust");
 
   const clients: ClientFramework[] = [];
   if (probe.hasDep("@metaobjectsdev/react")) clients.push("react");

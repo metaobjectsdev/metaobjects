@@ -11,7 +11,6 @@ import java.util.List;
  * implement. Its controller answers every write verb with 405.</p>
  */
 public interface CustomerStatusTotalsRepository {
-
     /** Sort directive parsed from the cross-port ?sort=<field>:asc|desc grammar. */
     record SortClause(String field, String direction) {}
 

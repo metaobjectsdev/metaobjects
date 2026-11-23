@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal
-
 from pydantic import BaseModel
 
 from .Metric import Metric, MetricCreate

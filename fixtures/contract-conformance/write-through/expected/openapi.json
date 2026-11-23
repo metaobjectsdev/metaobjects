@@ -15,9 +15,11 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Rows per page. Absent, the server answers 50.",
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "default": 50
             }
           },
           {
@@ -148,6 +150,16 @@
               }
             }
           },
+          "400": {
+            "description": "The id is not one the key column can hold: error \"invalid_id\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No such row.",
             "content": {
@@ -188,7 +200,7 @@
             }
           },
           "400": {
-            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem. An id the key column cannot hold answers error \"invalid_id\".",
             "content": {
               "application/json": {
                 "schema": {
@@ -247,7 +259,7 @@
             }
           },
           "400": {
-            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem. An id the key column cannot hold answers error \"invalid_id\".",
             "content": {
               "application/json": {
                 "schema": {
@@ -287,6 +299,16 @@
           "204": {
             "description": "Deleted."
           },
+          "400": {
+            "description": "The id is not one the key column can hold: error \"invalid_id\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No such row.",
             "content": {
@@ -320,9 +342,11 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Rows per page. Absent, the server answers 50.",
             "schema": {
               "type": "integer",
-              "minimum": 0
+              "minimum": 0,
+              "default": 50
             }
           },
           {
@@ -453,6 +477,16 @@
               }
             }
           },
+          "400": {
+            "description": "The id is not one the key column can hold: error \"invalid_id\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
           "404": {
             "description": "No such row.",
             "content": {
@@ -493,7 +527,7 @@
             }
           },
           "400": {
-            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem. An id the key column cannot hold answers error \"invalid_id\".",
             "content": {
               "application/json": {
                 "schema": {
@@ -552,7 +586,7 @@
             }
           },
           "400": {
-            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem.",
+            "description": "The request was refused. A body key the model does not declare answers error \"unknown_fields\" with the keys in fields, and nothing is written. Any other problem answers error \"validation\" with an issue for every problem. An id the key column cannot hold answers error \"invalid_id\".",
             "content": {
               "application/json": {
                 "schema": {
@@ -591,6 +625,16 @@
         "responses": {
           "204": {
             "description": "Deleted."
+          },
+          "400": {
+            "description": "The id is not one the key column can hold: error \"invalid_id\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           },
           "404": {
             "description": "No such row.",

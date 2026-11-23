@@ -178,3 +178,35 @@ for (const d of DRIVERS) {
     });
   });
 }
+
+describe("ObjectManager Fastify list mount — default page without api.pagination", () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    const rows: Row[] = Array.from({ length: 55 }, (_, i) => ({ id: i + 1, name: `part ${i + 1}`, category: "tool", stock: 1, notes: null }));
+    const driver = inMemoryDriver({ seed: { parts: rows }, pkFields: { parts: ["id"] } });
+    const om = new ObjectManager({ metadata: await load(), driver });
+    app = Fastify();
+    mountCrudRoutes({
+      fastify: app, path: "/parts", entity: "Part", insertSchema: z.object({}), updateSchema: z.object({}),
+      om: async () => om, expose: ["list"] as const,
+    });
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  test("no ?limit= answers 50 rows, not the whole table", async () => {
+    const res = await app.inject({ method: "GET", url: "/parts" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(50);
+  });
+
+  test("a large ?limit= answers every row: no maximum without the setting", async () => {
+    const res = await app.inject({ method: "GET", url: "/parts?limit=100000" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(55);
+  });
+});

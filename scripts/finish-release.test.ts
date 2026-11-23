@@ -457,7 +457,7 @@ describe("finish-release gate 3: the payload states what shipped", () => {
     expect(r.out).toContain("pypi");
   });
 
-  // npm cannot sit out: `<version>` IS the npm version, written into all 14 package.json
+  // npm cannot sit out: `<version>` IS the npm version, written into every lockstep package.json
   // files by release.mjs. The accurate message used to fire only when an operator typed
   // `npm` explicitly, which nobody does, so the generic branch answered instead.
   test("an npm mismatch gets the npm-specific message, never an empty --sat-out", () => {

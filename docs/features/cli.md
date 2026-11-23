@@ -27,6 +27,7 @@ command surface splits in two:
 |---|---|---|---|
 | Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s). A new `.metaobjects/config.json` also carries `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" }`, the generated list routes' page size and the refusal of undeclared write keys ([api-contract.md](api-contract.md)); for `--dialect sqlite` it also adds `@libsql/kysely-libsql` to the project's `dependencies`, the SQLite driver the CLI's optional peer names (run your package manager's install afterwards); `--force` over an existing config does not add it |
 | **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
+| **Expected schema** (`schema`) | **Node `meta`** | `meta schema [--dialect <d>] [--as ddl\|json]` | **any backend** — read-only: prints the schema the metadata expects as DDL or as the neutral document ([schema-snapshot-format.md](schema-snapshot-format.md)); reads no database; writes nothing unless `--out` names a file |
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
@@ -128,6 +129,10 @@ Rules of the contract:
   `deprecated` inherited through the TARGET's own `extends` chain still counts. Advisory
   only, appears as `deprecations` in `--format json|toon`, and is muted with
   `--no-deprecation-lint` or `META_NO_DEPRECATION_LINT=1`.
+- **The three lints above also run in `dotnet meta verify`**, with the same flags and
+  environment variables, printed as text on stderr in the same order (overlays, names,
+  deprecations), before the field lint. The codes, addresses and message text are gated by
+  [`fixtures/model-lint-conformance/`](../../fixtures/model-lint-conformance/README.md).
 - **The field authoring lint runs on every `verify`, in every port.** It reports two
   mistakes that load with no error. `WARN_REFERENCE_FIELD_NOT_FOUND` flags an
   `identity.reference` whose `@fields` names a field the object does not have; a field
@@ -911,8 +916,17 @@ gates were removed — that content is effectively one static artifact, and ever
 already needs the Node `meta` CLI or its binary for schema ops (ADR-0015).
 
 ```bash
-npx meta agent-docs --server <lang>    # csharp | java | kotlin | python | node
+npx meta agent-docs --server <lang>    # csharp | java | kotlin | python | rust | node
 ```
+
+**The same files, built once for every port (1.3.0, ADR-0033 Amendment 1).** The assembler is
+also run at build time, once per stack a port's own command serves: each server language alone
+and Java with Kotlin, each with no client, React, React with TanStack or Angular. The result is
+committed at `agent-context-shipped/` (a manifest and each distinct file once), and a port's
+package embeds it so its command can copy one stack out with no Node on the path.
+`agent-context-shipped/README.md` is the contract that command follows, and the sdk's
+`shipped.test.ts` fails when the tree is stale. Until each port's command lands, the stubs
+below still redirect to the Node CLI.
 
 The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
 stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta

@@ -1,12 +1,5 @@
 package acme.shop;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
 import com.metaobjects.generator.spring.runtime.FilterParseResult;
 import com.metaobjects.generator.spring.runtime.FilterParser;
 import com.metaobjects.generator.spring.runtime.FilterPredicate;
@@ -14,6 +7,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * GENERATED — READ-ONLY REST controller for the CustomerStatusTotals report.
@@ -31,7 +31,6 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/customer_status_totals")
 public class CustomerStatusTotalsController {
-
     private static final Set<String> SORT_ALLOWLIST = Set.of("status", "customers", "activeCustomers");
 
     private static final Map<String, String> SORT_DEFAULT_ORDER = Map.ofEntries();

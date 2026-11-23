@@ -23,7 +23,6 @@ import javax.xml.stream.XMLStreamWriter;
  * decimal, a date or a boolean is never guarded, so a negative number stays a number.
  */
 public final class ReportExportWriter {
-
     private ReportExportWriter() {}
 
     /** Write a UTF-8 byte order mark before the CSV (Excel on Windows wants one). */

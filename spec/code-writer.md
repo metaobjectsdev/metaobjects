@@ -175,7 +175,9 @@ Defaults: four-space indent, 88 columns, a trailing comma on a broken list.
   `ERR_WRITER_UNCLOSED_BLOCK`. `close` with no suite open, and `dedent` with none open, are
   `ERR_WRITER_UNBALANCED_CLOSE`.
 - **`gap()`** asks for two blank lines before whatever is written next (the gap between
-  top-level definitions). A later `blank()` does not shrink it.
+  top-level definitions). A later `blank()` does not shrink it. Asked for before the first body
+  line, it is the gap after the imports: two blank lines instead of one, so a top-level `class`
+  or `def` right after the imports is set off as PEP 8 asks.
 - **`doc(lines...)`** writes `"""text"""` when there is one entry and it fits. Otherwise it
   writes the opening quotes with the first entry, each further entry on its own line (an
   empty entry is a blank line) and the closing quotes on their own line. A backslash is

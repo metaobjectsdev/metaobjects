@@ -6,6 +6,7 @@
 // lane only — see the corpus README. One Postgres testcontainer per scenario.
 
 import { describe, expect, test } from "bun:test";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_REPORT_DIR, API_CONTRACT_REPORT_SCENARIOS_DIR } from "../src/paths.ts";
@@ -37,14 +38,14 @@ const SERVED_PATHS: Array<[string, string]> = [
 
 const contractCheck: ContractCheck = openApiCheck("report");
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract report (FR-044) — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract report (FR-044) — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedReportServerHandle | null = null;
       try {
-        server = await startGeneratedReportServer(pg.connectionUri, META_PATH, layout);
+        server = await startGeneratedReportServer(pg.connectionUri, META_PATH, layout, lane);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
       } finally {
@@ -58,7 +59,7 @@ for (const layout of OUTPUT_LAYOUTS) describe(`api contract report (FR-044) — 
     const pg = await startDb();
     let server: GeneratedReportServerHandle | null = null;
     try {
-      server = await startGeneratedReportServer(pg.connectionUri, META_PATH, layout);
+      server = await startGeneratedReportServer(pg.connectionUri, META_PATH, layout, lane);
       await server.applySeed(SEED);
       for (const [name, path] of SERVED_PATHS) {
         const res = await fetch(server.baseUrl + path);

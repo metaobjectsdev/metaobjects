@@ -2,7 +2,7 @@
   "name": "@metaobjectsdev/integration-tests",
   "version": "0.0.0",
   "private": true,
-  "description": "Cross-language persistence conformance — TS runner against fixtures/persistence-conformance/. On-demand only (requires Docker).",
+  "description": "Cross-language persistence conformance \u2014 TS runner against fixtures/persistence-conformance/. On-demand only (requires Docker).",
   "type": "module",
   "scripts": {
     "test": "bun test",
@@ -15,7 +15,6 @@
     "oracle": "bun run src/oracle-cli.ts"
   },
   "dependencies": {
-    "@metaobjectsdev/ai-runtime": "workspace:*",
     "@metaobjectsdev/codegen-ts": "workspace:*",
     "@metaobjectsdev/metadata": "workspace:*",
     "@metaobjectsdev/migrate-ts": "workspace:*",
@@ -24,6 +23,7 @@
     "@metaobjectsdev/test-generators": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "fastify": "^5.6.2",
+    "hono": "^4.6.0",
     "js-yaml": "^4.1.0",
     "kysely": "^0.27.4",
     "pg": "^8.11.5",

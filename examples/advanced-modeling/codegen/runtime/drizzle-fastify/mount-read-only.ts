@@ -1,17 +1,14 @@
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
-import { quoteIdent, type SqlDialect } from "../sql-dialect.js";
-import { sql, eq, and, count } from "drizzle-orm";
 import { parseListQueryString } from "./list-query.js";
-import { parseFilterParams, parsePageBound, pageLimit, parseReportPage, RAW_VIEW_MAX_LIMIT, REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError, type PageSize } from "./filter-parser.js";
-import {
-  ReportExportError, assertExportWithinCap, exportContentDisposition, exportWithCountError, isExportCountFlag,
-  parseExportPage, readExportFormat, renderExport, EXPORT_CONTENT_TYPES, type ReportExportSpec,
-} from "./report-export.js";
+import { REPORT_MAX_ROWS, ReportTooLargeError, FilterParseError, type PageSize } from "./filter-parser.js";
+import { ReportExportError, exportContentDisposition, renderExport, EXPORT_CONTENT_TYPES, type ReportExportSpec } from "./report-export.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
-import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral, viewBaseConfig } from "./util.js";
+import { contractErrorCode } from "./util.js";
+import type { SqlDialect } from "../sql-dialect.js";
 import { timestampWire } from "../timestamp-wire.js";
 import { withWire, type WireOptions } from "../wire-format.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
+import { InvalidIdError, readOnlyGet, readOnlyList, rawViewName, type ReadOnlySpec } from "../read-only-read.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -65,7 +62,8 @@ export interface MountReadOnlyOptions extends WireOptions {
    * The list page size of a projection (`api.pagination` in `.metaobjects/config.json`; ignored
    * for a report, which has `reportMaxRows`, and for a raw view, which pages to at most 1000).
    * A list with no `limit` returns `defaultLimit` rows; a `limit` above `maxLimit` answers
-   * `400 { "error": "limit_too_large", "maxLimit": N }`.
+   * `400 { "error": "limit_too_large", "maxLimit": N }`. Absent, a list with no `limit` returns
+   * 50 rows (`DEFAULT_PAGE_LIMIT`) and there is no ceiling.
    */
   readonly pagination?: PageSize;
   /**
@@ -86,84 +84,6 @@ const rejectMutation = (resource: string) => async (
     .send({ error: "method_not_allowed", message: `${request.method} is not supported on a ${resource} (read-only).` });
 };
 
-function resolveViewName(view: AnyView): string | undefined {
-  const cfg = viewBaseConfig(view);
-  if (cfg) {
-    if (typeof cfg["name"] === "string") return cfg["name"] as string;
-  }
-  // Fallback for non-proxy shapes
-  const v = view as Record<string, unknown>;
-  return (
-    (typeof v["__tableName"] === "string" ? v["__tableName"] as string : undefined) ??
-    (typeof v["_name"] === "string" ? v["_name"] as string : undefined)
-  );
-}
-
-/**
- * Detect whether a Drizzle view was declared with `.existing()` and an empty
- * column schema (`{}`). In that case, `db.select().from(view)` generates
- * `SELECT  FROM ...` (invalid SQL), and we must fall back to raw SQL.
- */
-function isEmptyColumnView(view: AnyView): boolean {
-  const cfg = viewBaseConfig(view);
-  if (cfg) {
-    const fields = cfg["selectedFields"] as Record<string, unknown> | undefined;
-    return fields !== undefined && Object.keys(fields).length === 0;
-  }
-  return false;
-}
-
-function snakeToCamel(s: string): string {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-/** Normalise a raw SQL result row's keys from snake_case to camelCase. */
-function camelizeRow(row: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(row)) {
-    out[snakeToCamel(k)] = v;
-  }
-  return out;
-}
-
-/**
- * Execute a raw SQL read and return its rows, on EITHER dialect.
- *
- * There is no shared method: drizzle's `BaseSQLiteDatabase` has `.all()` and no
- * `.execute()`; `PgDatabase` has `.execute()` and no `.all()` at all (verified
- * against drizzle-orm's own `sqlite-core/db.d.ts` and `pg-core/db.d.ts`). So this
- * must DISPATCH — unlike the #286 sites, where the query builder is thenable on
- * both dialects and simply awaiting it was enough.
- *
- * That difference is exactly why the #286 sweep missed these. It hunted `.all()`
- * on a query BUILDER; these are `.all()` on the top-level `db` HANDLE — the libsql
- * raw-exec API, which node-postgres does not implement. BOTH read-only mounts
- * carried three each, so the Fastify adapter was broken here too despite being the
- * correct reference for the builder shape. Reported by an adopting project's code
- * review of the 0.21.4 upgrade.
- *
- * Reachable whenever `useRawSql` is true — an opaque `@sql` view body (the ADR-0043
- * escape hatch), where the view declares no columns for the query builder to select.
- *
- * The two Postgres drivers disagree on the result shape (node-postgres returns a
- * QueryResult with `.rows`, postgres-js returns the array itself), so both are
- * handled rather than betting on one.
- */
-// biome-ignore lint/suspicious/noExplicitAny: driver handle is consumer-provided
-async function rawRows(db: any, dialect: string | undefined, query: unknown): Promise<Record<string, unknown>[]> {
-  if (dialect === "postgres") {
-    const res: unknown = await db.execute(query);
-    if (Array.isArray(res)) return res as Record<string, unknown>[];
-    return (res as { rows?: Record<string, unknown>[] } | null)?.rows ?? [];
-  }
-  if (dialect === "mysql") {
-    // mysql2 answers `[rows, fields]`.
-    const [rows] = (await db.execute(query)) as [Record<string, unknown>[], unknown];
-    return rows;
-  }
-  return (await db.all(query)) as Record<string, unknown>[];
-}
-
 export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const { fastify, path, db, view, filterAllowlist, sortAllowlist, dialect } = opts;
   const idCol = opts.idColumn ?? "id";
@@ -177,101 +97,38 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const reportMaxRows = opts.reportMaxRows ?? REPORT_MAX_ROWS;
   const exportSpec = isReport ? opts.export : undefined;
 
-  const viewName = resolveViewName(view);
-  const useRawSql = isEmptyColumnView(view) && !!viewName;
-  // The raw-SQL branch has no declared columns, so nothing names a timestamp there.
-  const timestamps = timestampWire(view);
-  const toWire = withWire(timestamps, opts);
+  // The raw-SQL branch (a view with no declared columns) has nothing that names a timestamp.
+  const raw = rawViewName(view) !== undefined;
+  const toWire = raw ? (row: unknown) => row : withWire(timestampWire(view), opts);
+  const spec: ReadOnlySpec = {
+    filterAllowlist,
+    sortAllowlist,
+    dialect,
+    idColumn: idCol,
+    report: isReport,
+    reportMaxRows,
+    ...(opts.pagination === undefined ? {} : { pagination: opts.pagination }),
+    ...(exportSpec === undefined ? {} : { export: exportSpec }),
+  };
 
   // ── List ──────────────────────────────────────────────────────────────────
   fastify.get(path, ro, async (req, reply) => {
     try {
-      if (useRawSql) {
-        // .existing() view with no column schema — use raw SQL.
-        // Simple limit/offset only; filter/sort via allowlist is not available
-        // because column refs don't exist. This is sufficient for projection
-        // endpoints that return small full-table results.
-        const url = req.raw.url ?? "";
-        const qIdx = url.indexOf("?");
-        const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-        const parsed = parseListQueryString(queryString);
-        // A bound that is not an integer in range is a 400, not silently clamped.
-        const reportPage = isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
-        const limitVal = reportPage?.limit ?? parsePageBound(parsed, "limit", RAW_VIEW_MAX_LIMIT) ?? RAW_VIEW_MAX_LIMIT;
-        const offsetVal = reportPage?.offset ?? parsePageBound(parsed, "offset") ?? 0;
-        const withCount = isTruthyFlag(parsed["withCount"]);
-        // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
-        if (reportPage?.unbounded && rows.length > reportMaxRows) throw new ReportTooLargeError(reportMaxRows);
-        const camelRows = rows.map((r: Record<string, unknown>) => camelizeRow(r));
-        if (!withCount) return camelRows;
-        // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const countRows = await rawRows(db, dialect, sql.raw(`SELECT COUNT(*) AS c FROM ${quoteIdent(dialect, viewName)}`)) as any[];
-        const total: number = Number(countRows[0]?.c ?? 0);
-        return { rows: camelRows, total };
-      }
-
       const url = req.raw.url ?? "";
       const qIdx = url.indexOf("?");
-      const queryString = qIdx >= 0 ? url.slice(qIdx + 1) : "";
-      const parsed = parseListQueryString(queryString);
-      const withCount = isTruthyFlag(parsed["withCount"]);
-      // Export mode: the selector is validated before any query runs, and the export cap governs.
-      const format = exportSpec ? readExportFormat(parsed, exportSpec) : undefined;
-      if (format !== undefined && format !== "json" && isExportCountFlag(parsed["withCount"])) throw exportWithCountError();
-      const reportPage = exportSpec && format !== undefined
-        ? parseExportPage(parsed, exportSpec.maxRows)
-        : isReport ? parseReportPage(parsed, reportMaxRows) : undefined;
-      const result = parseFilterParams({
-        query: parsed,
-        table: view,
-        allowlist: filterAllowlist,
-        sortAllowlist,
-        dialect,
-      });
-      const combinedWhere = result.where && result.searchWhere
-        ? and(result.where, result.searchWhere)
-        : (result.where ?? result.searchWhere);
-      let q = db.select().from(view);
-      if (combinedWhere) q = q.where(combinedWhere);
-      if (result.orderBy) q = q.orderBy(...result.orderBy);
-      // A report fetches one row past the cap when no limit was sent, to tell exactly the
-      // cap apart from more than the cap before any body is written.
-      const limit = reportPage?.limit ?? pageLimit(result.limit, opts.pagination);
-      const offset = reportPage?.offset ?? result.offset;
-      if (limit !== undefined) q = q.limit(limit);
-      if (offset !== undefined) q = q.offset(offset);
-      // Await directly — `.all()` is libsql/better-sqlite3-only; the
-      // node-postgres builder is thenable. (The useRawSql branch above keeps
-      // db.all(sql.raw(...)) because that is the libsql raw-exec API, only
-      // reachable for `.existing()` empty-column views which are sqlite-only.)
-      const fetched = await q as unknown[];
-      if (exportSpec && format !== undefined && reportPage) {
-        assertExportWithinCap(fetched.length, reportPage, exportSpec.maxRows);
-      } else if (reportPage?.unbounded && fetched.length > reportMaxRows) {
-        throw new ReportTooLargeError(reportMaxRows);
-      }
-      const rows = fetched.map(toWire);
-
-      let total: number | undefined;
-      if (withCount) {
-        // Count query: same WHERE, no limit/offset/orderBy.
-        let cq = db.select({ c: count() }).from(view);
-        if (combinedWhere) cq = cq.where(combinedWhere);
-        const countRow = (await cq)[0] as { c: number } | undefined;
-        total = countRow?.c ?? 0;
-      }
-      if (exportSpec && format !== undefined) {
+      const page = await readOnlyList(db, view, parseListQueryString(qIdx >= 0 ? url.slice(qIdx + 1) : ""), spec);
+      const rows = page.rows.map(toWire);
+      if (exportSpec && page.format !== undefined) {
         // Render first: a writer that throws must not leave download headers on the 500.
         // A Buffer, not a string: Fastify appends "; charset=utf-8" to a string body's
         // application/json, and the contract pins the content type exactly.
-        const body = Buffer.from(renderExport(exportSpec, format, rows as Record<string, unknown>[], total), "utf8");
+        const body = Buffer.from(renderExport(exportSpec, page.format, rows as Record<string, unknown>[], page.total), "utf8");
         reply
-          .header("content-disposition", exportContentDisposition(path, format))
-          .header("content-type", EXPORT_CONTENT_TYPES[format]);
+          .header("content-disposition", exportContentDisposition(path, page.format))
+          .header("content-type", EXPORT_CONTENT_TYPES[page.format]);
         return body;
       }
-      return total === undefined ? rows : { rows, total };
+      return page.total === undefined ? rows : { rows, total: page.total };
     } catch (err) {
       if (err instanceof ReportTooLargeError) {
         reply.code(400).send({ error: "report_too_large", maxRows: err.maxRows });
@@ -297,30 +154,13 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     // ── Get by ID ─────────────────────────────────────────────────────────────
     fastify.get(`${path}/:id`, ro, async (req, reply) => {
       const { id } = req.params as { id: string };
-      if (useRawSql) {
-        const idLiteral = rawIdLiteral(id);
-        if (idLiteral === undefined) return reply.code(400).send({ error: "invalid_id" });
-        // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM ${quoteIdent(dialect, viewName)} WHERE ${quoteIdent(dialect, idCol)} = ${idLiteral} LIMIT 1`)) as any[];
-        const row = rows[0] ? camelizeRow(rows[0]) : undefined;
-        return row ?? reply.code(404).send({ error: "not_found" });
+      try {
+        const row = await readOnlyGet(db, view, id, spec);
+        return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
+      } catch (err) {
+        if (err instanceof InvalidIdError) return reply.code(400).send({ error: "invalid_id" });
+        throw err;
       }
-      // biome-ignore lint/suspicious/noExplicitAny: Drizzle table/view column ref
-      const colRef = (view as any)[idCol];
-      // No column under `idColumn`: there is nothing to compare the id against, and a query
-      // with no WHERE would answer with the view's first row. No row is addressable.
-      if (colRef === undefined) {
-        return reply.code(404).send({ error: "not_found" });
-      }
-      // Compare against the PK's real type — a uuid/text key must NOT go through Number().
-      const idValue = coerceIdForColumn(colRef, id);
-      if (idValue === undefined) {
-        return reply.code(400).send({ error: "invalid_id" });
-      }
-      // Await + first row rather than `.get()` (libsql/better-sqlite3-only).
-      const rows = await db.select().from(view).where(eq(colRef, idValue)).limit(1);
-      const row = (rows as unknown[])[0];
-      return row ? toWire(row) : reply.code(404).send({ error: "not_found" });
     });
   }
 

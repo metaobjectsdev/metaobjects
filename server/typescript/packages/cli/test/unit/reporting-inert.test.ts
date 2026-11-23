@@ -149,6 +149,18 @@ const SERVED_REPORT_FILES: Readonly<Record<string, readonly string[]>> = {
   // The export spec for the report's list route, and the project's one shared writer module.
   "report-export": [`${OUT}/StoreTotals.export.ts`, `${OUT}/report-export-writers.ts`],
   "contract-schema": [`${OUT}/schemas/acme/shop/StoreTotals.schema.json`],
+  // The report's list operation (ADR-0067 layer 4); the package index and the transports grow
+  // by it (SERVICE_GROWS below).
+  service: [`${OUT}/acme/shop/service/listStoreTotals.ts`],
+};
+/**
+ * The package-wide service files a served report changes: the service index gains its list
+ * operation and wire mapper, and each transport its list route and its `405` write routes.
+ */
+const SERVICE_GROWS: Readonly<Record<string, readonly string[]>> = {
+  service: [`${OUT}/acme/shop/service/index.ts`],
+  "service-routes": [`${OUT}/acme/shop/transport/fastify.ts`],
+  "service-routes-hono": [`${OUT}/acme/shop/transport/hono.ts`],
 };
 /**
  * FR-044 Plan 4: the files `cube-model` writes for `with/`, and none for `without/`. It writes
@@ -206,6 +218,14 @@ function expectOnlyAdds(
   }
 }
 
+/** A module's lines after its import block (the last line ending an import, `... from "x";`). */
+function bodyOf(source: string): string[] {
+  const lines = source.split("\n");
+  let last = -1;
+  lines.forEach((l, i) => { if (/^(import .*|\} )from "[^"]+";$/.test(l)) last = i; });
+  return lines.slice(last + 1);
+}
+
 interface OpenApiDoc {
   paths: Record<string, unknown>;
   components: { schemas: Record<string, unknown> };
@@ -257,7 +277,17 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
         expect(actual).toEqual(expected);
         return;
       }
-      expectOnlyAdds(expected, actual, ADDED_FOR_WITH[name] ?? [], [OPENAPI_DOC]);
+      expectOnlyAdds(expected, actual, ADDED_FOR_WITH[name] ?? [], [OPENAPI_DOC, ...(SERVICE_GROWS[name] ?? [])]);
+      for (const path of SERVICE_GROWS[name] ?? []) {
+        // A served report's service code names it, and it moves nothing it had: past the
+        // imports (which gain the report's names and helpers), every line of the file is still
+        // there, in order.
+        expect(actual[path]).toContain("StoreTotals");
+        const before = bodyOf(expected[path]!);
+        let kept = 0;
+        for (const line of bodyOf(actual[path]!)) if (line === before[kept]) kept++;
+        expect(kept).toBe(before.length);
+      }
       if (name === "openapi") expectOpenApiAddsOnlyTheServedReport(expected[OPENAPI_DOC]!, actual[OPENAPI_DOC]!);
       if (name === "barrel") {
         // The barrel is the one shared file that moves, and it moves by the report's
@@ -378,7 +408,7 @@ describe("FR-044 a sourceless report is inert; a served report emits exactly its
     expect(expected["<threw>"]).toBeUndefined();
     expect(actual["<threw>"]).toBeUndefined();
     expect(Object.keys(expected).length).toBeGreaterThan(10);
-    expectOnlyAdds(expected, actual, Object.values(ADDED_FOR_WITH).flat(), [AGENT_UI_PAGE, OPENAPI_DOC]);
+    expectOnlyAdds(expected, actual, Object.values(ADDED_FOR_WITH).flat(), [AGENT_UI_PAGE, OPENAPI_DOC, ...Object.values(SERVICE_GROWS).flat()]);
     // The agent UI page moves by the served report's section alone: every line it had is
     // still there, in order, and the section names the report.
     const before = expected[AGENT_UI_PAGE]!.split("\n");

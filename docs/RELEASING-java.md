@@ -172,11 +172,12 @@ git push origin main
 ### 3. Local smoke build
 
 ```bash
-cd server/java && mvn clean install
+cd server/java && mvn clean verify
 ```
 
-All 14 publishable modules should reach SUCCESS with the full test suite green. The build also installs
-locally into `~/.m2/repository/com/metaobjects/*/7.X.Y/`.
+All 14 publishable modules should reach SUCCESS with the full test suite green. Use `verify`, not
+`install`: a reactor build needs no installed artifacts, and installing writes this version into the
+shared `~/.m2`, where every other checkout building the same number then resolves it.
 
 ### 4. Tag the release
 

@@ -1,7 +1,6 @@
 package com.metaobjects.generator.spring;
 
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.object.MetaObject;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Rule;
 import org.junit.Test;
@@ -19,14 +18,14 @@ import static org.junit.Assert.assertTrue;
  * Open-for-extension contract for the Spring generators.
  *
  * <p>The base generators hide their per-entity emission logic behind granular
- * {@code protected} template methods ({@code emit}, {@code writeJavaFile},
- * {@code componentType}, …). An adopter must be able to subclass a generator and
+ * {@code protected} template methods ({@code emit}, {@code newWriter}, {@code writeJavaFile},
+ * {@code emitRecord}, …). An adopter must be able to subclass a generator and
  * override one of those steps to alter the emitted output <em>without forking</em>
  * the generator. This test pins that contract on {@link SpringDtoGenerator}:
  *
  * <ul>
- *   <li>A subclass overriding {@link SpringDtoGenerator#writeJavaFile} (a now-{@code
- *       protected} emit step) changes the emitted file as expected.</li>
+ *   <li>A subclass overriding {@link SpringDtoGenerator#newWriter} (a {@code protected}
+ *       emit step) changes the emitted file as expected.</li>
  *   <li>The stock {@link SpringDtoGenerator} — same fixture, same args — emits the
  *       unmodified, byte-for-byte-default output (no marker leaks in).</li>
  * </ul>
@@ -55,14 +54,16 @@ public class SpringDtoGeneratorExtensibilityTest extends SharedRegistryTestBase 
     private static final String MARKER = "// CUSTOM-ADOPTER-HEADER";
 
     /**
-     * An adopter subclass that overrides the granular {@code writeJavaFile} emit
-     * step (now {@code protected}) to prepend a banner before delegating to the
-     * stock body-writer. This is the override that forking would otherwise force.
+     * An adopter subclass that overrides the protected {@code newWriter} step to give
+     * every file a banner header before the stock emit writes its body. This is the
+     * override that forking would otherwise force.
      */
     private static final class BannerDtoGenerator extends SpringDtoGenerator {
         @Override
-        protected void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, String body) {
-            super.writeJavaFile(entity, outRoot, pkg, typeName, MARKER + "\n" + body);
+        protected SpringJavaWriter newWriter(String pkg) {
+            SpringJavaWriter w = super.newWriter(pkg);
+            w.header(MARKER);
+            return w;
         }
     }
 

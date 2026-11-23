@@ -243,6 +243,17 @@ against `prompts/` when it exists, else `templates/`, and fails the same way whe
 exists. It also runs the codegen gate when `--out <dir>` and `codegen/Generators.cs` are
 present, and skips it with a note otherwise; name both subverbs to require both.
 
+Every `dotnet meta verify` also prints the advisory authoring lints on stderr, whichever gates
+run: unflagged cross-file redeclarations (`WARN_OVERLAY_IMPLICIT`), whitespace in a node name
+(`WARN_NAME_SURROUNDING_WHITESPACE`, `WARN_NAME_INTERNAL_WHITESPACE`), references to a
+`deprecated` node (`WARN_DEPRECATED_REFERENCE`), then the field lint. None changes the exit code.
+The overlay lint reads the raw files, so it runs even when the model does not load; the name and
+deprecation lints read the loaded model and print nothing when it does not load (the load error
+is the gate's report).
+Mute each with `--no-overlay-lint`, `--no-name-lint`, `--no-deprecation-lint` or
+`--no-field-lint`, or the matching `META_NO_*_LINT=1`. The codes and message text match Node
+`meta verify`, gated by `fixtures/model-lint-conformance/` and `fixtures/field-lint-conformance/`.
+
 The output directory and the namespace are project settings, so `gen` and `verify` cannot
 disagree about them. Declare them once in `.metaobjects/config.json`; `outDir` is relative to the
 directory holding `.metaobjects/`:

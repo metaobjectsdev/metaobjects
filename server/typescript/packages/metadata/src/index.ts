@@ -73,6 +73,22 @@ export {
   type Lifecycle,
   type DerivedTarget,
 } from "./core/transition/lifecycle.js";
+// ADR-0066 — permission points and derived commands, shared by verify and the rules generators.
+export {
+  modelEntities,
+  modelOperations,
+  claimedTransitions,
+  claimsOn,
+  derivesCommand,
+  commandEntities,
+  derivedCommandsOf,
+  derivedPermissionName,
+  isPublicPoint,
+  needsPermissionName,
+  operationPermission,
+  commandPermission,
+  type TransitionClaim,
+} from "./core/transition/commands.js";
 export { isDerivedExpr, derivedExprFields, type DerivedExprNode } from "./core/reporting/derived-expr.js";
 export {
   reportFrom,
@@ -451,7 +467,7 @@ export { resolveEnumMaxLength, enumDefaultsOf, DEFAULT_ENUM_DEFAULTS, ENUMS_KEY_
 export type { EnumDefaults } from "./enum-length.js";
 export {
   apiPaginationOf, API_KEY_PAGINATION, PAGINATION_KEY_DEFAULT_LIMIT, PAGINATION_KEY_MAX_LIMIT,
-  INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT,
+  DEFAULT_PAGE_LIMIT, INIT_DEFAULT_LIMIT, INIT_MAX_LIMIT,
   apiUnknownFieldsOf, API_KEY_UNKNOWN_FIELDS, UNKNOWN_FIELDS_REJECT, UNKNOWN_FIELDS_DROP,
   UNKNOWN_FIELDS_MODES, DEFAULT_UNKNOWN_FIELDS, ERROR_UNKNOWN_FIELDS,
 } from "./api-pagination.js";
@@ -470,7 +486,7 @@ export type { WireFormat, WireDecimals, WireNullMembers, WireDurations } from ".
 // ADR-0066: the `rules` and `verify` blocks of .metaobjects/config.json.
 export {
   RULES_PERMISSION_NAMES, RULES_LIFECYCLE_CREATE, RULES_LIFECYCLE_COMMANDS, VERIFY_LIFECYCLE_UNREACHABLE,
-  DEFAULT_RULES_SETTINGS, rulesSettingsOf,
+  DEFAULT_RULES_SETTINGS, rulesSettingsOf, rulesSettingsOfModel,
 } from "./rules-settings.js";
 export type {
   RulesSettings, RulesConfigBlocks, RulesPermissionNames, RulesLifecycleCreate, RulesLifecycleCommands,

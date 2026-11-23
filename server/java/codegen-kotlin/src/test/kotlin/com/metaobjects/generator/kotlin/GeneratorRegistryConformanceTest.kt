@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
  *   (3) tier agreement — every native manifest name is NATIVE in the registry
  *       (Kotlin has no neutral generators per the manifest);
  *   (4) layer agreement — every manifest name's `layer` equals the registry's, and
- *       every manifest entry declares one of the six.
+ *       every manifest entry declares one of the seven.
  *
  * On mismatch this REPORTS the exact diff (missing / extra / tier / layer) so the manifest
  * and registry can be reconciled. It never mutates either. Repo-root resolution
@@ -38,7 +38,7 @@ class GeneratorRegistryConformanceTest {
      * [GeneratorLayer]. Enumerating the enum would make this gate agree with whatever
      * the code says, which is the one thing a conformance gate must not do.
      */
-    private val allowedLayers = setOf("model", "persistence", "api", "client", "docs", "capability")
+    private val allowedLayers = setOf("model", "persistence", "service", "api", "client", "docs", "capability")
 
     private val manifestPath: Path = run {
         var p: Path? = Path.of(System.getProperty("user.dir")).toAbsolutePath()
@@ -146,9 +146,9 @@ class GeneratorRegistryConformanceTest {
         )
     }
 
-    /** (4b): every manifest entry — every port's — declares one of the six. */
+    /** (4b): every manifest entry — every port's — declares one of the seven. */
     @Test
-    fun `every manifest entry declares one of the six layers`() {
+    fun `every manifest entry declares one of the seven layers`() {
         val bad = loadManifest()
             .filter { it.layer !in allowedLayers }
             .map { "${it.name}='${it.layer}'" }

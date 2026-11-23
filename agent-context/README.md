@@ -24,4 +24,9 @@ target has no installed `metaobjects-*` skills to receive it); it carries
 `scaffold: false` under `metadata:` in its front-matter as the human marker (no code reads it). Its design + retro-test
 validation live in `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-design.md`.
 
+**After any change here, rebuild the shipped tree** that every non-TypeScript port embeds:
+`bun server/typescript/packages/sdk/scripts/build-shipped-agent-context.ts`. It writes
+`agent-context-shipped/`, one stack per server language and client choice, and the sdk's
+`shipped.test.ts` fails until it is current (ADR-0033 Amendment 1).
+
 Design: `docs/superpowers/specs/2026-06-02-downstream-agent-context-design.md`.

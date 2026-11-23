@@ -71,6 +71,10 @@ class PyWriter(CodeWriter):
         #: local name -> the module it was imported from, so one name cannot come from two
         self._locals: dict[str, str] = {}
         self._head: list[str] = []
+        #: Blank lines between the imports and the body: one, or two when ``gap()`` was asked
+        #: for before the first body line (a top-level ``class`` or ``def`` right after the
+        #: imports, which PEP 8 sets two blank lines before).
+        self._lead_blank = 1
 
     # ── imports ──────────────────────────────────────────────────────────────────────
 
@@ -121,7 +125,9 @@ class PyWriter(CodeWriter):
 
     def gap(self) -> "PyWriter":
         """Two blank lines before whatever is written next: the gap between top-level
-        definitions."""
+        definitions. Asked for before the first body line, it is the gap after the imports."""
+        if not self._out and not self._openers:
+            self._lead_blank = 2
         self._want_blank = max(self._want_blank, 2)
         return self
 
@@ -173,7 +179,7 @@ class PyWriter(CodeWriter):
             return body
         if body == "":
             return top
-        return f"{top}\n{body}"
+        return top + "\n" * self._lead_blank + body
 
     def _section_writer(self) -> CodeWriter:
         return CodeWriter(indent=self.indent, width=self.width, trailing_comma=self.trailing_comma)

@@ -11,7 +11,6 @@ import java.util.Set;
 
 /** GENERATED — presence-tracked partial-update (PATCH) shape for Shipment. Do not hand-edit; regenerated from metadata. */
 public final class ShipmentPatch {
-
     private final Map<String, Object> assigned;
 
     private ShipmentPatch(Map<String, Object> assigned) { this.assigned = assigned; }

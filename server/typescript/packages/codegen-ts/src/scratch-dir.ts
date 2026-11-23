@@ -47,3 +47,27 @@ function walkRemove(path: string): void {
 export function removeTree(path: string): void {
   walkRemove(path);
 }
+
+const removedAtExit = new Set<string>();
+
+/**
+ * Remove `path` when this process exits normally (the `exit` event; a process killed by a signal
+ * leaves it behind). For state a process shares across its own runs and no
+ * later process reads (runGen's gen-state for a run with no project): without it, every process
+ * that ever ran one left a directory in the scratch root.
+ */
+export function removeTreeAtExit(path: string): void {
+  if (removedAtExit.has(path)) return;
+  if (removedAtExit.size === 0) {
+    process.once("exit", () => {
+      for (const p of removedAtExit) {
+        try {
+          removeTree(p);
+        } catch {
+          // An exit handler must not throw: a directory it cannot remove is left behind.
+        }
+      }
+    });
+  }
+  removedAtExit.add(path);
+}

@@ -16,12 +16,23 @@ The Rust port loads the vocabulary and runs the same loader rules, and its `veri
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. The flat generators generate nothing from
 the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its generator list as
-it adds any generator. The first are C#'s `rules-names`, which writes the states, transitions,
-permissions and error codes as constants, and `contract-types`, which writes each entity's create
-and update records ([C# port](../ports/csharp.md)). The service shells that
-enforce these rules at run time are later work. A lifecycle in a project
-that wires none will be advised by `verify` once that check lands; today the flat routes enforce
-nothing and `verify` says nothing about it. Every flat generator writes byte-identical code for
+it adds any generator. The first is `rules-names`, which writes the states, transitions,
+permissions and error codes as constants, in TypeScript (see
+[The names layer](#the-names-layer-typescript)) and C#. The second is `contract-types`: in
+TypeScript it writes the shapes and errors an operation takes and returns (see
+[The contract types layer](#the-contract-types-layer-typescript)), and in C# so far each
+entity's create and update records ([C# port](../ports/csharp.md)). The TypeScript runtime makes the
+guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
+persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
+each package's derived list, get, create, update and delete, every write in one transaction with the
+declared write rules, behind a thin Fastify transport (`service-routes`) or Hono transport
+(`service-routes-hono`) that answers the shared API tests as the flat routes do (see
+[The service layer](#the-service-layer-typescript)). It also writes a command per transition and a
+shell per declared command and query, and enforces at run time what this page declares: the
+permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
+later 1.3.0 work. A lifecycle in a project that wires no service generator will be advised by
+`verify` once that check lands; until then the flat routes enforce nothing and `verify` says
+nothing about it. Every flat generator writes byte-identical code for
 a model with this vocabulary and the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
@@ -234,9 +245,9 @@ setting behaves as it does today.
 
 | Setting | Values | When absent | Effect |
 |---|---|---|---|
-| `rules.permissions.names` | `derive`, `advise`, `require` | `derive` | `derive` accepts derived permission names. `advise` warns about each one. `require` fails `verify` on each one. |
+| `rules.permissions.names` | `derive`, `advise`, `require` | `derive` | `derive` accepts derived permission names. `advise` warns about each one. `require` fails `verify` on each one, and the TypeScript service generator refuses to generate such a point, naming the permission it would derive. |
 | `rules.lifecycle.commands` | `unclaimed`, `all`, `none` | `unclaimed` | Which transitions derive a command of their own, and so are permission points: those no declared command claims, every one, or none. A command claims a transition for its target entity and every entity extending it. |
-| `rules.lifecycle.create` | `initial`, `any` | `initial` | **No effect yet.** Whether a create may start a row in a state other than the initial one. It is read and validated, and nothing acts on it until the service shells land. |
+| `rules.lifecycle.create` | `initial`, `any` | `initial` | Whether a create may start a row in a state other than the initial one. Under `initial` the generated service fills an omitted state with the initial one and answers a different one 409 `state_managed`; under `any` it accepts any state of the lifecycle. The TypeScript service acts on it; a port whose service has not landed has nothing to act on. |
 | `verify.lifecycle.unreachable` | `warn`, `error`, `off` | `warn` | The severity of the two reachability checks. `off` skips them. |
 
 ```json
@@ -248,6 +259,238 @@ setting behaves as it does today.
   "verify": { "lifecycle": { "unreachable": "warn" } }
 }
 ```
+
+## The names layer (TypeScript)
+
+`rulesNamesFile()` (stable name `rules-names`, ejectable like any reference generator) writes one
+`rules.names.ts` per metadata package that declares a lifecycle or an operation, under the
+package's directory (`acme/purchasing/rules.names.ts`) in either output layout. A package without
+the vocabulary gets no file. Hand-written code (a command body, a policy, a grant table) imports
+these instead of writing a state, a transition, a permission or an error code as a string, so a
+rename in the model stops it compiling:
+
+```ts
+export const PurchaseRequestStatusLifecycle = {
+  field: "status",
+  states: ["draft", "submitted", "approved", "rejected"],
+  initial: "draft",
+  terminal: ["approved", "rejected"],
+  transitions: {
+    submit: { from: ["draft"], to: "submitted" },
+    approve: { from: ["submitted"], to: "approved" },
+    reject: { from: ["submitted"], to: "rejected" },
+  },
+} as const;
+export type PurchaseRequestStatusState = (typeof PurchaseRequestStatusLifecycle.states)[number];
+export type PurchaseRequestStatusTransition = keyof typeof PurchaseRequestStatusLifecycle.transitions;
+
+export const PurchaseRequestCommands = {
+  submit: { lifecycle: "status", permission: "acme::purchasing.PurchaseRequest.submit" },
+} as const;
+
+export const Operations = {
+  decide: { kind: "command", permission: "purchasing.decide", transitions: ["approve", "reject"], errors: ["over_budget", "already_decided"] },
+  openRequests: { kind: "query", public: true },
+} as const;
+
+export const Permissions = ["acme::purchasing.PurchaseRequest.submit", "purchasing.decide"] as const;
+export type Permission = (typeof Permissions)[number];
+export const BusinessErrors = ["already_decided", "over_budget"] as const;
+```
+
+The file also carries `ShellErrors`, the codes the enforcing shell answers with on its own. What
+is derived (the terminal states, which transitions get a command under `rules.lifecycle.commands`,
+each derived permission name) comes from the same functions `verify`'s rules gate uses, so the
+constant and a `verify` message name the same thing. The file ends in `.names.ts`, so
+`meta verify --codegen` treats a hand edit in it as drift, as it does for `<Entity>.names.ts`.
+
+## The contract types layer (TypeScript)
+
+`contractTypes()` (stable name `contract-types`, ejectable) writes the shapes a caller and a
+service exchange, with no persistence mapping in them, so a transport, a client or a job can import
+them without the ORM. Each module imports `zod` and nothing else. Beside where the entity generator
+writes `<Name>.ts`, it writes:
+
+- `<Entity>.contract.ts` for each store-backed entity: the read schema and type (`<Entity>Schema`,
+  `<Entity>`, a row as the store returns it), the create and update schemas with their validation
+  (`<Entity>InsertSchema`, `<Entity>UpdateSchema`) and the typed `<Entity>Create` and
+  `<Entity>Patch`. A TPH subtype's read schema pins its discriminator, and a TPH base's read type
+  is the union of its subtypes';
+- `<Projection>.contract.ts` for each projection: its read schema and type, and nothing a caller
+  sends;
+- the value module of each value object those shapes or an operation reach, byte for byte the
+  entity generator's, so the two collapse into one file when both run;
+- `<pkg path>/operations.contract.ts` for each package that declares operations, under the
+  package's directory in either layout;
+- `errors.contract.ts` at the target root: the wire error bodies.
+
+For the example's `decide` command and its queries:
+
+```ts
+/** `decide` (command). */
+export const DecideInputSchema = DecisionInputInsertSchema;
+export type DecideInput = z.input<typeof DecisionInputInsertSchema>;
+export type DecideBusinessError = "over_budget" | "already_decided";
+export type DecideError = ErrorBody<ShellErrorCode | ContractErrorCode | DecideBusinessError>;
+
+/** `openRequests` (query). */
+export type OpenRequestsOutput = readonly RequestSummary[];
+export type OpenRequestsBusinessError = never;
+export type OpenRequestsError = ErrorBody<ShellErrorCode | ContractErrorCode | OpenRequestsBusinessError>;
+```
+
+`errors.contract.ts` carries the shell's codes (`ShellErrorCodes`) and the API contract's
+(`ContractErrorCodes`), the HTTP status of each fixed code (`ErrorStatus`), and the bodies:
+`ErrorBody`, `ValidationErrorBody` with its `issues`, and `ConstraintViolationBody` with its
+`constraint` kind (see [API contract](api-contract.md)). It gives no status for a business error a
+command declares; that is the service shell's to answer. A key a derived command or a keyed query
+takes is not here either: the service generator decides its parameters.
+
+## The service layer (TypeScript)
+
+`serviceFile()` (stable name `service`, layer `service`, ejectable) writes the layer a route, a job
+or an agent tool calls (ADR-0067 layer 4): one module per metadata package, under the package's
+directory in either layout.
+
+- `<pkg path>/service/<operation>.ts`: one function per operation, `(deps, ...args, opts) =>
+  OpResult`. Each concrete entity with a writable table and a single-field key gets five:
+  `list<Plural>`, `get<Entity>`, `create<Entity>`, `update<Entity>` and `delete<Entity>`.
+- `<pkg path>/service/index.ts`: `ServiceDeps` (the database, and the hand-written pieces below),
+  the `<Pkg>Service` interface, `create<Pkg>Service(deps)` that binds the operations to it, and
+  each entity's wire mapper.
+
+By default every write runs in one transaction (Cloudflare D1 is the exception, below), in
+ADR-0067's order: load the row under a row lock (`not_found` when there is none), validate the input
+and stamp what the model declares (ADR-0045: `@autoSet`, write-once fields, server-owned and unknown
+keys), then write it. A caller that runs several operations atomically passes its own transaction as
+`opts.tx`, and each operation runs in a savepoint inside it. A refusal rolls the transaction back. A
+query opens no write transaction. An operation answers an `OpResult`: the value, or a failure
+carrying the code and the HTTP status the [API contract](api-contract.md) gives it, so every
+transport maps it the same way.
+
+On SQLite the service takes a sync or an async Drizzle driver, as the flat generators do. An async
+one (libsql) runs Drizzle's own transaction. A sync one (bun:sqlite, better-sqlite3) cannot: its
+`transaction()` commits when its callback returns, at the first `await`. So the runtime drives the
+transaction with statements (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`) and runs one at a time on each
+database handle, since SQLite has one writer; a read waits for the transaction in flight. A job that
+runs several operations atomically on any driver opens the transaction with
+`withWriteTransaction(db, async (tx) => ...)` from `@metaobjectsdev/runtime-ts/service` and passes
+`tx` as each operation's `opts.tx`. On a sync driver every operation inside must be passed that
+`tx`: one that is not waits for the transaction it is inside, and never runs.
+
+Cloudflare D1 holds no transaction across application code: it refuses the `BEGIN` the service
+opens. Generate its service with `serviceFile({ interactiveTransactions: false })` (ADR-0067 §4).
+That service opens no transaction. Each derived write is its one statement after the load and the
+checks, and a transition is its guarded update, which needs no transaction to hold. There are no
+`<Pkg>Hooks` and no `<Pkg>Events`, since a hook's refusal could not undo the write it followed. A
+package that declares a command fails generation with `ERR_STORE_NO_INTERACTIVE_TX`, naming the
+package, the command and the option; queries are generated as usual.
+
+`serviceRoutesFile()` (stable name `service-routes`, layer `api`, Fastify) writes the thin
+transport (layer 5) beside it, `<pkg path>/transport/fastify.ts`: one plugin per package,
+registered with the service it calls. Each route parses the request, calls one operation and
+sends what it answered; it holds no rules and no database handle. `serviceRoutesHonoFile()`
+(stable name `service-routes-hono`) writes the same routes for Hono, `<pkg path>/transport/hono.ts`,
+as one function per package that adds them to your app: `shopServiceHonoRoutes(app, { service })`.
+
+```ts
+import { createShopService } from "./generated/acme/shop/service/index.js";
+import { shopServiceRoutes } from "./generated/acme/shop/transport/fastify.js";
+import { withWriteTransaction } from "@metaobjectsdev/runtime-ts/service";
+
+const service = createShopService({ db });
+await app.register(shopServiceRoutes, { service });
+
+// A job calls the same operations, here two in one transaction (on any driver):
+await withWriteTransaction(db, async (tx) => {
+  await service.createOrder({ title: "first" }, { tx });
+  await service.createOrder({ title: "second" }, { tx });
+});
+```
+
+Both import the entity module (`entity`, for the table and the allowlists) and the contract types
+(`contract-types`), written to the same target, and `@metaobjectsdev/runtime-ts`'s `service` and
+`service/fastify` (or `service/hono`) entries; `meta eject service`, `meta eject service-routes` and
+`meta eject service-routes-hono` copy that source into `codegen/runtime/` as they do for the routes.
+The shared API tests run the service behind each transport over a subset of the corpora the flat
+routes pass; the subset and its engines are listed in the
+[API contract README](../../fixtures/api-contract-conformance/README.md#ts-lanes-illustrative-detail).
+
+### Transitions, declared operations and what you write by hand
+
+The service also writes what the rules on this page declare:
+
+- `<pkg path>/service/<transition><Entity>.ts` for each transition that derives a command (by
+  `rules.lifecycle.commands`), mounted at `POST <collection>/{id}/<transition>`.
+- `<pkg path>/service/<operation>.ts` for each declared command and query, mounted at its
+  `binding.rest` method and path, or at the derived path (`<collection>/{id}/<operation>` when it
+  addresses a row, `<collection>/<operation>` when it does not; a query is a `GET`, a command a
+  `POST`). Two routes on one method and path are refused when the transport is generated.
+
+Each one runs ADR-0066 §6's checks in this order, in one transaction unless the store has none (a query in the read scope):
+load the row (`not_found`), validate the input, the permission point (403 `forbidden`), the state
+check (409 `invalid_transition`), the hand-written body, the guarded update (409
+`invalid_transition` or `transition_condition_failed` when it matches no row), and the event hook.
+The generic update refuses a different value of a lifecycle field (409 `state_managed`) and lets
+the same value through. Under `rules.lifecycle.create: initial` a create starts in the initial
+state, so an omitted state is filled and another is `state_managed`.
+
+What you write is passed to `create<Pkg>Service(deps)`; there is no base class to extend.
+`index.ts` types each piece:
+
+| In `deps` | Type | What it is |
+|---|---|---|
+| `policy` | `<Pkg>Policy<A>` | `allows(permission, actor, row, input, tx)`: a refusal is 403 `forbidden`. Required when the package has a permission point. `<Pkg>Permission` lists every name it is asked about. |
+| `bodies` | `<Pkg>Bodies<A>` | One per declared operation. A command with `@transitions` returns the move to make, or `"none"`; `ctx.refuse(code)` answers one of its `@errors` (409). Required when the package declares an operation. |
+| `hooks` | `<Pkg>Hooks<A>` | Optional `before`/`after` hooks on each derived create, update and delete. A before hook may return a replacement input. |
+| `events` | `<Pkg>Events<A>` | Optional `onWrite(event, ctx)`, told about every create, update, delete, transition and command, in its transaction, with the actor. An outbox, a history table or an audit log is written here. |
+
+By default every hook, body and event runs in the write's transaction (`ctx.tx`), and any of them may refuse
+with `ctx.refuse(code)`, which answers 409 with that code and rolls the whole write back. A code the
+API contract reserves (`not_found`, `forbidden`, `validation`, ...) is not accepted.
+
+The actor is a type you define, `A`. A caller passes it per call as `opts.actor`, and the service
+hands it to the policy, the bodies, the hooks and the event hook without looking inside it. The
+Fastify transport takes a `getActor(request)` resolver of yours, and the Hono transport a
+`getActor(c)`:
+
+```ts
+const service = createPurchasingService<Actor>({
+  db,
+  policy: { allows: (permission, actor) => actor?.grants.includes(permission) ?? false },
+  bodies: {
+    decide: (input, ctx) => (input.approve ? "approve" : "reject"),
+    requestTotals: async (ctx) => totalsOf(ctx.tx),
+  },
+  events: { onWrite: (event, ctx) => writeAudit(ctx.tx, event) },
+});
+await app.register(purchasingServiceRoutes, { service, getActor: (req) => actorFromSession(req) });
+// or, on Hono:
+purchasingServiceHonoRoutes(app, { service, getActor: (c) => actorFromSession(c) });
+```
+
+The shared API tests' `fixtures/api-contract-conformance/rules/` corpus runs a model with a
+lifecycle, a declared command and query, permission points and declared errors against the
+generated service, under the default settings and under `rules.lifecycle.create: any` and
+`rules.lifecycle.commands: all` and `none`. Its README specifies the hand-written pieces, so every
+port's lane implements the same ones.
+
+The service covers every object the flat routes serve, with the same answers:
+
+- A projection and a served report get a list (and a get, when the projection is keyed). Their
+  transports answer every write `405 method_not_allowed`. A report keeps its row cap
+  (`serviceFile({ reportMaxRows })`, as `routesFile` takes it) and, with `report-export` wired,
+  its `?format=` export.
+- A write-through entity reads through its replica view and answers a write by reading the row
+  back through that view.
+- A single-table (TPH) hierarchy's base gets the polymorphic list and get. Each concrete subtype
+  gets the five operations at its own path, on the base table, scoped to its discriminator value.
+- A many-to-many relationship gets a query, `<relation>Of<Entity>(id)`, served at
+  `GET <path>/{id}/<relation>`.
+
+The `projection/`, `report/`, `write-through/`, `tph/`, `m2m/`, `decimal/` and `secret-fields/`
+corpora run on the service lanes as well as the routes lane. An entity with a composite key has no
+derived operations.
 
 ## Requirements can claim operations and transitions
 

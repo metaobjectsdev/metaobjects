@@ -505,26 +505,6 @@ The same file, loaded strictly without the provider, fails with `ERR_UNKNOWN_SUB
 order, in every port. A lax load accepts the unknown attributes but still refuses the unknown
 subtype.
 
-### The TypeScript forge provider
-
-**`forgeTypesProvider` is TypeScript-only, and is no longer in any default
-composition.** It was listed here as part of the default composition for "the TS / C# /
-Python loaders"; in fact only TypeScript ever had it, and no C#, Python, Java or Kotlin
-registry registers any `@forge*` attribute or `decision` / `principle` / `convention` /
-`glossary` / `failure` type at all. Nor does `expected-registry.json`, the manifest all
-five ports byte-match, so the cross-port gate never had jurisdiction over it — one
-document had two verdicts, decided by which toolchain read it, and 1.0 would have frozen
-that in.
-
-At the 1.0 cut it left `defaultLoadMemoryProviders` and `meta types`. It is still
-exported and unchanged, as the chartered opt-in:
-
-```ts
-const root = await loadMemory("./", { providers: [forgeTypesProvider] });
-```
-
-A project taking it knows it has a surface the other four ports do not.
-
 ## Stable error codes
 
 Composition surfaces these codes consistently across all ports (see

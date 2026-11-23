@@ -53,7 +53,7 @@ Every stock generator can be used two ways:
 | | Import it | Own a copy |
 |---|---|---|
 | How | `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";` | `meta eject entity`, then `import { entityFile } from "./codegen/generators/entity.js";` |
-| In your repo | the import, nothing else | `codegen/generators/entity.ts`, the template modules it calls under `codegen/templates/`, and for `entity`, `routes` and `routes-hono` the HTTP adapter source under `codegen/runtime/` |
+| In your repo | the import, nothing else | `codegen/generators/entity.ts`, the template modules it calls under `codegen/templates/`, and, for the generators that copy runtime source (listed under [What `meta eject` hands over](#what-meta-eject-hands-over-and-what-stays-core-typescript)), that source under `codegen/runtime/` |
 | An upstream fix | arrives when you upgrade the package | arrives when you merge it into your copy |
 | Changing what it emits | only through its options (`filter`, `target`, `expose`, …) | edit the file |
 | After a package upgrade | output can change; `meta verify --codegen` reports it until you run `meta gen` | output changes only when your copy does |
@@ -175,8 +175,8 @@ falls behind the reference. To drop one:
      imports your project's template modules where the reference imports the package's).
    - **A copy with lines of your own is a customization.** Keep it.
 
-   For `entity`, `routes` and `routes-hono`, check the adapter too. Ejecting one also
-   copied the HTTP adapter into `codegen/runtime/`, and a route fix is often made there
+   For each generator that copies runtime source, check the adapter too. Ejecting one also
+   copied that source into `codegen/runtime/`, and a route fix is often made there
    with the generator file left untouched. The text listing marks each of those files
    `identical`, `DIFFERS` or `not in the package`; `meta gen --list --format json` carries
    the same comparison as `source.runtimeCopy[]` on the generator's row, with a `verdict`
@@ -215,8 +215,8 @@ What the diff in step 4 holds:
   catching up, and you can read it the way you would read an upgrade, only once step 1 has
   confirmed the copy carried no change of your own. A line you had removed from the copy
   comes back in this same diff, and nothing marks it as yours.
-- **`entity`, `routes` and `routes-hono` also move one import.** An ejected `entity`,
-  `routes` or `routes-hono` points its output at the adapter copy in `codegen/runtime/`,
+- **The generators that copy runtime source also move one import.** An ejected one
+  points its output at the copy in `codegen/runtime/`,
   and the packaged generator imports `@metaobjectsdev/runtime-ts`. So those import lines
   change, and the project needs
   `@metaobjectsdev/runtime-ts` installed again (`meta gen --list --format json` gives the
@@ -396,6 +396,9 @@ calls it copies the adapter's source too:
 | `routes` | `routes.ts` — the whole route composition (CRUD, read-only projections, M:N traversal, TPH per-subtype sets), not a call into the engine | `drizzle-fastify/*` (mounts, filter parser, list params, M:N and read-only mounts, error handler), `route-errors.ts`, `constraint-errors.ts`, `timestamp-wire.ts`, `decimal-wire.ts`, `duration-wire.ts`, `wire-format.ts`, `sql-dialect.ts`, `canonical-key.ts`, `errors.ts` |
 | `routes-hono` | `routes-hono.ts`, likewise self-contained | `hono/*`, plus the shared parser, allowlist, envelope and timestamp files it reaches |
 | `entity` | `entity.ts` | `drizzle-fastify/filter-allowlist.ts` — the `FilterAllowlist` / `SortAllowlist` types the entity module's allowlists are typed by |
+| `service` | `service.ts` | `service/index.ts` — the store mechanics the generated service modules call (transaction, row lock, write-rule stamping), and `service/rules.ts`, the business-rules mechanics it re-exports |
+| `service-routes` | `service-routes.ts` | `service/fastify.ts` — the request and reply helpers the generated Fastify transport imports |
+| `service-routes-hono` | `service-routes-hono.ts` | `service/hono.ts` — the same helpers for the generated Hono transport, plus the files it reaches: the Hono route guard, the shared list-query parser and the route-error constants |
 
 The ejected generators point their output at that copy
 (`import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index.js"`), so
@@ -1264,8 +1267,9 @@ flavor, so the writers come with it:
 | `JavaCodeWriter` | The Java type of each field; accessor, parameter, class and package names; the body of the interface flavor. |
 | `PojoAwareCodeWriter`, `ValueObjectCodeWriter` | The fields, the constructor and the accessor bodies of the two concrete flavors. |
 
-All seven land in one package and use one another, never the packaged classes: eject
-rewrites the package line of each and, where one imports another, that import. To change a
+All seven land in one package and use one another, never the packaged copies: eject
+rewrites the package line of each and, where one imports another, that import. They do call
+the code writer (`JavaWriter`, `WriterOptions`), which is engine and stays in the package. To change a
 field, a constructor or an accessor, edit the writer. You subclass nothing. `-Dlist` gives
 `entity` one verdict over all seven files.
 
@@ -1327,7 +1331,9 @@ the packaged sibling classes they still call, so they compile from any package.
 **What stays in the package is the engine**, public and unchanged: the generator base and
 runner types, the naming and type-mapping tables (`SpringNaming`, `SpringTypeMapper`,
 `KotlinNaming`, `KotlinTypeMapper`), the questions a generator asks of the model
-(`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), and the Kotlin
+(`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), the code writer the Java
+generators lay their output out with (`CodeWriter`, `JavaWriter`, `WriterOptions`, and
+`SpringJavaWriter` for Spring source), and the Kotlin
 `Fr019SharedEnum`. Anything that returns emitted text is handed over; a table or a model
 question is not. The Kotlin `Fr019SharedEnum` writes no output. It answers where a shared or
 `@provided` enum lives, and the type mapper and the generator utilities take its

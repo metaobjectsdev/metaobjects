@@ -38,6 +38,10 @@ export const RUNTIME_ENTRIES: Readonly<Record<string, readonly HttpRuntimeModule
   routes: ["drizzle-fastify"],
   "routes-hono": ["hono"],
   entity: ["allowlists"],
+  // The service layer's store mechanics (ADR-0067 layer 4), and its transport's request and reply helpers.
+  service: ["service"],
+  "service-routes": ["service-fastify"],
+  "service-routes-hono": ["service-hono"],
 };
 
 /** True iff ejecting `name` also copies adapter source. */

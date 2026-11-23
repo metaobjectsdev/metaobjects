@@ -159,14 +159,21 @@ public sealed class CodegenDriftTests : IDisposable
         // never create a rendered tree (or any meta-verify-codegen-* directory) under the temp dir.
         Gen();
         var tempRoot = Path.GetTempPath();
-        var before = Directory.EnumerateFileSystemEntries(tempRoot, "meta-verify-codegen-*").ToHashSet();
+        // The temp dir is shared with every other process on the machine (an older Node `meta` CLI
+        // also makes `meta-verify-codegen-<6 chars>` entries there). Only this port's own naming
+        // (CodegenDrift: "meta-verify-codegen-" + Guid "N", 32 lowercase hex) is under test.
+        var before = OwnVerifyTempEntries(tempRoot).ToHashSet();
         var result = RunDrift();
-        var after = Directory.EnumerateFileSystemEntries(tempRoot, "meta-verify-codegen-*").ToHashSet();
+        var after = OwnVerifyTempEntries(tempRoot).ToHashSet();
         Assert.True(result.Clean);
         Assert.Equal(before, after);
-        Assert.Empty(Directory.EnumerateFileSystemEntries(tempRoot, "meta-verify-codegen-*")
-            .Except(before));
+        Assert.Empty(OwnVerifyTempEntries(tempRoot).Except(before));
     }
+
+    private static IEnumerable<string> OwnVerifyTempEntries(string tempRoot) =>
+        Directory.EnumerateFileSystemEntries(tempRoot, "meta-verify-codegen-*")
+            .Where(p => System.Text.RegularExpressions.Regex.IsMatch(
+                Path.GetFileName(p), "^meta-verify-codegen-[0-9a-f]{32}$"));
 
     private static Dictionary<string, string> SnapshotDir(string dir)
     {

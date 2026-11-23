@@ -57,7 +57,7 @@ fixtures/api-contract-conformance/
 ```
 
 Beside the 34 core scenarios above sit twelve **sub-corpora**, each a directory with its
-own `meta.json`, `seed.json`, `scenarios/` and `README.md` (127 scenarios in all, 161 with the
+own `meta.json`, `seed.json`, `scenarios/` and `README.md` (145 scenarios in all, 179 with the
 core):
 
 | Directory | Scenarios | Gates | Lanes |
@@ -72,8 +72,9 @@ core):
 | `report/` | 37 | a view-backed `object.report` (FR-044): list, filter, sort and paging on derived fields, `POST` is `405`, no `/{id}` route; a `@spine` report keeps a row with no facts, and a measure with `@default` filters and sorts as its default; a dimension over an array or a map is neither filterable nor sortable. Also carries `schema.postgres.sql`, the TypeScript-produced table and views the C# lane executes | generated only |
 | `decimal/` | 11 | `field.decimal` is an exact canonical string on the wire (ADR-0019 Amendment 1): read, filter, sort, write and a report over decimals. A scenario's `engines:` key is exact; the `-15` twins run on SQLite and D1 as well. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |
 | `api-settings/` | 8 | the `api` block in the sub-corpus's own `.metaobjects/config.json`: `api.pagination` (default 2, max 4) — a list with no `limit` answers the default page, `offset` and `withCount=1` page past it, `limit` at the cap is served, one above it is `400 {"error": "limit_too_large", "maxLimit": 4}` and a negative one is `400 pagination.invalid_value`, while `limit=0` is an empty page — and `api.unknownFields: drop`, under which an undeclared body key is ignored rather than refused | generated only |
-| `list-query/` | 20 | the REST standard's list handling against a real store, over a 60-row seed: `?search` ignores case and `like` does not, `filter[or]` / `filter[and]`, the nesting cap, a bare field refused, a leading `%` refused, value formats refused, paging past 50, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and `constraint_violation` refusals. The parse itself is pinned with no server by `fixtures/list-query-conformance/`. TypeScript only until each port's 1.3.0 REST-standard work | generated only |
+| `list-query/` | 21 | the REST standard's list handling against a real store, over a 60-row seed: `?search` ignores case and `like` does not, `filter[or]` / `filter[and]`, the nesting cap, a bare field refused, a leading `%` refused, value formats refused, a default page of 50, paging past 50, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and `constraint_violation` refusals. The parse itself is pinned with no server by `fixtures/list-query-conformance/`. TypeScript only until each port's 1.3.0 REST-standard work | generated only |
 | `duration/` | 2 | `field.duration` is a canonical ISO-8601 span on the wire under `"wire": { "durations": "iso" }`: write, read, refuse, and filter and sort as a span on every engine. Also carries `schema.postgres.sql` / `schema.sqlite.sql` / `schema.mysql.sql` | generated only |
+| `rules/` | 17 | ADR-0066 through a generated service: a derived transition command and its derived permission name, a declared `@permission`, 403 `forbidden`, the three 409 codes (`invalid_transition`, `transition_condition_failed`, `state_managed` on update and create), a declared command and its declared error, a `@public` command and query, a claimed transition with no command of its own, and a hook's and the event hook's refusal rolling the write back; `settings/` runs `rules.lifecycle.create: any` and `rules.lifecycle.commands: all` and `none` over the same model | generated only, TypeScript only until each port's 1.3.0 service work |
 
 `meta.json` declares a single canonical `Author` entity in the `acme::blog`
 package:
@@ -250,7 +251,7 @@ same per-port integration-tests lane of `scripts/ci-local.sh` — no separate op
 ### TS lanes (illustrative detail)
 
 On the TypeScript port the corpus is driven by **two** lanes, both
-against a Postgres testcontainer over HTTP:
+against a Postgres testcontainer over HTTP, and by service lanes beside the second (item 3):
 
 1. **Hand-rolled reference lane** (`test/api-contract.test.ts`) — a server the
    integration-tests package wires up directly. It is the stable reference
@@ -264,6 +265,14 @@ against a Postgres testcontainer over HTTP:
    over HTTP, so the deployed artifact — not a re-implementation — is what gets
    verified. (Building this lane surfaced and fixed real divergences between the
    generated routes / `drizzle-fastify` mount and the contract.)
+3. **Service lanes** (`test/api-contract-service.test.ts`, `src/api-lane.ts`) — the
+   generated service (ADR-0067 layer 4) behind its thin Fastify transport, and behind its
+   Hono transport (layer 5). The `list-query/`, `api-settings/`, `enum-default/`, `jsonb/`
+   and `duration/` corpora, the root corpus and `rules/` run on them, in both output layouts,
+   on every engine the generated-routes lane runs for the corpus. D1 generates its service
+   with `interactiveTransactions: false`. The `projection/`, `report/` (Postgres, MySQL, SQLite
+   and D1), `write-through/`, `tph/`, `m2m/`, `decimal/` and `secret-fields/` corpora run on
+   both service lanes too.
 
 Both lanes live in `server/typescript/packages/integration-tests/test/` and are
 run by the same `cd server/typescript/packages/integration-tests && bun test`

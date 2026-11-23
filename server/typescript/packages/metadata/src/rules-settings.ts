@@ -54,6 +54,16 @@ export interface RulesConfigBlocks {
   } | undefined;
 }
 
+/**
+ * The settings of the project a node was loaded for: the root's `rulesSettings`, which the
+ * project-aware load sets from `.metaobjects/config.json` (as it sets `naming` and `wire`). A tree
+ * loaded with no project has the defaults. Generators read this; `meta verify` reads the same
+ * settings from its collection.
+ */
+export function rulesSettingsOfModel(node: { root(): unknown }): RulesSettings {
+  return (node.root() as { rulesSettings?: RulesSettings | undefined }).rulesSettings ?? DEFAULT_RULES_SETTINGS;
+}
+
 /** The settings a config declares, each absent key at its default. */
 export function rulesSettingsOf(cfg: RulesConfigBlocks): RulesSettings {
   return {

@@ -64,6 +64,7 @@ from metaobjects.loader.validate_field_mutability import (
     is_write_once_mutability,
 )
 from metaobjects.meta.core.field.credential import is_credential_field
+from metaobjects.meta.core.field.flattened_member import flat_key_of_path
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.core.identity.identity_constants import (
@@ -815,7 +816,9 @@ def reverse_fks_for(entity: MetaObject) -> list[ReverseFk]:
         bound = ref_target(c, IDENTITY_REFERENCE_ATTR_REFERENCES)
         if not fk_field or bound is None:
             continue
-        out.append(ReverseFk(fk_field=fk_field, target_entity=bound.name))
+        # A reference over a flattened value-object member names its flat key on the
+        # table (`address.countryId` -> `addressCountryId`), as TypeScript does.
+        out.append(ReverseFk(fk_field=flat_key_of_path(entity, fk_field), target_entity=bound.name))
     return out
 
 

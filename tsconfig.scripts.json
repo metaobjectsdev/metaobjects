@@ -96,12 +96,6 @@
       "@metaobjectsdev/docs-site/*": [
         "./server/typescript/packages/docs-site/src/*"
       ],
-      "@metaobjectsdev/forge": [
-        "./server/typescript/packages/forge/src/index.ts"
-      ],
-      "@metaobjectsdev/forge/*": [
-        "./server/typescript/packages/forge/src/*"
-      ],
       "@metaobjectsdev/integration-tests": [
         "./server/typescript/packages/integration-tests/src/index.ts"
       ],

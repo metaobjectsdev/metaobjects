@@ -10,7 +10,7 @@
 // generator stable name live in ONE namespace, because they are rows in one table and
 // `meta eject <name>` takes either.
 import { describe, test, expect } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { MetaDataLoader, type MetaData } from "@metaobjectsdev/metadata";
 import {
@@ -86,7 +86,33 @@ function extractKeys(text: string, key: RegExp): { refs: Set<string>; manifests:
   return { refs, manifests };
 }
 
+/**
+ * Rust embeds no generated text: its `build.rs` reads a vendored copy of `library/` and writes
+ * the embed into `OUT_DIR` at compile time, so the copy IS the embed. Its keys are what that
+ * build script derives from it — every `*.yaml` under it, as a path without `.yaml`, is a ref,
+ * and a `library.json` one level down names a manifest — and `tests/vendored_data_parity.rs`
+ * holds the copy byte-identical to its source.
+ */
+const RUST_EMBED_DIR = "server/rust/metaobjects/data/library";
+
+function rustEmbeddedKeys(): { refs: Set<string>; manifests: Set<string> } {
+  const refs = new Set<string>();
+  const manifests = new Set<string>();
+  const walk = (abs: string, rel: string): void => {
+    for (const name of readdirSync(abs)) {
+      const childAbs = join(abs, name);
+      const childRel = rel === "" ? name : `${rel}/${name}`;
+      if (statSync(childAbs).isDirectory()) walk(childAbs, childRel);
+      else if (name.endsWith(".yaml")) refs.add(childRel.slice(0, -".yaml".length));
+      else if (name === "library.json" && rel !== "" && !rel.includes("/")) manifests.add(rel);
+    }
+  };
+  walk(join(findRepoRoot(import.meta.dir), RUST_EMBED_DIR), "");
+  return { refs, manifests };
+}
+
 function embeddedKeys(port: string): { refs: Set<string>; manifests: Set<string> } {
+  if (port === "rust") return rustEmbeddedKeys();
   const entry = EMBEDS[port];
   if (entry === undefined) throw new Error(`no embed mapping for port "${port}"`);
   return extractKeys(readFileSync(join(findRepoRoot(import.meta.dir), entry.path), "utf8"), entry.key);
@@ -171,7 +197,7 @@ describe("every library manifest fact is resolved against the thing it claims", 
     });
 
     test(`${name}: every layer's refs are embedded in EVERY port`, () => {
-      // The row says `ports: [typescript, java, kotlin, csharp, python]`. Checked rather
+      // The row says `ports: [typescript, java, kotlin, csharp, python, rust]`. Checked rather
       // than asserted, because "the library is reachable from your port" is the single
       // fact a polyglot adopter acts on — and because TWO scripts write these five files
       // (`scripts/generate-embedded-library.ts` and the Python one), so agreement between
@@ -192,7 +218,7 @@ describe("every library manifest fact is resolved against the thing it claims", 
     // extra and, just as importantly, that the extractor is not matching nothing: a key
     // pattern that silently stops matching would make every containment check above
     // vacuously true, which is the way a gate of this shape stops gating.
-    expect(Object.keys(EMBEDS).sort(), "a port with no embed mapping").toEqual([...SERVER_LANGS].sort());
+    expect([...Object.keys(EMBEDS), "rust"].sort(), "a port with no embed mapping").toEqual([...SERVER_LANGS].sort());
     // De-duplicated: this is the side built from manifests, and it is compared against a
     // set extracted from each embed — so a ref legitimately declared by two layers of one
     // library would otherwise fail every port against embeds that are correct.
@@ -233,9 +259,10 @@ describe("every library manifest fact is resolved against the thing it claims", 
     };
 
     test("every port with an embed has a synthetic fixture", () => {
-      // Kotlin shares Java's file and Java's syntax, so Java's row covers it.
+      // Kotlin shares Java's file and Java's syntax, so Java's row covers it. Rust's embed is a
+      // directory, not text, so it has no key syntax to pin (see `rustEmbeddedKeys`).
       expect(Object.keys(SYNTHETIC).sort()).toEqual(
-        [...SERVER_LANGS].filter((l) => l !== "kotlin").sort(),
+        [...SERVER_LANGS].filter((l) => l !== "kotlin" && l !== "rust").sort(),
       );
     });
 

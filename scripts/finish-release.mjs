@@ -201,7 +201,7 @@ if (wrong.length > 0) {
   const skipped = raw.startsWith("--") ? [] : raw.split(",").filter(Boolean);
 
   // npm can never sit out: `<version>` IS the npm version — `release.mjs` writes it into
-  // all 14 package.json files — so a mismatch there always means the payload is stale.
+  // every package.json of the lockstep set — so a mismatch there always means the payload is stale.
   // Checked BEFORE the generic branch so the accurate message is reachable: it used to
   // fire only when an operator explicitly typed `npm`, which nobody does.
   if (wrong.some(([k]) => k === "npm")) {

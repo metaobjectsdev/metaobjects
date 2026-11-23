@@ -15,6 +15,15 @@ import { fileURLToPath } from "node:url";
 /** Basenames (no extension) of the copyable reference generators shipped in `src/reference/`. */
 export const REFERENCE_GENERATOR_NAMES = [
   "entity", "queries", "routes", "routes-hono", "barrel", "names",
+  // The rules names (ADR-0067 layer 0): the file's shape is the adopter's, while the walk that
+  // derives states, commands and permission names stays engine, shared with `meta verify`.
+  "rules-names",
+  // The contract types (ADR-0067 layer 1): the modules' shape is the adopter's, while which objects,
+  // values and operations are covered stays the engine walk.
+  "contract-types",
+  // The service layer and its Fastify and Hono transports (ADR-0067 layers 4 and 5): the operations'
+  // and the routes' shape is the adopter's, while which entities get operations stays the engine walk.
+  "service", "service-routes", "service-routes-hono",
   // The report export (`?format=csv|json|xml` on a served report): which reports get a module, the
   // column list and the CSV/XML writers, handed over as one file.
   "report-export",

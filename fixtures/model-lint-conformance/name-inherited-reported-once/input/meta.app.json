@@ -1,0 +1,45 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Base",
+          "abstract": true,
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "code "
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Widget",
+          "extends": "Base"
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Gadget",
+          "extends": "Base"
+        }
+      }
+    ]
+  }
+}

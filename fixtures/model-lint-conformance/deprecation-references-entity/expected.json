@@ -1,0 +1,14 @@
+{
+  "findings": [
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::Match.home_fk",
+      "message": "references (@references) deprecated object.entity acme::app::Team: the league no longer tracks teams. Replaced by acme::app::Club."
+    },
+    {
+      "code": "WARN_DEPRECATED_REFERENCE",
+      "path": "acme::app::Match.homeTeam",
+      "message": "references (@objectRef) deprecated object.entity acme::app::Team: the league no longer tracks teams. Replaced by acme::app::Club."
+    }
+  ]
+}

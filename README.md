@@ -222,7 +222,7 @@ MetaObjects has two layers, and only the first is a promise
 
 | | Core — guaranteed | Helpers — yours |
 |---|---|---|
-| **What** | The contracts and the conformance kits: the metamodel, loader, canonical format and registry; the store-neutral contracts (the expected schema, and the guarded update once its persistence-conformance scenario lands, ADR-0066 §6); the drift gates (`meta verify`); prompt render and the reply parser | Store-specific code (SQL writers, introspectors, drivers such as the `ObjectManager` drivers and the `meta migrate` writer, mappings) and every generator that writes code into your repo — the ones you write for the outputs you need, and the routes, controllers, ORM wiring, DTOs, forms, grids and hooks MetaObjects ships |
+| **What** | The contracts and the conformance kits: the metamodel, loader, canonical format and registry; the store-neutral contracts (the expected schema, and the guarded update, which a persistence-conformance scenario holds every store driver to, ADR-0066 §6); the drift gates (`meta verify`); prompt render and the reply parser | Store-specific code (SQL writers, introspectors, drivers such as the `ObjectManager` drivers and the `meta migrate` writer, mappings) and every generator that writes code into your repo — the ones you write for the outputs you need, and the routes, controllers, ORM wiring, DTOs, forms, grids and hooks MetaObjects ships |
 | **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Supported helpers that compile and pass their reference fixtures, with the same capabilities in every port unless a ruling says otherwise. The code they generate is real code: run it as shipped, extend it through hooks, or copy it with `meta eject` and own it |
 | **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
 
@@ -299,8 +299,8 @@ metaobjects/
 ├── README.md                       # you are here
 ├── CLAUDE.md                       # project instructions for Claude
 ├── spec/                           # canonical metamodel docs, ADRs, roadmap
-├── fixtures/                       # 25 cross-language conformance corpora — the oracle
-│   ├── conformance/                # metamodel (loader + serializer + navigation), 410 fixtures
+├── fixtures/                       # cross-language conformance corpora — the oracle (counted in docs/CONFORMANCE.md)
+│   ├── conformance/                # metamodel (loader + serializer + navigation)
 │   ├── yaml-conformance/           # YAML authoring desugar
 │   ├── render-conformance/         # FR-004 byte-identical render oracle
 │   ├── verify-conformance/         # FR-004 template-drift gate
