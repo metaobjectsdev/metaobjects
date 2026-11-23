@@ -137,10 +137,11 @@ owned copy may still import it, and it may change in any release. Reference temp
 `meta eject` copies into a project are the project's own code and are never surface. An empty
 role says the port has no module in that role yet.
 
-No port's test reads this block yet. Each port's T7 row adds a name-level snapshot test of
-its surface, and the check that every surface entry is also an `engine` entry. Today three
-entries are not (TypeScript `model-walk.ts`, and `ModelWalk` in Java and Kotlin); those rows
-add them.
+Each port's test pins the surface by name and checks that every surface entry is also an
+`engine` entry. TypeScript's is `codegen-ts/test/authoring-surface.test.ts`, with the exported
+names in `authoring-surface.snapshot.json` beside it. The other ports add theirs in their own
+T7 rows; until then `ModelWalk` in Java and Kotlin is a surface entry that is not yet an
+`engine` entry.
 
 ## Shared (cross-port) names
 

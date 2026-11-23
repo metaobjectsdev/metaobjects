@@ -431,6 +431,7 @@
           "codegen-ts/src/import-path.ts",
           "codegen-ts/src/instance-artifacts.ts",
           "codegen-ts/src/metaobjects-config.ts",
+      "codegen-ts/src/model-walk.ts",
           "codegen-ts/src/names.ts",
           "codegen-ts/src/naming.ts",
           "codegen-ts/src/naming/name-claims.ts",

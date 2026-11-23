@@ -309,6 +309,18 @@ names. The JVM ports take no claim call: their file writer refuses an output pat
 generators emit with different content in one run (byte-identical duplicates collapse), and
 nothing checks emitted names.
 
+## What you can rely on: the authoring surface
+
+Each port names the part of its codegen engine you write a generator against, in four roles:
+the generator interface, the model walk, the code writer and the naming helpers. The list per
+port is the `surface` block of `fixtures/generator-registry-conformance/registry.json`. That
+surface is versioned with the port's codegen package under the
+[compatibility policy](../compatibility-policy.md): a name in it is not removed or renamed
+without a major. The rest of the engine is internal. You may import it, and it may change in
+any release (ADR-0034 Amendment 12). In TypeScript the surface is reached through
+`@metaobjectsdev/codegen-ts/engine`, and its names are listed in
+`server/typescript/packages/codegen-ts/test/authoring-surface.snapshot.json`.
+
 ## Reads outside the model: declare them, or `meta gen` may skip your output
 
 `meta gen` skips a run when nothing it is built from has changed ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)).

@@ -30,8 +30,10 @@ here.**
   codegen package under the compatibility policy; the rest of the engine is internal. A generator
   will declare what it provides in one place instead of flags named after packaged generators, and
   reference templates that `meta eject` copies stay your own code, never surface. Decision record:
-  ADR-0034 Amendment 12, ADR-0035 Amendment 7, ADR-0065 Amendment 5. Each port's snapshot test
-  follows.
+  ADR-0034 Amendment 12, ADR-0035 Amendment 7, ADR-0065 Amendment 5. TypeScript pins the
+  surface's exported names in `codegen-ts/test/authoring-surface.snapshot.json`, and the engine
+  entry (`@metaobjectsdev/codegen-ts/engine`) now also exports `objectRefTarget`. The other ports'
+  snapshot tests follow.
 
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
