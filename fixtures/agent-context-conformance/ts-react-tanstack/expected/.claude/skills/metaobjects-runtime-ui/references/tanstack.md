@@ -71,9 +71,9 @@ export function App() {
 }
 ```
 
-The fetcher resolves `path` (always starting with `apiPrefix`) to a full URL,
-attaches auth per your policy, parses JSON, and **throws on non-2xx** — the hooks
-depend on the throw for error state.
+The fetcher receives `path` with the provider's `baseUrl` already prepended, attaches
+auth per your policy, parses JSON, and **throws on non-2xx** — the hooks depend on
+the throw for error state.
 
 ## Generated hooks (`tanstackQuery()`)
 

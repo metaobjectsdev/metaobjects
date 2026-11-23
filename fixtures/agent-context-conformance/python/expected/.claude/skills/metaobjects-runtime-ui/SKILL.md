@@ -1,20 +1,35 @@
 ---
 name: metaobjects-runtime-ui
-description: Use when wiring MetaObjects generated code into an app — runtime queries/CRUD, REST routes, and the web client (forms, grids, filters).
+description: Use when wiring MetaObjects generated code into an app — calling or serving the generated REST API (collection URLs, filters, sort, pagination, wire format), runtime queries and CRUD, and the web client (fetcher and base URL, forms, grids).
 ---
 
 # Wiring MetaObjects runtime + web client
 
-This skill is the procedure for putting generated code to work: querying/persisting
-through the runtime tier, serving the REST contract, and consuming it from the
-universal web client. It is port-agnostic — the cross-cutting contracts are here;
-the server- and client-specific imports/types live in reference fragments (see
-the table below).
+How generated code is put to work: querying and persisting through the runtime tier, serving
+the REST contract, and consuming it from the web client. The contracts here hold in every port;
+the imports and types for this project's stack are in the reference files.
+
+## Essentials
+
+- **Read your stack's reference file before wiring anything.** This file has the contracts;
+  the names you type (imports, generated symbols, generator names) are per language.
+- **Generated finders and CRUD helpers take the persistence context as a parameter.** They
+  never import a module-level `db`, so you own the connection and pass it in.
+- **A table or column name comes from the generated names artifact, never a string literal.**
+  `@column` is free-form, so a name guessed from the field is wrong silently. The artifact is
+  opt-in: check it exists first.
+- **A collection URL is the entity NAME `snake_case`d, then pluralized** (`PostCategory` →
+  `/post_categories`), never the physical table.
+- **Currency is integer minor units on the wire.** Format it in the client; never do float
+  arithmetic on it.
+- **The client's base URL is `baseUrl` on the fetcher provider, not the server's `apiPrefix`.**
+  Omit it and every generated hook drops the prefix while compiling clean.
+- **Grids are opt-in per entity** (`layout.dataGrid`). No grid files for an entity without one
+  is expected, not a broken build.
 
 ## Reference files — open the ones for your stack
 
-Only the files for the servers and clients in this project's stack are installed. Read your
-server language's file and your client framework's file before wiring anything.
+Only the files for the servers and clients in this project's stack are installed.
 
 | File | Open it when |
 |---|---|
@@ -22,84 +37,62 @@ server language's file and your client framework's file before wiring anything.
 | `references/react.md` | the web client is React |
 | `references/tanstack.md` | the web client uses TanStack Query or Table (grids, hooks, filters) |
 
-## The runtime return-type contract
+## The runtime returns native types
 
-A port's runtime returns **native in-process language types**, never wire strings.
-Query the runtime and you get back the language's natural type for each field:
+A port's runtime returns the language's own in-process types, never wire strings:
 
-- `field.decimal` → the language's exact-decimal type (`BigDecimal` / `decimal` /
-  `Decimal`). Decimal is **lossless end-to-end** — no float round-tripping.
-- temporal fields → native date/instant types.
-- `field.object` (jsonb) → a native map/object.
-- **TypeScript is the documented outlier: `field.decimal` is a `string`** in the
-  TS runtime (JS has no native exact decimal), preserving precision as text.
+- `field.decimal` → the exact-decimal type (`BigDecimal` / `decimal` / `Decimal`), lossless end
+  to end. **TypeScript is the exception: `field.decimal` is a `string`**, because JS has no
+  exact decimal.
+- temporal fields → native date and instant types.
+- `field.object` (jsonb) → a native map or object.
 
-Wire canonicalization (integer minor units for currency, ISO-8601 strings for
-temporals, canonical hex for UUID) is applied only at the **serialization
-boundary** — when a row leaves over HTTP — never inside the runtime query path. So:
-compute with native types in-process; the HTTP layer handles wire encoding.
+Wire encoding (integer minor units, ISO-8601 strings, canonical UUID hex) is applied only where
+a row leaves over HTTP. Compute with native types in-process and let the HTTP layer encode.
 
-## Generated repo / query helpers take the context as a parameter
-
-Generated finders and CRUD helpers **do not** reach for a module-level `db`
-singleton. They take the persistence context (connection / session / data-access
-handle) as an explicit **parameter**. You own the connection's lifecycle and pass
-it in:
+## The persistence context is a parameter
 
 ```
 const rows = await findPostsForAuthor(db, authorId);   // db is passed, not imported
 ```
 
-This keeps generated code free of global state, makes it testable, and lets one
-process talk to multiple databases (multi-tenant, read-replica). Construct/own the
-context in your app; thread it through every generated call.
+That keeps generated code free of global state, testable, and able to talk to more than one
+database (tenants, a read replica). Build the context in your app and thread it through every
+generated call.
 
-## Physical names come from the generated names artifact, never a literal
+## Physical names come from the names artifact
 
-The runtime tier is where the code codegen leaves to you gets written — a repository
-implementation, a raw query, a migration script, a log line — and that is where a table
-or column name gets respelled. Don't. A physical name is declared **once**, in metadata
-(`@table` / `@view` / `@column` / `@schema`), and every port emits a per-object names
-artifact carrying it: `ProgramNames.fields.createdAt.column` on TypeScript,
+The runtime tier is where you write the code codegen leaves to you (a repository, a raw query,
+a migration script), and that is where a table or column name gets respelled. A physical name
+is declared once, in metadata (`@table` / `@view` / `@column` / `@schema`), and every port can
+emit it per object: `ProgramNames.fields.createdAt.column` on TypeScript,
 `ProgramNames.CreatedAtColumn` on C#, `ProgramNames.CREATED_AT_COLUMN` on the JVM,
-`PROGRAM_CREATED_AT_COLUMN` on Python. Reference it. `@column` is free-form —
-`callPurpose` may live in `purpose_code` — so deriving a column from the field name is a
-guess that fails silently, and a literal is a second spelling of a fact the metadata
-owns: rename the column in metadata and the constant follows, the literal does not, and
-nothing tells you.
+`PROGRAM_CREATED_AT_COLUMN` on Python. Reference that. A literal is a second spelling of a fact
+the metadata owns: rename the column in metadata and the constant follows, the literal does
+not, and nothing reports it. `callPurpose` may well live in `purpose_code`.
 
-**Prefer a typed handle where one exists.** A Drizzle column object, an Exposed `Column`,
-an EF Core property is type-checked against the schema; swapping it for a string constant
-trades a compile error for a runtime one. The constants are for the places with no
-handle: raw SQL, a string-keyed query builder, and a hand-written repository on a port
-whose generated model carries no persistence binding at all (Java, Python). Your server
-reference names the handle and the artifact for this stack.
+**Prefer a typed handle where one exists.** A Drizzle column object, an Exposed `Column` or an
+EF Core property is checked against the schema at compile time; a string constant is not. The
+constants are for the places with no handle: raw SQL, a string-keyed query builder, and a
+hand-written repository on a port whose generated model has no persistence binding (Java,
+Python). Your server reference names both for this stack.
 
-**First check the artifact exists — it is opt-in on EVERY port, and an existing project
-almost certainly has none.** Every port's generator list is now the COMPLETE list: C# and
-Python dropped their default suites (ADR-0034 Amendment 2), TypeScript's `generators: []`
-starts empty, and the JVM's `<generators>` never had a default. Upgrading the package
-never edits a config that was written earlier, so `names` arrives only when someone wires
-it. Look for `<Entity>.names.ts` / `<Entity>Names` in the generated output before you
-write `ProgramNames.fields.x.column` against it; if it is not there, wiring the generator
-is the first step and the `metaobjects-codegen` skill says how. Writing raw SQL
-with literal names because "there is no constant" is the loop this closes.
+**Check the artifact exists first.** No port generates it by default: every port's generator
+list is the complete list, and upgrading never edits a config written earlier. Look for
+`<Entity>.names.ts` / `<Entity>Names` in the generated output. If it is missing, wiring the
+`names` generator is the first step (the `metaobjects-codegen` skill says how), not writing the
+literal because there is no constant.
 
 ## The REST contract
 
-Generated (or hand-written) routes speak one cross-port HTTP contract so the same
-universal web client serves any backend language. One part of the path grammar —
-the `<entity>` collection segment — is a known cross-port divergence (below);
-the verbs, filters, sort/pagination, and wire format are uniform.
+Generated routes, and hand-written ones that want the same clients, speak one HTTP contract in
+every port, so one web client serves any backend language.
 
-### URL grammar
+### URLs
 
-`apiPrefix` (default `/api`, set in project config) flows to both the server routes
-and the client fetch URLs.
-
-The `<entity>` collection segment is the **entity name `snake_case`d and then
-pluralized** — one rule, identical in all five ports, and derived from the NAME,
-never from the physical `@table`:
+`apiPrefix` in the project config is where the server mounts the routes. The collection segment
+is the entity name `snake_case`d and then pluralized, derived from the name and never from
+`@table`:
 
 | Name | Segment | Rule |
 |---|---|---|
@@ -107,49 +100,30 @@ never from the physical `@table`:
 | `PostCategory` | `post_categories` | multi-word: the capitals carry the word boundary |
 | `Address` | `addresses` | ending `s`/`x`/`z`/`ch`/`sh` takes `es` |
 | `Category` | `categories` | consonant + `y` becomes `ies` |
-| `Day` | `days` | a VOWEL before the `y` does not |
-| `HTTPServer` | `http_servers` | a run of capitals stays together until the final one that begins a word |
+| `Day` | `days` | a vowel before the `y` does not |
+| `HTTPServer` | `http_servers` | a run of capitals stays together until the last one that begins a word |
 
-An `object.projection` uses the same rule, so `OrderSummary` is at
-`/order_summaries` either way. The generated web-client hooks and grids build
-their fetch URLs from the TypeScript `$path`, and every backend now mounts that
-same spelling, so a React/TanStack client works against any port's server.
-A view-backed `object.report` has a generated list route at the same rule and, in
-TypeScript, a generated list hook named `use` + the plural of the report's name
-(`useMemberUtilizations` for `MemberUtilization`; `use<Report>List` only when the plural is
-the name itself, as in `useSeriesList`); it has no grid, form or detail hook.
-
-**This is a change, and it was a breaking one.** Each port used to spell the
-segment differently and they agreed only on single regular words — which was
-every collection base in the corpus, so all five lanes were green while
-`OrderSummary` was served at four different URLs: `/order_summaries` (TS entity),
-`/order-summaries` (TS projection), `/ordersummaries` (C#) and `/ordersummarys`
-(Java, Kotlin, Python). A project whose entity names are all single regular words
-saw nothing move. Any multi-word or irregular-plural name had its collection URL
-renamed, and clients had to follow.
-
-The rule is gated, not just documented: `fixtures/api-contract-conformance/m2m/`
-declares `PostCategory` — multi-word AND ending consonant+`y`, so it separates
-every spelling the ports used to produce — and asserts both retired spellings
-404, on each port's reference AND generated lane. The JVM ports share one
-implementation (`RouteNaming` in `codegen-base`); the acronym case is pinned by
-unit test in each port, since no corpus entity carries one.
+An `object.projection` and a view-backed `object.report` use the same rule (`OrderSummary` is
+`/order_summaries`). A report has a list route only and, in TypeScript, a list hook named `use`
++ the plural of its name (`useMemberUtilizations`; `use<Report>List` when the plural is the
+name itself); it has no grid, form or detail hook. Before 1.0 the ports spelled multi-word and
+irregular names differently (`/order-summaries`, `/ordersummaries`, `/ordersummarys`); those
+spellings now 404, so a client written against one has to follow.
 
 | Verb | Path | Purpose |
 |---|---|---|
 | `GET` | `/<apiPrefix>/<entity>?filter[...][...]=...&sort=...&limit=N&offset=N&withCount=1` | List |
 | `GET` | `/<apiPrefix>/<entity>/:id` | Get by id |
 | `POST` | `/<apiPrefix>/<entity>` | Create (201) |
-| `PATCH` | `/<apiPrefix>/<entity>/:id` | Update (partial) |
-| `PUT` | `/<apiPrefix>/<entity>/:id` | Update (replace) — optional |
+| `PATCH` | `/<apiPrefix>/<entity>/:id` | Partial update |
+| `PUT` | `/<apiPrefix>/<entity>/:id` | The same partial update as `PATCH`, not a replace |
 | `DELETE` | `/<apiPrefix>/<entity>/:id` | Delete (204) |
 
-### Filter operators by field subtype
+### Filters, by field subtype
 
-Filters use a bracketed qs: `filter[<field>][<op>]=<value>`. A bare
-`filter[<field>]=<value>` is sugar for `eq`. The operator set is **gated by field
-subtype** via the generated `<Entity>FilterAllowlist` — an unsupported operator for
-a field → HTTP 400.
+`filter[<field>][<op>]=<value>`; a bare `filter[<field>]=<value>` means `eq`. The generated
+`<Entity>FilterAllowlist` gates the operators by subtype, and an operator a field does not
+support is HTTP 400.
 
 | Operator | Strings | Numbers / Dates | Booleans |
 |---|---|---|---|
@@ -157,69 +131,66 @@ a field → HTTP 400.
 | `in`, `like` | yes | `in` only | – |
 | `gt`, `gte`, `lt`, `lte` | – | yes | – |
 
-These nine (`eq` `ne` `gt` `gte` `lt` `lte` `in` `like` `isNull`) are the whole
-closed set — every port implements these and only these.
+These nine are the whole set, in every port. `like` is case-sensitive SQL `LIKE`: the caller
+supplies `%` and `_`.
 
-### Sort + pagination
+### Sort and pagination
 
-- `sort=<field>:asc|desc` — single sort key; the field must be in
-  `<Entity>SortAllowlist`.
-- `limit=N` / `offset=N` — page size + offset, identical across every endpoint.
-- `withCount=1` — switches the list response from `[<row>...]` to
-  `{ rows: [...], total: N }` (grids always send it).
+- `sort=<field>:asc|desc`: one sort key, which must be in `<Entity>SortAllowlist`.
+- `limit=N` / `offset=N`.
+- `withCount=1` changes the list body from `[<row>...]` to `{ rows: [...], total: N }` (grids
+  always send it).
 
 ### Wire format
 
-JSON bodies (`application/json; charset=utf-8`). Single-row responses (`GET /:id`,
-`POST`, `PATCH`, `PUT`) have **no envelope** — the body is the row. Type encodings:
+JSON bodies. A single-row response (`GET /:id`, `POST`, `PATCH`, `PUT`) has no envelope: the
+body is the row.
 
 | Field type | JSON | Notes |
 |---|---|---|
 | `field.string` / `field.uuid` / `field.enum` | string | UUID is canonical hex `8-4-4-4-12` |
-| `field.int` / `field.long` / `field.double` | number | `long` may be string on overflow (per-port) |
+| `field.int` / `field.long` / `field.double` | number | `long` may be a string on overflow (per port) |
 | `field.boolean` | boolean | |
 | `field.date` | string | ISO 8601 `YYYY-MM-DD` |
 | `field.timestamp` | string | ISO 8601 with timezone |
-| `field.currency` | **integer minor units** | cents/yen; float arithmetic forbidden; server never formats |
-| `field.object` | object | per the sub-object schema |
+| `field.currency` | **integer minor units** | cents, yen; the server never formats it |
+| `field.object` | object | per the value object's schema |
 
-The currency invariant is load-bearing: integer minor units on the wire, always.
-Formatting happens client-side with locale-aware code.
+Errors are `{ "error": "<short_code>", "message"?: "..." }`: 400 for a validation or filter
+error, 404 `not_found`, 409 for a unique or foreign-key conflict. Treat a 4xx as user-facing
+and a 5xx as retryable.
 
-Errors: non-2xx returns `{ "error": "<short_code>", "message"?: "..." }`. 400 for
-validation/filter-parser errors, 404 for not-found (`{ "error": "not_found" }`),
-5xx implementation-defined. Treat any 4xx as user-facing, any 5xx as retryable.
+## The web client: one fetcher, one base URL
 
-## The EntityFetcher browser contract
-
-The web client never calls `fetch` directly. Every generated hook delegates to a
-single `EntityFetcher` you supply once at the app root:
+The client never calls `fetch` directly. Every generated hook delegates to one `EntityFetcher`
+you supply at the app root:
 
 ```ts
 export type EntityFetcher = <T>(path: string, init?: RequestInit) => Promise<T>;
 ```
 
-Your fetcher resolves the `path` (always starting with `apiPrefix`) to a full URL,
-attaches auth (cookie / bearer / API key) per your policy, parses the JSON, and
-throws on non-2xx (the hooks rely on the throw for error state). Provide it via the
-fetcher-provider at the tree root; every generated hook reads it from context. The
-generated grid and form components, filter-qs serializer, and cell renderers all
-sit on top of this one seam.
+```tsx
+<EntityFetcherProvider fetcher={fetcher} baseUrl="/api">
+```
+
+Generated hooks pass an entity-relative path (`/customers`) and the provider prepends
+`baseUrl`. The base URL is a deployment fact (a separate API host, a dev proxy, a preview
+environment), which is why it is supplied at runtime and not generated from the server's
+`apiPrefix`. It defaults to `""`, which is right only when the server mounts at the root.
+Your fetcher attaches auth, parses the JSON, and **throws on a non-2xx response**: the hooks
+rely on the throw for their error state. Grids, forms, the filter serializer and the cell
+renderers all sit on this one seam.
 
 ## Grids are opt-in per entity
 
-Read/CRUD hooks are generated for **every** entity. Grids are the exception:
-wherever your stack generates them (the TanStack client today), an entity produces
-grid artifacts only when it declares a `layout.dataGrid` child. So wiring the grid
-generator and seeing no grid files is expected metadata, not a broken build — the
-run says so in its `meta gen` warnings. Opt an entity in with:
+Read and CRUD hooks are generated for every entity. Grid artifacts are generated only for an
+entity that declares a `layout.dataGrid` child, and `meta gen` says so in its warnings:
 
 ```jsonc
 { "layout.dataGrid": { "name": "default", "@columns": ["name", "email"] } }
 ```
 
-Generated grid components are fully **controlled** — they need row-count and
-sort/pagination/filter state on top of the column definitions — so pair the columns
-generator with the grid-**hook** generator, which generates that state plumbing
-instead of leaving you to hand-write it. Your client's reference fragment has the
-generator names and a rendered example.
+A generated grid component is fully controlled: it needs row-count, sort, pagination and
+filter state on top of the column definitions. Pair the columns generator with the grid-hook
+generator, which emits that state plumbing. Your client's reference has the generator names
+and a rendered example.

@@ -1,22 +1,42 @@
 ---
 name: metaobjects-audit
-description: Use when assessing how well a project has adopted MetaObjects — greenfield first-pass or deep double-check; produces a scored, prioritized adoption-audit report covering codegen, runtime, drift-gates, and prompts.
+description: Use when assessing how well a project that already uses MetaObjects has adopted it — a first-pass or deep audit that finds hand-written code the metadata could own and produces a scored, prioritized adoption-audit report (JSON plus Markdown) covering codegen, runtime, drift gates and prompts. Read-only.
 ---
 
 # MetaObjects adoption audit
 
-**Thesis.** Typed metadata is the durable spine; generated code is the disposable
-artifact. Hand-writing a layer the metadata could own creates a second source of
-truth for one fact — it will drift. This audit hunts those second sources of truth
-and proposes folding them into the spine — where the generator code plus its generated output
-and added metadata is fewer lines than the hand-written code it replaces, more of that shape
-are coming, or silent drift is the risk. A one-off layer
-that fails that cost test is acceptable, not a defect.
+Typed metadata is what lasts; generated code is replaceable. A hand-written layer the
+metadata could own is a second source of truth for one fact, and it will drift. This audit
+finds those second sources and proposes folding them into the model where that pays: the
+generator plus its output and added metadata is fewer lines than the hand-written code it
+replaces, more of that shape are coming, or silent drift is the risk. A one-off layer that
+fails that cost test is acceptable, not a defect.
 
-**Boundary — read-only.** Deliverables: `.metaobjects/adoption-audit.json` (machine-readable
-findings) + a rendered Markdown report. The audit **never edits code, never authors
-metadata** — `metadata_sketch` per finding is a read-only proposal for human review.
-Actual cutovers run through the existing skills mapped per finding tier (§ Bridge).
+## Essentials
+
+- **Read-only.** The deliverables are `.metaobjects/adoption-audit.json` and a rendered
+  Markdown report. The audit never edits code and never authors metadata: each finding's
+  `metadata_sketch` is a proposal for a human to review, and cutovers run through the other
+  skills (the bridge at the end).
+- **Metadata follows the code.** This is an existing project, so its code and live schema are
+  the specification. Every `metadata_sketch` reproduces the code's native types, names and
+  nullability (`field.uuid` where the code uses `UUID`; carry over `@column` / `@table` /
+  `@required`), and every cutover leaves code the generator is not replacing alone: propose
+  customizing the generator to match the existing shape before proposing edits to working
+  call sites. When a choice is ambiguous, flag it for the human; do not pick the option
+  with more churn. (`metaobjects-authoring`, "Adopting onto an existing codebase".)
+- **Read the code behind every hit before raising a finding, and check
+  `references/calibration.md` first.** A grep hit is a lead. Calibration lists the port gaps
+  and non-defects that are never the adopter's fault. Under-flag: a false finding costs the
+  report more trust than a missed one.
+- **Parity-gate every cutover.** Prove the generated replacement behaves the same before
+  hand-written code is deleted; generated schemas are often looser.
+- **Check the database artifact, not only the types.** A contract can claim a computed
+  column the view DDL dropped.
+- **One bespoke action does not block generating the entity.** Generate the CRUD and mount
+  the custom action beside it.
+- **Check resolved package versions, not declared ones.** Consuming a fix means a coordinated
+  version bump and rebuild, not a copied dist file.
 
 ## Reference files — open the one your task needs
 
@@ -31,89 +51,92 @@ Actual cutovers run through the existing skills mapped per finding tier (§ Brid
 | `references/requirements.md` | Axis E2: the project declares `requirement.*` nodes. |
 | `references/typescript.md`, `java.md`, `kotlin.md`, `csharp.md`, `python.md` | The server port the project uses (only the ports in the project's stack are installed). |
 
-## Guardrails
+## Phase 0: triage
 
-- **Adoption direction — metadata follows the code.** This is a brownfield project: existing
-  code and the live schema are the spec. Every `metadata_sketch` must **reproduce the code's
-  existing native types, names, and nullability** (model `field.uuid` where the code uses
-  `UUID`, carry over `@column`/`@table`/`@required`) and every cutover must **minimize churn to
-  code the generator is not replacing** — customize the codegen to match the existing shape
-  before proposing edits to working call sites. A sketch that would re-type or rename working
-  code the generator isn't replacing is modeling the wrong thing; when a choice is ambiguous,
-  flag it for the human rather than proposing the churnier option. (Full doctrine:
-  `metaobjects-authoring` → "Adopting onto an existing codebase".)
-- **Parity-gate every cutover** — prove behavior-equivalent before deleting hand-written code; generated schemas are often looser.
-- **Verify, don't assume** — read the code behind a grep hit.
-- **Calibrate before flagging** — `references/calibration.md` lists what is never the adopter's fault.
-- **Verify the DB artifact, not just the types** — the contract may claim a column the view DDL dropped.
-- **Don't let one bespoke action block generating the entity** — generate CRUD; mount the custom action alongside.
-- **Consumption ≠ a dist copy across versions** — bump + rebuild lockstep and install.
+- Is MetaObjects present? (A `metaobjects/` directory or other metadata sources; the
+  `@metaobjectsdev/*` / `com.metaobjects:*` / `metaobjects` / `MetaObjects.*` dependencies.)
+- Count metadata source lines and every `@generated` / `DO NOT EDIT` file in the repo.
+- Run the owned-generators check and the version check below.
+- Classify the project **Greenfield** (none or minimal), **Partial** or **Deep**, and take
+  the matching path.
 
-## Phase 0 — Triage (fast, mechanical)
+### Owned generators
 
-- [ ] MetaObjects present? (`metaobjects/` dir, metadata sources, `@metaobjectsdev/*` /
-  `com.metaobjects:*` / `metaobjects` / `MetaObjects.*` deps).
-- [ ] Count metadata source lines + all `@generated` / `DO NOT EDIT` files repo-wide.
-- [ ] **Owned-generators check:** which generators does the project own at
-  `codegen/generators/*` (via `meta eject`, or `meta init` on a CLI before 1.0.4), and
-  which does it import from `@metaobjectsdev/codegen-ts/generators`? Both are supported
-  from 1.1. Two findings to look for. **An unmodified owned copy** is duplication that
-  falls behind the reference: `meta eject --list --format text` marks each copy, and one
-  marked `identical to the reference` should be replaced by the package import. That is
-  the only mark that proves a copy unmodified. `same content as the reference, your
-  formatting` and `DIFFERS` with `0 line(s) of your own` rule out added or edited lines,
-  not removed or reordered ones: confirm those from the file's history
-  (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject) first, and
-  report a copy you cannot confirm as "possibly customized: check its history", not as a
-  copy to drop. **A copy with lines of its own is not proof of a customization either.**
-  `meta eject --list` (and each port's listing) prints `DIFFERS` for BOTH a deliberate
-  customization and a copy gone stale by version, and its `M of your own` count includes
-  every line the reference has since removed or rewritten, which are older upstream lines.
-  Run the history check on every `DIFFERS` row, `M` above 0 included, and report the two
-  figures separately: lines behind the reference, and lines of the project's own that the
-  history confirms. A copy stale by version is a finding (`owned-generator-stale`). For `entity`,
-  `routes` and `routes-hono` that holds only when every `codegen/runtime/` file the copy
-  reaches is also marked identical: an edited adapter is a customization, and such a copy
-  is not a finding. Those runtime rows appear only with `--format text` (or as the
-  `runtimeCopy` array inside the row's `source` object in `meta gen --list --format
-  json`); a listing with no runtime rows is not evidence that the adapter is unmodified. **An import of `entityFile` /
-  `queriesFile` / `routesFile` / `barrel` on a 1.0.x install** fails to load, because 1.0
-  removed those four and 1.1 restored them: there it is an upgrade blocker, fixed by
-  upgrading to 1.1 or by ejecting. Importing anything from that subpath is otherwise
-  correct and is never a finding by itself. **Every port owns generators the same way**:
-  run the owned-copy check in each port reference the project uses (TypeScript
-  `meta eject --list --format text`, Python `metaobjects gen --list`, Java / Kotlin
-  `mvn metaobjects:eject -Dlist`, C# `dotnet meta gen --list`), and report ONE total across
-  all of them: **unmodified owned-generator lines / all owned-generator lines**, where
-  unmodified counts only copies proven unmodified. Report the proven copies together as
-  one finding, `owned-generator-stock-copies`, listing each copy and the port's undo command.
-- [ ] **Cross-language version consistency (silent-drift check).** If the project uses MetaObjects in more than one language (e.g. a TS web client + a Java/Python/C# backend), enumerate EVERY MetaObjects package across ALL ecosystems (npm `@metaobjectsdev/*`, Maven `com.metaobjects:*`, PyPI `metaobjects`, NuGet `MetaObjects.*`) and record each version. **The version-number LINES differ by ecosystem (npm/PyPI/NuGet `0.x`/`1.x` vs Maven `7.x`/`8.x`), so you CANNOT eyeball drift** — a `0.12` next to a `7.7` looks fine but can be badly out of sync. Compare the **`metamodelVersion`** each port reports (the shared spec version on the registry manifest): a mismatch is real cross-language drift and a **finding** — the ports disagree on vocabulary/wire behavior. A match is not enough on its own: added vocabulary does not move `metamodelVersion`, so also compare each port's release (each ecosystem's version for one CHANGELOG entry). A port on an older release is a **finding** when the model uses vocabulary that release lacks. Also flag any port not on the latest release for its ecosystem. (This is a known real-world failure mode: newest backend, stale client, invisible because the numbers differ.)
-- [ ] Classify: **Greenfield** (none/minimal) · **Partial** · **Deep** → choose path below.
+Find which generators the project owns at `codegen/generators/*` (through `meta eject`, or
+`meta init` on a CLI before 1.0.4) and which it imports from
+`@metaobjectsdev/codegen-ts/generators`. Both are supported from 1.1. The import is the right
+choice for a generator the project does not change, and is never a finding by itself.
 
----
+Every port owns generators the same way. Run each port's listing (TypeScript
+`meta eject --list --format text`, Python `metaobjects gen --list`, Java / Kotlin
+`mvn metaobjects:eject -Dlist`, C# `dotnet meta gen --list`) and read each row for what it
+proves:
 
-## Phase 1a — Greenfield path
+| The listing says | What that proves | What to do |
+|---|---|---|
+| `identical to the reference` | The copy is unmodified. This is the only mark that proves it. | Duplication that falls behind the reference: recommend the package import. |
+| `same content as the reference, your formatting`, or `DIFFERS` with `0 line(s) of your own` | No added or edited lines. Removed or reordered lines are not ruled out. | Confirm from the file's history (`git log -p -- codegen/generators/<name>.ts` shows no edit after the eject). A copy you cannot confirm is reported as "possibly customized: check its history", not as a copy to drop. |
+| `DIFFERS` with lines of its own | Nothing by itself. The listing prints `DIFFERS` both for a deliberate customization and for a copy gone stale by version, and `M of your own` includes every line the reference has since removed or rewritten, which are older upstream lines. | Run the history check on every such row. Report two figures separately: lines behind the reference, and lines of the project's own that the history confirms. A copy stale by version is a finding (`owned-generator-stale`). |
 
-- [ ] **Shape inventory.** Catalog modelable shapes: entities/tables, DTOs, validation
-  schemas, routes, UI lists/forms, prompt sites.
-- [ ] **Pick wedge:** one real entity (single-column PK, standard CRUD) to model first.
-- [ ] **From-zero roadmap:** `meta init` → model the wedge → `meta gen` the data layer →
-  author a projection view → expand to routes/UI → add prompt pillar where LLM calls exist.
-  Owning the generators from day 1 is part of the roadmap.
+- **Runtime adapters.** For `entity`, `routes` and `routes-hono`, "unmodified" holds only when
+  every `codegen/runtime/` file the copy reaches is also marked identical: an edited adapter
+  is a customization, and such a copy is not a finding. Those runtime rows appear only with
+  `--format text` (or as the `runtimeCopy` array inside the row's `source` object in
+  `meta gen --list --format json`); a listing with no runtime rows is not evidence that the
+  adapter is unmodified.
+- **A 1.0.x install.** An import of `entityFile` / `queriesFile` / `routesFile` / `barrel`
+  fails to load there, because 1.0 removed those four and 1.1 restored them. That is an
+  upgrade blocker, fixed by upgrading to 1.1 or by `meta eject <name>` if the project has to
+  stay on 1.0.x.
+- **One total across every port:** unmodified owned-generator lines over all owned-generator
+  lines, where unmodified counts only copies proven unmodified. Report the proven copies
+  together as one finding, `owned-generator-stock-copies`, listing each copy and its port's
+  undo command.
 
-## Phase 1b — Partial / Deep path
+### Cross-language version consistency
 
-**Census:** generated output line/file counts + metadata/owned-generator lines.
-Compute **leverage ratio** = `generated_lines / (metadata_lines + generator_lines)`;
-healthy = multi-× (example: ~4.7k spine → ~15.7k generated ≈ 3.3×). **Never report a
-generated-share or leverage figure alone, and never as a target:** pair it with the **net
-hand-written line change**, a figure to report and not the cost test (hand-written lines
-removed minus generator and metadata lines added). A share can rise while total hand-written
-code grows.
+If the project uses MetaObjects in more than one language (a TypeScript web client with a
+Java, Python or C# backend, say), list every MetaObjects package across every ecosystem (npm
+`@metaobjectsdev/*`, Maven `com.metaobjects:*`, PyPI `metaobjects`, NuGet `MetaObjects.*`) and
+record each resolved version.
 
-**Coverage matrix:** per entity/projection/value — query helpers? view? routes? UI?
-The gap between "modeled + query helpers" and "has view + route + UI" is the headline
-lopsidedness.
+**The version lines differ by ecosystem, so drift cannot be judged by eye.** npm, PyPI and
+NuGet are on `0.x` / `1.x` and Maven on `7.x` / `8.x`: a `0.12` beside a `7.7` looks fine and
+can be badly out of step. Compare instead:
+
+- **The `metamodelVersion` each port reports** (the shared spec version on the registry
+  manifest). A mismatch is real cross-language drift and a finding: the ports disagree on
+  vocabulary or wire behavior.
+- **Each port's release.** A match on `metamodelVersion` is not enough, because added
+  vocabulary does not move it. Line up each ecosystem's version for the same CHANGELOG entry;
+  a port on an older release is a finding when the model uses vocabulary that release lacks.
+- **The latest release.** Also flag any port not on the latest release for its ecosystem.
+
+This failure has been seen in practice: newest backend, stale client, invisible because the
+numbers differ.
+
+## Phase 1a: the Greenfield path
+
+- **Shape inventory.** Catalog the modelable shapes: entities and tables, DTOs, validation
+  schemas, routes, UI lists and forms, prompt sites.
+- **Pick a wedge:** one real entity (single-column PK, standard CRUD) to model first.
+- **From-zero roadmap:** `meta init` → model the wedge → `meta gen` the data layer → author a
+  projection view → expand to routes and UI → add the prompt pillar where LLM calls exist.
+  Choosing and owning generators from day one is part of the roadmap.
+
+## Phase 1b: the Partial / Deep path
+
+**Census.** Generated output line and file counts, plus metadata and owned-generator lines.
+Compute the **leverage ratio**, `generated_lines / (metadata_lines + generator_lines)`; a
+healthy one is a multiple (for example about 4.7k lines of model and generators to about
+15.7k generated, 3.3×). Do not report a generated-share or leverage figure alone, or as a
+target: pair it with the **net hand-written line change** (hand-written lines removed minus
+generator and metadata lines added), because a share can rise while total hand-written code
+grows.
+
+**Coverage matrix.** Per entity, projection and value object: query helpers? view? routes?
+UI? The gap between "modeled, with query helpers" and "has view, route and UI" is the
+headline lopsidedness.
 
 **Shape coverage census.** The coverage matrix lists modelled entities only, so a shape
 nobody modelled never appears in it. Count the other side too. List every shape that crosses
@@ -126,15 +149,13 @@ is **generated**, **derived** from generated code (a type built from a generated
 `generated or derived statements / all statements` and list the unmodelled shapes. A table
 present in the database or the migrations with no entity or projection behind it is a
 finding (`unmodelled-table`). Like the leverage ratio this is a measurement, never a target:
-an unmodelled shape is a finding only where the cost test in § Owned-codegen says modelling it
-pays, or it is a table.
+an unmodelled shape is a finding only where the cost test says modelling it pays, or it is a
+table.
 
-**Surface review — 8 axes (independently runnable).**
-Work the full `references/capability-checklist.md` on every axis. Check calibration
-guards (`references/calibration.md`) before raising a finding. **Verify, don't assume** — read the
-code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
-
-Axes (the full hunt for each is in `references/surface-review-axes.md` — open it before working an axis):
+**Surface review.** The axes can be run independently. Work the full
+`references/capability-checklist.md` on every axis; the hunt for each axis is in
+`references/surface-review-axes.md`. For a "duplicate" validator, the place where it
+diverges from the model is the finding.
 
 - **A.** Codegen candidates — API / server routes · **B.** Codegen candidates — web / client
 - **C.** Drift hotspot — validators, mappers, runtime models · **D.** Prompt pillar
@@ -144,11 +165,9 @@ Axes (the full hunt for each is in `references/surface-review-axes.md` — open 
 - **H.** Authoring correctness / ADR conformance · **H2.** Wrong native type (`field.string` + `@dbColumnType: uuid`)
 - **I.** Vocabulary hygiene / modernization (advisory, never a failing finding)
 
-**Phase 4 — Synthesize** into the tiered roadmap and populate both artifacts.
+Then synthesize the findings into the tiered roadmap and write both artifacts.
 
----
-
-## Classification scheme (every surface; classify on codegen AND runtime)
+## Classifying a surface (on codegen and on runtime)
 
 | Class | Meaning | Action |
 |---|---|---|
@@ -161,94 +180,76 @@ Axes (the full hunt for each is in `references/surface-review-axes.md` — open 
 | **BESPOKE (keep)** | Genuine custom: irreducible SQL (recursive CTEs, window functions, set ops — NOT plain count/sum/avg rollups, which are `origin.aggregate` on a projection), graph, SSE, auth, search, viz. | Leave hand-written — still import generated types. |
 | **VOCAB CANDIDATE (advisory)** | A recurring, closed hand-coded pattern (parallel integration modules / an ad-hoc string discriminator) that project-registered vocabulary — a custom subtype/attr via a provider — plus a small owned generator would own. | Propose the provider + `metadata_sketch`; apply the ADR-0037 ordered test; advisory only. |
 
-**Gold-standard exception.** A hand-written component that *derives* from generated metadata
-cannot drift — flag as good. A "bespoke" component hardcoding a shape metadata knows is a
-hidden candidate. **Stub trap:** demo-data routes have nothing to replace — classify
-"candidate (future) — not DB-backed".
+**A hand-written component that derives from generated metadata cannot drift: flag it as
+good.** A "bespoke" component hardcoding a shape the metadata knows is a hidden candidate.
+A demo-data route has nothing to replace: classify it "candidate (future), not DB-backed".
 
----
+## Owned generators and generator gaps
 
-## Owned-codegen & scaffold-and-own assessment
+- **Audit each owned generator.** Does it regenerate clean? Has it drifted from the
+  reference on purpose (good) or gone stale (a missed upstream fix)? Decide that from the
+  copy's history, as in Phase 0, not from the listing's count. Does it hand-roll a walk that
+  a declarative `scope` + `outputPattern` could replace? Would a bespoke shape be better as a
+  `templateGenerator` than a forked generator?
+- **The authoring ladder to recommend from:** a built-in fits → import it as shipped; close →
+  eject it and customize the copy; a new shape → author a declarative template-spec or a
+  custom generator from the metadata; cannot be modelled → hand-write, still importing the
+  generated types.
+- **Generator gaps.** Are missing generators blocking the biggest wins? Recommend per gap:
+  own and customize, author a template-spec, fix upstream, or a stopgap. Cost-test every
+  recommendation to generate (`metaobjects-codegen`, `references/owning-generators.md`): an
+  owned generator is worth it only if generator plus output is smaller than the code it
+  replaces, more instances are expected, or drift protection is the point. A layer that
+  fails is ACCEPTABLE, and an owned generator larger than the code it replaced is itself a
+  finding. A general-shape generator belongs in the library, not in each app.
+- **An undeclared hand-written database view is invisible to `meta verify --db`.** A view
+  that is neither modeled nor carried in the `source.rdb` `@sql` / `@unmanaged` escapes is
+  reported as informational only, so a hand-written view standing in for an expressible
+  `object.projection` or entity read-view can only be found here (drift signature 8 in
+  `references/drift-signatures.md`). Once carried in `@sql` it is registered and
+  drift-checked.
 
-- A config may import `entityFile` / `queriesFile` / `routesFile` / `barrel` from
-  `@metaobjectsdev/codegen-ts/generators` or from owned `codegen/generators/*`. Both are
-  supported from 1.1, and the import is the right choice for a generator the project does
-  not change. The import is a blocker only on a 1.0.x install, where those four do not
-  resolve: recommend upgrading to 1.1, or `meta eject <name>` if the project has to stay
-  on 1.0.x. On 1.1 the finding is the reverse case, an owned copy proven unmodified by
-  the Phase 0 owned-generators check: recommend the package import. Importing any other
-  generator from that subpath is correct and is not a finding.
-- Audit owned generators: (a) regenerate clean? (b) drifted from reference templates —
-  intentional (good) vs stale/accidental (missed upstream fix)? Decide it from the copy's
-  history, not from the listing's `own` count: `DIFFERS` reads the same for both, and lines
-  the reference has since removed count as "own" (Phase 0, owned-generators check). (c) hand-rolling a walk
-  that a declarative `scope` + `outputPattern` could replace? (d) bespoke shape better as
-  a `templateGenerator` than a forked generator?
-- **Authoring ladder:** built-in fits → import it as shipped · close → **eject it and
-  customize the copy**
-  · new shape → **author a declarative template-spec / custom generator from the metadata**
-  · genuinely un-modelable → hand-write (still import the generated types).
-- **Generator-gap check:** missing generators that block the biggest wins? Recommend per gap:
-  own + customize / author a template-spec / fix upstream / stopgap. **Cost-test every
-  recommendation to generate** (`metaobjects-codegen` → `references/owning-generators.md`): an
-  owned generator is worth it only if generator + output is smaller than the code it replaces,
-  more instances are expected, or drift protection is the point. A layer that fails is
-  ACCEPTABLE, and an owned generator larger than the code it replaced is itself a finding.
-  A general-shape generator belongs in the library, not in each app.
-- **Verify the DB artifact, not just the types** — computed view columns may appear in the
-  contract but be dropped from the view DDL; the contract may lie.
-- **An *undeclared* hand-authored DB view is invisible to `meta verify --db`.** A view that is
-  neither modeled nor carried in the `source.rdb` `@sql` / `@unmanaged` escapes is *unmanaged*
-  (informational only — never actionable drift, never auto-dropped), so a hand-written view
-  standing in for an expressible `object.projection` / entity read-view can never be outsourced
-  to the drift gate; hunt it here (drift signature 8 in `references/drift-signatures.md`). Once carried in `@sql` (#208) it IS
-  registered, fingerprinted, and drift-checked — no longer audit-only.
-- **Version skew:** check *actually-resolved* package versions, not declared; consuming a fix
-  requires a coordinated lockstep bump, not a source-file copy.
+## Ratifying constraints before they enter the model
 
----
+When folding hand-written validators into metadata, each constraint needs a human decision,
+because a constraint in shared metadata reaches every port. It belongs there only if it is a
+true cross-language domain invariant; one consumer's preference stays in a thin local
+refinement layer.
 
-## Semantic-constraint ratification (prevents over-modeling)
+Cross-field rules are modelable (`comparison` / `atLeastOne` / `exactlyOne` /
+`requiredWhen` / `presentIff`); ratification decides which belong in shared metadata. Output
+a **ratification table**: KEEP-IN-METADATA / LOCAL-REFINEMENT / DROP, with the rationale,
+for a human to approve. Never apply it silently. Tell `required` apart from has-a-safe-default
+(`@default` often fixes an over-requiring bug).
 
-When folding hand validators into metadata, apply human judgment per constraint.
-A constraint enters **shared metadata** only if it is a **true cross-language domain
-invariant**; a one-consumer preference stays in a thin local refinement layer.
+## Scoring: no single score, bands not decimals
 
-Cross-field rules **are** modelable (`comparison` / `atLeastOne` / `exactlyOne` /
-`requiredWhen` / `presentIff`); ratification decides *which* belong in shared metadata. Output a
-**ratification table**: KEEP-IN-METADATA / LOCAL-REFINEMENT / DROP + rationale —
-human-approved, never applied silently. Distinguish `required` from has-a-safe-default
-(`@default` often fixes the over-requiring bug). A core attr ripples cross-port; for a
-one-consumer need, read it codegen-locally.
-
----
-
-## Scoring & maturity model — three surfaces (no single global score; bands not decimals)
-
-1. **Headline MATURITY TIER** — Greenfield → Partial → Deep → Exemplary; worst-of with
-   prerequisite gating (a missing pillar can't be averaged away); rendered with **the single
-   next unmet check** ("you're Partial; the next rung needs a blocking `verify` in CI").
-2. **Per-pillar breakdown (never rolled into one number)** — `pillar | tier | top gap` over
+1. **Headline maturity tier.** Greenfield → Partial → Deep → Exemplary, worst-of with
+   prerequisite gating (a missing pillar cannot be averaged away), shown with the single
+   next unmet check ("you're Partial; the next rung needs a blocking `verify` in CI").
+2. **Per-pillar breakdown, never rolled into one number.** `pillar | tier | top gap` over
    codegen / runtime / drift-gate / prompts. This is the core deliverable.
-3. **Binary CI drift gate** — prominent and separate: **"Does `meta verify` drift detection
-   block every route to production?"** It is binary because the risk is binary. YES only
-   when axis F scores the gate **BLOCKING**; RUNS BUT DOES NOT BLOCK and ABSENT both answer
-   NO, with the reason (exit code swallowed, tolerated error count, a deploy path that
-   skips it, no CI). Local hooks with no tracked installer do not count.
-4. **Used as described** — one line, separate from the tier: does the project use what it
+3. **Binary CI drift gate**, prominent and separate: "Does `meta verify` drift detection
+   block every route to production?" It is binary because the risk is. YES only when axis F
+   scores the gate **BLOCKING**; RUNS BUT DOES NOT BLOCK and ABSENT both answer NO, with the
+   reason (exit code swallowed, tolerated error count, a deploy path that skips it, no CI).
+   Local hooks with no tracked installer do not count.
+4. **Used as described.** One line, separate from the tier: does the project use what it
    adopted the way MetaObjects documents it? Built from four measurements, each shown with
    its numbers: generated artifacts consumed rather than bypassed (axis F2, `consumed /
    emitted` and the `generated-and-bypassed` count); the gate blocks (axis F score); prompt
    payload fields linked to entity fields (axis D, `linked / (linked + unlinked copies)`);
-   and boundary shapes generated or derived (Phase 1b shape coverage census). Render it as
+   and boundary shapes generated or derived (the shape coverage census). Render it as
    `Used as described: <band> — generated forms 5/12 consumed · gate RUNS BUT DOES NOT
    BLOCK · payload fields 6/10 linked · shapes 50% generated or derived`, banded by its worst
    part.
 
-Coarse bands only (none / some / most / all). Worst-of within a pillar. Lead with gaps, not
-the grade.
+Coarse bands only (none / some / most / all), worst-of within a pillar. Lead with the gaps,
+not the grade. Vocabulary hygiene (axis I) is advisory: it appears as modernization
+opportunities in the roadmap and never gates a tier, because dated vocabulary that works is
+not a defect.
 
-**Re-run: compare against the previous audit.** If `.metaobjects/adoption-audit.json`
+**On a re-run, compare with the previous audit.** If `.metaobjects/adoption-audit.json`
 already exists, read it before starting and keep it as the baseline. Match each earlier
 finding to this run's by `id` plus location, and give every earlier finding a `status`:
 **fixed** (the location no longer shows it; say what changed), **open** (still present,
@@ -258,25 +259,20 @@ fix it now, in a commit, an ADR, a tracked issue or a code comment, quoted as
 deferred. New findings are `new`. Report the counts per status at the top of the report,
 and show each scorecard line beside its previous value.
 
-**Vocabulary hygiene (axis I) is advisory** — it surfaces as modernization
-opportunities in the roadmap, scored as such, and **never gates a tier or fails the
-audit.** Dated-but-working vocabulary is a quality nudge, not a defect.
+## The report
 
----
+Two artifacts: `.metaobjects/adoption-audit.json` and the rendered Markdown.
 
-## Report
-
-**Two artifacts:** `.metaobjects/adoption-audit.json` + rendered Markdown.
-
-**Markdown sections (lead with Scorecard):** 0. Scorecard (tier + pillar table + CI gate +
-used as described; on a re-run, the fixed / open / deferred / new counts) ·
-1. Triage + census (including the owned-generator unmodified-lines total and the shape
-coverage census) · 2. Coverage matrix · 3. Per-surface classification tables · 4. Drift
-findings (active bugs first) · 5. Owned-codegen + generator gaps · 6. Drift-gate adoption ·
-7. Runtime-contract + authoring-correctness (axes G+H) · 8. Semantic-constraint ratification ·
+**Markdown sections, Scorecard first:** 0. Scorecard (tier, pillar table, CI gate, used as
+described; on a re-run, the fixed / open / deferred / new counts) · 1. Triage and census
+(including the owned-generator unmodified-lines total and the shape coverage census) ·
+2. Coverage matrix · 3. Per-surface classification tables · 4. Drift findings (active bugs
+first) · 5. Owned generators and generator gaps · 6. Drift-gate adoption ·
+7. Runtime-contract and authoring-correctness (axes G and H) · 8. Constraint ratification ·
 9. Prompt-pillar assessment · 10. Prioritized roadmap: Tier 1 drift kill → Tier 2 existing
-generators → Tier 3 new generators/projections → Tier 4 dynamic-runtime/prompts/cross-port.
-Each roadmap item: LOC retired, prerequisite, **parity-gate before deleting hand-written code**.
+generators → Tier 3 new generators and projections → Tier 4 dynamic runtime, prompts,
+cross-port. Each roadmap item: lines retired, prerequisite, and the parity gate to pass
+before hand-written code is deleted.
 
 **Each finding in `.metaobjects/adoption-audit.json`:**
 
@@ -302,7 +298,7 @@ Each roadmap item: LOC retired, prerequisite, **parity-gate before deleting hand
 Fixed findings stay in the file with `status: fixed` for one run, so the next reader sees
 what closed.
 
-**Top-level fields in `.metaobjects/adoption-audit.json`**, beside `findings[]`:
+**Top-level fields**, beside `findings[]`:
 
 | Field | Content |
 |---|---|
@@ -316,16 +312,13 @@ what closed.
 
 Within each tier, sort by impact ÷ effort (quick wins first). Tier 1 leads.
 
-### Audit → action bridge
+### From audit to action
 
-The audit never edits code. Pattern: **dry-run → review the diff → apply**.
+The audit never edits code. The pattern for whoever acts on it is dry-run → review the diff →
+apply, one surface at a time, one commit each.
 
-- Propose metadata → `metaobjects-authoring` + brainstorming flow (human reviews).
-- Generate → `meta gen`; **`meta gen --dry-run`** is the review-the-diff step → skill:
-  `metaobjects-codegen`.
-- Prove parity → **`meta verify --codegen`** is the drift gate → skill: `metaobjects-verify`.
-- Routes / runtime / web → skill: `metaobjects-runtime-ui`.
-- Prompts → skill: `metaobjects-prompts`.
-- Cut over **one surface at a time, one commit each**.
-- A separate guided-cutover skill (not this one) reads `adoption-audit.json` and walks
-  findings one tier/surface at a time with human approval at each step.
+- Propose metadata → `metaobjects-authoring`, with a human reviewing.
+- Generate → `meta gen`; `meta gen --dry-run` is the review-the-diff step → `metaobjects-codegen`.
+- Prove parity → `meta verify --codegen` is the drift gate → `metaobjects-verify`.
+- Routes, runtime, web → `metaobjects-runtime-ui`.
+- Prompts → `metaobjects-prompts`.

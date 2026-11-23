@@ -189,8 +189,8 @@ soft-delete / status / type view it models.
   "end ≥ start"), `validator.atLeastOne` (one-of-N present), `validator.exactlyOne` (exactly one of N
   present), `validator.requiredWhen`
   (conditional-required), `validator.presentIff` (mutual presence). Hunt these as hand-coded
-  multi-field rules — they ARE modelable (see the Semantic-constraint ratification section in
-  `SKILL.md` to decide what belongs in shared metadata vs port-local).
+  multi-field rules — they ARE modelable (see "Ratifying constraints before they enter the
+  model" in `SKILL.md` to decide what belongs in shared metadata vs port-local).
 - **`validator.base`** — abstract base.
 
 ## View / Layout — `view.*`, `layout.*`
@@ -360,7 +360,8 @@ to nothing, and does not check that each claimed node complies).
     non-`table` source-kind / flattened-object codegen is partial). **C#** has no
     ObjectManager runtime tier (EF Core *is* the runtime) — hand services over the generated
     `DbContext` are expected.
-- **Single-source config** — `apiPrefix` (URL prefix wired into routes + hooks), the
+- **Single-source config** — `apiPrefix` (where the generated routes mount; the web client
+  takes its prefix from `baseUrl` on the fetcher provider, so check the two agree), the
   `naming` block of `.metaobjects/config.json` (column and table rules, read by every port)
   and per-target output dirs: hunt these values hard-coded in multiple places instead of
   resolved from config.
