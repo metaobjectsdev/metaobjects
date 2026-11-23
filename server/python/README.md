@@ -70,16 +70,17 @@ wins. See [the upgrade guide](../../docs/features/migrations/upgrading-1.0-to-1.
 
 ## AI assistant context
 
-To scaffold MetaObjects context files (`.metaobjects/AGENTS.md` and the `metaobjects-*` skills)
-into your project so your AI assistant understands how to author metadata and run codegen, use
-the Node `meta` CLI. The skills go to `.claude/skills/` unless you pass `--skills-dir` (for
-example `.agents/skills` for assistants that read that directory):
+To write MetaObjects context files (`.metaobjects/AGENTS.md` and the `metaobjects-*` skills)
+into your project so your AI assistant understands how to author metadata and run codegen:
 
 ```bash
-npx meta agent-docs --server python
+metaobjects agent-docs                       # the python stack
+metaobjects agent-docs --client react        # add --server/--client for the rest of your stack
 ```
 
-(Running `metaobjects agent-docs` in the Python CLI prints this redirect and exits.)
+The files ship inside the wheel, so no Node is needed. The skills go to `.claude/skills/`; a
+different skills directory (`--skills-dir`) is the Node CLI's (`npx meta agent-docs`). A re-run
+rewrites only what changed, and parks fresh text at `<file>.new` beside a file you edited.
 
 ## Links
 

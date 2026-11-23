@@ -881,9 +881,10 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
 2. **Bump the version in `pyproject.toml`** (`[project].version`).
 3. **The wheel is pure-Python/universal** (`py3-none-any`) — one wheel serves every platform.
 
-   (No agent-context content is vendored into the wheel anymore — scaffolding moved to the
-   Node `meta agent-docs` CLI, so `hatch_build.py` is a no-op. Don't re-add a
-   `force-include` of `../../agent-context`.)
+   (The wheel carries the shipped agent files as a committed copy of `agent-context-shipped/`
+   under `src/metaobjects/agent_context/shipped/`, so `metaobjects agent-docs` needs no Node.
+   Refresh it with `scripts/sync-python-agent-context.sh`; the `gates` lane and a Python test
+   fail when it is stale. There is no build hook and no `force-include` of `../../agent-context`.)
 
 ## Procedure
 
@@ -1011,8 +1012,8 @@ shipped agent-context tree (and the docs ref its links are pinned to) into the m
 TypeScript check compares that hash: a context whose content differs from what this CLI ships
 nudges even at an equal version, and one whose content is identical is silent at any version. A
 manifest written before 1.1.0 has no hash and falls back to the version rule above. The C#,
-Python and JVM checks keep the version rule, because they ship no agent-context content to hash:
-`meta agent-docs` (npm) is the one scaffolder. A context stamped at that port's own version is
+Python and JVM checks keep the version rule: each stamps its own release into the manifest it
+writes, and no port but TypeScript hashes the tree. A context stamped at that port's own version is
 the context that release documents, so the version rule is the right answer there.
 
 ## Public-repo hygiene

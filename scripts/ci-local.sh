@@ -998,6 +998,10 @@ gate_doc_template_drift() {
         server/typescript/packages/codegen-ts/templates \
         server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
 }
+# The Python wheel's copy of the shipped agent files must equal the repo-root tree.
+gate_python_agent_context_drift() {
+  diff -r -x README.md agent-context-shipped server/python/src/metaobjects/agent_context/shipped
+}
 gate_embedded_library_drift() {
   bun run scripts/generate-embedded-library.ts \
     && git diff --exit-code -- server/typescript/packages/metadata/src/library/embedded-library.generated.ts
@@ -1345,6 +1349,7 @@ run_gates_offline() {
   if want gates; then step    "positioning claims"               gate_positioning_claims;     fi
   if want gates; then step    "hosted assess prompt builds"      gate_assess_prompt;          fi
   if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
+  if want gates; then step    "python agent-context copy"        gate_python_agent_context_drift; fi
 }
 # Every gate below runs bun over workspace TypeScript, and on a FRESH CI checkout there is
 # no node_modules — so a bare `@metaobjectsdev/*` specifier either fails to resolve (what

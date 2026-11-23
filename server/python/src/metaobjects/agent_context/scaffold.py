@@ -1,21 +1,28 @@
-"""Sidecar manifest + staleness nudge for the agent-context scaffolder.
+"""Sidecar manifest, write plan and staleness nudge for the agent-context scaffolder.
 
-The assembly path (assemble / plan_scaffold / ScaffoldDecision) has been removed —
-that work is now owned by the Node ``meta agent-docs`` CLI. This module retains
-only the staleness-nudge machinery (``agent_context_staleness``, ``Manifest``,
-``AGENT_CONTEXT_MANIFEST_PATH``, ``installed_metaobjects_version``) which is used
-by ``gen``/``verify`` to detect when the scaffolded agent context predates the
-installed MetaObjects version.
+The files themselves are the shipped tree embedded in this package (see ``shipped.py``);
+this module owns what is written around them: the sidecar manifest that records what was
+written (``Manifest``), the decision of what a re-run may overwrite (``plan_scaffold``,
+the same predicate as the TypeScript scaffolder), and the staleness nudge
+(``agent_context_staleness``) that ``gen``/``verify`` use to detect an agent context that
+predates the installed MetaObjects version.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 
 #: Consumer-relative path of the sidecar manifest that tracks scaffolded files.
 AGENT_CONTEXT_MANIFEST_PATH = ".metaobjects/.agent-context.json"
+
+
+def hash_contents(text: str) -> str:
+    """sha256 hex of a file's text, as the TypeScript scaffolder records it."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def installed_metaobjects_version() -> str:
@@ -75,6 +82,73 @@ class Manifest:
             files=files,
             generated_by=str(generated_by) if generated_by is not None else None,
         )
+
+
+@dataclass
+class ScaffoldDecision:
+    """What a (re-)scaffold does, decided before anything is written."""
+
+    #: ``(path, contents)`` to write at their own path: new, or unmodified since the last scaffold.
+    writes: list[tuple[str, str]] = field(default_factory=list)
+    #: ``(path, contents)`` of hand-edited files: the fresh text goes to ``<path>.new``.
+    conflicts: list[tuple[str, str]] = field(default_factory=list)
+    #: the manifest to persist after writing.
+    manifest: Manifest | None = None
+    #: orphans this tool wrote and nobody touched: safe to delete.
+    prunes: list[str] = field(default_factory=list)
+    #: orphans that are hand-edited: reported, never deleted.
+    removed: list[str] = field(default_factory=list)
+
+
+def plan_scaffold(
+    *,
+    assembled: Mapping[str, str],
+    prior: Manifest | None,
+    read_current: Callable[[str], str | None],
+    generated_by: str,
+    servers: list[str],
+    clients: list[str],
+) -> ScaffoldDecision:
+    """Decide what to write. Pure: disk access goes through ``read_current``.
+
+    A file is safe to overwrite iff it is absent, or its on-disk hash still equals the
+    hash the prior manifest recorded (nobody hand-edited it). The manifest records what
+    was WRITTEN, never merely produced: a declined path keeps its prior hash, so reverting
+    the hand edit lets the next refresh see an unmodified file.
+    """
+    decision = ScaffoldDecision()
+    files: dict[str, str] = {}
+    for path, contents in assembled.items():
+        current = read_current(path)
+        if current is None:
+            files[path] = hash_contents(contents)
+            decision.writes.append((path, contents))
+            continue
+        if current == contents:  # already these bytes: nothing to write, true hash recorded
+            files[path] = hash_contents(contents)
+            continue
+        prior_hash = prior.files.get(path) if prior is not None else None
+        if prior_hash is not None and hash_contents(current) == prior_hash:
+            files[path] = hash_contents(contents)
+            decision.writes.append((path, contents))
+        else:
+            if prior_hash is not None:
+                files[path] = prior_hash
+            decision.conflicts.append((path, contents))
+    for path in prior.files if prior is not None else {}:
+        if path in assembled:
+            continue
+        current = read_current(path)
+        if current is None:
+            continue
+        if prior is not None and hash_contents(current) == prior.files[path]:
+            decision.prunes.append(path)
+        else:
+            decision.removed.append(path)
+    decision.manifest = Manifest(
+        version=1, servers=servers, clients=clients, files=files, generated_by=generated_by
+    )
+    return decision
 
 
 # The sentinel a port stamps when it cannot resolve its own installed version.
