@@ -130,6 +130,11 @@
 # ends, so output never interleaves. The summary lists every step with its time, the
 # slowest steps and each lane's wall time. Every step still runs and still fails the
 # run; only the order changes. --quick and --only run serially as before.
+# A waiting lane also starts only while the machine has MO_CI_LANE_MIN_FREE_MB of memory
+# available (MemAvailable, default 8192; 0 turns the check off), so the run never starts a
+# lane into a machine that is already short. The first lane always starts. Without this a
+# run on a busy machine drove memory to earlyoom's limit, and the SIGTERMs it sent showed
+# up as a crashed C# test host and SIGTERMed bun workers, not as a memory problem.
 # Worker counts inside the runners: MO_CI_PY_WORKERS (pytest-xdist, default 8),
 # MO_CI_TS_WORKERS (bun test --parallel for the integration suite and the codegen-ts suite
 # in conformance: typescript, default 6) and
@@ -198,6 +203,10 @@ done
 MO_CI_JOBS="${MO_CI_JOBS:-8}"
 case "$MO_CI_JOBS" in
   ''|*[!0-9]*|0) echo "MO_CI_JOBS must be a positive integer (got '${MO_CI_JOBS}')" >&2; exit 2 ;;
+esac
+MO_CI_LANE_MIN_FREE_MB="${MO_CI_LANE_MIN_FREE_MB:-8192}"
+case "$MO_CI_LANE_MIN_FREE_MB" in
+  ''|*[!0-9]*) echo "MO_CI_LANE_MIN_FREE_MB must be a non-negative integer (got '${MO_CI_LANE_MIN_FREE_MB}')" >&2; exit 2 ;;
 esac
 
 in_lane() { # in_lane <section> — true when the section is selected
@@ -356,7 +365,8 @@ gate_uv_lock_version() { scripts/check-uv-lock-version.sh; }
 # itself the one thing nothing tested. That is the worst place in the tree for an unrun
 # test — a wrong answer here does not fail, it silently stops testing a port.
 gate_ci_port_selection() {
-  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh
+  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh \
+    && scripts/test-ci-lane-memory.sh
 }
 
 # ── the no-magic-physical-names gate is wired in all five ports ───────────────
@@ -1293,9 +1303,27 @@ lane_start() { # lane_start <index>
   LANE_PID[$1]=$!
 }
 
+# mem_available_mb — MemAvailable in MiB, or nothing when it cannot be read (not Linux).
+mem_available_mb() { awk '/^MemAvailable:/ { print int($2 / 1024); exit }' /proc/meminfo 2>/dev/null; }
+
+# lane_has_memory <running> <recent> — true when another lane may start now. A lane started in
+# the last LANE_WARMUP_S seconds has not grown into its memory yet, so each of those <recent>
+# lanes holds one more MO_CI_LANE_MIN_FREE_MB in reserve; otherwise every lane would pass the
+# check in the same second. The first lane always may start, so a machine that never has the
+# headroom still runs every lane, one at a time.
+LANE_WARMUP_S=30
+lane_has_memory() {
+  local avail
+  [ "$1" -eq 0 ] && return 0
+  [ "$MO_CI_LANE_MIN_FREE_MB" -eq 0 ] && return 0
+  avail="$(mem_available_mb)"
+  [ -z "$avail" ] && return 0
+  [ "$avail" -ge $((MO_CI_LANE_MIN_FREE_MB * ($2 + 1))) ]
+}
+
 run_lanes() {
-  local max="$MO_CI_JOBS" n=${#LANE_NAMES[@]} i d ready running=0 left
-  local -a st=()
+  local max="$MO_CI_JOBS" n=${#LANE_NAMES[@]} i d ready running=0 left held=0 now recent t
+  local -a st=() started_at=()
   left=$n
   for ((i = 0; i < n; i++)); do st[i]=wait; done
   while [ "$left" -gt 0 ]; do
@@ -1311,7 +1339,14 @@ run_lanes() {
       ready=1
       for d in ${LANE_AFTER[i]//,/ }; do [ -e "$CI_TMP/lane-$d.done" ] || ready=0; done
       [ "$ready" -eq 1 ] || continue
-      lane_start "$i"; st[i]=run; running=$((running + 1))
+      now="$(date +%s)"; recent=0
+      for t in "${started_at[@]:-}"; do [ -n "$t" ] && [ $((now - t)) -lt "$LANE_WARMUP_S" ] && recent=$((recent + 1)); done
+      if ! lane_has_memory "$running" "$recent"; then
+        [ "$held" -eq 1 ] || echo "  ▸ lane ${LANE_NAMES[i]} waits: less than ${MO_CI_LANE_MIN_FREE_MB} MiB of memory available"
+        held=1; break
+      fi
+      held=0
+      lane_start "$i"; st[i]=run; running=$((running + 1)); started_at+=("$now")
       echo "  ▸ lane ${LANE_NAMES[i]} started${LANE_AFTER[i]:+ (after ${LANE_AFTER[i]})}"
     done
     [ "$left" -gt 0 ] && sleep 1

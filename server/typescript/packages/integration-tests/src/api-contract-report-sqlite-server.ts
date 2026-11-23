@@ -31,6 +31,8 @@ export type SqliteReportEngine = "sqlite" | "d1";
 /** What the server needs of an engine: run one statement, and close. */
 interface EngineClient {
   run(sql: string, params?: unknown[]): Promise<void>;
+  /** Run several statements in order as one unit: on D1, one `batch()` round trip instead of one per statement. */
+  runAll(statements: ReadonlyArray<{ sql: string; params: unknown[] }>): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -184,14 +186,17 @@ export async function startSqliteReportServer(
     baseUrl,
     applySeed: async (seed: ReportSeed) => {
       // Children before parents on the way out; the seed's file order (parents first) on the way in.
-      for (const t of [...BASE_TABLES].reverse()) await client.run(`DELETE FROM "${t.name}"`);
-      for (const r of seedInserts(root, seed)) {
-        await client.run(
-          `INSERT INTO "${r.table}" (${r.columns.map((c) => `"${c}"`).join(",")}) ` +
+      // One batch: a test reseeds before it runs, and on D1 each statement sent alone is a round
+      // trip into Miniflare, which made the reseed most of the file's run time.
+      await client.runAll([
+        ...[...BASE_TABLES].reverse().map((t) => ({ sql: `DELETE FROM "${t.name}"`, params: [] })),
+        ...seedInserts(root, seed).map((r) => ({
+          sql:
+            `INSERT INTO "${r.table}" (${r.columns.map((c) => `"${c}"`).join(",")}) ` +
             `VALUES (${r.columns.map(() => "?").join(",")})`,
-          r.values,
-        );
-      }
+          params: r.values,
+        })),
+      ]);
     },
     close: async () => {
       await served.close();
@@ -221,6 +226,10 @@ export const db = drizzle((globalThis as Record<string, never>)[${JSON.stringify
       run: async (sql, params = []) => {
         await local.d1.prepare(sql).bind(...params).all();
       },
+      runAll: async (statements) => {
+        if (statements.length === 0) return;
+        await local.d1.batch(statements.map((st) => local.d1.prepare(st.sql).bind(...st.params)));
+      },
       close: async () => {
         delete (globalThis as Record<string, unknown>)[key];
         await local.dispose();
@@ -236,6 +245,11 @@ export const db = drizzle(client);
   const mod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { client: import("bun:sqlite").Database };
   return {
     run: async (sql, params = []) => { mod.client.run(sql, params as never); },
+    runAll: async (statements) => {
+      mod.client.transaction(() => {
+        for (const st of statements) mod.client.run(st.sql, st.params as never);
+      })();
+    },
     close: async () => { mod.client.close(); },
   };
 }
