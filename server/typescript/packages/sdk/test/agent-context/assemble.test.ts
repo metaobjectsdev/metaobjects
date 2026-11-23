@@ -125,7 +125,7 @@ describe("assemble", () => {
     for (const op of ["`eq`", "`ne`", "`isNull`", "`in`", "`like`", "`gt`", "`gte`", "`lt`", "`lte`"]) expect(c).toContain(op);
     expect(c).toContain("`?limit=N&offset=N`");
     expect(c).toContain("`invalid_sort`");
-    expect(c).toContain("so Java, Kotlin, C#, Python and Rust projects need Node too");
+    expect(c).toContain("`meta migrate` is one option");
   });
 
   test("a malformed section tag THROWS rather than shipping into a file an agent reads", () => {

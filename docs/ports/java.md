@@ -16,10 +16,12 @@ stays hand-written, and the generated `<Entity>Repository` is an interface *you*
 with Spring Data JPA, jOOQ or plain JDBC. Wire only the generators you want in
 `<generators>`.
 
-Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`);
-the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-drift
-`metaobjects:verify` Maven goals were removed. Per ADR-0015 the OMDB runtime auto-create
-path was also removed — OMDB is pure data-access (CRUD/query/codec/transactions).
+Schema migrations run in your own migration tool (Flyway, Liquibase): `meta schema` prints the
+schema the metadata expects, as DDL or as a neutral JSON document, to hand it. The Node
+`meta migrate` is the reference migration helper, one option (`--migration-format flyway`
+writes Flyway-named files). The Java diff-and-converge migration engine and its `meta:migrate`
+/ live-DB-drift `metaobjects:verify` Maven goals were removed, and per ADR-0015 so was the OMDB
+runtime auto-create path — OMDB is pure data-access (CRUD/query/codec/transactions).
 Prompt / template drift is still checked via the `metaobjects-render` `Verify` API.
 
 > **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
@@ -1046,8 +1048,8 @@ generates but the `@PathVariable Long id` typing needs a hand edit; composite ke
 supported), request and response share one `<Entity>Dto` (no separate insert or update types),
 generated output parsers throw on bad input (there is no try-style variant) and need Jackson on
 the runtime classpath, and no stored-procedure callable generator exists (FR-015 ships in
-TypeScript, C# and Kotlin only). OMDB is data access only; schema migrations are owned by the
-Node `meta` CLI.
+TypeScript, C# and Kotlin only). OMDB is data access only; schema migrations run in your own
+tool, or in the Node `meta migrate` reference helper.
 
 OMDB persists an int-backed `field.enum` array on Postgres, SQLite, MySQL and Derby; the stored
 form, the Java specifics and the gating scenario are in

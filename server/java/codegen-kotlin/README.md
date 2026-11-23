@@ -144,7 +144,8 @@ mvn metaobjects:verify       # fails the build if generated Kotlin is stale vs m
 ```
 
 `meta:verify` here is **codegen drift only** — it is not the FR-004 prompt/template `verify`
-surface, and there is deliberately no schema/migrate goal (schema is Node-owned, ADR-0015).
+surface, and there is deliberately no schema/migrate goal (migrate with your own tool or the Node
+`meta migrate` reference helper, ADR-0015).
 
 ## Spring Boot + Exposed wiring (auto-generated)
 

@@ -8,7 +8,7 @@ single place per-corpus counts are maintained (the port READMEs deliberately poi
 here instead of restating them).
 
 Not every corpus is a five-port corpus, and that asymmetry is deliberate rather
-than a gap — schema migration is TypeScript-owned ([ADR-0015](../spec/decisions/ADR-0015-single-shared-migrate-engine.md)),
+than a gap — the reference migration helper is TypeScript's ([ADR-0015](../spec/decisions/ADR-0015-single-shared-migrate-engine.md)),
 Kotlin runs on the JVM and inherits the Java loader/render/extract engines instead
 of re-implementing them, and a few corpora gate tooling that only one port ships.
 The dark cells below say which is which.
@@ -119,8 +119,8 @@ the contracts and the conformance kits that hold every port to them.
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
   `jinja-render-conformance/` and `jinja-verify-conformance/` (the Jinja engine and its
   payload check, Python and TypeScript only, ADR-0061),
-  `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
-  scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
+  `persistence-conformance/` (runtime reads and writes, and the migration scenarios of
+  the TypeScript reference helper), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
   `field-lint-conformance/` (the advisory field lint every port's `verify` prints),
   `model-lint-conformance/` (the advisory overlay, node-name and deprecated-reference lints),

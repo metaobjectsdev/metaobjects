@@ -903,7 +903,8 @@ Through 1.0 both ports also discovered a project-root `template-spec.json` (and 
 nothing declaring a spec fails and names the migration section.
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
-ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
+ADR-0015. `meta migrate` is the reference migration helper for every port, one option beside each
+language's own tool.)*
 
 ## What's shared vs. per-port
 

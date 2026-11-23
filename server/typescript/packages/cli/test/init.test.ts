@@ -70,6 +70,14 @@ describe("init() — next-steps message (S1)", () => {
 
   // A first-run user read "Ship in later sub-projects: meta ingest … meta serve …" as
   // commands to try. None of them exists; internal roadmap names do not belong in output.
+  // `meta migrate` is the reference migration helper, one option: an init that chose no
+  // dialect picked no migration tool, so it is not told to run one.
+  test("names the migrate step only when a dialect was chosen", () => {
+    expect(nextStepsBlock()).not.toContain("meta migrate");
+    expect(nextStepsBlock("sqlite")).toContain("meta migrate --from-db");
+    expect(nextStepsBlock("d1")).toContain("meta migrate --dialect d1");
+  });
+
   test("names no command that does not exist", () => {
     const block = nextStepsBlock();
     expect(block).not.toMatch(/sub-project/i);

@@ -163,7 +163,7 @@ Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 codegen/generators/ is EMPTY on purpose: no code is generated until you choose it.
 `;
 
-function nextSteps(dialect: InitDialect): string {
+function nextSteps(dialect: InitDialect | undefined): string {
   return `
 Next steps:
   0. Everything here is ESM — package.json needs "type": "module" (init sets it
@@ -180,10 +180,14 @@ Next steps:
                                 #   scaffolds a working one and wires it
   4. meta gen                  # generate from exactly what you wired, documentation
                                 #   included (the docs layer of the catalog)
-${MIGRATE_STEP[dialect]}`;
+${dialect === undefined ? "" : MIGRATE_STEP[dialect]}`;
 }
 
-/** Step 5 of the next steps, per dialect: the first migration and the replay. */
+/**
+ * Step 5 of the next steps, per dialect: the first migration and the replay. Written only when
+ * the run names a dialect (`--dialect`, `--d1`): `meta migrate` is the reference migration
+ * helper, one option, and a project that chose none keeps its own migration tool.
+ */
 const MIGRATE_STEP: Record<InitDialect, string> = {
   sqlite:
     "  5. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply\n" +
@@ -1030,12 +1034,11 @@ function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
 /**
  * The post-init message.
  *
- * Takes no arguments now. It used to take `dbStubWritten`, because the scaffold wrote a
- * throwing `src/db.ts` on some runs and not others and a static string claimed it on
- * every one. With nothing wired there is no `dbImport` and no stub, so the message is
- * the same on every path again.
+ * `dialect` is the one the run chose with `--dialect` or `--d1`, undefined when it chose
+ * none; only a chosen dialect gets the migrate step. (It once took `dbStubWritten`; with
+ * nothing wired there is no `dbImport` and no stub, so nothing else varies.)
  */
-export function nextStepsBlock(dialect: InitDialect = "sqlite"): string {
+export function nextStepsBlock(dialect?: InitDialect): string {
   return SCAFFOLD_SUMMARY + nextSteps(dialect);
 }
 
@@ -1137,7 +1140,9 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         }
         for (const w of result.warnings) log.warn(w);
       } else {
-        log.info(nextStepsBlock(resolveInitDialect(flags)));
+        // The migrate step only for a chosen dialect: an unflagged init picks no migration tool.
+        const chosen = flags.dialect !== undefined || flags.d1 === true;
+        log.info(nextStepsBlock(chosen ? resolveInitDialect(flags) : undefined));
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context
         // discovery warning) — these are otherwise dropped on the normal init path.
         for (const w of result.warnings) log.warn(w);

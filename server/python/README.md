@@ -46,8 +46,9 @@ distribution also ships the Python implementations of the other pillars used by 
 and tooling: `codegen` (Pydantic + FastAPI emit — reference generators you own:
 `metaobjects eject <name>` copies one into your repo), `render` (Mustache, or Jinja with
 `pip install metaobjects[jinja]` — ADR-0061 — + payload-VO + verify), and `runtime` (an abstract `ObjectManager` and its DB-API 2 implementation `ObjectManagerDb` — pg8000 / psycopg on Postgres, the standard library's `sqlite3` on SQLite, PyMySQL on MySQL 8 (`pip install metaobjects[mysql]`) — no SQLAlchemy).
-Schema migrations are owned by the TypeScript `meta` CLI (ADR-0015); there is
-**no `migrate` module** in this distribution.
+Schema migrations run in your own migration tool (Alembic, say), handed the schema the Node
+`meta schema` prints, or in the Node `meta migrate` reference migration helper, one option
+(ADR-0015); there is **no `migrate` module** in this distribution.
 
 ### Physical names
 

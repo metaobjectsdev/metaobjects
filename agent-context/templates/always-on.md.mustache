@@ -11,9 +11,11 @@ truth. Code, schema and migrations are generated from it and are disposable.
 ## Start here: the whole loop, in order
 
 {{stackLoops}}
-### Schema (every stack: the Node `meta` CLI owns it, so Java, Kotlin, C#, Python and Rust projects need Node too)
+### Schema, with the reference migration helper (`meta migrate`, in the Node `meta` CLI)
 
-Never hand-write DDL, and never `ALTER` a live database by hand.
+`meta migrate` is one option: a project may migrate with its own language's tool instead, handed
+the schema `npx meta schema` prints. Either way, never hand-write DDL, and never `ALTER` a live
+database by hand.
 
 - First migration (needs a reachable, empty database):
   `npx meta migrate --from-db --db <url> --dialect <dialect> --slug init` writes
@@ -48,7 +50,7 @@ When the project serves the generated routes (any port):
   fields filter.
 - `?sort=<field>:asc|desc`, `?limit=N&offset=N`; `withCount=1` returns `{"rows", "total"}`.
   Always send `limit`: without it the project's `api.pagination.defaultLimit` applies, or with
-  none set TypeScript and C# return every row, the other ports 50; above `maxLimit` is 400.
+  none set C# returns every row, the other ports 50; above `maxLimit` is 400.
 - `PUT` is the same partial update as `PATCH`. Send only declared fields: an undeclared key is
   400 `unknown_fields` (unless `api.unknownFields` is `drop`).
 - Errors are `{"error": "<code>"}`: 400 for validation (`issues` lists each problem) and for

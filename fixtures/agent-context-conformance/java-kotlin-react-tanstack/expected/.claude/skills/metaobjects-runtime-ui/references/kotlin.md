@@ -10,8 +10,8 @@ from the same metadata.
 (If you want a fully metadata-driven engine instead of hand-written Exposed, the
 Java **OMDB** runtime — `metaobjects-omdb`, `ObjectManagerDB` — is on the JVM and
 callable from Kotlin; see the Java runtime reference. OMDB is pure data-access:
-CRUD / query / codec / transactions. Schema is owned by the Node `meta` migration
-tool, not the runtime.)
+CRUD / query / codec / transactions. Schema migrations run in your own tool or the Node
+`meta migrate` reference helper, not the runtime.)
 
 ## Contents
 - The generated table
