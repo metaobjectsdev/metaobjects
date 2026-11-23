@@ -5,7 +5,6 @@
     "codegen-ts-angular/src/templates/form-file.ts": "Emits the Angular form component; template strings with hand-typed line breaks and indentation. Converts with the TanStack and Angular writer PR.",
     "codegen-ts-angular/src/templates/grid-file.ts": "Emits the Angular grid component; template strings with hand-typed line breaks and indentation. Converts with the TanStack and Angular writer PR.",
     "codegen-ts-angular/src/templates/service-file.ts": "Emits the Angular data service; template strings with hand-typed line breaks and indentation. Converts with the TanStack and Angular writer PR.",
-    "codegen-ts-react/src/templates/form-file.ts": "Emits the React form (.tsx) with JSX typed at fixed depths inside strings. Converts with the React form writer PR (JSX).",
     "codegen-ts-tanstack/src/templates/columns-file.ts": "Emits the TanStack grid column definitions; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the TanStack and Angular writer PR.",
     "codegen-ts-tanstack/src/templates/grid-hook-file.ts": "Emits the TanStack grid hook; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the TanStack and Angular writer PR.",
     "codegen-ts-tanstack/src/templates/hooks-file.ts": "Emits the TanStack Query hooks; ts-poet `code` templates with hand-typed indentation and newline joins. Converts with the TanStack and Angular writer PR.",

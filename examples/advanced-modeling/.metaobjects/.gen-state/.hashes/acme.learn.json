@@ -1,6 +1,6 @@
 {
   "src/generated/Author.form.tsx": {
-    "hash": "0481f3ab0aa427581cead70d2c44fae1d709e49a0f004fcc070c50c55ede3308",
+    "hash": "fc4d7815f2b581db2f7ce5f8587367e8a2bf6132d2b6df008a6a2a7963ce93f6",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Author"
   },
@@ -25,7 +25,7 @@
     "sourceNode": "acme::learn::InstructorProfile"
   },
   "src/generated/Lesson.form.tsx": {
-    "hash": "10435d259837450502de4261ec6220fd6fdeecdf14fb22e377d8fd6d149c172e",
+    "hash": "2f3049b0d00b2eec408a70317294fc9eac19efb148af7f724d23a132c95fe18a",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Lesson"
   },
@@ -45,7 +45,7 @@
     "sourceNode": "acme::learn::Lesson"
   },
   "src/generated/Program.form.tsx": {
-    "hash": "16c15c97549faffb320e0d10e8588d86751cf4580eda591d6b7ce0cf7ce42a02",
+    "hash": "04dc08a97e19509b0682b8ed0d4e745124bee06f2c7d0b9545454078d50575b2",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Program"
   },
@@ -86,7 +86,7 @@
     "sourceNode": "acme::learn::ProgramSummary"
   },
   "src/generated/Purchase.form.tsx": {
-    "hash": "cd3556f18246b84e661a423186127cd5f87b1ad955a3afe9cd78ba77fa824b2a",
+    "hash": "b36865baadc74ecb4b1c86cb74b1b127b57379c9f093bcc329a63d4dca52f1ca",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Purchase"
   },

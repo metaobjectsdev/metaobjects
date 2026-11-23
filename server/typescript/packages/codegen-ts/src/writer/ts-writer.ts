@@ -23,10 +23,6 @@ const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 export const key = (name: string): string => (IDENTIFIER.test(name) ? name : str(name));
 
 /**
- * A code sample for a doc comment (`TsWriter.doc`): the sample's lines, each set in by two indents,
- * the margin JSDoc gives a code block. Lay the sample out with its own writer.
- */
-/**
  * The 1.2 string form of a list of members: each one on its own line at `indent`, with the line
  * break BEFORE it rather than after, so the string splices onto the end of an opening line. Kept
  * for the `*Line` helpers an owned 1.2 routes generator still calls; new code writes members.
@@ -42,6 +38,10 @@ export function legacyMemberLines(members: readonly string[], indent: string): s
   return text.slice(-1) + text.slice(0, -1);
 }
 
+/**
+ * A code sample for a doc comment (`TsWriter.doc`): the sample's lines, each set in by two indents,
+ * the margin JSDoc gives a code block. Lay the sample out with its own writer.
+ */
 export const docSample = (sample: CodeWriter): string[] =>
   sample.toString().trimEnd().split("\n").map((l) => (l === "" ? "" : `    ${l}`));
 
