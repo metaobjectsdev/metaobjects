@@ -508,6 +508,31 @@ helpers. This amendment says how a helper is numbered.
 
 This amendment is documentation of a ruling. It moves no package and publishes nothing.
 
+## Amendment 7 (2026-11-23) — the promised codegen surface is the authoring surface, not the whole engine
+
+**Ruling (maintainer, 2026-11-20; ADR-0034 Amendment 12).** Two passages above promise too much
+and say too little. §1 covers "the `Generator` interface owned templates implement" without saying
+what else a generator is written against. Amendment 4 puts "the codegen ENGINE" on the versioned
+surface whole, which in practice is dozens of modules per port, most of them the internals of the
+generators that ship.
+
+1. **The versioned codegen surface is each port's generator-authoring surface.** It is the four
+   roles ADR-0034 Amendment 12 names (the generator interface, the model walk, the writer and the
+   naming helpers), listed per port in the `surface` block of
+   `fixtures/generator-registry-conformance/registry.json`. It is covered by the **package
+   version** of the port's codegen package: removing or renaming an exported name is a MAJOR,
+   adding one is a MINOR. §1's scaffold-and-own item and Amendment 4's "codegen ENGINE" both read
+   as this surface from here on.
+2. **The rest of the engine is not covered.** It is in §1's not-covered list with the generator
+   internals, and may change in any release. An owned copy may still import it (the eject
+   contract), and the copy is the adopter's to keep working, as it is for a template.
+3. **Amendment 4 is otherwise unchanged.** Generators and what they emit remain convenience and
+   PATCH. Amendment 6 numbers the helper packages. Neither the metamodel version nor the CLI
+   surface moves.
+
+`docs/compatibility-policy.md` states the result. This amendment moves no package and publishes
+nothing.
+
 ## Consequences
 
 - After 1.0, a breaking change to the CLI surface or the scaffold-and-own contract
