@@ -236,6 +236,7 @@ export {
 export {
   arr,
   call,
+  json,
   key,
   type ModuleImports,
   type NamedImport,

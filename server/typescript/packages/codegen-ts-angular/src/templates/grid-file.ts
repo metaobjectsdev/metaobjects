@@ -3,7 +3,7 @@
 // metadata child. Mirrors the TanStack columns-file.ts shape (column id +
 // header + meta.view) but in Angular-native shape (EntityGridColumn[]).
 
-import { code, imp } from "@metaobjectsdev/codegen-ts";
+import { arr, props, str, TsWriter, type Props } from "@metaobjectsdev/codegen-ts";
 import type { MetaField, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
@@ -109,22 +109,26 @@ function extractGrids(entity: MetaObject, root: MetaRoot): GridSpec[] {
   return out;
 }
 
-function renderColumnLiteral(col: ColumnSpec): string {
-  return `    { id: ${JSON.stringify(col.id)}, accessorKey: ${JSON.stringify(col.id)}, header: ${JSON.stringify(col.header)}, meta: { view: ${JSON.stringify(col.viewKind)} } }`;
+/** One column definition: `{ id, accessorKey, header, meta: { view } }`. */
+function columnDef(col: ColumnSpec): Props {
+  return props()
+    .set("id", str(col.id))
+    .set("accessorKey", str(col.id))
+    .set("header", str(col.header))
+    .set("meta", props().set("view", str(col.viewKind)));
 }
 
+/** The Angular grid component for `entity`, as a file. */
 export function renderGridFile(entity: MetaObject, ctx: RenderContext): string {
+  const w = new TsWriter();
+  writeGridFile(w, entity, ctx);
+  return w.toString();
+}
+
+/** Write the `<Entity>GridComponent` for `entity`'s first dataGrid layout into `w`. */
+export function writeGridFile(w: TsWriter, entity: MetaObject, ctx: RenderContext): void {
   const entityName = entity.name;
-  const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const grids = extractGrids(entity, ctx.loadedRoot);
-
-  const ComponentSym = imp("Component@@angular/core");
-  const signalSym = imp("signal@@angular/core");
-  const CommonModuleSym = imp("CommonModule@@angular/common");
-  const EntityGridComponentSym = imp("EntityGridComponent@@metaobjectsdev/angular");
-  const EntityGridColumnSym = imp("t:EntityGridColumn@@metaobjectsdev/angular");
-  const GridConfigSym = imp("t:GridConfig@@metaobjectsdev/angular");
-
   const entityModule = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
@@ -133,62 +137,56 @@ export function renderGridFile(entity: MetaObject, ctx: RenderContext): string {
     ctx.extStyle,
   );
 
-  // Emit one section per grid layout; the primary grid drives the default
-  // export's columns + gridConfig fields.
+  // The primary grid drives the component's columns + gridConfig.
   const primary = grids[0];
   if (!primary) {
     // Shouldn't happen — the factory filter requires a dataGrid layout.
     throw new Error(`renderGridFile: no dataGrid layout on ${entityName}`);
   }
-  const columnsLiteral = primary.columns.map(renderColumnLiteral).join(",\n");
-  const sortPart = primary.defaultSort
-    ? `,\n    defaultSort: { field: ${JSON.stringify(primary.defaultSort.field)}, order: ${JSON.stringify(primary.defaultSort.order)} }`
-    : "";
+  const gridConfig = props()
+    .set("name", str(primary.name))
+    .set("pageSize", String(primary.pageSize))
+    .set("filterable", String(primary.filterable));
+  if (primary.defaultSort) {
+    gridConfig.set("defaultSort", props()
+      .set("field", str(primary.defaultSort.field))
+      .set("order", str(primary.defaultSort.order)));
+  }
 
-  const literalImports = code`
-import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityModule)};
-`;
+  w.header(
+    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entityName} (${entity.fqn()})`,
+  );
+  const row = w.useType(entityName, entityModule, `${entityName}Row`);
+  const signal = w.use("signal", "@angular/core");
+  const ANGULAR = "@metaobjectsdev/angular";
 
-  const body = code`
-/**
- * Generated Angular grid component for ${entityName}. Wraps <mo-entity-grid>
- * with column defs derived from layout.dataGrid metadata. Rows arrive via the
- * \`data\` signal — wire it from your component / service.
- */
-@${ComponentSym}({
-  selector: ${JSON.stringify(`${entityName.toLowerCase()}-grid`)},
-  standalone: true,
-  imports: [${CommonModuleSym}, ${EntityGridComponentSym}],
-  template: \`
-    <mo-entity-grid
-      [columns]="columns"
-      [data]="data()"
-      [grid]="gridConfig"
-      [rowCount]="rowCount()"
-    ></mo-entity-grid>
-  \`,
-})
-export class ${entityName}GridComponent {
-  readonly data = ${signalSym}<${entityName}Row[]>([]);
-  readonly rowCount = ${signalSym}<number>(0);
-
-  readonly columns: ${EntityGridColumnSym}[] = [
-${columnsLiteral},
-  ];
-
-  readonly gridConfig: ${GridConfigSym} = {
-    name: ${JSON.stringify(primary.name)},
-    pageSize: ${primary.pageSize},
-    filterable: ${primary.filterable}${sortPart},
-  };
-}
-`;
-
-  const _ = lcEntity; // reserved
-  void _;
-
-  const header =
-    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n`;
-  return header + literalImports.toString() + body.toString();
+  w.blank();
+  w.doc(
+    `Generated Angular grid component for ${entityName}. Wraps <mo-entity-grid>`,
+    "with column defs derived from layout.dataGrid metadata. Rows arrive via the",
+    "`data` signal — wire it from your component / service.",
+  );
+  w.block(`@${w.use("Component", "@angular/core")}({`, () => {
+    w.line(`selector: ${str(`${entityName.toLowerCase()}-grid`)},`);
+    w.line("standalone: true,");
+    w.line("imports: ", arr([w.use("CommonModule", "@angular/common"), w.use("EntityGridComponent", ANGULAR)]), ",");
+    // The component template is one template literal; its markup nests like any block.
+    w.block("template: `", () => {
+      w.block("<mo-entity-grid", () => {
+        w.line('[columns]="columns"');
+        w.line('[data]="data()"');
+        w.line('[grid]="gridConfig"');
+        w.line('[rowCount]="rowCount()"');
+      }, "></mo-entity-grid>");
+    }, "`,");
+  }, "})");
+  w.block(`export class ${entityName}GridComponent {`, () => {
+    w.line(`readonly data = ${signal}<${row}[]>([]);`);
+    w.line(`readonly rowCount = ${signal}<number>(0);`);
+    w.blank();
+    w.line(`readonly columns: ${w.useType("EntityGridColumn", ANGULAR)}[] = `, arr(primary.columns.map(columnDef)), ";");
+    w.blank();
+    w.line(`readonly gridConfig: ${w.useType("GridConfig", ANGULAR)} = `, gridConfig, ";");
+  });
 }

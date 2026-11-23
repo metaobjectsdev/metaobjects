@@ -17,6 +17,18 @@ export const arr = (items: readonly unknown[]): Group => new Group("[", items as
 /** A call: `fn(a, b)`. */
 export const call = (fn: string, args: readonly unknown[]): Group => new Group(`${fn}(`, args as Piece[], ")");
 
+/**
+ * A JSON value as a TypeScript literal: an array or object is a breakable list (an object padded,
+ * `{ "k": v }`), and object keys stay quoted, as JSON writes them. Scalars print as JSON does.
+ */
+export function json(value: unknown): Piece {
+  if (Array.isArray(value)) return arr(value.map(json));
+  if (value !== null && typeof value === "object") {
+    return new Group("{", Object.entries(value).map(([k, v]): Piece => [str(k), ": ", json(v)]), "}", true);
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 /** An object key: bare when it is an identifier, quoted otherwise. */

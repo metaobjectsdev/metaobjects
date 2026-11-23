@@ -46,7 +46,8 @@ import {
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { flatSurfaceFields } from "./flattened.js";
-import { legacyMemberLines } from "./writer/ts-writer.js";
+import { flat } from "./writer/code-writer.js";
+import { json, legacyMemberLines } from "./writer/ts-writer.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
@@ -425,12 +426,7 @@ export function hasGeneratedForm(entity: MetaObject): boolean {
  * `["a", "b"]`, `{ "members": ["x"] }`. (`JSON.stringify` writes them with no spaces.)
  */
 function jsonLiteral(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(jsonLiteral).join(", ")}]`;
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value).map(([k, v]) => `${JSON.stringify(k)}: ${jsonLiteral(v)}`);
-    return entries.length === 0 ? "{}" : `{ ${entries.join(", ")} }`;
-  }
-  return JSON.stringify(value);
+  return flat(json(value));
 }
 
 // --- The 1.2 string forms ---------------------------------------------------------------

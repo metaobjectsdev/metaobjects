@@ -127,6 +127,8 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
 - Helpers: `str` (a quoted string literal), `arr`, `call`, `props()` (an object literal built
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).
+- `json(value)` writes a JSON value as a literal. Arrays and objects are breakable lists (an
+  object is padded, `{ "k": v }`), and object keys stay quoted, as JSON writes them.
 - `docSample(writer)` turns a code sample laid out by another writer into doc-comment lines,
   each indented four spaces, for a worked example inside a `doc(...)` comment.
 - `legacyMemberLines(members, indent)` is the 1.2 string form of a member list (a line break

@@ -6,7 +6,7 @@ import { OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { code, Import, imp, joinCode } from "../src/poet.js";
 import { renderInferredTypes } from "../src/templates/inferred-types.js";
 import { CodeWriter, WRITER_ERRORS, WriterError } from "../src/writer/code-writer.js";
-import { arr, call, docSample, key, legacyMemberLines, props, str, TsWriter } from "../src/writer/ts-writer.js";
+import { arr, call, docSample, json, key, legacyMemberLines, props, str, TsWriter } from "../src/writer/ts-writer.js";
 import { metaObject } from "./_meta-build.js";
 
 function errorCode(fn: () => unknown): string | undefined {
@@ -205,5 +205,22 @@ describe("TsWriter doc samples and the 1.2 member form", () => {
   test("legacyMemberLines puts the break before each member, and is empty for none", () => {
     expect(legacyMemberLines(["a: 1,", "b: 2,"], "    ")).toBe("\n    a: 1,\n    b: 2,");
     expect(legacyMemberLines([], "    ")).toBe("");
+  });
+});
+
+describe("TsWriter json", () => {
+  test("writes a JSON value as a literal that fits or breaks, keys always quoted", () => {
+    const value = { or: [{ active: { eq: true } }, { age: { gte: 18 } }], note: null, tags: [] };
+    const fits = new TsWriter();
+    fits.line("const f = ", json(value), ";");
+    expect(fits.toString()).toBe(
+      'const f = { "or": [{ "active": { "eq": true } }, { "age": { "gte": 18 } }], "note": null, "tags": [] };\n',
+    );
+    const narrow = new TsWriter({ width: 40 });
+    narrow.line("const f = ", json({ a: "x", b: [1, 2] }), ";");
+    expect(narrow.toString()).toBe('const f = { "a": "x", "b": [1, 2] };\n');
+    const broken = new TsWriter({ width: 30 });
+    broken.line("const f = ", json({ alpha: "x", beta: [1, 2] }), ";");
+    expect(broken.toString()).toBe('const f = {\n  "alpha": "x",\n  "beta": [1, 2],\n};\n');
   });
 });
