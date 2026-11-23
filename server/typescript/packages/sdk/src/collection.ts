@@ -101,6 +101,9 @@ export interface Collection {
   readonly apiPagination?: ApiPagination | undefined;
   /** `api.unknownFields`, undefined when the config declares none (the default, `reject`). */
   readonly apiUnknownFields?: UnknownFieldsMode | undefined;
+  /** `migrate.dialect` of the project config, when set: the project chose `meta migrate` (the
+   *  reference migration helper), so the agent pages give its steps. */
+  readonly migrateDialect: string | undefined;
   /** `migrate.conventions` of the project config — a schema-conventions preset name — when set. */
   readonly schemaConventions: string | undefined;
   /** `migrate.checks.skipRedundant` of the project config: leave out the validator CHECKs a
@@ -317,6 +320,7 @@ export async function resolveCollection(
   let enumDefaults: EnumDefaults = DEFAULT_ENUM_DEFAULTS;
   let apiPagination: ApiPagination | undefined;
   let apiUnknownFields: UnknownFieldsMode | undefined;
+  let migrateDialect: string | undefined;
   let schemaConventions: string | undefined;
   let skipRedundantChecks = false;
   let foreignKeyIndexes = false;
@@ -343,6 +347,7 @@ export async function resolveCollection(
     enumDefaults = enumDefaultsFromConfig(cfg);
     apiPagination = apiPaginationFromConfig(cfg);
     apiUnknownFields = apiUnknownFieldsFromConfig(cfg);
+    migrateDialect = cfg.migrate?.dialect;
     schemaConventions = cfg.migrate?.conventions;
     skipRedundantChecks = cfg.migrate?.checks?.skipRedundant === true;
     foreignKeyIndexes = cfg.migrate?.foreignKeyIndexes === true;
@@ -466,6 +471,7 @@ export async function resolveCollection(
     enumDefaults,
     apiPagination,
     apiUnknownFields,
+    migrateDialect,
     schemaConventions,
     skipRedundantChecks,
     foreignKeyIndexes,

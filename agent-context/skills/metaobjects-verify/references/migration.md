@@ -1,18 +1,16 @@
-# Schema migrations — the shared TypeScript engine (every port)
+# Schema migrations — `meta migrate`, the reference migration helper (every port)
 
-Schema migration is owned by **one shared TypeScript engine** regardless of your
-server language (ADR-0015). The Node `meta` CLI (`@metaobjectsdev/cli`, on top of
-`@metaobjectsdev/migrate-ts`) is the migration + live-DB-drift toolchain for **TS,
-Java, Kotlin, C#, and Python alike**. The non-TS ports have **no** migration command
-of their own — their former migrate goals/modules were removed, and (ADR-0015
-Decision 2) the JVM runtime's own dev/test schema auto-create path
-(`MetaClassDBValidatorService` + the drivers' DDL) was removed too: OMDB is pure
-data-access. Every port's schema — dev, test, and production alike — is always the
-Node migrate engine's output.
+`meta migrate` is **one option** for any port. Each language's native migration tool
+is first-class — EF Core Migrations, Flyway or Liquibase, Exposed, Alembic, sqlx —
+handed the schema `npx meta schema` prints. The Node `meta` CLI
+(`@metaobjectsdev/cli`, on top of `@metaobjectsdev/migrate-ts`) hosts the reference
+helper, and `meta verify --db` checks a live database whichever tool migrated it. The
+non-TS ports ship **no** migration command of their own, and (ADR-0015 Decision 2) the
+JVM runtime's dev/test schema auto-create path (`MetaClassDBValidatorService` + the
+drivers' DDL) was removed: OMDB is pure data-access.
 
-So even in a Java / Python / C# / Kotlin project you run `meta migrate` and
-`meta verify --db` through Node. Only schema crosses to Node; per-port `gen`/codegen
-stays native to the language.
+This page is for a project that chose `meta migrate` (any server language). Only schema
+crosses to Node; per-port `gen`/codegen stays native to the language.
 
 ## Contents
 - Install (Node, dev-only)

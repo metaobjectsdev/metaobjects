@@ -214,5 +214,5 @@ TypeScript is the reference implementation — it ships the full feature set:
 - Filter-operator codegen: **complete** — the core `?filter[field][op]` grammar (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`, `<Entity>FilterAllowlist`) generates in every port; the richer list surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating; ADR-0068) passes in TypeScript; each other port is pending until its 1.3.0 REST-standard work lands.
 - Output-parser codegen: **complete** (`outputParser()` generator; `parse*`/`safeParse*`/`extract*` emitted as `<Name>.response.ts` per **responding `template.prompt`** — one carrying `@responseRef`; ADR-0052).
 - ObjectManager: **complete** (`@metaobjectsdev/runtime-ts`; `kyselyDriver` / `inMemoryDriver`).
-- Schema migrate / `meta verify --db`: **complete** (TS owns the shared migrate engine — ADR-0015).
+- Schema migrate / `meta verify --db`: **complete** (the Node CLI hosts the reference migration helper, one option for every port).
 - D1 dialect: **TS-only by design** — `migrate.dialect: "d1"` (and `meta migrate --dialect d1`) targets Cloudflare D1 via the Wrangler CLI layout; codegen's `dialect` in `metaobjects.config.ts` is `"sqlite"` for D1 and `"d1"` there is refused. Do NOT recommend porting D1 support to other languages.

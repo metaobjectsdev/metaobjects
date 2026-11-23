@@ -11,6 +11,7 @@ truth. Code, schema and migrations are generated from it and are disposable.
 ## Start here: the whole loop, in order
 
 {{stackLoops}}
+{{#migration}}
 ### Schema, with the reference migration helper (`meta migrate`, in the Node `meta` CLI)
 
 `meta migrate` is one option: a project may migrate with its own language's tool instead, handed
@@ -28,6 +29,7 @@ database by hand.
   allow its kind by name: `--allow drop-check` for a changed enum, `--allow drop-column` only
   when the data should go.
 
+{{/migration}}
 ### Requirements, when the metadata declares `requirement.*` nodes
 
 A commit that changes behaviour updates them in the same commit: `@status: live` once a claim
@@ -35,10 +37,16 @@ is built (never before), a new node for new behaviour.
 
 ### Before you call it done
 
-{{verifySteps}}- `npx meta verify --db <url>` (the live schema matches the metadata).
+{{verifySteps}}{{#migration}}
+- `npx meta verify --db <url>` (the live schema matches the metadata).
 
 Commit the metadata, the generated code, `.metaobjects/migrations/` and
 `.metaobjects/.gen-state/.hashes/`.
+{{/migration}}
+{{^migration}}
+
+Commit the metadata, the generated code and `.metaobjects/.gen-state/.hashes/`.
+{{/migration}}
 
 ## Calling the generated REST API
 

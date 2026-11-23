@@ -4,7 +4,8 @@ export type ServerLang = (typeof SERVER_LANGS)[number];
 export const CLIENT_FRAMEWORKS = ["react", "tanstack", "angular"] as const;
 export type ClientFramework = (typeof CLIENT_FRAMEWORKS)[number];
 
-/** Always-present token: schema migrations are TS-owned for every port (ADR-0015). */
+/** Always-present token: the migration reference installs in every stack, whatever tool the
+ *  project migrates with (it covers `meta schema` and the escape valves as well as `meta migrate`). */
 export const MIGRATION_TOKEN = "migration";
 
 export const SKILL_NAMES = [
@@ -23,6 +24,10 @@ export interface Stack {
   clients: ClientFramework[]; // deduped, in CLIENT_FRAMEWORKS order
   /** servers ∪ clients ∪ {"migration"} — the install-selection set for reference fragments. */
   tokens: ReadonlySet<string>;
+  /** The project chose a `meta migrate` dialect (`migrate.dialect` in `.metaobjects/config.json`).
+   *  Only then does the always-on file carry the reference migration helper's steps: a project
+   *  that migrates with its own language's tool is not told to run `meta migrate`. */
+  migration: boolean;
 }
 
 /** A file the assembler emits, path relative to the consumer project root. */

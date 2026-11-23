@@ -39,23 +39,6 @@ from `@metaobjectsdev/codegen-ts-react`, `tanstackQuery()` and `tanstackGrid()` 
 `baseUrl` is where the server mounts its routes, and leaving it out drops that prefix from every
 hook without an error. The `metaobjects-runtime-ui` skill has the detail.
 
-### Schema, with the reference migration helper (`meta migrate`, in the Node `meta` CLI)
-
-`meta migrate` is one option: a project may migrate with its own language's tool instead, handed
-the schema `npx meta schema` prints. Either way, never hand-write DDL, and never `ALTER` a live
-database by hand.
-
-- First migration (needs a reachable, empty database):
-  `npx meta migrate --from-db --db <url> --dialect <dialect> --slug init` writes
-  `.metaobjects/migrations/<timestamp>-init/up.sql` and `down.sql`.
-- At boot or deploy: `npx meta migrate apply-pending --db <url>`.
-- A later change: edit the metadata, regenerate, then
-  `npx meta migrate --dialect <dialect> --slug <name>` (offline, from the committed snapshot).
-  A renamed field needs `--rename-column <table>.<old_column>=<new_column>` (an object:
-  `--rename-table <old>=<new>`) to keep its data. A destructive change is refused until you
-  allow its kind by name: `--allow drop-check` for a changed enum, `--allow drop-column` only
-  when the data should go.
-
 ### Requirements, when the metadata declares `requirement.*` nodes
 
 A commit that changes behaviour updates them in the same commit: `@status: live` once a claim
@@ -65,10 +48,8 @@ is built (never before), a new node for new behaviour.
 
 - `mvn metaobjects:verify` (the generated code and the requirements).
 - `npx meta verify --codegen` (the generated web client).
-- `npx meta verify --db <url>` (the live schema matches the metadata).
 
-Commit the metadata, the generated code, `.metaobjects/migrations/` and
-`.metaobjects/.gen-state/.hashes/`.
+Commit the metadata, the generated code and `.metaobjects/.gen-state/.hashes/`.
 
 ## Calling the generated REST API
 

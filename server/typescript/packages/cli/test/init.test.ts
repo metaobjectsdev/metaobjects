@@ -620,6 +620,28 @@ describe("init --dialect", () => {
     expect(JSON.parse(read(".metaobjects/config.json")).migrate).toBeUndefined();
     expect(nextStepsBlock("mysql")).toContain("does not own MySQL schema");
   });
+  test("the always-on file carries the meta migrate steps only when a migrate dialect was chosen", async () => {
+    const schemaHeading = "### Schema, with the reference migration helper";
+    expect(await initCommand([], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).not.toContain(schemaHeading);
+    expect(read(".metaobjects/AGENTS.md")).not.toContain("verify --db");
+    // A refresh reads the choice from the project's own migrate.dialect.
+    const cfgPath = join(cwd, ".metaobjects", "config.json");
+    const cfg = JSON.parse(read(".metaobjects/config.json"));
+    writeFileSync(cfgPath, JSON.stringify({ ...cfg, migrate: { ...cfg.migrate, dialect: "sqlite" } }, null, 2));
+    expect(await initCommand(["--refresh-docs"], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).toContain(schemaHeading);
+    expect(read(".metaobjects/AGENTS.md")).toContain("npx meta verify --db <url>");
+  });
+  test("a chosen dialect writes the meta migrate steps; MySQL, which migrate does not own, does not", async () => {
+    const schemaHeading = "### Schema, with the reference migration helper";
+    expect(await initCommand(["--dialect", "postgres"], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).toContain(schemaHeading);
+    rmSync(join(cwd, ".metaobjects"), { recursive: true, force: true });
+    rmSync(join(cwd, "metaobjects"), { recursive: true, force: true });
+    expect(await initCommand(["--dialect", "mysql", "--force"], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).not.toContain(schemaHeading);
+  });
   test("an unknown dialect, or --d1 with another dialect, is a usage error and writes nothing", async () => {
     expect(await initCommand(["--dialect", "oracle"], cwd)).toBe(2);
     expect(await initCommand(["--d1", "--dialect", "postgres"], cwd)).toBe(2);

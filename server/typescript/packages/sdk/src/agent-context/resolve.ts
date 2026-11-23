@@ -8,10 +8,11 @@ export interface ProjectProbe {
   hasFileMatching(pattern: RegExp): boolean;
 }
 
-export function makeStack(servers: ServerLang[], clients: ClientFramework[]): Stack {
+/** `migration`: the project chose a `meta migrate` dialect (see {@link Stack.migration}). */
+export function makeStack(servers: ServerLang[], clients: ClientFramework[], migration = false): Stack {
   const s = SERVER_LANGS.filter((x) => servers.includes(x));
   const c = CLIENT_FRAMEWORKS.filter((x) => clients.includes(x));
-  return { servers: s, clients: c, tokens: new Set<string>([...s, ...c, MIGRATION_TOKEN]) };
+  return { servers: s, clients: c, tokens: new Set<string>([...s, ...c, MIGRATION_TOKEN]), migration };
 }
 
 /** Best-effort detection from a project probe. Always overridable; a wrong guess

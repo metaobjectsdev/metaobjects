@@ -78,12 +78,24 @@ describe("assemble", () => {
     expect(jvmReact.split("- `mvn metaobjects:verify`").length).toBe(2);
     expect(jvmReact).not.toMatch(/[^\n]\n### /);
 
-    // The schema step is the Node CLI on every stack, and names the rename and allow flags.
+    // The reference migration helper's steps appear only for a project that chose a
+    // `meta migrate` dialect, on any stack, and name the rename and allow flags.
     for (const c of [node, python, java, jvmReact]) {
+      expect(c).not.toContain("meta migrate");
+      expect(c).not.toContain("verify --db");
+      expect(c).not.toContain("{{");
+    }
+    for (const [servers, clients] of [[["typescript"], []], [["python"], []], [["kotlin", "java"], ["react"]]] as const) {
+      const c = assemble({ contentRoot: CONTENT_ROOT, stack: makeStack([...servers], [...clients], true) })
+        .find((f) => f.path === ".metaobjects/AGENTS.md")!.contents;
+      expect(c).toContain("`meta migrate` is one option");
       expect(c).toContain("npx meta migrate --from-db --db <url>");
       expect(c).toContain("--rename-column <table>.<old_column>=<new_column>");
       expect(c).toContain("--allow drop-check");
+      expect(c).toContain("- `npx meta verify --db <url>` (the live schema matches the metadata).");
+      expect(c).toContain("`.metaobjects/migrations/`");
       expect(c).not.toContain("{{");
+      expect(c).not.toMatch(/[^\n]\n### /);
     }
 
     // No declared server: the loop says how to declare one rather than guessing.
@@ -125,7 +137,6 @@ describe("assemble", () => {
     for (const op of ["`eq`", "`ne`", "`isNull`", "`in`", "`like`", "`gt`", "`gte`", "`lt`", "`lte`"]) expect(c).toContain(op);
     expect(c).toContain("`?limit=N&offset=N`");
     expect(c).toContain("`invalid_sort`");
-    expect(c).toContain("`meta migrate` is one option");
   });
 
   test("a malformed section tag THROWS rather than shipping into a file an agent reads", () => {

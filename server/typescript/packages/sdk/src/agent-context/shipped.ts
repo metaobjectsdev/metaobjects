@@ -18,7 +18,7 @@ import {
 } from "./types.js";
 
 /** The version of the manifest's shape. A port refuses a manifest whose schema it does not know. */
-export const SHIPPED_AGENT_CONTEXT_SCHEMA = 1;
+export const SHIPPED_AGENT_CONTEXT_SCHEMA = 2;
 
 /** The manifest's file name, at the root of the shipped tree. */
 export const SHIPPED_MANIFEST_FILE = "manifest.json";
@@ -48,17 +48,32 @@ export const SHIPPED_CLIENT_SETS: readonly (readonly ClientFramework[])[] = [
   ["angular"],
 ];
 
-/** A stack as a set of server languages and clients, in any order. */
+/**
+ * Every stack is shipped twice: without and with the reference migration helper's steps. A
+ * port's command takes the second when the project's `.metaobjects/config.json` sets
+ * `migrate.dialect`, the first otherwise.
+ */
+export const SHIPPED_MIGRATION_CHOICES: readonly boolean[] = [false, true];
+
+/** The id suffix of a stack that carries the reference migration helper's steps. */
+export const SHIPPED_MIGRATE_ID_SUFFIX = "migrate";
+
+/** A stack as a set of server languages and clients, in any order, and whether the project chose
+ *  a `meta migrate` dialect (absent reads as not). */
 export interface StackChoice {
   readonly servers: readonly ServerLang[];
   readonly clients: readonly ClientFramework[];
+  readonly migration?: boolean;
 }
 
-/** A stack's id: its server languages then its clients, each in their canonical order, joined by `-`. */
+/**
+ * A stack's id: its server languages then its clients, each in their canonical order, then
+ * `migrate` when the project chose a `meta migrate` dialect, joined by `-`.
+ */
 export function shippedStackId(stack: StackChoice): string {
   const servers = SERVER_LANGS.filter((s) => stack.servers.includes(s));
   const clients = CLIENT_FRAMEWORKS.filter((c) => stack.clients.includes(c));
-  return [...servers, ...clients].join("-");
+  return [...servers, ...clients, ...(stack.migration === true ? [SHIPPED_MIGRATE_ID_SUFFIX] : [])].join("-");
 }
 
 /** One file of one shipped tree. */
@@ -74,6 +89,8 @@ export interface ShippedStack {
   readonly id: string;
   readonly servers: readonly ServerLang[];
   readonly clients: readonly ClientFramework[];
+  /** The project chose a `meta migrate` dialect: the always-on file carries its steps. */
+  readonly migration: boolean;
   readonly files: readonly ShippedFileRef[];
 }
 
@@ -107,21 +124,21 @@ function storedName(contents: string): string {
 export function buildShippedAgentContext(contentRoot: string): ShippedAgentContext {
   const files = new Map<string, string>();
   const stacks: ShippedStack[] = [];
-  for (const servers of SHIPPED_SERVER_SETS) {
-    for (const clients of SHIPPED_CLIENT_SETS) {
-      const stack = makeStack([...servers], [...clients]);
-      const refs = assemble({ contentRoot, stack, docsRef: DOCS_DEFAULT_REF, skillsDir: DEFAULT_SKILLS_DIR })
-        .map((f): ShippedFileRef => {
-          const file = storedName(f.contents);
-          const prior = files.get(file);
-          if (prior !== undefined && prior !== f.contents) {
-            throw new Error(`agent-context: two different files share the stored name ${file}`);
-          }
-          files.set(file, f.contents);
-          return { path: f.path, file };
-        });
-      stacks.push({ id: shippedStackId(stack), servers: stack.servers, clients: stack.clients, files: refs });
-    }
+  const choices = SHIPPED_SERVER_SETS.flatMap((servers) =>
+    SHIPPED_CLIENT_SETS.flatMap((clients) => SHIPPED_MIGRATION_CHOICES.map((migration) => ({ servers, clients, migration }))));
+  for (const { servers, clients, migration } of choices) {
+    const stack = makeStack([...servers], [...clients], migration);
+    const refs = assemble({ contentRoot, stack, docsRef: DOCS_DEFAULT_REF, skillsDir: DEFAULT_SKILLS_DIR })
+      .map((f): ShippedFileRef => {
+        const file = storedName(f.contents);
+        const prior = files.get(file);
+        if (prior !== undefined && prior !== f.contents) {
+          throw new Error(`agent-context: two different files share the stored name ${file}`);
+        }
+        files.set(file, f.contents);
+        return { path: f.path, file };
+      });
+    stacks.push({ id: shippedStackId(stack), servers: stack.servers, clients: stack.clients, migration, files: refs });
   }
   const manifest: ShippedManifest = {
     schema: SHIPPED_AGENT_CONTEXT_SCHEMA,

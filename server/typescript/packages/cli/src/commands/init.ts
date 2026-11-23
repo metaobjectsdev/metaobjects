@@ -8,6 +8,7 @@ import {
   AGENT_CONTEXT_MANIFEST_PATH, DEFAULT_SKILLS_DIR, normalizeSkillsDir, type Manifest, type Stack,
 } from "@metaobjectsdev/sdk/agent-context";
 import { assertKnownStackValues, resolveStack } from "../lib/detect-stack.js";
+import { resolveMigrateDefaults } from "../lib/config.js";
 import { reportIgnoredScaffold } from "../lib/ignored-scaffold-check.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
@@ -336,7 +337,18 @@ async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefin
   const overrides = hasOverride
     ? { servers: opts.servers ?? [], clients: opts.clients ?? [] }
     : { servers: prior?.servers ?? [], clients: prior?.clients ?? [] };
-  return resolveStack(opts.cwd, overrides);
+  return resolveStack(opts.cwd, overrides, await chosenMigrateDialect(opts));
+}
+
+/**
+ * Whether the project chose a `meta migrate` dialect, which is what puts the reference migration
+ * helper's steps in the always-on file. This run's `--dialect`/`--d1` says so for every dialect
+ * migrate owns (MySQL schema is not migrate's); otherwise the project's own
+ * `migrate.dialect` does. An unflagged init chooses none.
+ */
+async function chosenMigrateDialect(opts: InitOptions): Promise<boolean> {
+  if (opts.dialect !== undefined || opts.d1 === true) return resolveInitDialect(opts) !== "mysql";
+  return (await resolveMigrateDefaults(opts.cwd)).dialect !== undefined;
 }
 
 /** Writes `contents` to `path` (relative to `cwd`), unless `dryRun` — in which case
