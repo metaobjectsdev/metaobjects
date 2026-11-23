@@ -452,6 +452,27 @@ impl CodeWriter {
         self.block_with(head, "}", body)
     }
 
+    /// `head`, a `where` clause with one bound per line, then the block `{ body }`: the layout
+    /// rustfmt gives an item whose bounds sit in a `where` clause.
+    pub fn where_block(
+        &mut self,
+        head: impl Into<Piece>,
+        bounds: &[String],
+        body: impl FnOnce(&mut Self),
+    ) -> &mut Self {
+        self.line(head);
+        self.open("where");
+        for b in bounds {
+            self.line(format!("{b},"));
+        }
+        self.close("{");
+        // The `{` just written opens the body: indent as an opener does.
+        self.openers.push("{".to_string());
+        self.at_block_start = true;
+        body(self);
+        self.close("}")
+    }
+
     /// [`CodeWriter::block`] with its own closing line.
     pub fn block_with(
         &mut self,
@@ -698,6 +719,22 @@ impl CodeWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_where_block_puts_each_bound_on_its_own_line_and_indents_the_body() {
+        let mut w = CodeWriter::new();
+        w.where_block(
+            "impl<T> Shape for T",
+            &["T: Clone".to_string(), "T: Send".to_string()],
+            |w| {
+                w.line("fn f() {}");
+            },
+        );
+        assert_eq!(
+            w.finish().unwrap(),
+            "impl<T> Shape for T\nwhere\n    T: Clone,\n    T: Send,\n{\n    fn f() {}\n}\n"
+        );
+    }
 
     #[test]
     fn prose_wraps_at_a_word_boundary_inside_the_width() {

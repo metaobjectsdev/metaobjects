@@ -32,7 +32,7 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
 | Report shapes | `metaobjects::report_shape::report_shape` derives an `object.report`'s fields (FR-044 Table B, with Table C's `required`): each dimension and measure, its subtype, and the `@of` field it takes its type from. It byte-matches `fixtures/persistence-conformance/report-shapes.json`, as every port does. |
-| Code generation (`cargo meta`) | The run engine, nine generators (`entity`, `rules-names`, `contract-types`, `repository`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
+| Code generation (`cargo meta`) | The run engine, ten generators (`entity`, `rules-names`, `contract-types`, `repository`, `service`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
 
 ## The command: `cargo meta`
 
@@ -109,10 +109,12 @@ generated/
   shop_rules/     rules-names     lifecycles, commands, operations, permissions, business errors (when the package declares rules)
   shop_contract/  contract-types  each operation's input, output and errors (when the package declares operations)
   shop_store/     repository list, count, get, create, update, delete and the guarded update per stored entity, on sqlx
+  shop_service/   service    each operation in one transaction, with the rules checks, over the store
   meta_support/   entity     exact decimals, durations, patch helpers, the validation checks
   meta_client/    client     the HTTP transport (reqwest), errors, the query builder
   meta_cli/       commands   what a command uses to build a body and a query
   meta_store/     repository the table descriptor, filters, and the Postgres and SQLite statements
+  meta_service/   service    the error codes and statuses, the transaction and the guarded move
 ```
 
 The generated crates depend on each other by path and on ordinary crates.io crates (`serde`,
@@ -397,6 +399,43 @@ passes), and runs every scenario through the generated functions, normalized as
 ledger in that file, which is empty and only shrinks. `tests/repository.rs` runs the same
 rows on SQLite in memory, and the guarded update on the rules model.
 
+### `service`: the operations, with the rules
+
+`service` ([ADR-0067](../../spec/decisions/ADR-0067-layering-and-the-service-seam.md) layer 4)
+writes a `<package>_service` crate per package with a stored entity. Its `<Pkg>Service<D, A, P, B,
+H, E>` is generic over the pool (`D`, a `sqlx::PgPool` or `SqlitePool`, through `meta_service::Db`)
+and the actor type (`A`, whatever the transport resolves a caller to), and is built from what the
+app writes:
+
+- `P: <Pkg>Policy<A, C>`: `allows(permission, actor, row, input, conn)` answers whether the actor
+  may run a command, a transition or an operation; the permission is the rules crate's enum;
+- `B: <Pkg>Bodies<A, C>`: a method per declared operation. A command's body answers the move to
+  make (`<Op>Move`, one variant per `@transitions` entry, or `None`) and its output;
+  `BodyError::Business` answers one of the operation's declared errors;
+- `H: <Pkg>Hooks<A, C>` (default `()`): `before` and `after` each derived create, update and
+  delete, told which by `<Pkg>Before` and `<Pkg>After` (`<Pkg>Before::CreateOrder(&mut input)`,
+  `UpdateOrder { patch, current }`, `DeleteOrder(&row)`); a before hook may change the input or patch;
+- `E: <Pkg>Events<A, C>` (default `()`): `on_write`, after every write, inside its transaction.
+
+Each derived operation and transition command is a method: `list_<entity>` (page size 50 unless
+`api.pagination` says otherwise, and the total when the query asks `with_count`), `get_<entity>`,
+`<relation>_of_<entity>`, `create_`, `update_`, `delete_`, and `<transition>_<entity>`; a declared
+operation is `<operation>`. A write opens one transaction, or runs inside a caller's through its
+`_in` twin (`create_order_in(&mut tx, ...)`), and a refusal anywhere undoes it. The checks run in
+ADR-0066 §6's order: the row (404 `not_found`), validation (400), the permission point (403
+`forbidden`), the state (409 `invalid_transition`), the body, the guarded update (409
+`invalid_transition`, or `transition_condition_failed` when the row is in a legal state and the
+`@condition` failed) and the event hook. An update that changes a lifecycle field is 409
+`state_managed`, and so is a create naming a state other than the initial one (unless
+`rules.create` allows any). An `@autoSet` timestamp is stamped by the service, whatever the caller
+sent ([ADR-0045](../../spec/decisions/ADR-0045-generated-api-surface-owns-write-semantics.md)
+Amendment 1). Every error is a `ServiceError`, whose `code()` and `status()` are the wire's.
+
+`tests/service.rs` runs the rules corpus's scenarios (`fixtures/api-contract-conformance/rules/`)
+through the generated service on SQLite, with the README's policy, bodies, hook and audit event, and
+checks the settings variants in the generated text; an HTTP transport, and the shared API tests over
+it, come next.
+
 ### Owning a generator
 
 A generator is a reference helper
@@ -507,8 +546,8 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 ## What does not exist yet
 
-- **Other generators.** There is no server-side route or service generator and no
-  documentation generator. Projections and reports
+- **Other generators.** There is no server-side route generator yet (the service has no HTTP
+  transport) and no documentation generator. Projections and reports
   get no client or commands yet, and a template over a
   sourceless `object.projection` payload gets no render function.
 - **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones
@@ -516,7 +555,7 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
 - **The service tier.** No `ObjectManager` and no web adapters; data access is the generated
-  store crates.
+  store crates, and the generated `service` crates run the rules over them.
 - **Publication.** The crates are publishable and the lane proves they package (`cargo publish
   --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
   the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).

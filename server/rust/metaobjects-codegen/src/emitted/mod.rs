@@ -37,3 +37,6 @@ pub const CONTRACT_RS: &str = include_str!("contract.rs");
 /// The text of `meta_store/src/lib.rs`, the data access the `repository` generator's crates
 /// share (written for `sqlx`).
 pub const STORE_RS: &str = include_str!("store.rs");
+/// The text of `meta_service/src/lib.rs`, the mechanics the `service` generator's crates share
+/// (written for `sqlx`).
+pub const SERVICE_RS: &str = include_str!("service.rs");

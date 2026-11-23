@@ -5,7 +5,7 @@
 //! the other ports, so changing the list never needs an eject:
 //!
 //! ```json
-//! { "generators": ["entity", "rules-names", "contract-types", "repository", "client", "commands", "render-helper", "output-parser", "output-prompt"] }
+//! { "generators": ["entity", "rules-names", "contract-types", "repository", "service", "client", "commands", "render-helper", "output-parser", "output-prompt"] }
 //! ```
 //!
 //! An entry is a generator's name, or `{"name": "...", "options": {...}}` to construct it with
@@ -220,6 +220,7 @@ mod tests {
                 "rules-names",
                 "contract-types",
                 "repository",
+                "service",
                 "client",
                 "commands",
                 "render-helper",
@@ -289,7 +290,7 @@ mod tests {
         let e = check(&s(&["entity", "nope"]), &available).unwrap_err();
         assert!(
             e.contains("\"nope\"")
-                && e.contains("available: entity, rules-names, contract-types, repository, client, commands, render-helper, output-parser, output-prompt"),
+                && e.contains("available: entity, rules-names, contract-types, repository, service, client, commands, render-helper, output-parser, output-prompt"),
             "{e}"
         );
         let e = check(&s(&["client"]), &available).unwrap_err();

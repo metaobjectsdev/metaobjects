@@ -119,6 +119,19 @@ pub const REFERENCES: &[Reference] = &[
         source: include_str!("repository.rs"),
     },
     Reference {
+        name: "service",
+        tier: "native",
+        layer: "service",
+        module: "service",
+        type_name: "ServiceGenerator",
+        needs: &["entity", "rules-names", "contract-types", "repository"],
+        summary: "service crates, one per package with stored entities: each operation in one \
+                  transaction, with the policy, body, hook and event traits it calls, the \
+                  lifecycle checks and the declared operations (ADR-0067 layer 4; needs entity, \
+                  rules-names, contract-types and repository)",
+        source: include_str!("service.rs"),
+    },
+    Reference {
         name: "client",
         tier: "native",
         layer: "client",

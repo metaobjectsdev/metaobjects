@@ -36,6 +36,10 @@ files they write for `without/`: TypeScript's `service` adds a file per derived 
 and per declared operation and changes the package index (its policy, bodies and interfaces) and
 the lifecycle entity's create and update (which check its state), and `service-routes` changes the
 transport (the new routes). The test pins both lists, and every other file stays byte-identical.
+The Rust `service` adds the declared operations' file and changes the service crate's manifest
+(the rules and contract crates it names), its library (the policy, the bodies and the move types)
+and the lifecycle entity's file (its commands and state checks); every other file it writes changes
+only in its `impl` header, which gains the policy and bodies type parameters.
 
 A generator that started reading an operation or a transition by accident would emit
 something half-built; these tests are what notice:
@@ -47,7 +51,7 @@ something half-built; these tests are what notice:
 | Java | `server/java/codegen-spring/src/test/java/com/metaobjects/generator/spring/RulesInertTest.java` |
 | Kotlin | `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RulesInertTest.kt` |
 | Python | `server/python/tests/test_rules_inert.py` |
-| Rust | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every flat generator it ships; the rules-layer generators are held to adding files only, and the data-access generator to appending the guarded update) |
+| Rust | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every flat generator it ships; the rules-layer generators are held to adding files only, the data-access generator to appending the guarded update, and the service to its pinned changes) |
 
 Regenerate `without/` from `with/` by deleting every `transition.*` child and the
 `api.operational` node, nothing else.

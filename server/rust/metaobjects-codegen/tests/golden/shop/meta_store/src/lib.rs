@@ -1297,6 +1297,25 @@ pub async fn get<T: DeserializeOwned, C: Conn + ?Sized>(
     Ok(rows_into(table, rows)?.into_iter().next())
 }
 
+/// The row with key `key`, or `None`, read to be written in the same transaction: on Postgres
+/// under a row lock (`FOR UPDATE`), held until the transaction ends, so a second writer waits
+/// for the first. SQLite locks the whole database for a writer, so it reads the row as `get`
+/// does.
+pub async fn get_for_update<T: DeserializeOwned, C: Conn + ?Sized>(
+    c: &mut C,
+    table: &Table,
+    key: impl Serialize,
+) -> Result<Option<T>, StoreError> {
+    let key = serde_json::to_value(key).map_err(|e| bad(table.object, e.to_string()))?;
+    let mut sql = select(c.engine(), table);
+    key_where(&mut sql, table, &key)?;
+    if sql.engine == Engine::Postgres {
+        sql.push(" FOR UPDATE");
+    }
+    let rows = c.rows(&sql.text, sql.binds, table.columns).await?;
+    Ok(rows_into(table, rows)?.into_iter().next())
+}
+
 /// The `target` rows related through `through` to the row whose key is `key`, in no order (a
 /// relationship is a set). A subtype target answers only its own rows.
 pub async fn related<T: DeserializeOwned, C: Conn + ?Sized>(
@@ -1314,7 +1333,7 @@ pub async fn related<T: DeserializeOwned, C: Conn + ?Sized>(
     };
     let mut sql = select(engine, target);
     sql.push(&format!(" WHERE {} IN (SELECT ", quote(target.key_column()?.column)));
-    let mut param = |sql: &mut Sql| -> Result<(), StoreError> {
+    let param = |sql: &mut Sql| -> Result<(), StoreError> {
         let b = scalar_bind(engine, s.field, s.kind, &key)?;
         sql.param(b, s);
         Ok(())

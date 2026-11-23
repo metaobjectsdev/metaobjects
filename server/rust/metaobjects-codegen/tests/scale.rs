@@ -11,7 +11,7 @@
 //! - **Size is budgeted.** The output for one copy has a byte budget and a longest-file
 //!   budget. Generated code is read in review and compiled on every build, so growth in it is
 //!   a cost someone must decide to pay: raise the number in the change that needs it.
-//! - **It builds.** `cargo check` accepts all hundred and twenty-three crates, every file is in rustfmt's
+//! - **It builds.** `cargo check` accepts every crate, every file is in rustfmt's
 //!   form, and the time each step took is printed. The times have a ceiling far above a
 //!   normal run, there to catch a step that stopped scaling, not to measure the machine.
 
@@ -29,11 +29,19 @@ use common::{
 const COPIES: usize = 20;
 const ROOT_PACKAGE: &str = "\"package\": \"fitness\"";
 /// The crates every run writes once, however large the model.
-const SHARED: &[&str] = &["meta_support", "meta_client", "meta_cli", "meta_store"];
+const SHARED: &[&str] = &[
+    "meta_support",
+    "meta_client",
+    "meta_cli",
+    "meta_store",
+    "meta_service",
+];
 
 /// The generated output for ONE copy of the fitness model, shared crates left out. Its 25
 /// reports and 3 projections are each a model type and a store module (about 2 KB apiece).
-const BUDGET_BYTES: usize = 400_000;
+/// The service crate (ADR-0067 layer 4) adds about 185 KB: each writable entity's file holds
+/// its create, update and delete twice (the write and its `_in` twin) with their checks.
+const BUDGET_BYTES: usize = 600_000;
 /// The longest generated file for the fitness model, in lines.
 const BUDGET_LONGEST_FILE: usize = 500;
 const CEILING_GEN: Duration = Duration::from_secs(120);

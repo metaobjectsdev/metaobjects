@@ -430,6 +430,19 @@ pub(crate) fn borrowed_key_entities(ctx: &Env<'_>, value: NodeId) -> Vec<NodeId>
         .collect()
 }
 
+/// The field of an operation's `@inputRef` value that borrows `target`'s single key field (by
+/// `extends`), when there is one.
+pub(crate) fn borrowed_key_field(ctx: &Env<'_>, op: NodeId, target: NodeId) -> Option<String> {
+    let tree = ctx.tree;
+    let input = str_attr(tree, op, A_INPUT_REF).and_then(|r| resolve_object_on(ctx, op, r))?;
+    let keys = primary_key_fields(tree, target);
+    tree.children(input).iter().copied().find_map(|f| {
+        let (owner, member) = extended_member(ctx, f)?;
+        (tree.node(f).type_name == TYPE_FIELD && owner == target && keys.contains(&member))
+            .then(|| tree.node(f).name.clone())
+    })
+}
+
 /// The base entity of a projection: the entity its extended identity names, else the one
 /// entity its extended fields name. `None` when there is none or more than one.
 pub(crate) fn projection_base_entity(ctx: &Env<'_>, projection: NodeId) -> Option<NodeId> {

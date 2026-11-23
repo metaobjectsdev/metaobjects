@@ -7,7 +7,11 @@
 //! the names and contract-types layers write nothing for the model without it, and only files
 //! of their own for the model with it, so they add files and move none. The data-access layer
 //! (`repository`) writes for every stored entity either way; the vocabulary adds to it only the
-//! guarded update of each lifecycle, at the end of that entity's file.
+//! guarded update of each lifecycle, at the end of that entity's file. The service layer
+//! (`service`) is the enforcing shell, so it also changes files it writes either way: the
+//! package's manifest and library (its dependencies and traits) and the lifecycle entity's file (its commands and state
+//! checks), and it adds the declared operations' file; every other file changes only in its
+//! `impl` header, which gains the policy and bodies type parameters.
 //!
 //! The model pair is `fixtures/codegen-noop/rules/{with,without}`, shared with the other
 //! ports (the table in that directory's README lists each port's test).
@@ -31,12 +35,16 @@ const LAYER_GENERATORS: &[&str] = &["rules-names", "contract-types"];
 /// The data-access layer (ADR-0067 layer 3): it holds the guarded update of each lifecycle.
 const DATA_ACCESS: &[&str] = &["repository"];
 
+/// The service layer (ADR-0067 layer 4): the enforcing shell, which acts on the vocabulary.
+const SERVICE: &[&str] = &["service"];
+
 /// Which shipped generators a call runs.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Pick {
     Flat,
     Layers,
     DataAccess,
+    Service,
 }
 
 fn pick_of(name: &str) -> Pick {
@@ -44,6 +52,8 @@ fn pick_of(name: &str) -> Pick {
         Pick::Layers
     } else if DATA_ACCESS.contains(&name) {
         Pick::DataAccess
+    } else if SERVICE.contains(&name) {
+        Pick::Service
     } else {
         Pick::Flat
     }
@@ -149,5 +159,40 @@ fn the_data_access_layer_writes_the_same_files_and_adds_only_the_guarded_updates
                 && added.contains("pub async fn transition_status<"),
             "{path} gains more than the guarded update:\n{added}"
         );
+    }
+}
+
+#[test]
+fn the_service_layer_adds_the_operations_and_changes_only_the_library_and_the_lifecycle_entity() {
+    let with = emit("with", Pick::Service);
+    let without = emit("without", Pick::Service);
+    assert!(!without.is_empty(), "the stored entity has a service");
+    let flat = emit("with", Pick::Flat);
+    let added: Vec<&String> = with.keys().filter(|p| !without.contains_key(*p)).collect();
+    assert_eq!(added, ["acme_purchasing_service/src/operations.rs"]);
+    // The manifest gains the rules and contract crates the shell names.
+    let changes = [
+        "acme_purchasing_service/Cargo.toml",
+        "acme_purchasing_service/src/lib.rs",
+        "acme_purchasing_service/src/purchase_request.rs",
+    ];
+    for (path, text) in &without {
+        assert!(
+            !flat.contains_key(path),
+            "{path} is also a flat generator's file"
+        );
+        if changes.contains(&path.as_str()) {
+            assert_ne!(&with[path], text, "{path} acts on the vocabulary");
+        } else {
+            // Any other file changes only in its `impl` header, which gains the policy and the
+            // bodies the declared rules are run with.
+            let header = with[path]
+                .replace(
+                    "    P: crate::PurchasingPolicy<A, D::Conn>,\n    B: crate::PurchasingBodies<A, D::Conn>,\n",
+                    "",
+                )
+                .replace("<D, A, P, B, H, E>", "<D, A, H, E>");
+            assert_eq!(&header, text, "{path}");
+        }
     }
 }

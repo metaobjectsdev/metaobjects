@@ -23,11 +23,13 @@ use crate::rules_check::{
 };
 use crate::validate::Env;
 use crate::validate::rules::{
-    RESERVED_ERROR_CODES, entity_transitions, is_true, str_attr, string_list,
+    RESERVED_ERROR_CODES, borrowed_key_field, derive_operation_target, entity_transitions,
+    is_true, operation_is_keyed, str_attr, string_list,
 };
 use crate::validate::util::ObjectIndex;
 
 const A_TO: &str = "to";
+const A_CONDITION: &str = "condition";
 const A_PERMISSION: &str = "permission";
 const A_PUBLIC: &str = "public";
 const A_TRANSITIONS: &str = "transitions";
@@ -53,8 +55,12 @@ pub fn contract_error_codes() -> &'static [&'static str] {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RulesNamesTransition {
     pub name: String,
+    /// The transition's node.
+    pub node: NodeId,
     pub from: Vec<String>,
     pub to: String,
+    /// Its `@condition` (an `attr.expression` tree), which the guarded update also requires.
+    pub condition: Option<Value>,
 }
 
 /// One lifecycle of an entity: an enum field with at least one transition.
@@ -123,6 +129,10 @@ pub struct RulesNamesOperation {
     pub errors: Vec<String>,
     /// The entity it acts on, declared or derived, when it has one.
     pub target: Option<NodeId>,
+    /// Whether it addresses one row of its target by key (ADR-0066 §3).
+    pub keyed: bool,
+    /// The `@inputRef` field that borrows the target's key, when it is keyed by its input.
+    pub input_key_field: Option<String>,
 }
 
 /// The rules names of one metadata package.
@@ -221,6 +231,8 @@ pub fn rules_names_of(
                         .iter()
                         .map(|&t| RulesNamesTransition {
                             name: tree.node(t).name.clone(),
+                            node: t,
+                            condition: tree.attr(t, A_CONDITION).cloned(),
                             from: transition_from(tree, t)
                                 .iter()
                                 .map(|s| s.to_string())
@@ -280,6 +292,11 @@ pub fn rules_names_of(
             OperationKind::Query
         };
         let command = kind == OperationKind::Command;
+        let keyed = target.is_some() && operation_is_keyed(&env, op, derive_operation_target(&env, op));
+        let input_key_field = match target {
+            Some(t) if keyed => borrowed_key_field(&env, op, t),
+            _ => None,
+        };
         by_package
             .entry(pkg)
             .or_default()
@@ -300,6 +317,8 @@ pub fn rules_names_of(
                     Vec::new()
                 },
                 target,
+                keyed,
+                input_key_field,
             });
     }
 

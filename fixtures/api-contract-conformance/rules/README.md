@@ -74,4 +74,5 @@ framework's own.
 | Port | Lane |
 |---|---|
 | TypeScript | `server/typescript/packages/integration-tests/test/api-contract-rules.test.ts`, both output layouts |
+| Rust | service level only: `server/rust/metaobjects-codegen/tests/service.rs` runs the scenarios through the generated service on SQLite, and checks the settings variants in the generated text; the HTTP lane waits for its transport |
 | C#, Java, Kotlin, Python | not yet: each port's service generator is its own 1.3.0 work |

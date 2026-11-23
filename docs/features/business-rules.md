@@ -25,7 +25,9 @@ guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the s
 persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
 each package's derived list, get, create, update and delete, every write in one transaction with the
 declared write rules, behind a thin Fastify transport (`service-routes`) that answers the shared API
-tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). It also writes
+tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). The Rust
+`service` generator writes the same operations and checks over its generated store, with no HTTP
+transport yet ([Rust port](../ports/rust.md)). It also writes
 a command per transition and a shell per declared command and query, and enforces at run time what
 this page declares: the permission point, the state check, the guarded update, `state_managed` and
 the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are

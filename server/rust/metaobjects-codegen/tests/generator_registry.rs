@@ -125,7 +125,9 @@ fn exported_engine_modules() -> BTreeSet<&'static str> {
             BTreeSet::from([$(stringify!($module)),*])
         }};
     }
-    exported!(emitted, generator, inbound, names, plan, render, writer)
+    exported!(
+        emitted, generator, inbound, layers, names, plan, render, writer
+    )
 }
 
 #[test]

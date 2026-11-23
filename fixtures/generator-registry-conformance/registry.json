@@ -119,11 +119,11 @@
       "ports": ["typescript", "csharp", "rust"]
     },
     "service": {
-      "concept": "The service layer (ADR-0067 layer 4): one module per metadata package, a function per operation, and a factory that binds them to the dependencies passed in. Each store-backed entity gets its derived list, get, create, update and delete; every write runs in one transaction (a savepoint inside a caller's) with the declared write rules (ADR-0045). TypeScript so far, behind its own transport (`service-routes`); the other ports add theirs with their rules-layer work.",
+      "concept": "The service layer (ADR-0067 layer 4): one module per metadata package, a function per operation, and a factory that binds them to the dependencies passed in. Each store-backed entity gets its derived list, get, create, update and delete; every write runs in one transaction (a savepoint inside a caller's) with the declared write rules (ADR-0045). TypeScript, behind its own transport (`service-routes`), and Rust (over the `repository` store crates, its write running inside a caller's transaction through its `_in` twin); the other ports add theirs with their rules-layer work.",
       "tier": "native",
       "layer": "service",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "rust"]
     },
     "service-routes": {
       "concept": "A thin REST transport over the service layer (ADR-0067 layer 5), one per metadata package: each route parses the request, calls one service operation and sends what it answered, and holds no rules. It answers the shared REST contract as `routes` does. TypeScript (Fastify) so far.",
@@ -602,6 +602,7 @@
           "metaobjects_codegen::emitted",
           "metaobjects_codegen::generator",
           "metaobjects_codegen::inbound",
+          "metaobjects_codegen::layers",
           "metaobjects_codegen::names",
           "metaobjects_codegen::plan",
           "metaobjects_codegen::render",
