@@ -37,6 +37,7 @@ import {
   TYPE_FIELD,
   TYPE_IDENTITY,
   TYPE_METADATA,
+  TYPE_OBJECT,
   TYPE_RELATIONSHIP,
   TYPE_REQUIREMENT,
   TYPE_SUBTYPE_SEPARATOR,
@@ -124,6 +125,8 @@ interface Walked {
   body: Record<string, unknown>;
   /** The id of the top-level node this one sits under (itself, at the top). */
   owner: string;
+  /** The id as a dotted path names it, before any type qualifier: what `verify` prints. */
+  path: string;
 }
 
 function walkModel(model: unknown): Walked[] {
@@ -134,6 +137,23 @@ function walkModel(model: unknown): Walked[] {
   const rootPkg = typeof root[RESERVED_KEY_PACKAGE] === "string" ? (root[RESERVED_KEY_PACKAGE] as string) : "";
   const out: Walked[] = [];
   const seen = new Set<string>();
+  const topLevel = rawChildren(root);
+  const topPlainId = (child: RawChild): string => {
+    const name = typeof child.body[RESERVED_KEY_NAME] === "string" ? (child.body[RESERVED_KEY_NAME] as string) : "";
+    const own = child.body[RESERVED_KEY_PACKAGE];
+    const pkg = typeof own === "string" ? own : rootPkg;
+    return pkg === "" ? name : `${pkg}${PACKAGE_SEPARATOR}${name}`;
+  };
+  // Top-level nodes of different types may share a package and a name (an entity `Lead` and
+  // an application's page `Lead`). One of them keeps the plain id: the object, since every
+  // reference in the model (`@objectRef`, `@payloadRef`, `extends`) names an object, else the
+  // first declared. Each other one is qualified by its type, as a nested sibling is.
+  const plainHolder = new Map<string, RawChild>();
+  for (const child of topLevel) {
+    const id = topPlainId(child);
+    const held = plainHolder.get(id);
+    if (held === undefined || (held.type !== TYPE_OBJECT && child.type === TYPE_OBJECT)) plainHolder.set(id, child);
+  }
 
   const visit = (child: RawChild, index: number, parent: Walked | undefined): void => {
     const name = typeof child.body[RESERVED_KEY_NAME] === "string" ? (child.body[RESERVED_KEY_NAME] as string) : "";
@@ -142,13 +162,15 @@ function walkModel(model: unknown): Walked[] {
     if (parent === undefined) {
       const own = child.body[RESERVED_KEY_PACKAGE];
       pkg = typeof own === "string" ? own : rootPkg;
-      id = pkg === "" ? name : `${pkg}${PACKAGE_SEPARATOR}${name}`;
+      id = topPlainId(child);
+      const holder = plainHolder.get(id);
+      if (name !== "" && holder !== child && holder?.type !== child.type) id = qualified(id, child);
     } else {
       pkg = parent.node.package;
       id = name === "" ? `${parent.node.id}#${index}` : `${parent.node.id}${CHILD_REF_SEPARATOR}${name}`;
       // The first sibling of a name keeps the plain id: it is the one a dotted reference
       // resolves to. A later sibling of another type sharing the name is qualified by type.
-      if (name !== "" && seen.has(id)) id = `${id}[${child.type}${TYPE_SUBTYPE_SEPARATOR}${child.subType}]`;
+      if (name !== "" && seen.has(id)) id = qualified(id, child);
     }
     if (seen.has(id)) {
       throw new Error(`explorer: two nodes share the id "${id}" — the model names two siblings alike`);
@@ -168,13 +190,20 @@ function walkModel(model: unknown): Walked[] {
       ...(child.body[RESERVED_KEY_IS_ARRAY] === true ? { isArray: true as const } : {}),
       attrs: attrsOf(child.body),
     };
-    const walked: Walked = { node, body: child.body, owner: parent === undefined ? id : parent.owner };
+    const path =
+      parent === undefined ? topPlainId(child) : name === "" ? `${parent.path}#${index}` : `${parent.path}${CHILD_REF_SEPARATOR}${name}`;
+    const walked: Walked = { node, body: child.body, owner: parent === undefined ? id : parent.owner, path };
     out.push(walked);
     rawChildren(child.body).forEach((c, i) => visit(c, i, walked));
   };
 
-  rawChildren(root).forEach((c, i) => visit(c, i, undefined));
+  topLevel.forEach((c, i) => visit(c, i, undefined));
   return out;
+}
+
+/** A plain id qualified by the node's type: `<id>[<type>.<subType>]`. */
+function qualified(id: string, child: RawChild): string {
+  return `${id}[${child.type}${TYPE_SUBTYPE_SEPARATOR}${child.subType}]`;
 }
 
 /** A canonical reference spells a root-level target `::Name`; the node's id is `Name`. */
@@ -260,10 +289,14 @@ function asLink(v: unknown): { ref: string; resolves: boolean; target?: string }
 
 function ledgerFrom(verify: unknown, byId: Map<string, Walked>, edges: ExplorerEdge[]): ExplorerLedger | undefined {
   if (!isRecord(verify) || !Array.isArray(verify.requirementLedger)) return undefined;
+  // A ledger row names its requirement by dotted path; the node's id differs only when a
+  // same-named node of another type took the plain id.
+  const reqByPath = new Map<string, string>();
+  for (const w of byId.values()) if (w.node.type === TYPE_REQUIREMENT) reqByPath.set(w.path, w.node.id);
   const rows: ExplorerLedgerRow[] = [];
   for (const raw of verify.requirementLedger) {
     if (!isRecord(raw) || typeof raw.qualifiedPath !== "string" || typeof raw.path !== "string") continue;
-    const node = raw.qualifiedPath;
+    const node = reqByPath.get(raw.qualifiedPath) ?? raw.qualifiedPath;
     const implementedBy = asLinks(raw.implementedBy);
     const supersededBy = asLink(raw.supersededBy);
     const diagnostics = Array.isArray(raw.diagnostics)
