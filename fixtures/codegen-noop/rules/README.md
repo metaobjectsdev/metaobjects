@@ -9,9 +9,10 @@ Two models that differ ONLY by the business-rules vocabulary:
   (one carrying a `binding.rest`) take those objects as input and output. It is derived from the
   positive conformance fixture `fixtures/conformance/rules-purchase-request/`.
 
-1.3.0 registers the vocabulary, validates it at load and checks it in `verify`. The
-generated services and enforcing shells that act on it are later work, so until they land
-the two models produce the same output everywhere:
+1.3.0 registers the vocabulary, validates it at load and checks it in `verify`. Apart from the
+generators named below that read it (the rules names, the contract types and the TypeScript
+service generators `service`, `service-routes` and `service-routes-hono`), the two models
+produce the same output everywhere:
 
 - Every code generator in every port writes the same files, byte for byte.
 - TypeScript `meta migrate` proposes the same schema.

@@ -471,8 +471,22 @@ generated service, under the default settings and under `rules.lifecycle.create:
 `rules.lifecycle.commands: all` and `none`. Its README specifies the hand-written pieces, so every
 port's lane implements the same ones.
 
-Not covered yet, and still served by the flat generators: write-through entities, single-table (TPH)
-hierarchies, many-to-many traversal, projections and reports.
+The service covers every object the flat routes serve, with the same answers:
+
+- A projection and a served report get a list (and a get, when the projection is keyed). Their
+  transports answer every write `405 method_not_allowed`. A report keeps its row cap
+  (`serviceFile({ reportMaxRows })`, as `routesFile` takes it) and, with `report-export` wired,
+  its `?format=` export.
+- A write-through entity reads through its replica view and answers a write by reading the row
+  back through that view.
+- A single-table (TPH) hierarchy's base gets the polymorphic list and get. Each concrete subtype
+  gets the five operations at its own path, on the base table, scoped to its discriminator value.
+- A many-to-many relationship gets a query, `<relation>Of<Entity>(id)`, served at
+  `GET <path>/{id}/<relation>`.
+
+The `projection/`, `report/`, `write-through/`, `tph/`, `m2m/`, `decimal/` and `secret-fields/`
+corpora run on the service lanes as well as the routes lane. An entity with a composite key has no
+derived operations.
 
 ## Requirements can claim operations and transitions
 

@@ -135,11 +135,11 @@ shapes, the operations' inputs and outputs, and the wire error bodies, with no p
 mapping; C# so far writes the create and update records). Each other port adds itself to their
 `ports` with its own rules-layer work.
 
-Two names are **TypeScript only for now**: `service`, layer 4 (one module per package, a
-function per operation, each write in one transaction with the declared write rules), and
-`service-routes`, its thin Fastify transport (layer 5). Each other port adds itself with its own
-service-layer work. `service-routes-hono`, its Hono transport, is **TypeScript only by design**,
-as `routes-hono` is: Hono is a TypeScript framework.
+Three names are **TypeScript only**. Two are TypeScript only for now: `service`, layer 4 (one
+module per package, a function per operation, each write in one transaction with the declared
+write rules), and `service-routes`, its thin Fastify transport (layer 5); each other port adds
+itself with its own service-layer work. The third, `service-routes-hono`, its Hono transport, is
+TypeScript only by design, as `routes-hono` is: Hono is a TypeScript framework.
 
 ## Changing the surface
 

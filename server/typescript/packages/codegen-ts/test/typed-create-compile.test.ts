@@ -12,7 +12,7 @@
 
 import { describe, test, expect, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "./compile-timeout.js";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { MetaDataLoader, InMemoryStringSource, type MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
@@ -23,7 +23,7 @@ import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 import type { EmittedFile, GenContext } from "../src/generator.js";
 import type { Dialect } from "../src/metaobjects-config.js";
-import { removeTree } from "../src/scratch-dir.js";
+import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
 
@@ -52,6 +52,18 @@ const MODEL = {
     ],
   },
 };
+
+/**
+ * A throwaway directory under the scratch root, never under `test/`: the package typecheck
+ * compiles `test/**`, so a half-written caller there (or one a killed run left behind, holding
+ * a deliberately misspelt call) fails it. Its `node_modules` links to this package's, so the
+ * generated tree resolves drizzle-orm / zod to the REAL types.
+ */
+function makeCompileDir(prefix: string): string {
+  const dir = makeScratchDir(prefix);
+  symlinkSync(join(import.meta.dir, "..", "node_modules"), join(dir, "node_modules"), "dir");
+  return dir;
+}
 
 async function loadModel(): Promise<MetaRoot> {
   const result = await new MetaDataLoader({ strict: true }).load([
@@ -107,7 +119,7 @@ function compile(dir: string, paths: string[]): string[] {
 /** Generate the tree, add `caller.ts` with `body`, compile everything; the caller's diagnostics. */
 async function compileCaller(dialect: Dialect, body: string): Promise<{ all: string[]; caller: string[] }> {
   const root = await loadModel();
-  const dir = mkdtempSync(join(import.meta.dir, `tmp-typed-create-${dialect}-`));
+  const dir = makeCompileDir(`typed-create-${dialect}-`);
   try {
     const files = await generate(root, dialect, dir);
     for (const f of files) writeFileSync(join(dir, f.path), f.content);
@@ -133,7 +145,7 @@ for (const dialect of ["postgres", "sqlite"] as const) {
   describe(`generated create calls are typed with the insert input (${dialect})`, () => {
     test("the signatures name the typed input, not unknown", async () => {
       const root = await loadModel();
-      const dir = mkdtempSync(join(import.meta.dir, `tmp-typed-create-src-${dialect}-`));
+      const dir = makeScratchDir(`typed-create-src-${dialect}-`);
       try {
         const files = await generate(root, dialect, dir);
         const brewer = files.find((f) => f.path === "Brewer.ts")!.content.replace(/\s+/g, " ");

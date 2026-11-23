@@ -32,6 +32,21 @@ here.**
   run the `list-query/`, `api-settings/`, `enum-default/`, `jsonb/` and `duration/` corpora beside the
   root and `rules/` corpora, on every engine the routes lane runs, D1 included through
   `interactiveTransactions: false`. The service compile gate compiles both transports.
+- **The service covers every object the flat routes serve.** Projections and served reports get
+  their reads, and their transports answer writes `405`. A report keeps its row cap, through the
+  new `serviceFile({ reportMaxRows })` option, and its `?format=` export. Write-through entities
+  read through their view and read a write back through it. A single-table hierarchy gets the
+  polymorphic base reads and per-subtype operations scoped to the discriminator. Each
+  many-to-many relationship gets a query and a `GET <path>/{id}/<relation>` route. The
+  `projection/`, `report/` (Postgres, MySQL, SQLite and D1), `write-through/`, `tph/`, `m2m/`,
+  `decimal/` and `secret-fields/` corpora now run on both service lanes. runtime-ts: the read-only
+  and many-to-many reads (`readOnlyList`, `readOnlyGet`, `m2mRelated`) are framework-neutral
+  functions, which the flat Fastify mounts and the service both call.
+- **codegen-ts: a `runGen` with no project no longer leaves its gen-state in the scratch root.**
+  The state of such a run is kept for that process's later runs only, and is removed when the
+  process exits normally (a process killed by a signal still leaves it). Before this fix, each such process left `meta-gen-state-<pid>` behind
+  permanently. The test harnesses that generate with no project had left hundreds of those
+  directories, about 3 GB, in a RAM-backed `$DEV_SCRATCH`.
 
 - **runtime-ts: the generated service keeps its rollback guarantee on a sync SQLite driver.** On
   bun:sqlite and better-sqlite3, Drizzle's `transaction()` commits when its callback returns, so a

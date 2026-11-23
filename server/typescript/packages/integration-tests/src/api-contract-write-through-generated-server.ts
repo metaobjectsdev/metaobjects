@@ -16,7 +16,7 @@
 // This proves the GENERATED write-through routes — the deployed artifact, not a
 // re-implementation — return the derived field on read-your-writes over HTTP.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -27,6 +27,7 @@ import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { loadMetadataFile } from "./load-metadata.ts";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 
 export interface WriteThroughSeed {
   customers: Array<{ id: number; name: string }>;
@@ -43,6 +44,7 @@ export async function startGeneratedWriteThroughServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<GeneratedWriteThroughServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -56,14 +58,14 @@ export async function startGeneratedWriteThroughServer(
   // so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()]),
     }),
     metadata: root,
   });
@@ -95,16 +97,16 @@ export const db = drizzle(pool);
       FROM "orders" o JOIN "customers" c ON o."customer_id" = c."id";
   `);
 
-  // 4. Import the EMITTED Order route file unmodified and mount it.
-  const orderRoutes = (await import(pathToFileURL(emitted.locate("Order.routes.ts")).href)) as {
-    orderRoutes: (f: FastifyInstance) => Promise<void>;
-  };
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
-
-  const fastify = Fastify();
-  await fastify.register(orderRoutes.orderRoutes);
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  // 4. Import the EMITTED API unmodified and mount it: the Order routes, or the service behind
+  //    its transport.
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    const orderRoutes = (await import(pathToFileURL(emitted.locate("Order.routes.ts")).href)) as {
+      orderRoutes: (f: FastifyInstance) => Promise<void>;
+    };
+    await fastify.register(orderRoutes.orderRoutes);
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -112,7 +114,7 @@ export const db = drizzle(pool);
       await seedWriteThrough(connectionUri, seed);
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

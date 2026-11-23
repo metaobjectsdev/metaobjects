@@ -55,6 +55,8 @@ export interface ServiceFileOpts {
    * refused with `ERR_STORE_NO_INTERACTIVE_TX` (ADR-0067 §4). Default true.
    */
   interactiveTransactions?: boolean;
+  /** The most rows a served report answers with no `limit` (the routes generator's option of the same name). Default 10000. */
+  reportMaxRows?: number;
 }
 
 export function serviceFile(opts?: ServiceFileOpts): Generator {
@@ -68,7 +70,8 @@ export function serviceFile(opts?: ServiceFileOpts): Generator {
         opts?.runtimeImport ?? (ctx.renderContext && ownedRuntimeImport(ctx.projectRoot ?? ".", ctx.renderContext.selfTarget.outDir));
       const rc = serviceRenderContext(ctx, "service", runtimeImport);
       const interactiveTransactions = opts?.interactiveTransactions !== false;
-      return model.flatMap((pkg) => renderServiceFiles({ ...pkg, interactiveTransactions }, rc));
+      const reportMaxRows = opts?.reportMaxRows;
+      return model.flatMap((pkg) => renderServiceFiles({ ...pkg, interactiveTransactions, ...(reportMaxRows === undefined ? {} : { reportMaxRows }) }, rc));
     },
   };
   if (opts?.filter) generator.filter = opts.filter;

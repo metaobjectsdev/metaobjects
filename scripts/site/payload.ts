@@ -29,7 +29,7 @@ import { extractMarkedRegion } from "./markers.js";
 import { splitLines, matchSubsequence, renderWithElisions } from "./subsequence.js";
 import { loadVocabulary, highlightMetadata, type Vocabulary } from "./highlight-metadata.js";
 import { highlightCode } from "./highlight-code.js";
-import { captureTranscript, normalizeTranscript, HOME_PATH } from "./transcript.js";
+import { captureTranscript, captureFailure, normalizeTranscript, HOME_PATH } from "./transcript.js";
 import { deriveCounts, type Counts } from "./counts.js";
 
 export interface Snippet {
@@ -206,7 +206,12 @@ function wholeSnippet(repoRoot: string, src: Extract<SnippetSource, { kind: "who
  */
 function transcriptSnippet(repoRoot: string, id: string,
                            src: Extract<SnippetSource, { kind: "transcript" }>): Snippet {
-  const { text, exitCode } = captureTranscript(src.argv, resolve(repoRoot, src.cwd));
+  const capture = captureTranscript(src.argv, resolve(repoRoot, src.cwd));
+  const failure = captureFailure(capture);
+  if (failure) {
+    throw new Error(`site payload: the "${id}" transcript was not captured: ${failure}.`);
+  }
+  const { text, exitCode } = capture;
   if (exitCode === 0) {
     throw new Error(
       `site payload: the "${id}" fixture now PASSES (exit 0).\n` +
@@ -240,7 +245,12 @@ function transcriptSnippet(repoRoot: string, id: string,
  */
 function assertRequirementsResolve(repoRoot: string): void {
   const showcase = resolve(repoRoot, "examples/showcase");
-  const { text, exitCode } = captureTranscript(["verify", ...PROMPTS_ARGS], showcase);
+  const capture = captureTranscript(["verify", ...PROMPTS_ARGS], showcase);
+  const failure = captureFailure(capture);
+  if (failure) {
+    throw new Error(`site payload: \`meta verify\` on examples/showcase was not captured: ${failure}.`);
+  }
+  const { text, exitCode } = capture;
   if (exitCode !== 0) {
     throw new Error(
       `site payload: \`meta verify\` fails on examples/showcase (exit ${exitCode}).\n` +

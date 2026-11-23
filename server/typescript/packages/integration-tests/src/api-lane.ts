@@ -29,12 +29,15 @@ export function apiGenerators(
   lane: ApiLane,
   model: Generator[],
   routes: () => Generator[],
-  /** The store: Cloudflare D1 holds no transaction across application code (ADR-0067 §4). */
-  store: { interactiveTransactions?: boolean } = {},
+  /**
+   * The service generator's options: the store (Cloudflare D1 holds no transaction across
+   * application code, ADR-0067 §4), and a served report's row cap, which the routes lane gives
+   * `routesFile` the same way.
+   */
+  service: { interactiveTransactions?: boolean; reportMaxRows?: number } = {},
 ): Generator[] {
   if (lane === "routes") return [...model, ...routes()];
-  const service = store.interactiveTransactions === false ? serviceFile({ interactiveTransactions: false }) : serviceFile();
-  return [...model, contractTypes(), service, lane === "service" ? serviceRoutesFile() : serviceRoutesHonoFile()];
+  return [...model, contractTypes(), serviceFile(service), lane === "service" ? serviceRoutesFile() : serviceRoutesHonoFile()];
 }
 
 type Factory = (deps: Record<string, unknown>) => unknown;

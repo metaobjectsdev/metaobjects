@@ -6,10 +6,41 @@ const REPO_ROOT = resolve(import.meta.dirname, "../..");
 // scope, so running it exits 0 having written nothing, which reads like success.
 const CLI = resolve(REPO_ROOT, "server/typescript/packages/cli/bin/meta.ts");
 
-export function captureTranscript(argv: string[], cwd: string):
-  { text: string; exitCode: number } {
+export interface Capture {
+  text: string;
+  exitCode: number;
+  /** The signal that killed the CLI, if one did. */
+  signal: NodeJS.Signals | null;
+  /** Set when the CLI could not be spawned at all. */
+  error: Error | undefined;
+}
+
+export function captureTranscript(argv: string[], cwd: string): Capture {
   const r = spawnSync("bun", [CLI, ...argv], { cwd, encoding: "utf8" });
-  return { text: `${r.stdout ?? ""}${r.stderr ?? ""}`.trimEnd(), exitCode: r.status ?? 1 };
+  return {
+    text: `${r.stdout ?? ""}${r.stderr ?? ""}`.trimEnd(),
+    exitCode: r.status ?? 1,
+    signal: r.signal,
+    error: r.error,
+  };
+}
+
+/**
+ * Why a capture did not RUN, or null when it did. A CLI that was killed, failed to
+ * spawn, or exited non-zero having written nothing produced no transcript at all;
+ * reading that as "the diagnostic changed" (or as a real verify failure) blames the
+ * fixture for what the machine did.
+ */
+export function captureFailure(r: Capture): string | null {
+  if (r.error) {
+    const errno = (r.error as NodeJS.ErrnoException).code ?? r.error.message;
+    return `the CLI failed to spawn (${errno}); the capture did not run`;
+  }
+  if (r.signal) return `the CLI was killed by ${r.signal}; the capture did not run`;
+  if (r.exitCode !== 0 && r.text === "") {
+    return `the CLI exited ${r.exitCode} with no output; the capture did not run`;
+  }
+  return null;
 }
 
 /**

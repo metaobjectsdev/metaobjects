@@ -74,6 +74,10 @@ function emittedTs(dir: string): string[] {
   return out.sort();
 }
 
+// A single-table (TPH) subtype that carries a lifecycle and is a keyed operation's target: its
+// command and operation address the base's table, scoped to the subtype's discriminator value.
+const TPH_LIFECYCLE = resolve(dirname(fileURLToPath(import.meta.url)), "fixtures", "service-tph-lifecycle.json");
+
 const CORPORA = [
   { label: "the shared fitness corpus", path: CORPUS, pkg: "fitness", present: ["fitness/service/createProgram.ts"] },
   {
@@ -81,6 +85,12 @@ const CORPORA = [
     path: RULES,
     pkg: "acme/purchasing",
     present: ["acme/purchasing/service/submitPurchaseRequest.ts", "acme/purchasing/service/decide.ts", "acme/purchasing/service/requestTotals.ts"],
+  },
+  {
+    label: "a single-table subtype with a lifecycle",
+    path: TPH_LIFECYCLE,
+    pkg: "acme/desk",
+    present: ["acme/desk/service/closeBugTicket.ts", "acme/desk/service/peek.ts"],
   },
   // A store without interactive transactions (Cloudflare D1, which generates as `sqlite`): the
   // service with no transaction, no hooks and no event hook (ADR-0067 §4).
