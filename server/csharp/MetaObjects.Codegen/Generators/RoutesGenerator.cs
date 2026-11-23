@@ -10,7 +10,8 @@
 // (see docs/features/api-contract.md):
 //   - GET list honours ?limit=N&offset=N pagination. With `api.pagination` set, no limit
 //     takes `defaultLimit` and a limit above `maxLimit` is 400 { "error": "limit_too_large",
-//     "maxLimit": N }; without it, no limit returns every row.
+//     "maxLimit": N }; without it, no limit answers 50 rows (ApiSettings.DefaultPageLimit,
+//     the default of every port) and an explicit limit is served as asked.
 //   - GET list honours ?sort=<field>:asc|desc against a static SortAllowlist
 //     derived from the entity's scalar fields (case-insensitive lookup).
 //     Unknown field → 400 { "error": "invalid_sort", "field": ... }.
@@ -1214,37 +1215,37 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line($"if (UnknownFieldCheck.Reject({bodyVar}.RootElement, {KnownFieldsConst}, http) is {{ }} __unknown) return __unknown;");
     }
 
-    // The offset + limit lines of a list route. Without `api.pagination` they are exactly what they always
-    // were; with it, no limit takes defaultLimit and one above maxLimit is 400 limit_too_large.
+    // The offset + limit lines of a list route. A bound that is present but not a non-negative integer is
+    // refused (pagination.invalid_value), never read as "absent". No limit takes `api.pagination`'s
+    // defaultLimit, or ApiSettings.DefaultPageLimit (50, as in every port) when the project sets no block;
+    // with the block, a limit above maxLimit is 400 limit_too_large, and without it there is no maximum.
     protected virtual void WriteOffsetLimit(CsWriter w, ApiPagination? page, string offRaw, string off, string limRaw, string lim)
     {
-        if (page is not null)
-        {
-            // An offset that is present but not a non-negative int is refused, as the TypeScript routes answer,
-            // never read as "absent" and answered with a page the client did not ask for.
-            w.Line($"if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !(int.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}Bad) && {off}Bad >= 0))");
-            using (w.Hanging()) w.Line($"return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
-        }
+        w.Line($"if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !(int.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}Bad) && {off}Bad >= 0))");
+        using (w.Hanging()) w.Line($"return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
         w.Line($"if (qs.TryGetValue(\"offset\", out var {offRaw}) && int.TryParse({offRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}) && {off} > 0)");
         using (w.Hanging()) w.Line($"q = q.Skip({off});");
-        if (page is null)
-        {
-            w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}) && int.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} > 0)");
-            using (w.Hanging()) w.Line($"q = q.Take({lim});");
-            return;
-        }
-        w.Line($"// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
-        // A negative or non-numeric limit is refused with the malformed-bound envelope, as the TypeScript routes answer.
         w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && !(long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg >= 0))");
         using (w.Hanging()) w.Line($"return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {limRaw}Neg.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
-        w.Line($"var __take = {page.DefaultLimit};");
+        if (page is not null)
+            w.Line("// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
+        else
+            w.Line("// No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.");
+        w.Line($"var __take = {page?.DefaultLimit ?? ApiSettings.DefaultPageLimit};");
         // `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
         w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} >= 0)");
         w.Open("{");
-        w.Line($"if ({lim} > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
-        w.Line($"__take = (int){lim};");
-        w.Close($"}}");
-        w.Line($"q = q.Take(__take);");
+        if (page is not null)
+        {
+            w.Line($"if ({lim} > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
+            w.Line($"__take = (int){lim};");
+        }
+        else
+        {
+            w.Line($"__take = (int)System.Math.Min({lim}, int.MaxValue);");
+        }
+        w.Close("}");
+        w.Line("q = q.Take(__take);");
     }
 
     protected virtual void WriteCreateHandler(

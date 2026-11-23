@@ -323,13 +323,12 @@ each handler they register instead; an `HTTPException` is rethrown to your
   **Without the setting a list still pages: 50 rows, and no maximum.** With `limit` omitted, a
   list answers the first **50** matching rows (`list-query/default-page-of-fifty`, over a 60-row
   seed), and no port caps an explicit `limit` on an entity (`limit=100000` is honoured as asked).
-  The Java, Kotlin and Python controllers have always answered 50; the TypeScript mounts did so
-  from 1.3.0 (before, they returned **every** matching row), and the C# routes still return every
-  row until the same change lands there. A client that read a whole list with no `limit` now gets
-  the first page: send `limit`, or page with `offset` and `withCount=1`. `meta verify` no longer
-  advises `unbounded-list-pages`; `metaobjects verify`, `mvn metaobjects:verify` (Java and Kotlin)
-  and `dotnet meta verify --codegen` still name a wired routes generator with no page size (never
-  a failure).
+  The Java, Kotlin and Python controllers have always answered 50; the TypeScript mounts and the
+  C# routes do so from 1.3.0 (before, they returned **every** matching row). A client that read a
+  whole list with no `limit` now gets the first page: send `limit`, or page with `offset` and
+  `withCount=1`. `meta verify` and `dotnet meta verify --codegen` no longer advise
+  `unbounded-list-pages`; `metaobjects verify` and `mvn metaobjects:verify` (Java and Kotlin)
+  still name a wired routes generator with no page size (never a failure).
 
   **Every port reads it:** the TypeScript Fastify and Hono routes, the C# minimal-API routes, the
   Java and Kotlin Spring controllers and the Python FastAPI routers, packaged and ejected (an owned

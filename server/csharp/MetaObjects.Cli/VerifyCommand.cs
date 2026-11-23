@@ -57,14 +57,6 @@ public static class VerifyCommand
     // ADR-0021 D2 — explicit verify subverbs (--templates / --codegen / --db).
     // ------------------------------------------------------------------------
 
-    /// <summary>The name the generated-routes generator reports (<c>RoutesGenerator.Name</c>).</summary>
-    private const string RoutesGeneratorName = "routes-generator";
-
-    /// <summary>Advisory rule <c>unbounded-list-pages</c>: routes are generated and no <c>api.pagination</c> is set.</summary>
-    public const string UNBOUNDED_LIST_PAGES_ADVISORY =
-        "dotnet meta verify --codegen: advisory unbounded-list-pages: list routes return every row when `limit` is omitted; " +
-        "set `api.pagination` in .metaobjects/config.json (for example { \"defaultLimit\": 50, \"maxLimit\": 1000 }).";
-
     /// <summary>The message printed when <c>--db</c> is requested in the C# port.</summary>
     public const string DB_NOT_SUPPORTED =
         "verify --db: schema drift is not supported in the C# port; schema verify is the " +
@@ -489,15 +481,6 @@ public static class VerifyCommand
                     "is the catalog).",
                 ],
             };
-
-        // unbounded-list-pages (advisory, never fails): the run generates list routes and the project sets no
-        // page size, so a list route returns every row when `limit` is omitted. The routes generator is matched by
-        // type or by its exact name (an owned copy keeps the name), never by a substring: a generator that merely
-        // has "routes" in its name writes no list route.
-        if (load.Root.Api.Pagination is null
-            && generators.Any(g => g is Codegen.Generators.RoutesGenerator || g.Name == RoutesGeneratorName)
-            && load.Root.Objects().Any(o => Codegen.Generators.RoutesGenerator.AppliesTo(o, load.Root)))
-            advisories.Add(UNBOUNDED_LIST_PAGES_ADVISORY);
 
         // C1 — same presence gate `gen` computes (GeneratorRegistry.IncludesNames over
         // the SAME resolved `names` list above), or a regen under a `--generators`

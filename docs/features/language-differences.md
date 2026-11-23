@@ -34,7 +34,7 @@ project.
 | **Generated data access** | Drizzle tables and row types (`entityFile()`), CRUD queries (`queriesFile()`) | EF Core entities and `AppDbContext` | Spring DTOs and a repository interface | Exposed tables and a repository base | None: the generated router calls a repository `Protocol` you implement |
 | **Runtime metadata access** | `ObjectManager` on Kysely (`@metaobjectsdev/runtime-ts`) | None yet (roadmap) | OMDB (JDBC, Spring transactions) | Through Java's OMDB | `ObjectManager` on DB-API 2; not wired to the generated router |
 | **Generated REST routes** | Fastify (`routesFile()`; Hono and Drizzle mounts in `runtime-ts`) | ASP.NET minimal API | Spring `@RestController` | Spring `@RestController` | FastAPI `APIRouter` |
-| **List with no `limit` and no `api.pagination`** | The first 50 (every matching row before 1.3.0) | Every matching row | The first 50 | The first 50 | The first 50 |
+| **List with no `limit` and no `api.pagination`** | The first 50 (every matching row before 1.3.0) | The first 50 (every matching row before 1.3.0) | The first 50 | The first 50 | The first 50 |
 | **Largest report page** | 10,000 rows, then 400 `report_too_large` | Same | Same | Same | Same |
 | **`api.pagination`, `api.unknownFields`, the validation `issues` list** | The same in every port; defined once in [api-contract.md](api-contract.md) ([page size](api-contract.md#sort--pagination), [unknown fields](api-contract.md#unknown-request-fields-apiunknownfields), [validation issues](api-contract.md#a-validation-error-lists-every-issue)) | | | | |
 | **Filter and sort errors** | 400 with `field`, plus `op`, `expected` and the allowed fields | 400 with `field` | 400 with `field` | 400 with `field` | 400 with `field` |

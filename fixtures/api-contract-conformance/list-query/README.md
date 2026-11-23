@@ -49,5 +49,10 @@ port's generated list route honours the REST standard; a hand-rolled reference s
 answer every scenario by construction.
 
 Runners: TypeScript `server/typescript/packages/integration-tests/test/api-contract-list-query.test.ts`
-(one Postgres container for the file, reseeded before every scenario). The other ports'
-runners arrive with their 1.3.0 REST-standard work.
+(one Postgres container for the file, reseeded before every scenario), and C#
+`server/csharp/MetaObjects.IntegrationTests/Api/ApiContractListQueryConformanceTest.cs` (the
+generated routes on Kestrel against Postgres). The C# runner names the scenarios its routes do
+not answer yet (`NotYetInCSharp`: search, `or`/`and`, the bare-field and leading-`%` refusals,
+`invalid_json` and `invalid_id`, which land with its 1.3.0 REST-standard work) and runs every
+other one, the paging scenarios included. The other ports' runners arrive with their 1.3.0
+REST-standard work.

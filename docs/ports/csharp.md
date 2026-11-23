@@ -1256,10 +1256,10 @@ the route binds the body (the app's System.Text.Json options). What each setting
 [api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
 `dotnet meta init` writes `.metaobjects/config.json` with the same new-project settings as `meta init`:
 `api.pagination` 50/1000, `api.unknownFields: reject`, `verify.handEdits: fail` and
-`migrate.foreignKeyIndexes: true`; an existing config is left alone. `dotnet meta verify --codegen` prints a
-non-failing advisory (`unbounded-list-pages`, stderr, exit code unchanged) when the run includes the routes
-generator and the project sets no `api.pagination`; plain `verify` says nothing, because only `--codegen`
-runs the generator list.
+`migrate.foreignKeyIndexes: true`; an existing config is left alone. A project that sets no `api.pagination`
+still pages: a list with no `limit` answers the first 50 rows (`ApiSettings.DefaultPageLimit`, the default of
+every port) and an explicit `limit` is served as asked, with no maximum. A bound that is not a non-negative
+integer is `400 pagination.invalid_value` with or without the setting.
 
 **Known gaps** (full list with workarounds in
 [KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md)):

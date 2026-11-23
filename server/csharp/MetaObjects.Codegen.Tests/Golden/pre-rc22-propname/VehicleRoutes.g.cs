@@ -85,10 +85,19 @@ public static class VehicleRoutes
                     : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = ApplySort(q, resolved, desc);
             }
+            if (qs.TryGetValue("offset", out var offRawBad) && !(int.TryParse(offRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offBad) && offBad >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
             if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
                 q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0)
-                q = q.Take(lim);
+            if (qs.TryGetValue("limit", out var limRawNeg) && !(long.TryParse(limRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limNeg) && limNeg >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
+            var __take = 50;
+            if (qs.TryGetValue("limit", out var limRaw) && long.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim >= 0)
+            {
+                __take = (int)System.Math.Min(lim, int.MaxValue);
+            }
+            q = q.Take(__take);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
@@ -130,10 +139,19 @@ public static class VehicleRoutes
                     : CarSortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved) == null).ThenByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved) == null).ThenBy(x => EF.Property<object>(x!, resolved));
             }
+            if (qs.TryGetValue("offset", out var offRawBad) && !(int.TryParse(offRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offBad) && offBad >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
             if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
                 q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0)
-                q = q.Take(lim);
+            if (qs.TryGetValue("limit", out var limRawNeg) && !(long.TryParse(limRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limNeg) && limNeg >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
+            var __take = 50;
+            if (qs.TryGetValue("limit", out var limRaw) && long.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim >= 0)
+            {
+                __take = (int)System.Math.Min(lim, int.MaxValue);
+            }
+            q = q.Take(__take);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
@@ -296,10 +314,19 @@ public static class VehicleRoutes
                     : VanSortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
                 q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved) == null).ThenByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved) == null).ThenBy(x => EF.Property<object>(x!, resolved));
             }
+            if (qs.TryGetValue("offset", out var offRawBad) && !(int.TryParse(offRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offBad) && offBad >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
             if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
                 q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRaw) && int.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim > 0)
-                q = q.Take(lim);
+            if (qs.TryGetValue("limit", out var limRawNeg) && !(long.TryParse(limRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limNeg) && limNeg >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
+            var __take = 50;
+            if (qs.TryGetValue("limit", out var limRaw) && long.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim >= 0)
+            {
+                __take = (int)System.Math.Min(lim, int.MaxValue);
+            }
+            q = q.Take(__take);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });

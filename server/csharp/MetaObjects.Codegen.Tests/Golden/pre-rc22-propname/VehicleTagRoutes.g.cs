@@ -58,10 +58,19 @@ public static class VehicleTagRoutes
             }
 
             // Pagination: ?offset=N first (skip), then ?limit=N (take).
+            if (qs.TryGetValue("offset", out var offsetRawBad) && !(int.TryParse(offsetRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offsetBad) && offsetBad >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offsetRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
             if (qs.TryGetValue("offset", out var offsetRaw) && int.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)
                 q = q.Skip(offset);
-            if (qs.TryGetValue("limit", out var limitRaw) && int.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)
-                q = q.Take(limit);
+            if (qs.TryGetValue("limit", out var limitRawNeg) && !(long.TryParse(limitRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limitNeg) && limitNeg >= 0))
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limitRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
+            var __take = 50;
+            if (qs.TryGetValue("limit", out var limitRaw) && long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit >= 0)
+            {
+                __take = (int)System.Math.Min(limit, int.MaxValue);
+            }
+            q = q.Take(__take);
 
             var rows = await q.ToListAsync();
 

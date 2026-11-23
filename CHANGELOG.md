@@ -10,6 +10,17 @@ here.**
 
 ## [Unreleased]
 
+- **C#: a list with no `limit` answers 50 rows (breaking).** A generated entity, TPH or projection
+  list route in a project that sets no `api.pagination` returned every matching row when the
+  request carried no `limit`; it now answers the first 50 (`ApiSettings.DefaultPageLimit`), as every
+  port does. An explicit `limit` is still served as asked (no maximum without the setting), and a
+  project that sets `api.pagination` is unchanged. Without the setting a `limit` or `offset` that is
+  not a non-negative integer is now `400 pagination.invalid_value` instead of being ignored, and
+  `limit=0` is a page of zero rows. The `dotnet meta verify --codegen` advisory `unbounded-list-pages`
+  is retired. The C# generated lane now runs the shared `list-query/` sub-corpus: the paging and
+  refusal scenarios its routes answer today, with search and `or`/`and` to follow. Regenerate, and
+  check any client that reads a whole list without a `limit`:
+  [docs/features/migrations/default-list-page-of-fifty.md](docs/features/migrations/default-list-page-of-fifty.md).
 - **C#: the route helpers are their own package, `MetaObjects.AspNetCore`, and `MetaObjects.Codegen`
   and the `dotnet meta` tool no longer carry EF Core.** `FilterParser`, `FilterParseResult`,
   `FilterPredicate`, `EfCoreFilterDispatch`, `ValueObjectValidator`, `ConstraintErrors`,
