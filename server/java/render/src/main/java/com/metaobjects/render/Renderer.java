@@ -1,13 +1,13 @@
 package com.metaobjects.render;
 
 import com.github.mustachejava.DefaultMustacheFactory;
+import com.github.mustachejava.Iteration;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.DefaultMustacheVisitor;
 import com.github.mustachejava.MustacheException;
 import com.github.mustachejava.MustacheVisitor;
 import com.github.mustachejava.TemplateContext;
 import com.github.mustachejava.codes.ValueCode;
-import com.github.mustachejava.reflect.Guard;
 import com.github.mustachejava.reflect.MissingWrapper;
 import com.github.mustachejava.reflect.ReflectionObjectHandler;
 import com.github.mustachejava.util.GuardException;
@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.lang.reflect.Array;
+import java.math.BigDecimal;
 import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Collections;
@@ -208,23 +210,6 @@ public final class Renderer {
     }
 
     /**
-     * Marks a name that is on no scope of the payload. A key present with a null value is NOT
-     * missing (it renders empty); only an absent name is.
-     */
-    private static final class AbsentWrapper extends MissingWrapper {
-        AbsentWrapper(String name, Guard[] guards) {
-            super(name, guards);
-        }
-    }
-
-    private static final class MissingVariableObjectHandler extends ReflectionObjectHandler {
-        @Override
-        protected MissingWrapper createMissingWrapper(String name, List<Guard> guards) {
-            return new AbsentWrapper(name, guards.toArray(new Guard[0]));
-        }
-    }
-
-    /**
      * A variable tag whose name is absent from the payload raises, with the message the opt-in
      * verify gate uses, so a typo like {@code {{nmae}}} fails on every render path. Section tags
      * stay silent: an absent section is simply falsy.
@@ -236,39 +221,101 @@ public final class Renderer {
 
         @Override
         public Writer execute(Writer writer, List<Object> scopes) {
-            if (!returnThis && oh.find(name, scopes) instanceof AbsentWrapper && !presentWholePath(scopes)) {
+            if (!returnThis && ((MissingVariableObjectHandler) oh).absent(name, scopes)) {
                 throw new RenderException(
                     "render verify failed: " + Verify.ERR_VAR_NOT_ON_PAYLOAD + " (" + name + ")");
             }
             return super.execute(writer, scopes);
         }
+    }
 
-        /**
-         * The reference check (TypeScript on mustache.js) tries the WHOLE dotted name against each
-         * context from the innermost outward, and reads a list's {@code length} as a property. The
-         * engine's own lookup stops at the first context holding the first segment, so without this
-         * a name TypeScript renders (a shadowed prefix, {@code items.length}) would raise here.
-         */
-        /** The list property JavaScript exposes, and the reference check therefore treats as present. */
+    /**
+     * The engine's object handler, reading four rules the way the reference renderer does
+     * (TypeScript on mustache.js) wherever the engine alone reads them differently:
+     *
+     * <ul>
+     *   <li>a name on no scope is missing, while a key present with a null value is not;</li>
+     *   <li>a dotted name is tried WHOLE against each context from the innermost outward, and
+     *       the first context on which the full path resolves wins. The engine alone stops at
+     *       the first context holding the first segment;</li>
+     *   <li>a list's {@code length} is a property, as it is to a JavaScript read;</li>
+     *   <li>a zero or NaN number is falsy for a section.</li>
+     * </ul>
+     */
+    private static final class MissingVariableObjectHandler extends ReflectionObjectHandler {
+        /** Marks a value the context does not carry, as distinct from a key present with a null value. */
+        private static final Object ABSENT = new Object();
+
+        /** The list property JavaScript exposes. */
         private static final String LENGTH_PROPERTY = "length";
 
-        private boolean presentWholePath(List<Object> scopes) {
-            int dot = name.lastIndexOf('.');
-            String listName = dot > 0 && LENGTH_PROPERTY.equals(name.substring(dot + 1)) ? name.substring(0, dot) : null;
+        /** Whether {@code name} is on no scope of the payload. */
+        boolean absent(String name, List<Object> scopes) {
+            return name.indexOf('.') < 0
+                ? super.find(name, scopes) instanceof MissingWrapper
+                : resolve(name.split("\\.", -1), scopes) == ABSENT;
+        }
+
+        @Override
+        public Wrapper find(String name, List<Object> scopes) {
+            if (name.indexOf('.') < 0) return super.find(name, scopes);
+            String[] parts = name.split("\\.", -1);
+            // Resolved against the scopes it is CALLED with, so the engine may cache it.
+            return calledWith -> valueOf(parts, calledWith);
+        }
+
+        private Object valueOf(String[] parts, List<Object> scopes) {
+            Object value = resolve(parts, scopes);
+            return value == ABSENT ? null : value;
+        }
+
+        /** The whole of {@code parts} against each scope from the innermost outward. */
+        private Object resolve(String[] parts, List<Object> scopes) {
             for (int i = scopes.size() - 1; i >= 0; i--) {
-                List<Object> one = Collections.singletonList(scopes.get(i));
-                if (!(oh.find(name, one) instanceof AbsentWrapper)) return true;
-                if (listName == null) continue;
-                Wrapper w = oh.find(listName, one);
-                if (w instanceof AbsentWrapper) continue;
+                Object value = scopes.get(i);
+                for (String part : parts) {
+                    value = property(value, part);
+                    if (value == ABSENT) break;
+                }
+                if (value != ABSENT) return value;
+            }
+            return ABSENT;
+        }
+
+        /** One property read, as JavaScript finds it: the engine's own member lookup, or a list's length. */
+        private Object property(Object scope, String part) {
+            if (scope == null) return ABSENT;
+            List<Object> one = Collections.singletonList(scope);
+            Wrapper wrapper = super.find(part, one);
+            if (!(wrapper instanceof MissingWrapper)) {
                 try {
-                    Object v = w.call(one);
-                    if (v instanceof Collection<?> || (v != null && v.getClass().isArray())) return true;
+                    return coerce(wrapper.call(one));
                 } catch (GuardException e) {
-                    // not resolvable on this context; try the next one out
+                    return ABSENT;
                 }
             }
-            return false;
+            if (LENGTH_PROPERTY.equals(part)) {
+                if (scope instanceof Collection<?> collection) return collection.size();
+                if (scope.getClass().isArray()) return Array.getLength(scope);
+            }
+            return ABSENT;
+        }
+
+        @Override
+        public Writer iterate(Iteration iteration, Writer writer, Object object, List<Object> scopes) {
+            return super.iterate(iteration, writer, falsyNumber(object) ? null : object, scopes);
+        }
+
+        @Override
+        public Writer falsey(Iteration iteration, Writer writer, Object object, List<Object> scopes) {
+            return super.falsey(iteration, writer, falsyNumber(object) ? null : object, scopes);
+        }
+
+        private static boolean falsyNumber(Object value) {
+            if (value instanceof BigDecimal decimal) return decimal.signum() == 0;
+            if (!(value instanceof Number number)) return false;
+            double d = number.doubleValue();
+            return d == 0 || d != d;
         }
     }
 }

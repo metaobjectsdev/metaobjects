@@ -16,6 +16,16 @@ namespace MetaObjects.Render.Tests;
 /// </summary>
 public class RenderConformanceTests
 {
+    /// <summary>
+    /// Fixtures the engine (Stubble) renders differently from the shared baseline, with the reason
+    /// in <c>docs/CONFORMANCE.md</c>. Each is asserted to STILL differ, so an engine that comes
+    /// into agreement fails here and prompts removing the entry. The ledger only shrinks.
+    /// </summary>
+    private static readonly HashSet<string> KnownDrift = new(StringComparer.Ordinal)
+    {
+        "render-shadowed-dotted-prefix",
+    };
+
     private static string CorpusRoot()
     {
         string root = AppContext.BaseDirectory;
@@ -92,6 +102,12 @@ public class RenderConformanceTests
             Provider = provider,
             Format = format,
         });
+
+        if (KnownDrift.Contains(name))
+        {
+            Assert.False(expected == actual, $"'{name}' now matches the shared baseline — remove it from KnownDrift");
+            return;
+        }
 
         Assert.Equal(expected, actual);
 

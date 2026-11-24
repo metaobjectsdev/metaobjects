@@ -29,20 +29,34 @@ public class RendererTest {
 
     @Test
     public void namesTheReferenceResolvesDoNotRaiseAsMissing() {
-        // The missing-variable check follows the reference (TypeScript on mustache.js): a dotted
-        // name is tried whole against each context, and a list's length is a property. What the
-        // engine then prints for these is a separate, open parity question, so only the absence of
-        // ERR_VAR_NOT_ON_PAYLOAD is pinned here.
+        // The engine follows the reference (TypeScript on mustache.js): a dotted name is tried
+        // whole against each context, and a list's length is a property.
         var shadowed = new RenderRequest(
             "{{#items}}[{{a.b}}]{{/items}}", null,
             Map.of("a", Map.of("b", 1), "items", List.of(Map.of("a", Map.of("c", 2)))),
             new InMemoryProvider(Map.of()), "text", null, null);
-        new Renderer().render(shadowed);
+        assertEquals("[1]", new Renderer().render(shadowed));
 
         var length = new RenderRequest(
             "count: {{items.length}}", null, Map.of("items", List.of(1, 2, 3)),
             new InMemoryProvider(Map.of()), "text", null, null);
-        new Renderer().render(length);
+        assertEquals("count: 3", new Renderer().render(length));
+    }
+
+    @Test
+    public void aZeroOrNaNNumberIsFalsyForASection() {
+        var zero = new RenderRequest(
+            "{{#n}}yes{{/n}}{{^n}}zero{{/n}} printed: {{n}}", null,
+            Map.of("n", 0),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("zero printed: 0", new Renderer().render(zero));
+
+        // No JSON payload can carry NaN, so the shared corpus cannot pin it.
+        var nan = new RenderRequest(
+            "{{#n}}yes{{/n}}{{^n}}zero{{/n}}", null,
+            Map.of("n", Double.NaN),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("zero", new Renderer().render(nan));
     }
 
     /** A value object's generated record, as a template's payload (ADR-0056). */

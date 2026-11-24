@@ -30,7 +30,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 19 / 19 | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 23 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 26 | ✓ | ✓ | inherits via Java | 25 / 26 (1 ledgered: `render-shadowed-dotted-prefix`, Stubble stops a dotted name at the first context holding its first segment) | ✓ |
 | [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 16 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) |
 | [`fixtures/jinja-verify-conformance/`](../fixtures/jinja-verify-conformance/) (ADR-0061 — the payload check over a Jinja body) | 31 | ✓ | refuses Jinja | refuses, via Java | refuses Jinja | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 58 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
@@ -86,7 +86,7 @@ cases); `naming-conformance` (all of it); `codegen-skip-conformance` (ADR-0064),
 about templates and one about the three-way merge, are named with their reason in its
 runner); `validation-conformance`, every case, through the generated `validate()`;
 `decimal-wire` and `duration-wire`, every vector, against the code the generated support
-crate carries; `render-conformance`, every case byte-identical, `extract-conformance`, all 58
+crate carries; `render-conformance`, every case but the three ledgered below (`mustache-ng` has its own name lookup, data model and truthiness), `extract-conformance`, all 58
 cases, and `output-prompt-conformance`, all 17 in all three styles with the round trip, in the
 `metaobjects-render` crate; the `core` cases of `writer-conformance` (ADR-0063); and
 `generator-registry-conformance`, with the eject contract's census, completeness and depth
@@ -474,12 +474,12 @@ on a reporting measure, etc.) and 7 `error-yaml-*` fixtures that pin the
 YAML 1.1 coercion guards (bool / null / hex in string contexts; numeric in enum
 contexts; reserved-as-attr).
 
-### `fixtures/render-conformance/` (23)
+### `fixtures/render-conformance/` (26)
 
-All 23 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
+All 26 fixtures → [features/templates-and-payloads.md](features/templates-and-payloads.md)
 (render engine output section). 5 are end-to-end shape and escape examples (prompt / email /
-spreadsheet / CSV-injection escape / CSV numeric-literal exemption); 16 pin Mustache-engine
-semantics — dotted-path lookup, parent-context fallthrough, falsy/empty-array section behavior,
+spreadsheet / CSV-injection escape / CSV numeric-literal exemption); 19 pin Mustache-engine
+semantics — dotted-path lookup (including a shadowed prefix and a list's `length`), parent-context fallthrough, falsy/empty-array/zero section behavior,
 inverted sections, nested partials, a comment tag beside a partial, standalone-tag whitespace
 stripping (including two standalone tags in a row, a standalone tag at the end of the file and an
 indented standalone tag, which shared docs templates rely on), raw-HTML bypass, trailing-newline preservation, unicode multibyte handling, the derived
@@ -488,6 +488,15 @@ that must refuse carries `expected-error.txt` in place of `expected.txt`, holdin
 the render must raise (`render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)`). Every port that runs
 this corpus reads that convention; TypeScript compares the text exactly, and Java, Python, C# and Rust
 require it to appear in the raised message.
+
+Two engines read a case differently from the shared baseline (the TypeScript renderer on
+mustache.js), and each runner ledgers the case instead of skipping it, asserting it STILL
+differs so the ledger only shrinks. C# (Stubble) ledgers `render-shadowed-dotted-prefix`: it stops
+a dotted name at the first context holding its first segment. Rust (`mustache-ng`) ledgers that
+case, `render-list-length` (a list's `length` is not a property of its data) and
+`render-zero-falsiness` (numbers reach the engine as text, so 0 is truthy). Closing a Rust entry
+means resolving names and truthiness in the crate instead of the engine, which is larger than a
+localized change and is not done here.
 
 ### `fixtures/jinja-render-conformance/` (16) and `fixtures/jinja-verify-conformance/` (31)
 

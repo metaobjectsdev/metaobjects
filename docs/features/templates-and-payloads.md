@@ -796,7 +796,10 @@ for payload typing per #270)
 - [`fixtures/render-conformance/render-error-missing-dotted-path/`](../../fixtures/render-conformance/render-error-missing-dotted-path/) — a dotted path whose leaf the payload lacks raises the same error
 - [`fixtures/render-conformance/render-parent-context-fallthrough/`](../../fixtures/render-conformance/render-parent-context-fallthrough/) — a key missing in the current section falls through to the parent context
 - [`fixtures/render-conformance/render-empty-array-falsiness/`](../../fixtures/render-conformance/render-empty-array-falsiness/) — `{{#xs}}…{{/xs}}` over an empty array renders nothing (vs. iterates)
-- [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, empty string, `0` — which are truthy for `{{#x}}` sections (per Mustache spec, not JS truthiness)
+- [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, an empty string and an empty array are falsy for `{{#x}}` sections; a non-empty object renders its body once
+- [`fixtures/render-conformance/render-zero-falsiness/`](../../fixtures/render-conformance/render-zero-falsiness/) — `0` is falsy for a section too, as JavaScript truthiness reads it (mustache.js, not the Mustache spec text), and still prints as `0`. NaN is falsy the same way in TypeScript, Java, Kotlin and Python; no JSON payload can carry it, and the C# engine reads it as truthy
+- [`fixtures/render-conformance/render-shadowed-dotted-prefix/`](../../fixtures/render-conformance/render-shadowed-dotted-prefix/) — a dotted name, printed or as a section, is tried whole against each context from the innermost outward: `{{a.b}}` inside `{{#items}}` falls through to the enclosing context when the item's `a` has no `b`, and a path that reaches a null does not resolve there
+- [`fixtures/render-conformance/render-list-length/`](../../fixtures/render-conformance/render-list-length/) — a list's `length` reads as a number: printed, and as a section and an inverted section
 - [`fixtures/render-conformance/render-inverted-section/`](../../fixtures/render-conformance/render-inverted-section/) — `{{^x}}…{{/x}}` renders when `x` is falsy/absent
 - [`fixtures/render-conformance/render-list-separator/`](../../fixtures/render-conformance/render-list-separator/) — the `-last` positional accessor: `{{^-last}}, {{/-last}}` separators, nested lists, single-element and empty lists, a scalar conditional and a single nested object inside a list, an authored key
 - [`fixtures/render-conformance/render-nested-partials/`](../../fixtures/render-conformance/render-nested-partials/) — `{{>partial}}` resolves through the provider, supports nesting
@@ -807,8 +810,16 @@ for payload typing per #270)
 - [`fixtures/render-conformance/render-unicode-multibyte/`](../../fixtures/render-conformance/render-unicode-multibyte/) — multibyte input handled without truncation or re-encoding
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
-via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+via their respective conformance runners (Kotlin on the Java engine), and so does the Rust
+`metaobjects-render` crate. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
 for the per-port pass/skip ledger.
+
+Two renderers still drift on a case their engine reads differently, and ledger it rather than
+skip it: C# on `render-shadowed-dotted-prefix` (Stubble stops a dotted name at the first context
+holding its first part), and Rust on that case, `render-list-length` and `render-zero-falsiness`
+(the `mustache-ng` engine's own name lookup, data model and truthiness). A ledgered case must
+still differ from the baseline, so an engine that comes into agreement fails its runner until the
+entry leaves the ledger.
 
 **Jinja bodies (Python and TypeScript, ADR-0061)**
 

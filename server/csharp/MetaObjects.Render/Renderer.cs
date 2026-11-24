@@ -106,10 +106,15 @@ public static class Renderer
         string expanded = Expand(body, request.Provider, startPath);
 
         var escaper = Escapers.For(request.Format);
+        // Every list the view carries is a List<object?> (see PayloadAccessors.Derive). A list's
+        // `length` is a property to a JavaScript read, so the engine answers it here.
+        var elementAt = RendererSettingsDefaults.DefaultValueGetters()[typeof(System.Collections.IList)];
         var stubble = new StubbleBuilder()
             .Configure(settings => settings
                 .SetEncodingFunction(v => escaper(v))
-                .AddValueGetter(PayloadAccessors.ViewType, PayloadAccessors.ViewLookup))
+                .AddValueGetter(PayloadAccessors.ViewType, PayloadAccessors.ViewLookup)
+                .AddValueGetter(typeof(List<object?>), (value, key, ignoreCase) =>
+                    key == LengthProperty ? ((System.Collections.IList)value).Count : elementAt(value, key, ignoreCase)))
             .Build();
 
         // Derived `has<Field>` accessors are part of the payload contract, not of the
