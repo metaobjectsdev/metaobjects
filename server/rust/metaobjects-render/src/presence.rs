@@ -108,7 +108,11 @@ fn resolve<'a>(context: &'a Value, segments: &[&str]) -> Option<&'a Value> {
     segments.iter().try_fold(context, |value, segment| {
         property(value, segment).or_else(|| {
             let items = value.as_array().filter(|_| *segment == LENGTH)?;
-            Some(if items.is_empty() { &LENGTH_ZERO } else { &LENGTH_NONZERO })
+            Some(if items.is_empty() {
+                &LENGTH_ZERO
+            } else {
+                &LENGTH_NONZERO
+            })
         })
     })
 }
@@ -176,7 +180,10 @@ mod tests {
         assert_eq!(missing("{{#flag}}{{gone}}{{/flag}}", &payload), None);
         assert_eq!(missing("{{#items}}{{gone}}{{/items}}", &payload), None);
         assert_eq!(missing("{{items.length}}", &payload), None);
-        assert_eq!(missing("{{#items.length}}{{gone}}{{/items.length}}", &payload), None);
+        assert_eq!(
+            missing("{{#items.length}}{{gone}}{{/items.length}}", &payload),
+            None
+        );
         assert_eq!(
             missing("{{^nope}}{{gone}}{{/nope}}", &payload),
             Some("gone".to_string())
