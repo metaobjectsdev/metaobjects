@@ -418,6 +418,10 @@ def _truthy(value: Any) -> bool:
         return False
     if isinstance(value, str) and not value:
         return False
+    # JavaScript falsiness, as mustache.js reads it: 0 and NaN are falsy (so is an empty
+    # list's ``length``). ``bool`` is an ``int`` subclass and was handled above.
+    if isinstance(value, (int, float)) and (value == 0 or value != value):
+        return False
     return True
 
 

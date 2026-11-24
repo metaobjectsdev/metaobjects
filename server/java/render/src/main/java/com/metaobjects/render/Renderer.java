@@ -10,12 +10,16 @@ import com.github.mustachejava.codes.ValueCode;
 import com.github.mustachejava.reflect.Guard;
 import com.github.mustachejava.reflect.MissingWrapper;
 import com.github.mustachejava.reflect.ReflectionObjectHandler;
+import com.github.mustachejava.util.GuardException;
+import com.github.mustachejava.util.Wrapper;
 
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.ArrayDeque;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.function.Function;
@@ -245,20 +249,23 @@ public final class Renderer {
          * engine's own lookup stops at the first context holding the first segment, so without this
          * a name TypeScript renders (a shadowed prefix, {@code items.length}) would raise here.
          */
+        /** The list property JavaScript exposes, and the reference check therefore treats as present. */
+        private static final String LENGTH_PROPERTY = "length";
+
         private boolean presentWholePath(List<Object> scopes) {
             int dot = name.lastIndexOf('.');
+            String listName = dot > 0 && LENGTH_PROPERTY.equals(name.substring(dot + 1)) ? name.substring(0, dot) : null;
             for (int i = scopes.size() - 1; i >= 0; i--) {
-                List<Object> one = java.util.Collections.singletonList(scopes.get(i));
+                List<Object> one = Collections.singletonList(scopes.get(i));
                 if (!(oh.find(name, one) instanceof AbsentWrapper)) return true;
-                if (dot > 0 && "length".equals(name.substring(dot + 1))) {
-                    com.github.mustachejava.util.Wrapper w = oh.find(name.substring(0, dot), one);
-                    if (w instanceof AbsentWrapper) continue;
-                    try {
-                        Object v = w.call(one);
-                        if (v instanceof java.util.Collection<?> || (v != null && v.getClass().isArray())) return true;
-                    } catch (com.github.mustachejava.util.GuardException e) {
-                        // not resolvable on this context; try the next one out
-                    }
+                if (listName == null) continue;
+                Wrapper w = oh.find(listName, one);
+                if (w instanceof AbsentWrapper) continue;
+                try {
+                    Object v = w.call(one);
+                    if (v instanceof Collection<?> || (v != null && v.getClass().isArray())) return true;
+                } catch (GuardException e) {
+                    // not resolvable on this context; try the next one out
                 }
             }
             return false;

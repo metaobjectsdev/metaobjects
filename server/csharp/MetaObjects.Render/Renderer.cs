@@ -9,6 +9,7 @@
 // The render-time `verify` guard (FR-004 Plan #3) is wired: a request carrying the payload field
 // tree verifies the resolved body before it renders, and a mismatch throws RenderException.
 
+using System.Collections;
 using Stubble.Core.Builders;
 using Stubble.Core.Settings;
 
@@ -181,6 +182,11 @@ public static class Renderer
         null => true,
         bool b => !b,
         string s => s.Length == 0,
+        // JavaScript falsiness, as mustache.js reads it: 0 and NaN are falsy.
+        int or long or short or sbyte or byte or uint or ulong or ushort => Convert.ToDecimal(v) == 0m,
+        double d => d == 0 || double.IsNaN(d),
+        float f => f == 0 || float.IsNaN(f),
+        decimal m => m == 0m,
         System.Collections.IDictionary => false,
         System.Collections.IEnumerable seq => !seq.GetEnumerator().MoveNext(),
         _ => false,
@@ -199,7 +205,6 @@ public static class Renderer
         {
             if (TryWalk(stack[i], segs, out value)) return true;
         }
-        value = null;
         return false;
     }
 
@@ -217,8 +222,7 @@ public static class Renderer
     private static bool TryProperty(object? ctx, string key, out object? value)
     {
         if (PayloadAccessors.TryLookup(ctx, key, out value)) return true;
-        if (key == LengthProperty && ctx is System.Collections.ICollection list
-            and not System.Collections.IDictionary)
+        if (key == LengthProperty && ctx is ICollection list and not IDictionary)
         {
             value = list.Count;
             return true;

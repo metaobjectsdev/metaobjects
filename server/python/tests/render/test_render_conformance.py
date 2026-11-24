@@ -114,3 +114,20 @@ def test_a_missing_variable_raises_and_a_null_renders_empty() -> None:
     with pytest.raises(RenderError, match=r"ERR_VAR_NOT_ON_PAYLOAD \(nmae\)"):
         render(RenderRequest(payload={}, provider=provider, template="Hi {{{nmae}}}!"))
     assert render(RenderRequest(payload={"n": None}, provider=provider, template="Hi {{n}}!{{#x}}y{{/x}}")) == "Hi !"
+
+
+def test_names_resolve_and_sections_test_as_mustache_js_does() -> None:
+    # The reference (TypeScript on mustache.js) tries a dotted name whole against each
+    # context, reads a list's length as a property, and treats 0 as falsy.
+    provider = InMemoryProvider({})
+
+    def run(template: str, payload: dict) -> str:
+        return render(RenderRequest(payload=payload, provider=provider, template=template))
+
+    shadowed = {"a": {"b": 1}, "items": [{"a": {"c": 2}}]}
+    assert run("{{#items}}[{{a.b}}]{{/items}}", shadowed) == "[1]"
+    assert run("count: {{items.length}}", {"items": [1, 2, 3]}) == "count: 3"
+    assert run("{{#items.length}}has{{/items.length}}{{^items.length}}none{{/items.length}}", {"items": []}) == "none"
+    assert run("{{#n}}yes{{/n}}{{^n}}zero{{/n}}", {"n": 0}) == "zero"
+    with pytest.raises(RenderError, match=r"ERR_VAR_NOT_ON_PAYLOAD \(address.street\)"):
+        run("{{address.street}}", {"address": None})
