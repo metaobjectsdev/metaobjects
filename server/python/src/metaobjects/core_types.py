@@ -244,10 +244,11 @@ def _register_subtypes(
 # NOT declared in any spec/metamodel/*.json provider file; both this port and the TS
 # reference HAND-CODE the root (the single documented hand-coded exception to the
 # JSON-sourced model). Its STRUCTURAL children must byte-match the cross-port golden:
-# description "Root metadata document" and EXACTLY the five genuinely-open structural
-# wildcards a document root legitimately holds — field / object / requirement /
-# template / validator
-# (mirrors the TS core-types.ts root def and the Java MetaRoot registration). Because
+# description "Root metadata document" and EXACTLY the four genuinely-open structural
+# wildcards core itself registers — field / object / template / validator
+# (mirrors the TS core-types.ts root def and the Java MetaRoot registration). A
+# `requirement` child is admitted by the requirements pack (requirement.json
+# `extends`), beside the entities it describes. Because
 # it is undeclared in the JSON, the strict-children pass leaves it untouched, so the
 # children registered HERE are emitted verbatim. The any-attr wildcard is intentionally
 # omitted — the golden carries attrs:[] for the root (no metadata-attr vocabulary).

@@ -128,6 +128,6 @@ stays missing however deep it chains (`v.x.y`), and printing it raises (Amendmen
 
 Printing a name absent from the payload raises `render verify failed: ERR_VAR_NOT_ON_PAYLOAD` in
 the Jinja engines (jinja2 and nunjucks) and in every port's Mustache engine (Rust renders no
-template). It is the message the Mustache path raises, and it applies on every render path. A present null still prints empty, and a section over an absent name still
-renders nothing. Corpus: `fixtures/jinja-render-conformance/jinja-render-error-missing-variable/` and
+Jinja template). It is the message the Mustache path raises, and it applies on every render
+path. A present null still prints empty, and a section over an absent name still renders nothing. Corpus: `fixtures/jinja-render-conformance/jinja-render-error-missing-variable/` and
 `fixtures/render-conformance/render-error-missing-variable/`.

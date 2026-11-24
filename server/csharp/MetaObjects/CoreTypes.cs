@@ -282,7 +282,8 @@ public static class CoreTypes
                 (tid, n) => new MetaRoot(tid, n),
                 []));
 
-        // object — 5 subtypes (base, entity, value, projection, report)
+        // object — 4 subtypes registered here (base, entity, value, projection); report is the
+        // reporting pack's (ReportingMetaDataProvider)
         List<ChildRule> objectRules =
         [
             Wildcard(TYPE_FIELD),
@@ -323,10 +324,9 @@ public static class CoreTypes
             // attr.filter object lowered to a view-level WHERE). Strict attr scoping
             // (from spec object.json's projection allow-list) keeps it here and prunes
             // the discriminator attrs, which projection does not declare.
-            // FR-044: object.report carries @from / @dimensions / @measures / @segment /
-            // @filter. Strict attr scoping (from spec object.json's report allow-list)
-            // keeps those and prunes the discriminator attrs, which a report does not
-            // declare; its structural child graph also comes from the spec.
+            // FR-044: object.report (@from / @dimensions / @measures / @segment / @filter /
+            // @spine) is registered by the reporting pack from spec reporting.json, not
+            // in this loop.
             List<AttrSchema> objectAttrs = subType switch
             {
                 OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, ObjectSchema.CollectionNameAttr],

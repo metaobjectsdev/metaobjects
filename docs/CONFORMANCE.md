@@ -879,7 +879,7 @@ JSON and verify payload feeds it unchanged.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 584 + yaml 19 + verify 45
-+ render 23 + persistence 68 + api-contract 179 + source-resolution 28 + scope 10 +
++ render 26 + persistence 68 + api-contract 179 + source-resolution 28 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
 `cube-model` corpus, `explorer-conformance` and `list-query-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
