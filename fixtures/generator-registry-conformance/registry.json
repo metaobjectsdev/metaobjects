@@ -335,7 +335,7 @@
       "layer": "docs",
       "note": "Listed like any generator; writes to the `docs` target (ADR-0034 Amendment 9). A project that declares no requirement.* node gets no file.",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "python"]
     },
     "agent-docs": {
       "concept": "Pages written for a coding agent working in the project: the schema, the UI surface and the requirements.",
@@ -343,7 +343,7 @@
       "layer": "docs",
       "note": "Listed like any generator; writes to the `docs` target (ADR-0034 Amendment 9).",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "python"]
     },
     "metamodel-docs": {
       "concept": "The reference of the built-in metamodel: every type, subtype and attribute the build registers, by provider.",

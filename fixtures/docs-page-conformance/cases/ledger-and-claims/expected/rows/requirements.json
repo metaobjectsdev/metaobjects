@@ -1,0 +1,104 @@
+[
+  {
+    "path": "Storefront",
+    "depth": 0,
+    "subType": "functional",
+    "level": 1,
+    "status": "live",
+    "trackedBy": [],
+    "statement": "The storefront solution",
+    "counterexample": "Nothing can be sold",
+    "implementedBy": [],
+    "claimedConcerns": []
+  },
+  {
+    "path": "Storefront.OrderService",
+    "depth": 1,
+    "title": "Order service",
+    "subType": "functional",
+    "level": 3,
+    "status": "live",
+    "trackedBy": [],
+    "statement": "Every placed order is recorded before payment is attempted",
+    "counterexample": "A payment attempted against an order that was never stored",
+    "description": "Recording first is what lets a failed payment be retried.\n\n# Why first\n\nA payment with no order is a refund nobody can trace.",
+    "implementedBy": [],
+    "claimedConcerns": []
+  },
+  {
+    "path": "Storefront.OrderService.OrderRecord",
+    "depth": 2,
+    "title": "What an order must hold",
+    "subType": "functional",
+    "level": 4,
+    "status": "live",
+    "trackedBy": [],
+    "statement": "An order records what was bought, for how much, and when: placed | paid",
+    "counterexample": "An order row that cannot say who placed it",
+    "implementedBy": [
+      "acme::shop::Order",
+      "acme::shop::Order.placedAt"
+    ],
+    "claimedConcerns": [
+      "object.entity",
+      "field.timestamp"
+    ]
+  },
+  {
+    "path": "Storefront.OrderService.OrderRecord.TranscribableReference",
+    "depth": 3,
+    "subType": "functional",
+    "level": 5,
+    "status": "live",
+    "trackedBy": [],
+    "statement": "An order carries a reference a customer can read\ndown a phone line",
+    "counterexample": "A reference that is a raw uuid",
+    "implementedBy": [
+      "acme::shop::Order.reference"
+    ],
+    "claimedConcerns": [
+      "field.string"
+    ]
+  },
+  {
+    "path": "Storefront.OrderService.OrderRecord.OrderExpiry",
+    "depth": 3,
+    "subType": "functional",
+    "level": 5,
+    "status": "planned",
+    "trackedBy": [
+      "acme/shop#412"
+    ],
+    "statement": "An unpaid order carries the instant it stops being reservable",
+    "counterexample": "Stock held indefinitely against an order nobody paid for",
+    "implementedBy": [],
+    "claimedConcerns": []
+  },
+  {
+    "path": "MoneyIsExactMinorUnits",
+    "depth": 0,
+    "subType": "architectural",
+    "status": "live",
+    "trackedBy": [],
+    "statement": "Monetary amounts are stored as exact integer minor units, never as floating point",
+    "counterexample": "A cent that disappears when a total is split three ways",
+    "implementedBy": [
+      "acme::shop::Invoice"
+    ],
+    "claimedConcerns": [
+      "object.entity"
+    ]
+  },
+  {
+    "path": "GuestCheckout",
+    "depth": 0,
+    "subType": "functional",
+    "level": 4,
+    "status": "retired",
+    "trackedBy": [],
+    "statement": "A visitor can check out without an account",
+    "counterexample": "An order with no way to reach the person who placed it",
+    "implementedBy": [],
+    "claimedConcerns": []
+  }
+]

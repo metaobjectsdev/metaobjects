@@ -28,6 +28,7 @@ from typing import Callable, Mapping
 
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE, ApiDocsConfig
+from metaobjects.codegen.generators.agent_docs_generator import agent_docs_generator
 from metaobjects.codegen.generators.api_docs_generator import api_docs_generator
 from metaobjects.codegen.generators.entity_model import entity_model, model_import_closure
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
@@ -45,6 +46,7 @@ from metaobjects.codegen.generators.render_helper_generator import (
     render_helper_generator,
 )
 from metaobjects.codegen.generators.report_export_generator import report_export_generator
+from metaobjects.codegen.generators.requirements_generator import requirements_generator
 from metaobjects.codegen.generators.requirement_tests_generator import (
     requirement_tests_generator,
 )
@@ -341,6 +343,10 @@ _API_DOCS_RUNTIME: tuple[str, ...] = (
     "api_docs_paths",
 )
 
+#: The requirements pages' builders (rows, page data, TOON cells) and the model-only schema page's.
+_DOCS_REQUIREMENTS = "docs_requirements"
+_DOCS_SCHEMA = "docs_schema"
+
 #: Stable name -> GeneratorEntry. The 12 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set equality, tier AND layer are conformance-tested
 #: against the manifest.
@@ -513,6 +519,30 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         factory=api_docs_generator,
         source=api_docs_generator,
         runtime=_API_DOCS_RUNTIME + _SHARED_PREDICATES + (_M2M_CODEGEN,),
+    ),
+    "requirements": GeneratorEntry(
+        name="requirements",
+        description=(
+            "The requirement ledger as documentation: requirements.md for people and "
+            "requirements.toon for tools (shared Mustache templates). No requirement.* node, no file."
+        ),
+        tier="neutral",
+        layer="docs",
+        factory=requirements_generator,
+        source=requirements_generator,
+        runtime=(_DOCS_REQUIREMENTS,),
+    ),
+    "agent-docs": GeneratorEntry(
+        name="agent-docs",
+        description=(
+            "Pages written for a coding agent: agent/requirements.md and the model-only "
+            "agent/schema.md (agent/ui.md stays TypeScript-only)."
+        ),
+        tier="neutral",
+        layer="docs",
+        factory=agent_docs_generator,
+        source=agent_docs_generator,
+        runtime=(_DOCS_REQUIREMENTS, _DOCS_SCHEMA),
     ),
 }
 

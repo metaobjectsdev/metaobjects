@@ -27,6 +27,22 @@ has two checks:
    (compare as JSON values).
 2. **Page.** Rendering the template with that data produces `expected/<page>` byte for byte.
 
+Under the page data sits one more layer, `expected/rows/`, the rows each builder starts from:
+
+| Rows | What they are | The same shape as |
+|---|---|---|
+| `rows/requirements.json` | One row per requirement in the ledger, in declaration order: `path`, `depth`, `title`, `subType`, `level`, `status`, `disposition`, `trackedBy`, `statement`, `counterexample`, `description`, `implementedBy` (as written), `claimedConcerns` (the `type.subType` of each target that resolves). Both requirements pages are built from these. | What the docs site's explorer graph holds: the requirement node's attributes plus its verify ledger row |
+| `rows/schema.json` | The model-only schema: tables (name, schema, description, primary key, columns with `nullable`, `identity` and `description`, foreign keys as columns → table and columns), views (name, schema), and `declaredBy` (each table or view → the declaring object). | A subset of `meta schema --as json` (the `serializeSnapshot` format), the storage lens's input |
+
+These rows are how the 1.3.0 docs-page design pass (D0a) settles the shapes: the docs site
+reuses the rows rather than pinning a second shape for the same facts, so a later site lens is
+built over these rows, not a new extraction. A port checks its rows first (compare as JSON
+values), then its page data, then the bytes. The model-only page data follows from the rows
+and the model alone; the TypeScript runner proves it by rebuilding the page from
+`rows/schema.json` (`schemaInputFromRows`). `cli/test/docs-page-shapes.test.ts` holds the
+requirement rows equal to the explorer graph's (on `fixtures/explorer-conformance/shop/`) and
+the schema rows to a subset of `meta schema`'s output.
+
 A page the case does not list is a page the port must NOT write: a model with no
 `requirement.*` node gets neither requirements page, and a model with no table and no view
 gets no schema page.
@@ -84,5 +100,7 @@ the project's own migration tool, from the schema `meta schema` prints. A case s
 - TypeScript: `server/typescript/packages/cli/test/docs-page-conformance.test.ts`.
   Regenerate with `UPDATE_DOCS_PAGE_FIXTURES=1 bun test test/docs-page-conformance.test.ts`
   from that package, and review the diff: it is the cross-port contract.
-- C#, Java (Kotlin through Java), Python and Rust: their page generators are planned and
-  will run every case.
+- Python: `server/python/tests/conformance/test_docs_page_conformance.py` (rows, page data,
+  then the bytes the `requirements` and `agent-docs` generators write).
+- C#, Java (Kotlin through Java) and Rust: their page generators are planned and will run
+  every case.

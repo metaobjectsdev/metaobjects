@@ -6,6 +6,8 @@
 // runner fails the moment they disagree. Every other port runs the same cases against its
 // own builders and the same templates. `expected/data/` pins what each template is FED, so a
 // port can tell a builder defect (wrong data) from a render defect (right data, wrong bytes).
+// `expected/rows/` pins the layer below that (D0a): the ledger rows and the model-only schema
+// rows each page is built from, in the shapes the docs site reads too.
 //
 // The schema page pinned here is the MODEL-ONLY one (`physical: false`): the page a port
 // without the expected schema writes. TypeScript builds its input from the expected schema
@@ -31,6 +33,8 @@ import {
   requirementRows,
   requirementsLedgerData,
   requirementsToonData,
+  schemaInputFromRows,
+  schemaRows,
 } from "@metaobjectsdev/codegen-ts";
 import { buildAgentSchemaInput } from "../src/lib/agent-schema.js";
 
@@ -57,6 +61,8 @@ async function outputsOf(root: MetaRoot, migrate: boolean): Promise<Map<string, 
     out.set("requirements.toon", renderRequirementsToon(rows));
     out.set("data/requirements.md.json", json(requirementsLedgerData(rows)));
     out.set("data/requirements.toon.json", json(requirementsToonData(rows)));
+    // The rows layer (D0a): what both requirements pages, and the docs site, are built from.
+    out.set("rows/requirements.json", json(rows));
   }
   const agentRequirements = agentRequirementsPageData(root);
   if (agentRequirements !== undefined) {
@@ -78,6 +84,11 @@ async function outputsOf(root: MetaRoot, migrate: boolean): Promise<Map<string, 
     if (data !== undefined) {
       out.set("agent/schema.md", renderAgentSchemaPage(root, schema, naming, { physical: false }));
       out.set("data/agent-schema.md.json", json(data));
+      // The rows layer (D0a). The page data must follow from the rows and the model alone:
+      // that is all a port without the expected schema has.
+      const rowsLayer = schemaRows(schema);
+      out.set("rows/schema.json", json(rowsLayer));
+      expect(agentSchemaPageData(root, schemaInputFromRows(rowsLayer), naming, { physical: false })).toEqual(data);
     }
   }
   return out;

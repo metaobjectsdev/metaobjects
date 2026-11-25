@@ -1000,7 +1000,8 @@ gate_doc_template_drift() {
   bash scripts/sync-doc-templates.sh \
     && git diff --exit-code -- \
         server/typescript/packages/codegen-ts/templates \
-        server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
+        server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts \
+        server/python/src/metaobjects/render/bundled_templates
 }
 gate_embedded_library_drift() {
   bun run scripts/generate-embedded-library.ts \

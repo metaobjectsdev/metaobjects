@@ -1,0 +1,78 @@
+{
+  "tables": [
+    {
+      "name": "owners",
+      "description": "A person or company that owns vehicles.",
+      "primaryKey": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "nullable": false,
+          "identity": "increment"
+        },
+        {
+          "name": "name",
+          "nullable": false,
+          "description": "The legal name, as registered."
+        },
+        {
+          "name": "tier",
+          "nullable": true
+        },
+        {
+          "name": "rating",
+          "nullable": true
+        }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "name": "vehicles",
+      "primaryKey": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "nullable": false,
+          "identity": "increment"
+        },
+        {
+          "name": "kind",
+          "nullable": false
+        },
+        {
+          "name": "owner_id",
+          "nullable": true
+        },
+        {
+          "name": "doors",
+          "nullable": true
+        }
+      ],
+      "foreignKeys": [
+        {
+          "columns": [
+            "owner_id"
+          ],
+          "refTable": "owners",
+          "refColumns": [
+            "id"
+          ]
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "name": "v_owner_summary"
+    }
+  ],
+  "declaredBy": {
+    "owners": "acme::fleet::Owner",
+    "v_owner_summary": "acme::fleet::OwnerSummary",
+    "vehicles": "acme::fleet::Vehicle"
+  }
+}
