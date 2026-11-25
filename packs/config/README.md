@@ -61,7 +61,8 @@ holds none. A problem the loader cannot see fails the run with every such proble
 naming its node. These include: two settings on one variable name; a malformed `@envName`; a
 derived variable name that is not valid; a setting that is not a scalar field, or is an array;
 a secret with a default; a `@defaultScope` naming no scope; two scopes on one Infisical
-environment; a vault with no scope. Abstract groups are checked too.
+environment; a vault with no scope. An abstract group is checked for all of these except name
+collisions, which are checked under each group that extends it.
 
 ### Wiring
 
