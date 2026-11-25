@@ -13,6 +13,7 @@ import {
   registerColumnNamingStrategy,
   registerTableNamingRule, registerPluralizer,
 } from "@metaobjectsdev/metadata";
+import { packageNameOf } from "./package-name.js";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
@@ -89,6 +90,18 @@ const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
     src: "src/index.ts",
   },
 };
+
+/**
+ * The packages whose imports the loader points at the CLI's own copy (every subpath of each,
+ * and bare `ts-poet`, which goes to the engine's printer): rewritten in the config's source,
+ * and mapped by the jiti alias for the modules it imports. The `meta gen` skip key counts
+ * them as part of the engine (gen-fingerprint.ts). Any other package the config imports,
+ * `@metaobjectsdev/*` or not, runs from the project and is hashed as a generator package.
+ */
+export const CLI_ALIASED_PACKAGES: ReadonlySet<string> = new Set([
+  ...Object.keys(CLI_PKG_PATHS).map(packageNameOf),
+  TS_POET_PKG,
+]);
 
 // Resolve a codegen specifier to an absolute path, so a user's
 // metaobjects.config.ts can import @metaobjectsdev/codegen-ts* without

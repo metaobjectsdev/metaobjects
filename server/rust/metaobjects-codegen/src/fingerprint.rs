@@ -26,7 +26,7 @@ use crate::hashes::HashManifest;
 use crate::sha256::{Sha256, hex, sha256_hex};
 
 /// Bump when the key's own recipe changes: every stored key then misses.
-pub const FINGERPRINT_FORMAT: u64 = 1;
+pub const FINGERPRINT_FORMAT: u64 = 2;
 
 /// Where this port keeps its key, beside the (committed) manifest and never committed
 /// itself (`.gen-state/*` is ignored except `.hashes/`).
