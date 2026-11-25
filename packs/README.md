@@ -2,7 +2,7 @@
 
 A directory here is an **independent pack**: vocabulary, generators and runtime for a capability
 that is not part of core, built and versioned as if it were its own repository
-([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)). The first is `config` (settings and secrets).
+([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)). None exists yet.
 
 An independent pack is not in the default bundle. A project opts in by naming its provider. It is
 never in `fixtures/registry-conformance/expected-registry.json` and never moves
