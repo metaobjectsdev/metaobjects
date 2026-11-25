@@ -75,8 +75,15 @@ public sealed class FilterFieldRule
 /// <summary>One sortable field's rule.</summary>
 public sealed class SortFieldRule
 {
-    public SortFieldRule(string? defaultOrder = null) => DefaultOrder = defaultOrder;
+    public SortFieldRule(string? defaultOrder = null, string? property = null)
+    {
+        DefaultOrder = defaultOrder;
+        Property = property;
+    }
 
     /// <summary>The DECLARED <c>@sortableDefaultOrder</c> (<c>asc</c>/<c>desc</c>), or null for none.</summary>
     public string? DefaultOrder { get; }
+
+    /// <summary>The CLR property a generated route sorts on, or null when the caller resolves it.</summary>
+    public string? Property { get; }
 }

@@ -115,7 +115,9 @@ public class EntityGeneratorTests
         Assert.Contains("return mount;", src);
         // GET list now takes HttpContext (for qs parsing: limit/offset/sort/withCount).
         Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
-        Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
+        // Item routes read the {id} themselves: an id the key cannot hold is 400 invalid_id.
+        Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (HttpContext http, AppDbContext db) =>", src);
+        Assert.Contains("if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();", src);
         Assert.Contains("db.Subscribers.FindAsync(id)", src);
         // FR-036 #4 — an entity with a @required field (Subscriber.email) gets the
         // presence-checking create handler: it reads the raw JSON body (HttpContext),
@@ -132,33 +134,32 @@ public class EntityGeneratorTests
         // PATCH + PUT share the same update handler (matches TS reference). It takes the raw
         // HttpContext (not a bound DTO) and PARTIAL-merges only the properties present in the
         // JSON body — a bound DTO would fill omitted fields with CLR defaults and clobber them.
-        Assert.Contains("async System.Threading.Tasks.Task<IResult> UpdateSubscriber(long id, HttpContext http, AppDbContext db)", src);
+        Assert.Contains("async System.Threading.Tasks.Task<IResult> UpdateSubscriber(HttpContext http, AppDbContext db)", src);
         Assert.Contains("foreach (var prop in body.RootElement.EnumerateObject())", src);
         Assert.Contains("app.MapPatch(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
         Assert.Contains("app.MapPut(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
-        Assert.Contains("app.MapDelete(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
+        Assert.Contains("app.MapDelete(prefix + \"/subscribers/{id}\", async (HttpContext http, AppDbContext db) =>", src);
+        // A body that is not JSON is 400 invalid_json.
+        Assert.Contains("catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }", src);
     }
 
     [Fact]
-    public void Routes_generator_list_handler_calls_FilterParser()
+    public void Routes_generator_list_handler_calls_ListQueryParser()
     {
-        // FR-009: the generated list handler must parse filter[...] qs against
-        // the per-entity allowlist + dispatch via EfCoreFilterDispatch. Both
-        // are runtime helpers shipped in the MetaObjects.AspNetCore package.
+        // The REST standard: the generated list handler parses the whole query (filter tree, search,
+        // sort, page bounds) against the per-entity allowlist and applies it via EfCoreFilterDispatch.
+        // Both are runtime helpers shipped in the MetaObjects.AspNetCore package.
         var ctx = Ctx(Load());
         var src = Assert.Single(new RoutesGenerator().Generate(ctx)).Content;
 
-        // Imports the runtime namespace.
         Assert.Contains("using MetaObjects.AspNetCore;", src);
-        // Parses filter against the per-entity allowlist.
-        Assert.Contains("FilterParser.Parse(qs, SubscriberFilterAllowlist.Fields, SubscriberFilterAllowlist.OpsByField)", src);
-        // 400 envelope on parse error — carries `field`, which every filter envelope
-        // names cross-port so a caller with several filters knows which one was rejected.
-        Assert.Contains("Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field })", src);
-        // Dispatches predicates onto the IQueryable<T>.
-        Assert.Contains("EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates)", src);
-        // The withCount query is also filtered so total reflects the filtered count.
-        Assert.Contains("EfCoreFilterDispatch.ApplyFilter(db.Subscribers.AsNoTracking(), filter.Predicates)", src);
+        Assert.Contains("ListQueryParser.Parse(http.Request.QueryString.Value, SubscriberFilterAllowlist.Rules, SortRules, SubscriberFilterAllowlist.FieldNames)", src);
+        // A refusal answers its named body (error plus the details the shared corpus pins).
+        Assert.Contains("if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());", src);
+        Assert.Contains("if (EfCoreFilterDispatch.Validate<Subscriber>(listQuery) is { } __invalid) return Results.BadRequest(__invalid.Body());", src);
+        Assert.Contains("q = EfCoreFilterDispatch.Apply(q, listQuery, SubscriberFilterAllowlist.Rules);", src);
+        // The withCount query is filtered and searched too, so total counts what matched.
+        Assert.Contains("EfCoreFilterDispatch.Apply(db.Subscribers.AsNoTracking(), listQuery, SubscriberFilterAllowlist.Rules)", src);
     }
 
     [Fact]
@@ -186,17 +187,17 @@ public class EntityGeneratorTests
         var ctx = Ctx(Load());
         var src = Assert.Single(new RoutesGenerator().Generate(ctx)).Content;
 
-        // Sort allowlist contains the entity's scalar fields (Pascal-cased).
-        Assert.Contains("SortAllowlist", src);
-        Assert.Contains("\"Id\",", src);
-        Assert.Contains("\"Email\",", src);
-        Assert.Contains("\"Subscribed\",", src);
-        Assert.Contains("\"CreatedAt\",", src);
+        // Sort rules carry the entity's scalar fields (Pascal-cased), each naming its property.
+        Assert.Contains("Dictionary<string, SortFieldRule> SortRules", src);
+        Assert.Contains("[\"Id\"] = new SortFieldRule(property: \"Id\"),", src);
+        Assert.Contains("[\"Email\"] = new SortFieldRule(property: \"Email\"),", src);
+        Assert.Contains("[\"Subscribed\"] = new SortFieldRule(property: \"Subscribed\"),", src);
+        Assert.Contains("[\"CreatedAt\"] = new SortFieldRule(property: \"CreatedAt\"),", src);
 
-        // Pagination + sort dispatch.
-        Assert.Contains("qs.TryGetValue(\"sort\"", src);
-        Assert.Contains("qs.TryGetValue(\"limit\"", src);
-        Assert.Contains("qs.TryGetValue(\"offset\"", src);
+        // Pagination + sort dispatch, over the parsed query.
+        Assert.Contains("if (listQuery.Sort is { } __sort && SortRules[__sort.Field].Property is { } __sortProp)", src);
+        Assert.Contains("if (listQuery.Limit is { } __limit)", src);
+        Assert.Contains("if (listQuery.Offset is { } __offset && __offset > 0)", src);
 
         // withCount envelope: { rows, total }.
         Assert.Contains("qs.TryGetValue(\"withCount\"", src);
@@ -205,11 +206,8 @@ public class EntityGeneratorTests
         // 404 error envelope.
         Assert.Contains("Results.NotFound(new { error = \"not_found\" })", src);
 
-        // Invalid-sort error envelope (unknown sort field → 400). The cross-port
-        // api-contract uses the `invalid_sort` code (verified end-to-end by the
-        // SP-F generated-server lane against the corpus), not a generic "validation",
-        // and names the offending field.
-        Assert.Contains("Results.BadRequest(new { error = \"invalid_sort\", field })", src);
+        // An unknown sort field is ListQueryParser's `invalid_sort` refusal, answered through
+        // __refused.Body() (verified end-to-end by the generated-server lane against the corpus).
 
         // Sort dispatch uses EF.Property (no runtime reflection).
         Assert.Contains("EF.Property<object>", src);

@@ -8,9 +8,10 @@ Update when a gap closes or a new one surfaces.
 
 - `GET /api/<entity>` list, `GET /:id`, `POST`, `PATCH /:id`, `PUT /:id`, `DELETE /:id` mount under `apiPrefix` (default `/api`); entity segment is lowercased + pluralized.
 - `?limit=N&offset=N` pagination — honoured on the list route.
-- `?sort=<field>:asc|desc` — honoured against a per-entity static `SortAllowlist` derived from scalar fields. Unknown field returns 400 `{ "error": "validation", "message": "unknown sort field: ..." }`.
+- `?sort=<field>:asc|desc` — honoured against per-entity static `SortRules` derived from scalar fields; `?sort=<field>` takes its `@sortableDefaultOrder`. Unknown field returns 400 `{ "error": "invalid_sort", "field": ... }`.
 - `?withCount=1` — switches the list envelope from `[<row>...]` to `{ rows, total }`. The grid hook always sends this. `total` reflects the filtered count when `filter[...]` is present.
-- `?filter[<field>][<op>]=<value>` (and the `filter[<field>]=<value>` sugar form for `eq`) — honoured against a per-entity `<Entity>FilterAllowlist` emitted by `FilterAllowlistGenerator`. Errors return 400 `{ "error": "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" }`. The list handler calls `FilterParser.Parse` and dispatches via `EfCoreFilterDispatch.ApplyFilter` (both in the `MetaObjects.AspNetCore` package). FR-009.
+- `?filter[<field>][<op>]=<value>` (and the `filter[<field>]=<value>` sugar form for `eq`) — honoured against a per-entity `<Entity>FilterAllowlist` emitted by `FilterAllowlistGenerator`. Errors return 400 `{ "error": "invalid_filter_field" | "invalid_filter_op" | "invalid_filter_value" }`. The list handler calls `ListQueryParser.Parse` and applies the result via `EfCoreFilterDispatch.Apply` (both in the `MetaObjects.AspNetCore` package). FR-009.
+- The REST standard's list handling (since 1.3.0): `filter[or]` / `filter[and]` groups five levels deep, `?search=`, and the `filter.bare_field`, `filter.leading_wildcard_disallowed` and `filter.nesting_too_deep` refusals. A body that is not JSON is 400 `{ "error": "invalid_json" }` and a path id the key cannot hold is 400 `{ "error": "invalid_id" }` (`RouteErrors`). Gated by `fixtures/list-query-conformance/` and the api-contract `list-query/` sub-corpus.
 - Both `PATCH` and `PUT` map to the same update handler (TS reference exposes both verbs; C# now matches).
 - 404 carries a JSON envelope: `{ "error": "not_found" }`.
 - Projection (`object.projection` over a read-only `source.rdb` `@kind: view`) routes are read-only — only `GET` list + `GET /:id` are mounted; no `POST` / `PATCH` / `PUT` / `DELETE`.
@@ -18,12 +19,6 @@ Update when a gap closes or a new one surfaces.
 - Sort dispatch uses `EF.Property<object>(x, "<Name>")` — no runtime reflection (AOT-safe). Filter dispatch uses the same approach via `EfCoreFilterDispatch`.
 
 ## Gaps
-
-### G2 — `filter[or]` / `filter[and]` nested boolean grouping
-
-**Contract.** `filter[or]=[...]` and `filter[and]=[...]` keys nest disjunctions / conjunctions. Reference: [`api-contract.md` "Filter operators (8)"](../../../../docs/features/api-contract.md).
-
-**Today.** Half closed. Since 1.3.0, `MetaObjects.AspNetCore` has `ListQueryParser`, which parses the whole list query: or/and groups to a depth of five, search, the bare-field and leading-`%` refusals, value-format checks and the named error details. `EfCoreFilterDispatch.Apply` turns the parsed tree into one `Where`. Each generated `<Entity>FilterAllowlist` carries the `Rules`, `Sort` and `FieldNames` the parser reads. All 95 shared parse cases in `fixtures/list-query-conformance/` pass (`ListQueryConformanceTests`). The generated list routes do not call any of this yet; they still use the flat `FilterParser`. Wiring them up, and turning on the api-contract `list-query/` scenarios the C# runner holds back, closes this gap.
 
 ### G3 — Multi-field sort
 
@@ -35,7 +30,7 @@ Update when a gap closes or a new one surfaces.
 
 **Contract.** The exact `error` code vocabulary is NOT a hard Tier-1 invariant; consumers should treat any 4xx as user-facing and 5xx as retryable. Reference: [`api-contract.md` "Error response"](../../../../docs/features/api-contract.md).
 
-**Today.** We emit `{ "error": "not_found" }` for 404 and `{ "error": "validation", "message": "..." }` for the sort-validation 400. **FR-036 wired explicit body validation with the cross-port `{ "error": "validation" }` envelope:** a POST runs `Validator.TryValidateObject(input, ...)` and a PATCH runs `Validator.TryValidateProperty(value, ...)` per present value → 400 `{ "error": "validation", "issues": [...] }` (ASP.NET minimal-API never runs DataAnnotations on its own, so the annotations were previously decorative at the wire tier). Since 1.3.0 the handler collects every failure (each DataAnnotations attribute run on its own, value-object members, JSON read failures) through `ValidationIssues` and lists them all in the cross-port shape, `{code, path, message}` with Zod's code names; before that the 400 was bare.
+**Today.** We emit `{ "error": "not_found" }` for 404 and `{ "error": "invalid_sort", "field": ... }` for the sort-validation 400. **FR-036 wired explicit body validation with the cross-port `{ "error": "validation" }` envelope:** a POST runs `Validator.TryValidateObject(input, ...)` and a PATCH runs `Validator.TryValidateProperty(value, ...)` per present value → 400 `{ "error": "validation", "issues": [...] }` (ASP.NET minimal-API never runs DataAnnotations on its own, so the annotations were previously decorative at the wire tier). Since 1.3.0 the handler collects every failure (each DataAnnotations attribute run on its own, value-object members, JSON read failures) through `ValidationIssues` and lists them all in the cross-port shape, `{code, path, message}` with Zod's code names; before that the 400 was bare.
 
 ### G7 — Value-object columns on TPH entities are still skipped on PATCH
 

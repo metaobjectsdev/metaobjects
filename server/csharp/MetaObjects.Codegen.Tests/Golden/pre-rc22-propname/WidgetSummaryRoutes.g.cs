@@ -12,13 +12,9 @@ namespace Acme.Shop;
 
 public static class WidgetSummaryRoutes
 {
-    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, SortFieldRule> SortRules = new(System.StringComparer.OrdinalIgnoreCase)
     {
-        "WidgetId",
-    };
-
-    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
-    {
+        ["WidgetId"] = new SortFieldRule(property: "WidgetId"),
     };
 
     /// <summary>Maps <c>WidgetSummary</c> REST routes. Unauthenticated — see remarks.</summary>
@@ -37,37 +33,26 @@ public static class WidgetSummaryRoutes
             var qs = http.Request.Query;
             IQueryable<WidgetSummary> q = db.WidgetSummaries.AsNoTracking();
 
-            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.
-            var filter = EfCoreFilterDispatch.Validate<WidgetSummary>(FilterParser.Parse(qs, WidgetSummaryFilterAllowlist.Fields, WidgetSummaryFilterAllowlist.OpsByField));
-            if (filter.ErrorEnvelope is not null)
-                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
-            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
-
-            // Sort: ?sort=field:asc|desc against the static allowlist.
-            if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
+            // ?filter[...] (or/and groups), ?search, ?sort and the page bounds, against the allowlist.
+            var __parsed = ListQueryParser.Parse(http.Request.QueryString.Value, WidgetSummaryFilterAllowlist.Rules, SortRules, WidgetSummaryFilterAllowlist.FieldNames);
+            if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());
+            var listQuery = __parsed.Query!;
+            if (EfCoreFilterDispatch.Validate<WidgetSummary>(listQuery) is { } __invalid) return Results.BadRequest(__invalid.Body());
+            q = EfCoreFilterDispatch.Apply(q, listQuery, WidgetSummaryFilterAllowlist.Rules);
+            if (listQuery.Sort is { } __sort && SortRules[__sort.Field].Property is { } __sortProp)
             {
-                var parts = sortRaw.ToString().Split(':', 2);
-                var field = parts[0];
-                if (!SortAllowlist.TryGetValue(field, out var resolved))
-                    return Results.BadRequest(new { error = "invalid_sort", field });
-                var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
-                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
-                q = ApplySortWidgetSummary(q, resolved, desc);
+                var desc = __sort.Descending;
+                q = ApplySortWidgetSummary(q, __sortProp, desc);
             }
 
             // Pagination: ?offset=N first (skip), then ?limit=N (take).
-            if (qs.TryGetValue("offset", out var offsetRawBad) && !(int.TryParse(offsetRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offsetBad) && offsetBad >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offsetRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
-            if (qs.TryGetValue("offset", out var offsetRaw) && int.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)
-                q = q.Skip(offset);
-            if (qs.TryGetValue("limit", out var limitRawNeg) && !(long.TryParse(limitRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limitNeg) && limitNeg >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limitRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            if (listQuery.Offset is { } __offset && __offset > 0)
+                q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));
             // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
             var __take = 50;
-            if (qs.TryGetValue("limit", out var limitRaw) && long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit >= 0)
+            if (listQuery.Limit is { } __limit)
             {
-                __take = (int)System.Math.Min(limit, int.MaxValue);
+                __take = (int)System.Math.Min(__limit, int.MaxValue);
             }
             q = q.Take(__take);
 
@@ -76,7 +61,7 @@ public static class WidgetSummaryRoutes
             // withCount=1 → { rows, total } envelope; otherwise bare row array.
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return Results.Ok(rows);
-            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.WidgetSummaries.AsNoTracking(), filter.Predicates);
+            var totalQ = EfCoreFilterDispatch.Apply(db.WidgetSummaries.AsNoTracking(), listQuery, WidgetSummaryFilterAllowlist.Rules);
             var total = await totalQ.CountAsync();
             return Results.Ok(new { rows, total });
         });

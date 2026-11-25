@@ -1706,10 +1706,12 @@ generated routes calls them, so an owned routes generator comes with owned copie
 Otherwise a bug in the filter parser would still mean waiting for a MetaObjects release.
 
 `dotnet meta eject routes` therefore also writes their source to `codegen/runtime/`:
-`FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`,
-`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `ConstraintErrors.cs` and
-`Iso8601TimestampConverter.cs`, the converter your host registers for the api contract's
-timestamp spelling. Each file is the packaged source with one change: its namespace becomes
+`FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`, `FilterRules.cs`,
+`FilterValueFormat.cs`, `ListQuery.cs`, `EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`,
+`ConstraintErrors.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `DecimalWire.cs`,
+`DurationWire.cs`, `DecimalRangeEndpointFilter.cs`, `ReportExportHttp.cs`, `SerializerKeys.cs`,
+`RouteErrors.cs` and `Iso8601TimestampConverter.cs`, the converter your host registers for the
+api contract's timestamp spelling. Each file is the packaged source with one change: its namespace becomes
 `Codegen.Runtime`, matching the folder the way `codegen/generators/` matches
 `Codegen.Generators`. The ejected `RoutesGenerator.cs` differs from the reference in one
 more line, its `HelperRuntimeNamespace` constant, so its output says

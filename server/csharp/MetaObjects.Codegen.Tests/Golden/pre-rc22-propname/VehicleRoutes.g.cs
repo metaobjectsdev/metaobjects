@@ -12,14 +12,10 @@ namespace Acme.Shop;
 
 public static class VehicleRoutes
 {
-    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, SortFieldRule> SortRules = new(System.StringComparer.OrdinalIgnoreCase)
     {
-        "Id",
-        "Plate",
-    };
-
-    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
-    {
+        ["Id"] = new SortFieldRule(property: "Id"),
+        ["Plate"] = new SortFieldRule(property: "Plate"),
     };
 
     // api.unknownFields: reject — the declared field names (wire spelling); any other body key is a 400.
@@ -34,27 +30,19 @@ public static class VehicleRoutes
         "vinHash",
     };
 
-    private static readonly System.Collections.Generic.HashSet<string> CarSortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, SortFieldRule> CarSortRules = new(System.StringComparer.OrdinalIgnoreCase)
     {
-        "Id",
-        "Plate",
-        "SeatCount",
-        "RegNo",
+        ["Id"] = new SortFieldRule(property: "Id"),
+        ["Plate"] = new SortFieldRule(property: "Plate"),
+        ["SeatCount"] = new SortFieldRule(property: "SeatCount"),
+        ["RegNo"] = new SortFieldRule(property: "RegNo"),
     };
 
-    private static readonly System.Collections.Generic.Dictionary<string, bool> CarSortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, SortFieldRule> VanSortRules = new(System.StringComparer.OrdinalIgnoreCase)
     {
-    };
-
-    private static readonly System.Collections.Generic.HashSet<string> VanSortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
-    {
-        "Id",
-        "Plate",
-        "PayloadKg",
-    };
-
-    private static readonly System.Collections.Generic.Dictionary<string, bool> VanSortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
-    {
+        ["Id"] = new SortFieldRule(property: "Id"),
+        ["Plate"] = new SortFieldRule(property: "Plate"),
+        ["PayloadKg"] = new SortFieldRule(property: "PayloadKg"),
     };
 
     /// <summary>Maps <c>Vehicle</c> REST routes. Unauthenticated — see remarks.</summary>
@@ -73,45 +61,45 @@ public static class VehicleRoutes
         {
             var qs = http.Request.Query;
             IQueryable<Vehicle> q = db.Vehicles.AsNoTracking();
-            var filter = EfCoreFilterDispatch.Validate<Vehicle>(FilterParser.Parse(qs, VehicleFilterAllowlist.Fields, VehicleFilterAllowlist.OpsByField));
-            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
-            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
-            if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
+            // ?filter[...] (or/and groups), ?search, ?sort and the page bounds, against the allowlist.
+            var __parsed = ListQueryParser.Parse(http.Request.QueryString.Value, VehicleFilterAllowlist.Rules, SortRules, VehicleFilterAllowlist.FieldNames);
+            if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());
+            var listQuery = __parsed.Query!;
+            if (EfCoreFilterDispatch.Validate<Vehicle>(listQuery) is { } __invalid) return Results.BadRequest(__invalid.Body());
+            q = EfCoreFilterDispatch.Apply(q, listQuery, VehicleFilterAllowlist.Rules);
+            if (listQuery.Sort is { } __sort && SortRules[__sort.Field].Property is { } __sortProp)
             {
-                var parts = sortRaw.ToString().Split(':', 2);
-                if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = "invalid_sort", field = parts[0] });
-                var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
-                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
-                q = ApplySort(q, resolved, desc);
+                var desc = __sort.Descending;
+                q = ApplySort(q, __sortProp, desc);
             }
-            if (qs.TryGetValue("offset", out var offRawBad) && !(int.TryParse(offRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offBad) && offBad >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
-            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
-                q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRawNeg) && !(long.TryParse(limRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limNeg) && limNeg >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            // Pagination: ?offset=N first (skip), then ?limit=N (take).
+            if (listQuery.Offset is { } __offset && __offset > 0)
+                q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));
             // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
             var __take = 50;
-            if (qs.TryGetValue("limit", out var limRaw) && long.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim >= 0)
+            if (listQuery.Limit is { } __limit)
             {
-                __take = (int)System.Math.Min(lim, int.MaxValue);
+                __take = (int)System.Math.Min(__limit, int.MaxValue);
             }
             q = q.Take(__take);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
-            var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.AsNoTracking(), filter.Predicates).CountAsync();
+            var total = await EfCoreFilterDispatch.Apply(db.Vehicles.AsNoTracking(), listQuery, VehicleFilterAllowlist.Rules).CountAsync();
             return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
-        app.MapGet(prefix + "/vehicles/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
-            await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
-                ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
-                : Results.NotFound(new { error = "not_found" }));
-
-        app.MapGet(prefix + "/vehicles/{id}/tags", async (long id, global::Acme.Generated.AppDbContext db) =>
+        app.MapGet(prefix + "/vehicles/{id}", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
+            return await db.Vehicles.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
+                ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
+                : Results.NotFound(new { error = "not_found" });
+        });
+
+        app.MapGet(prefix + "/vehicles/{id}/tags", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
+        {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
             var relatedIds = (await db.VehicleTags.AsNoTracking()
                 .Where(j => EF.Property<long>(j, "VehicleId").Equals(id))
                 .Select(j => EF.Property<long>(j, "TagId"))
@@ -127,42 +115,41 @@ public static class VehicleRoutes
         {
             var qs = http.Request.Query;
             IQueryable<global::Acme.Shop.Car> q = db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking();
-            var filter = EfCoreFilterDispatch.Validate<global::Acme.Shop.Car>(FilterParser.Parse(qs, global::Acme.Shop.CarFilterAllowlist.Fields, global::Acme.Shop.CarFilterAllowlist.OpsByField));
-            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
-            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
-            if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
+            // ?filter[...] (or/and groups), ?search, ?sort and the page bounds, against the allowlist.
+            var __parsed = ListQueryParser.Parse(http.Request.QueryString.Value, global::Acme.Shop.CarFilterAllowlist.Rules, CarSortRules, global::Acme.Shop.CarFilterAllowlist.FieldNames);
+            if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());
+            var listQuery = __parsed.Query!;
+            if (EfCoreFilterDispatch.Validate<global::Acme.Shop.Car>(listQuery) is { } __invalid) return Results.BadRequest(__invalid.Body());
+            q = EfCoreFilterDispatch.Apply(q, listQuery, global::Acme.Shop.CarFilterAllowlist.Rules);
+            if (listQuery.Sort is { } __sort && CarSortRules[__sort.Field].Property is { } __sortProp)
             {
-                var parts = sortRaw.ToString().Split(':', 2);
-                if (!CarSortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = "invalid_sort", field = parts[0] });
-                var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
-                    : CarSortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
-                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved) == null).ThenByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved) == null).ThenBy(x => EF.Property<object>(x!, resolved));
+                var desc = __sort.Descending;
+                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, __sortProp) == null).ThenByDescending(x => EF.Property<object>(x!, __sortProp)) : q.OrderBy(x => EF.Property<object>(x!, __sortProp) == null).ThenBy(x => EF.Property<object>(x!, __sortProp));
             }
-            if (qs.TryGetValue("offset", out var offRawBad) && !(int.TryParse(offRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offBad) && offBad >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
-            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
-                q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRawNeg) && !(long.TryParse(limRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limNeg) && limNeg >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            // Pagination: ?offset=N first (skip), then ?limit=N (take).
+            if (listQuery.Offset is { } __offset && __offset > 0)
+                q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));
             // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
             var __take = 50;
-            if (qs.TryGetValue("limit", out var limRaw) && long.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim >= 0)
+            if (listQuery.Limit is { } __limit)
             {
-                __take = (int)System.Math.Min(lim, int.MaxValue);
+                __take = (int)System.Math.Min(__limit, int.MaxValue);
             }
             q = q.Take(__take);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
-            var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking(), filter.Predicates).CountAsync();
+            var total = await EfCoreFilterDispatch.Apply(db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking(), listQuery, global::Acme.Shop.CarFilterAllowlist.Rules).CountAsync();
             return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
-        app.MapGet(prefix + "/vehicles/car/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
-            await db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
+        app.MapGet(prefix + "/vehicles/car/{id}", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
+        {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
+            return await db.Vehicles.OfType<global::Acme.Shop.Car>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
                 ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
-                : Results.NotFound(new { error = "not_found" }));
+                : Results.NotFound(new { error = "not_found" });
+        });
 
         app.MapPost(prefix + "/vehicles/car", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
@@ -171,7 +158,7 @@ public static class VehicleRoutes
                 .Value.SerializerOptions;
             System.Text.Json.JsonDocument __body;
             try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }
             using var __bodyScope = __body;
             if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
                 return ValidationIssues.Unreadable();
@@ -202,13 +189,14 @@ public static class VehicleRoutes
             return (IResult)new CredentialOmittingResult(input, new string[] { "VinHash" }, status: 201, location: prefix + "/vehicles/car/" + input.Id);
         });
 
-        async System.Threading.Tasks.Task<IResult> UpdateCar(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
+        async System.Threading.Tasks.Task<IResult> UpdateCar(HttpContext http, global::Acme.Generated.AppDbContext db)
         {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
             var existing = await db.Vehicles.OfType<global::Acme.Shop.Car>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             System.Text.Json.JsonDocument body;
             try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }
             using var bodyScope = body;
             if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
             if (UnknownFieldCheck.Reject(body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
@@ -266,8 +254,9 @@ public static class VehicleRoutes
         app.MapPatch(prefix + "/vehicles/car/{id}", UpdateCar);
         app.MapPut(prefix + "/vehicles/car/{id}", UpdateCar);
 
-        app.MapDelete(prefix + "/vehicles/car/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
+        app.MapDelete(prefix + "/vehicles/car/{id}", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
             var existing = await db.Vehicles.OfType<global::Acme.Shop.Car>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             db.Vehicles.Remove(existing);
@@ -283,8 +272,9 @@ public static class VehicleRoutes
             return Results.NoContent();
         });
 
-        app.MapGet(prefix + "/vehicles/car/{id}/tags", async (long id, global::Acme.Generated.AppDbContext db) =>
+        app.MapGet(prefix + "/vehicles/car/{id}/tags", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
             if (!await db.Vehicles.OfType<global::Acme.Shop.Car>().AnyAsync(x => x.Id == id))
                 return Results.Ok(new System.Collections.Generic.List<global::Acme.Shop.Tag>());
             var relatedIds = (await db.VehicleTags.AsNoTracking()
@@ -302,42 +292,41 @@ public static class VehicleRoutes
         {
             var qs = http.Request.Query;
             IQueryable<global::Acme.Shop.Van> q = db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking();
-            var filter = EfCoreFilterDispatch.Validate<global::Acme.Shop.Van>(FilterParser.Parse(qs, global::Acme.Shop.VanFilterAllowlist.Fields, global::Acme.Shop.VanFilterAllowlist.OpsByField));
-            if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
-            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
-            if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
+            // ?filter[...] (or/and groups), ?search, ?sort and the page bounds, against the allowlist.
+            var __parsed = ListQueryParser.Parse(http.Request.QueryString.Value, global::Acme.Shop.VanFilterAllowlist.Rules, VanSortRules, global::Acme.Shop.VanFilterAllowlist.FieldNames);
+            if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());
+            var listQuery = __parsed.Query!;
+            if (EfCoreFilterDispatch.Validate<global::Acme.Shop.Van>(listQuery) is { } __invalid) return Results.BadRequest(__invalid.Body());
+            q = EfCoreFilterDispatch.Apply(q, listQuery, global::Acme.Shop.VanFilterAllowlist.Rules);
+            if (listQuery.Sort is { } __sort && VanSortRules[__sort.Field].Property is { } __sortProp)
             {
-                var parts = sortRaw.ToString().Split(':', 2);
-                if (!VanSortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = "invalid_sort", field = parts[0] });
-                var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
-                    : VanSortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
-                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, resolved) == null).ThenByDescending(x => EF.Property<object>(x!, resolved)) : q.OrderBy(x => EF.Property<object>(x!, resolved) == null).ThenBy(x => EF.Property<object>(x!, resolved));
+                var desc = __sort.Descending;
+                q = desc ? q.OrderByDescending(x => EF.Property<object>(x!, __sortProp) == null).ThenByDescending(x => EF.Property<object>(x!, __sortProp)) : q.OrderBy(x => EF.Property<object>(x!, __sortProp) == null).ThenBy(x => EF.Property<object>(x!, __sortProp));
             }
-            if (qs.TryGetValue("offset", out var offRawBad) && !(int.TryParse(offRawBad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offBad) && offBad >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offRawBad.ToString(), expected = "a non-negative integer (0 or more)" });
-            if (qs.TryGetValue("offset", out var offRaw) && int.TryParse(offRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var off) && off > 0)
-                q = q.Skip(off);
-            if (qs.TryGetValue("limit", out var limRawNeg) && !(long.TryParse(limRawNeg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limNeg) && limNeg >= 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limRawNeg.ToString(), expected = "a non-negative integer (0 or more)" });
+            // Pagination: ?offset=N first (skip), then ?limit=N (take).
+            if (listQuery.Offset is { } __offset && __offset > 0)
+                q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));
             // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
             var __take = 50;
-            if (qs.TryGetValue("limit", out var limRaw) && long.TryParse(limRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var lim) && lim >= 0)
+            if (listQuery.Limit is { } __limit)
             {
-                __take = (int)System.Math.Min(lim, int.MaxValue);
+                __take = (int)System.Math.Min(__limit, int.MaxValue);
             }
             q = q.Take(__take);
             var rows = await q.ToListAsync();
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return (IResult)new CredentialOmittingResult(rows, new string[] { "VinHash" });
-            var total = await EfCoreFilterDispatch.ApplyFilter(db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking(), filter.Predicates).CountAsync();
+            var total = await EfCoreFilterDispatch.Apply(db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking(), listQuery, global::Acme.Shop.VanFilterAllowlist.Rules).CountAsync();
             return (IResult)new CredentialOmittingResult(new { rows, total }, new string[] { "VinHash" }, envelope: true);
         });
 
-        app.MapGet(prefix + "/vehicles/van/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
-            await db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
+        app.MapGet(prefix + "/vehicles/van/{id}", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
+        {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
+            return await db.Vehicles.OfType<global::Acme.Shop.Van>().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id) is { } found
                 ? (IResult)new CredentialOmittingResult(found, new string[] { "VinHash" })
-                : Results.NotFound(new { error = "not_found" }));
+                : Results.NotFound(new { error = "not_found" });
+        });
 
         app.MapPost(prefix + "/vehicles/van", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
@@ -346,7 +335,7 @@ public static class VehicleRoutes
                 .Value.SerializerOptions;
             System.Text.Json.JsonDocument __body;
             try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }
             using var __bodyScope = __body;
             if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
                 return ValidationIssues.Unreadable();
@@ -377,13 +366,14 @@ public static class VehicleRoutes
             return (IResult)new CredentialOmittingResult(input, new string[] { "VinHash" }, status: 201, location: prefix + "/vehicles/van/" + input.Id);
         });
 
-        async System.Threading.Tasks.Task<IResult> UpdateVan(long id, HttpContext http, global::Acme.Generated.AppDbContext db)
+        async System.Threading.Tasks.Task<IResult> UpdateVan(HttpContext http, global::Acme.Generated.AppDbContext db)
         {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
             var existing = await db.Vehicles.OfType<global::Acme.Shop.Van>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             System.Text.Json.JsonDocument body;
             try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }
-            catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }
+            catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }
             using var bodyScope = body;
             if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();
             if (UnknownFieldCheck.Reject(body.RootElement, KnownFields, http) is { } __unknown) return __unknown;
@@ -440,8 +430,9 @@ public static class VehicleRoutes
         app.MapPatch(prefix + "/vehicles/van/{id}", UpdateVan);
         app.MapPut(prefix + "/vehicles/van/{id}", UpdateVan);
 
-        app.MapDelete(prefix + "/vehicles/van/{id}", async (long id, global::Acme.Generated.AppDbContext db) =>
+        app.MapDelete(prefix + "/vehicles/van/{id}", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
             var existing = await db.Vehicles.OfType<global::Acme.Shop.Van>().FirstOrDefaultAsync(x => x.Id == id);
             if (existing is null) return Results.NotFound(new { error = "not_found" });
             db.Vehicles.Remove(existing);
@@ -457,8 +448,9 @@ public static class VehicleRoutes
             return Results.NoContent();
         });
 
-        app.MapGet(prefix + "/vehicles/van/{id}/tags", async (long id, global::Acme.Generated.AppDbContext db) =>
+        app.MapGet(prefix + "/vehicles/van/{id}/tags", async (HttpContext http, global::Acme.Generated.AppDbContext db) =>
         {
+            if (!RouteErrors.TryReadId<long>(http, out var id)) return RouteErrors.InvalidId();
             if (!await db.Vehicles.OfType<global::Acme.Shop.Van>().AnyAsync(x => x.Id == id))
                 return Results.Ok(new System.Collections.Generic.List<global::Acme.Shop.Tag>());
             var relatedIds = (await db.VehicleTags.AsNoTracking()

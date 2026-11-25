@@ -6,7 +6,5 @@
   not a non-negative integer is now `400 pagination.invalid_value` instead of being ignored, and
   `limit=0` is a page of zero rows. The `dotnet meta verify --codegen` advisory `unbounded-list-pages`
   is retired. Generated-output change — regenerate to pick it up; three-way merge preserves hand
-  edits. The C# generated lane now runs the shared `list-query/` sub-corpus: the paging and
-  refusal scenarios its routes answer today, with search and `or`/`and` to follow. Regenerate, and
-  check any client that reads a whole list without a `limit`:
+  edits. Check any client that reads a whole list without a `limit`:
   [docs/features/migrations/default-list-page-of-fifty.md](docs/features/migrations/default-list-page-of-fifty.md).

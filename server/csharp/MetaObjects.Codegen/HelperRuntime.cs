@@ -72,6 +72,7 @@ public static class HelperRuntime
     /// is built with a <c>report-export</c> generator wired calls it.
     /// <c>SerializerKeys.cs</c> reads the host serializer's own JSON key for a property, so credential
     /// stripping and the PATCH key lookup agree with it under any naming policy.
+    /// <c>RouteErrors.cs</c> answers the named <c>invalid_json</c> and <c>invalid_id</c> refusals.
     /// </summary>
     public static readonly IReadOnlyList<string> Files =
     [
@@ -92,6 +93,7 @@ public static class HelperRuntime
         "DecimalRangeEndpointFilter.cs",
         "ReportExportHttp.cs",
         "SerializerKeys.cs",
+        "RouteErrors.cs",
     ];
 
     /// <summary>MetaObjects.Codegen/Runtime/ files that are CORE and never copied (see the header).</summary>

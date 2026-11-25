@@ -194,18 +194,20 @@ public class HelperRuntimeTests
     [Fact]
     public void Generated_routes_bind_to_the_owned_copy_an_edit_there_is_what_they_compile_against()
     {
-        // Rename the owned FilterParser.Parse. If the generated routes bound to anything but
+        // Rename the owned ListQueryParser.Parse. If the generated routes bound to anything but
         // the owned copy (the package, say), this would not touch them; instead every list
         // handler stops compiling, at the call site in the generated routes file.
         var files = GenerateWithEjectedRoutes();
-        var edited = OwnedRuntime((file, text) => file == "FilterParser.cs"
-            ? text.Replace("public static FilterParseResult Parse(", "public static FilterParseResult ParseEdited(", StringComparison.Ordinal)
+        var edited = OwnedRuntime((file, text) => file == "ListQuery.cs"
+            ? text.Replace("public static ListQueryResult Parse(", "public static ListQueryResult ParseEdited(", StringComparison.Ordinal)
             : text);
         var errors = CompileErrors(
             files.Select(f => (f.Path, f.Content)).Concat(edited).Append(("GlobalUsings.g.cs", ImplicitUsings)));
 
         Assert.NotEmpty(errors);
-        Assert.All(errors, e => Assert.Contains("FilterParser", e));
-        Assert.Contains(errors, e => e.Contains("Routes", StringComparison.Ordinal));
+        // The missing Parse is named, and the knock-on errors (its result has no type) are all at the
+        // call sites in the generated routes.
+        Assert.Contains(errors, e => e.Contains("ListQueryParser", StringComparison.Ordinal));
+        Assert.All(errors, e => Assert.Contains("Routes.g.cs", e));
     }
 }

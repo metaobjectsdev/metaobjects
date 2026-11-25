@@ -12,14 +12,10 @@ namespace Acme.Shop;
 
 public static class LineTotalsRoutes
 {
-    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, SortFieldRule> SortRules = new(System.StringComparer.OrdinalIgnoreCase)
     {
-        "Label",
-        "Lines",
-    };
-
-    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
-    {
+        ["Label"] = new SortFieldRule(property: "Label"),
+        ["Lines"] = new SortFieldRule(property: "Lines"),
     };
 
     /// <summary>Maps <c>LineTotals</c> REST routes. Unauthenticated — see remarks.</summary>
@@ -38,23 +34,16 @@ public static class LineTotalsRoutes
             var qs = http.Request.Query;
             IQueryable<LineTotals> q = db.LineTotals.AsNoTracking();
 
-            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.
-            var filter = EfCoreFilterDispatch.Validate<LineTotals>(FilterParser.Parse(qs, LineTotalsFilterAllowlist.Fields, LineTotalsFilterAllowlist.OpsByField));
-            if (filter.ErrorEnvelope is not null)
-                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
-            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
-
-            // Sort: ?sort=field:asc|desc against the static allowlist.
-            if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
+            // ?filter[...] (or/and groups), ?search, ?sort and the page bounds, against the allowlist.
+            var __parsed = ListQueryParser.Parse(http.Request.QueryString.Value, LineTotalsFilterAllowlist.Rules, SortRules, LineTotalsFilterAllowlist.FieldNames);
+            if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());
+            var listQuery = __parsed.Query!;
+            if (EfCoreFilterDispatch.Validate<LineTotals>(listQuery) is { } __invalid) return Results.BadRequest(__invalid.Body());
+            q = EfCoreFilterDispatch.Apply(q, listQuery, LineTotalsFilterAllowlist.Rules);
+            if (listQuery.Sort is { } __sort && SortRules[__sort.Field].Property is { } __sortProp)
             {
-                var parts = sortRaw.ToString().Split(':', 2);
-                var field = parts[0];
-                if (!SortAllowlist.TryGetValue(field, out var resolved))
-                    return Results.BadRequest(new { error = "invalid_sort", field });
-                var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
-                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
-                q = ApplySortLineTotals(q, resolved, desc);
+                var desc = __sort.Descending;
+                q = ApplySortLineTotals(q, __sortProp, desc);
             }
 
             // Pagination (report): every row up to the cap, refused above it.
@@ -82,7 +71,7 @@ public static class LineTotalsRoutes
             // withCount=1 → { rows, total } envelope; otherwise bare row array.
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return Results.Ok(rows);
-            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.LineTotals.AsNoTracking(), filter.Predicates);
+            var totalQ = EfCoreFilterDispatch.Apply(db.LineTotals.AsNoTracking(), listQuery, LineTotalsFilterAllowlist.Rules);
             var total = await totalQ.CountAsync();
             return Results.Ok(new { rows, total });
         });

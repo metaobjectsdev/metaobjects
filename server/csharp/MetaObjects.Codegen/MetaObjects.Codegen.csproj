@@ -94,5 +94,6 @@
     <EmbeddedResource Include="../MetaObjects.AspNetCore/DecimalRangeEndpointFilter.cs" LogicalName="MetaObjects.AspNetCore.DecimalRangeEndpointFilter.cs" Visible="false" />
     <EmbeddedResource Include="../MetaObjects.AspNetCore/ReportExportHttp.cs" LogicalName="MetaObjects.AspNetCore.ReportExportHttp.cs" Visible="false" />
     <EmbeddedResource Include="../MetaObjects.AspNetCore/SerializerKeys.cs" LogicalName="MetaObjects.AspNetCore.SerializerKeys.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/RouteErrors.cs" LogicalName="MetaObjects.AspNetCore.RouteErrors.cs" Visible="false" />
   </ItemGroup>
 </Project>

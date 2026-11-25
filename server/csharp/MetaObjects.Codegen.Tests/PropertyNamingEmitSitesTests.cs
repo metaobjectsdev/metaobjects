@@ -309,16 +309,15 @@ public class PropertyNamingEmitSitesTests
         var vehicle = One(files, "VehicleRoutes.g.cs");
         Assert.Contains("\"XTitle\" =>", gizmo);
         Assert.Contains("EF.Property<object>(x!, \"XTitle\")", gizmo);
-        Assert.Contains("[\"XTitle\"] = true", gizmo);            // @sortableDefaultOrder keys
+        Assert.Contains("[\"XTitle\"] = new SortFieldRule(\"desc\", \"XTitle\"),", gizmo); // @sortableDefaultOrder keys
         Assert.DoesNotContain("\"Title\"", gizmo);
         Assert.Contains("EF.Property<object>(x!, \"XPlate\")", vehicle);        // TPH base
-        Assert.Contains("[\"XSeatCount\"] = \"XSeatCount\",", vehicle);         // per-subtype sort allowlist
+        Assert.Contains("[\"XSeatCount\"] = new SortFieldRule(property: \"XSeatCount\"),", vehicle); // per-subtype sort rules
         // A rename beyond case: ?sort= also takes the field name (the key ?filter[...] takes), resolved to the property.
-        Assert.Contains("Dictionary<string, string> SortAllowlist", gizmo);
-        Assert.Contains("[\"title\"] = \"XTitle\",", gizmo);
-        Assert.Contains("[\"XTitle\"] = \"XTitle\",", gizmo);
-        Assert.Contains("[\"seatCount\"] = \"XSeatCount\",", vehicle);
-        Assert.Contains("[\"plate\"] = \"XPlate\",", vehicle);
+        Assert.Contains("Dictionary<string, SortFieldRule> SortRules", gizmo);
+        Assert.Contains("[\"title\"] = new SortFieldRule(\"desc\", \"XTitle\"),", gizmo);
+        Assert.Contains("[\"seatCount\"] = new SortFieldRule(property: \"XSeatCount\"),", vehicle);
+        Assert.Contains("[\"plate\"] = new SortFieldRule(property: \"XPlate\"),", vehicle);
         Assert.DoesNotContain("\"Plate\"", vehicle);
         // M:N junction: the FK properties and the target key, by their resolved names.
         Assert.Contains("EF.Property<long>(j, \"XVehicleId\")", vehicle);
@@ -355,7 +354,7 @@ public class PropertyNamingEmitSitesTests
         Assert.Contains("[\"title\"] = \"XTitle\"", allowlist);
         var gizmo = One(files, "GizmoRoutes.g.cs");
         Assert.Contains("GizmoFilterAllowlist.PropertyByField", gizmo);
-        Assert.Contains("EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates, GizmoFilterAllowlist.PropertyByField)", gizmo);
+        Assert.Contains("EfCoreFilterDispatch.Apply(q, listQuery, GizmoFilterAllowlist.Rules, GizmoFilterAllowlist.PropertyByField)", gizmo);
     }
 
     private sealed class FilterRow
