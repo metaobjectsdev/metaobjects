@@ -609,11 +609,12 @@ def _load_collection_result(
         # ejected copy, still opted in) and one it does not (a new node in someone
         # else's package).
         refuse_library_package_misuse(result.root, all_libraries)
+        # Reference sources: the nodes only `reference: true` files declare (codegen skips them).
+        if collection.reference_ids:
+            result.root.reference_nodes = reference_nodes_of(result.root, collection.reference_ids)
         # ADR-0058 Decision 3 — the resolved `Collection` already carries this
         # project's ONE naming setting (read at the same rung as `libraries`); attach
         # it to the loaded root so codegen, the runtime and `verify` agree.
-        if collection.reference_ids:
-            result.root.reference_nodes = reference_nodes_of(result.root, collection.reference_ids)
         result.root.naming = collection.naming
         result.root.wire = collection.wire
         result.root.rules_settings = collection.rules
