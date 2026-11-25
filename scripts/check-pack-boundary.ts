@@ -76,13 +76,19 @@ export function coreFiles(root: string): string[] {
   return files.filter((f) => SCANNED.test(f) && existsSync(join(root, f)));
 }
 
+/**
+ * An id followed by a file name's tail (`.ts`, `.test.ts`, `.schema.json`) is a file stem,
+ * not the id: the tail ends in one of the extensions core's trees hold.
+ */
+const FILE_EXTENSION = /(?:\.[A-Za-z0-9_-]+)*\.(?:[cm]?[jt]sx?|json|ya?ml|py|md|toml|cs|csproj|java|kt|xml|sql)(?![A-Za-z0-9])/;
+
 /** Rule 1 and the source half of rule 2. */
 export function scanCore(root: string, packs: Map<string, string> = packsById(root)): string[] {
   const out: string[] = [];
   const ids = [...packs.keys()];
   // A whole id, not part of a longer name and not a file stem: `metaobjects-config.ts` is
   // core's own config module, not the config pack's provider id.
-  const idRes = ids.map((id) => [id, new RegExp(`(^|[^A-Za-z0-9_-])${id}(?![A-Za-z0-9_-]|\\.[A-Za-z])`)] as const);
+  const idRes = ids.map((id) => [id, new RegExp(`(^|[^A-Za-z0-9_-])${id}(?![A-Za-z0-9_-]|${FILE_EXTENSION.source})`)] as const);
   for (const rel of coreFiles(root)) {
     const text = readFileSync(join(root, rel), "utf8");
     if (!PACK_COORDINATE.test(text) && !INTO_PACKS.test(text) && !ids.some((id) => text.includes(id))) continue;

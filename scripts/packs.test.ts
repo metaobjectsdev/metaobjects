@@ -180,10 +180,14 @@ describe("pack boundary", () => {
     write(root, "server/typescript/packages/cli/src/c.ts", `import { x } from "./metaobjects-demo.js";\n`);
     write(root, "server/python/src/d.py", `SCHEMA = "metaobjects-demo.schema.json"\n`);
     write(root, "server/python/src/e.py", "# The provider is metaobjects-demo.\n");
+    write(root, "server/python/src/f.py", "ID = metaobjects-demo.provider\n");
+    write(root, "server/typescript/packages/cli/test/g.ts", `import "../src/metaobjects-demo.test.ts";\n`);
     const problems = scanCore(root).join("\n");
     expect(problems).not.toContain("c.ts");
     expect(problems).not.toContain("d.py");
+    expect(problems).not.toContain("g.ts");
     expect(problems).toContain('server/python/src/e.py:1: names the independent pack provider "metaobjects-demo"');
+    expect(problems).toContain('server/python/src/f.py:1: names the independent pack provider "metaobjects-demo"');
   });
 
   test("the root workspace may hold the pack glob, and core's scripts may not filter on '*'", () => {

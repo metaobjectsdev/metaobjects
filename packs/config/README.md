@@ -28,7 +28,10 @@ packs, which refer to this pack's nodes by name.
 | `scope.env` | Where the vault keeps one environment's secrets. Its name is the model's environment name; `@project` is the Infisical project; `@env` is Infisical's environment slug (absent: the scope's name). |
 
 The three field attributes are registered on every field subtype (a pack may add optional
-attributes to a type it does not own, ADR-0050); the generators read them on settings only.
+attributes to a type it does not own, ADR-0050); the generators read them on settings only,
+and the first of them to run warns, naming the field, when a model puts one anywhere else. An
+abstract settings group is a base: its settings appear under each group that extends it, not
+under its own name.
 A secret is never referenced by value or by a separate node: it is read under its
 environment name, in the scope the vault maps to the environment being deployed.
 
@@ -78,7 +81,7 @@ export default defineConfig({
 });
 ```
 
-`meta gen` runs no generator over a model with no object at all, so a model that declares a
+Vaults, like settings, are read inside the project's `scope`. `meta gen` runs no generator over a model with no object at all, so a model that declares a
 vault and no settings group writes nothing.
 
 ## Checks

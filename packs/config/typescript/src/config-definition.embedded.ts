@@ -54,9 +54,9 @@ export const CONFIG_DEFINITION: PackDefinition = {
           "type": "scope",
           "subType": "env",
           "name": "*",
-          "min": 0,
+          "min": 1,
           "max": null,
-          "description": "The vault's place for one environment. A vault with none is refused by the generators that read it."
+          "description": "The vault's place for one environment. At least one: the loader does not count child rules, so the generators that read a vault refuse one with none."
         },
         {
           "type": "attr",

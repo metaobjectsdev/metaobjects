@@ -6,7 +6,16 @@
  * see (a name collision across groups, a secret with a default) are collected and thrown
  * together, each naming the node, so one `meta gen` lists them all.
  */
-import { TYPE_OBJECT, toSnakeCase, type AttrValue, type MetaData, type MetaObject } from "@metaobjectsdev/metadata";
+import {
+  DOC_ATTR_DESCRIPTION,
+  FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_REQUIRED,
+  TYPE_OBJECT,
+  toSnakeCase,
+  type AttrValue,
+  type MetaData,
+  type MetaObject,
+} from "@metaobjectsdev/metadata";
 import {
   ENV_NAME_PATTERN,
   FIELD_ATTR_ENV_NAME,
@@ -21,10 +30,6 @@ import {
   type Phase,
 } from "./constants.js";
 import { isVault, isVaultScope } from "./nodes.js";
-
-const ATTR_REQUIRED = "required";
-const ATTR_DEFAULT = "default";
-const ATTR_DESCRIPTION = "description";
 
 export interface Setting {
   /** The environment variable: `@envName`, else `<GROUP>_<FIELD>` in upper snake case. */
@@ -83,7 +88,7 @@ function text(v: AttrValue | undefined): string | undefined {
 }
 
 /** An attribute value as the text an environment variable holds. */
-export function envText(v: AttrValue): string {
+function envText(v: AttrValue): string {
   return typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v);
 }
 
@@ -101,7 +106,8 @@ export function readSettings(objects: readonly MetaObject[]): SettingsGroup[] {
   const seen = new Map<string, string>();
   const groups: SettingsGroup[] = [];
   for (const o of objects) {
-    if (!isSettings(o)) continue;
+    // An abstract group is a base other groups extend: its fields are read through them.
+    if (!isSettings(o) || o.isAbstract) continue;
     const key = o.resolutionKey();
     const settings: Setting[] = [];
     for (const f of o.fields()) {
@@ -116,33 +122,49 @@ export function readSettings(objects: readonly MetaObject[]): SettingsGroup[] {
       else seen.set(envName, where);
       if (f.resolvedIsArray()) problems.push(`${where}: a setting holds one value; @isArray is not supported`);
       const secret = f.attr(FIELD_ATTR_SECRET) === true;
-      const def = f.attr(ATTR_DEFAULT);
+      const def = f.attr(FIELD_ATTR_DEFAULT);
       if (secret && def !== undefined) problems.push(`${where}: a @secret setting may not declare @default (its value belongs in the vault)`);
-      const description = text(f.attr(ATTR_DESCRIPTION));
+      const description = text(f.attr(DOC_ATTR_DESCRIPTION));
       settings.push({
         envName,
         setting: where,
         type: f.typeId.subType,
-        required: f.attr(ATTR_REQUIRED) === true,
+        required: f.attr(FIELD_ATTR_REQUIRED) === true,
         secret,
         phase: f.attr(FIELD_ATTR_PHASE) === PHASE_BUILD ? PHASE_BUILD : PHASE_RUNTIME,
         ...(def !== undefined && !secret ? { default: envText(def) } : {}),
         ...(description !== undefined ? { description } : {}),
       });
     }
-    const description = text(o.attr(ATTR_DESCRIPTION));
+    const description = text(o.attr(DOC_ATTR_DESCRIPTION));
     groups.push({ name: o.name, key, ...(description !== undefined ? { description } : {}), settings });
   }
   if (problems.length > 0) throw new ConfigModelError(problems);
   return groups;
 }
 
+/**
+ * Where a model puts `@secret`, `@envName` or `@phase` on a field of something other than a
+ * settings group: they load there (every field subtype carries them) and nothing reads them.
+ */
+export function misplacedSettingAttrs(objects: readonly MetaObject[]): string[] {
+  const out: string[] = [];
+  for (const o of objects) {
+    if (isSettings(o)) continue;
+    for (const f of o.fields()) {
+      const names = [FIELD_ATTR_SECRET, FIELD_ATTR_ENV_NAME, FIELD_ATTR_PHASE].filter((a) => f.attr(a) !== undefined);
+      if (names.length > 0) out.push(`${o.resolutionKey()}.${f.name}: ${names.map((a) => `@${a}`).join(", ")} only mean something on a field of an object.settings; here nothing reads them`);
+    }
+  }
+  return out;
+}
+
 /** Every vault declared at the root, in model order. Throws a {@link ConfigModelError} listing every problem. */
-export function readVaults(root: MetaData): Vault[] {
+export function readVaults(root: MetaData, inScope: (key: string) => boolean = () => true): Vault[] {
   const problems: string[] = [];
   const out: Vault[] = [];
   for (const v of root.children()) {
-    if (!isVault(v)) continue;
+    if (!isVault(v) || !inScope(v.resolutionKey())) continue;
     const key = v.resolutionKey();
     const scopes: VaultScope[] = [];
     const bySlug = new Map<string, string>();

@@ -11,6 +11,7 @@ export {
   ConfigModelError,
   deriveEnvName,
   isSettings,
+  misplacedSettingAttrs,
   readSettings,
   readVaults,
   type Setting,

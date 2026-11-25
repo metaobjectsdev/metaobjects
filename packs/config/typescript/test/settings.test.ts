@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isMetaObject } from "@metaobjectsdev/metadata";
-import { ConfigModelError, deriveEnvName, readSettings, readVaults } from "../src/index.js";
+import { ConfigModelError, deriveEnvName, misplacedSettingAttrs, readSettings, readVaults } from "../src/index.js";
 import { MODEL, loadModel } from "./model.js";
 
 function withSettings(children: unknown[]): unknown {
@@ -54,6 +54,23 @@ describe("readSettings", () => {
     expect(problems).toContain("acme::app::Db.x: environment variable DATABASE_URL is also acme::app::Database.url");
   });
 
+  test("an abstract group is read only through the groups that extend it", async () => {
+    const groups = readSettings(await objects(withSettings([
+      { "object.settings": { name: "Base", abstract: true, children: [{ "field.string": { name: "host" } }] } },
+      { "object.settings": { name: "Db", extends: "Base", children: [{ "field.int": { name: "port" } }] } },
+    ])));
+    expect(groups.map((g) => g.name)).toEqual(["Db"]);
+    expect(groups[0]!.settings.map((s) => s.envName).sort()).toEqual(["DB_HOST", "DB_PORT"]);
+  });
+
+  test("names setting attributes put on a field of something other than settings", async () => {
+    const found = misplacedSettingAttrs(await objects(withSettings([
+      { "object.value": { name: "Token", children: [{ "field.string": { name: "value", "@secret": true, "@envName": "TOKEN" } }] } },
+      { "object.settings": { name: "Ok", children: [{ "field.string": { name: "x", "@secret": true } }] } },
+    ])));
+    expect(found).toEqual(["acme::app::Token.value: @secret, @envName only mean something on a field of an object.settings; here nothing reads them"]);
+  });
+
   test("derives upper snake case through acronyms and digits", () => {
     expect(deriveEnvName("Database", "poolSize")).toBe("DATABASE_POOL_SIZE");
     expect(deriveEnvName("OAuth2", "clientID")).toBe("O_AUTH2_CLIENT_ID");
@@ -76,6 +93,11 @@ describe("readVaults", () => {
         ],
       },
     ]);
+  });
+
+  test("skips a vault outside the run's scope", async () => {
+    const root = await loadModel(withSettings([{ "vault.infisical": { name: "empty" } }]));
+    expect(readVaults(root, () => false)).toEqual([]);
   });
 
   test("refuses a missing default scope, two scopes on one store environment, and a vault with no scope", async () => {
