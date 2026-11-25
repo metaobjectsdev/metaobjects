@@ -245,7 +245,13 @@ field tree via the render `Verify` engine, resolving refs through a filesystem p
 at `-Dmeta.verify.templateRoot`), and `-Dmeta.verify.mode=deps` (opt-in, never in the unset default set: the dependency drift check of `verify --deps`, resolving `path` dependencies only; see the Java port page). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
-Node-only by the ADR-0015 design — see below.)
+Node-only by the ADR-0015 design — see below.) The **Rust `cargo meta`** port runs the codegen
+and template gates: bare `cargo meta verify` renders the generated crates in memory and diffs
+them (a local run may answer from the stored skip key; `--full`, or a set `CI`, always renders),
+checks every `template.*` body under `prompts/` (or `--prompts <dir>`) against its payload value
+object plus each prompt's `@responseRef` reply, and runs the business-rules gate; `--codegen` and
+`--templates` run one gate alone, and the port has no requirement gate ([the Rust port
+page](../ports/rust.md)).
 
 ## Owned generators: the unchanged-copy notice, `eject --undo`, and `gen --strict`
 
