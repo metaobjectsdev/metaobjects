@@ -109,8 +109,8 @@ that must render the same in both ports should stay inside the corpus vocabulary
   `loop.last`).
 
 Printed scalars are normalized in both ports to the Mustache renderer's form: `true`/`false`,
-a whole float as an integer, and `None`/`undefined` as empty text. A lookup on a missing key
-renders empty however deep it chains (`v.x.y`).
+a whole float as an integer, and a present `None`/`null` as empty text. A lookup on a missing key
+stays missing however deep it chains (`v.x.y`), and printing it raises (Amendment 1).
 
 ## Consequences
 
@@ -121,3 +121,13 @@ renders empty however deep it chains (`v.x.y`).
 - A model whose templates are Jinja renders in Python and TypeScript only. That is by design: the
   engine is a property of the port, and the refusal in the other three ports says so by code.
 - The migration analyzer, the other option in #483, is not built.
+
+## Amendments
+
+### Amendment 1 (2026-11-21) — a variable the payload lacks raises, in both engines
+
+Printing a name absent from the payload raises `render verify failed: ERR_VAR_NOT_ON_PAYLOAD` in
+the Jinja engines (jinja2 and nunjucks) and in every port's Mustache engine (Rust renders no
+Jinja template). It is the message the Mustache path raises, and it applies on every render
+path. A present null still prints empty, and a section over an absent name still renders nothing. Corpus: `fixtures/jinja-render-conformance/jinja-render-error-missing-variable/` and
+`fixtures/render-conformance/render-error-missing-variable/`.

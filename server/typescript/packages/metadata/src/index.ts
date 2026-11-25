@@ -278,6 +278,15 @@ export type AnyMeta =
 export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
+// The vocabulary packs in the default bundle, by id, so an embedder can leave one out:
+// `composeRegistry(coreProviders.filter((p) => p.id !== REPORTING_PROVIDER_ID))`.
+export { rulesProvider, RULES_PROVIDER_ID } from "./core/rules/rules-provider.js";
+export {
+  viewExpressionsProvider,
+  VIEW_EXPRESSIONS_PROVIDER_ID,
+} from "./persistence/view-expressions/view-expressions-provider.js";
+export { reportingProvider, REPORTING_PROVIDER_ID } from "./core/reporting/reporting-provider.js";
+export { requirementsProvider, REQUIREMENTS_PROVIDER_ID } from "./core/requirement/requirements-provider.js";
 
 // FR-033 — the constraint engine: additive merge + the contradiction validator.
 export { mergeConstraints } from "./constraint-merge.js";

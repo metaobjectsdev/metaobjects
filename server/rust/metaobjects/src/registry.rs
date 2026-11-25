@@ -4,6 +4,8 @@
 //! Behaviour follows the TypeScript reference (`registry.ts`), including the
 //! provider attribute-ownership rules of ADR-0062 and the sealing of ADR-0023.
 
+use std::collections::HashSet;
+
 use indexmap::IndexMap;
 use serde_json::Value;
 
@@ -130,6 +132,8 @@ pub struct TypeDefinition {
     pub max_occurs: Option<i64>,
     pub default_name: Option<String>,
     pub references: Vec<ReferenceDescriptor>,
+    /// The attributes of the registered `<type>.base` were folded into this definition.
+    pub extends_base: bool,
 }
 
 impl TypeDefinition {
@@ -149,6 +153,7 @@ impl TypeDefinition {
             max_occurs: None,
             default_name: None,
             references: Vec::new(),
+            extends_base: false,
         }
     }
 
@@ -309,11 +314,40 @@ impl TypeRegistry {
         for attr in &def.attributes {
             Self::check_value_type(attr, &format!("TypeRegistry.register on \"{key}\""))?;
         }
-        for attr in &def.attributes {
+        // An attribute folded in unchanged from the registered `<type>.base` (a pack's
+        // subtype with `extendsBase`, e.g. object.report) is the base owner's, not a new
+        // claim: it is not checked against the registering provider, and is stamped with
+        // the owner the base attribute already has.
+        let base_names: HashSet<String> = if def.sub_type == SUBTYPE_BASE || !def.extends_base {
+            HashSet::new()
+        } else {
+            self.find(&def.type_name, SUBTYPE_BASE)
+                .map(|b| b.attributes.iter().map(|a| a.name.clone()).collect())
+                .unwrap_or_default()
+        };
+        for attr in def
+            .attributes
+            .iter()
+            .filter(|a| !base_names.contains(&a.name))
+        {
             self.check_attr_ownership(&def.type_name, &def.sub_type, &attr.name)?;
         }
         let (type_name, sub_type) = (def.type_name.clone(), def.sub_type.clone());
-        let names: Vec<String> = def.attributes.iter().map(|a| a.name.clone()).collect();
+        let names: Vec<String> = def
+            .attributes
+            .iter()
+            .filter(|a| !base_names.contains(&a.name))
+            .map(|a| a.name.clone())
+            .collect();
+        let inherited: Vec<(String, String)> = def
+            .attributes
+            .iter()
+            .filter(|a| base_names.contains(&a.name))
+            .filter_map(|a| {
+                self.attr_owner(&type_name, SUBTYPE_BASE, &a.name)
+                    .map(|o| (a.name.clone(), o.to_string()))
+            })
+            .collect();
         self.defs.insert(key, def);
         self.sub_types
             .entry(type_name.clone())
@@ -321,6 +355,12 @@ impl TypeRegistry {
             .push(sub_type.clone());
         for name in names {
             self.stamp_attr_owner(&type_name, &sub_type, &name);
+        }
+        for (name, owner) in inherited {
+            self.attr_owners
+                .entry(format!("{type_name}.{sub_type}"))
+                .or_default()
+                .insert(name, owner);
         }
         Ok(())
     }

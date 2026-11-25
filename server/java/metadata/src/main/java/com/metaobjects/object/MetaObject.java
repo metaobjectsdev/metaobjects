@@ -259,27 +259,8 @@ public abstract class MetaObject extends MetaData {
             // (ViewExpressionsTypesMetaDataProvider), not to core.
         });
 
-        // FR-044 — object.report: a fixed combination of dimensions and measures of ONE
-        // entity (@from), compiled to a read-only view. Its fields are DERIVED, never
-        // declared (rule R4 in the reporting validation pass); its structural children
-        // come from spec/metamodel/object.json (extendsBase), like object.projection.
-        registry.registerType(ReportMetaObject.class, def -> {
-            def.type(TYPE_OBJECT).subType(SUBTYPE_REPORT)
-               .description("Report object (derived, read-only) — a declared aggregation of one entity")
-               .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE);
-            def.requiredAttributeWithConstraints(ATTR_REPORT_FROM)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_REPORT_DIMENSIONS)
-               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.requiredAttributeWithConstraints(ATTR_REPORT_MEASURES)
-               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
-            def.optionalAttributeWithConstraints(ATTR_REPORT_SEGMENT)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_FILTER)
-               .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_REPORT_SPINE)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
-        });
+        // object.report is registered by the reporting pack (ReportingTypesMetaDataProvider ->
+        // ReportMetaObject.registerTypes), not by core.
 
         // ADR-0006 Rule 1 — bare `object:` YAML key fuses to `object.entity`.
         registry.setDefaultSubType(TYPE_OBJECT, SUBTYPE_ENTITY);

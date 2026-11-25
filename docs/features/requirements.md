@@ -5,7 +5,9 @@ supposed to do, as metadata, checked by `verify` in every port._
 
 **Status:** registered vocabulary in all five ports (TypeScript, Java, C#, Python, Kotlin).
 The requirement gate runs in every port's `verify`, and every port ships a
-`requirement-tests` generator. The authoring lint is TypeScript-only.
+`requirement-tests` generator. The authoring lint is TypeScript-only. The vocabulary is a
+provider pack, composed by default; what leaving it out does is in
+[Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives).
 
 **Entirely opt-in.** A model with no `requirement.*` nodes gets no diagnostics, generates
 nothing, and reads nothing — no codegen, migrate or runtime path touches the type. You opt in

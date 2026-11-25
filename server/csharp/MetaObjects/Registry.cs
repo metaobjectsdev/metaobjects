@@ -372,8 +372,19 @@ public sealed class TypeRegistry
 
         // ADR-0062: refuse a name another provider already put on a related slot, BEFORE
         // the definition becomes visible, so a refused registration leaves no trace.
+        // An attribute folded in unchanged from the registered `<type>.base` (a pack's
+        // subtype with extendsBase, e.g. object.report) is the base owner's, not a new
+        // claim: it is not checked against the registering provider, and is stamped with
+        // the owner the base attribute already has.
+        // Reference identity, not value equality: a distinct attr that merely looks the same is a claim.
+        HashSet<AttrSchema> baseAttrs = def.TypeId.SubType == SUBTYPE_BASE
+            ? new HashSet<AttrSchema>(ReferenceEqualityComparer.Instance)
+            : _defs.TryGetValue($"{def.TypeId.Type}.{SUBTYPE_BASE}", out TypeDefinition? baseDef)
+                ? new HashSet<AttrSchema>(baseDef.Attributes, ReferenceEqualityComparer.Instance)
+                : new HashSet<AttrSchema>(ReferenceEqualityComparer.Instance);
         foreach (AttrSchema attr in def.Attributes)
         {
+            if (baseAttrs.Contains(attr)) continue;
             CheckAttrOwnership(def.TypeId.Type, def.TypeId.SubType, attr.Name);
         }
 
@@ -384,6 +395,14 @@ public sealed class TypeRegistry
         // own AttrSchema list before calling Register()).
         foreach (AttrSchema attr in def.Attributes)
         {
+            if (baseAttrs.Contains(attr))
+            {
+                if (_attrProvenance.TryGetValue((def.TypeId.Type, SUBTYPE_BASE, attr.Name), out string? baseOwner))
+                {
+                    _attrProvenance[(def.TypeId.Type, def.TypeId.SubType, attr.Name)] = baseOwner;
+                }
+                continue;
+            }
             StampAttrProvenance(def.TypeId.Type, def.TypeId.SubType, attr.Name);
         }
 

@@ -130,7 +130,16 @@ public class TypedPayloadRenderTest {
 
     @Test
     public void getClassIsNotExposedOnABean() {
-        assertEquals("[]", "[" + render("{{class}}{{getClass}}", new BItem("a")) + "]");
+        // getClass is not a payload member, so the tag is a MISSING variable and raises (it must
+        // not render the class name).
+        for (String tag : List.of("{{class}}", "{{getClass}}")) {
+            try {
+                render(tag, new BItem("a"));
+                org.junit.Assert.fail(tag + " must not resolve on a bean");
+            } catch (RenderException e) {
+                org.junit.Assert.assertTrue(e.getMessage(), e.getMessage().contains("ERR_VAR_NOT_ON_PAYLOAD"));
+            }
+        }
     }
 
     // ---- The overlay adds names; it never takes any away -----------------------------------

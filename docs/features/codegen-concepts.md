@@ -66,7 +66,7 @@ each:
 | Mechanism | Speed | Readability of output shape | Travels across ports? | Reach for it when… |
 |---|---|---|---|---|
 | **Direct code** (TS/Java/C#/Python/Kotlin generator) | **Fastest** | Lower — the output is assembled in code; you don't *see* the shape at a glance | No (port-bound) | You want speed + full programmatic power, and complex logic |
-| **Mustache template** | Slower | **Highest** — the output shape is right there in the template; easy to read + review | **Yes** — byte-identical across every port's render engine | The output shape matters more than raw speed; you want one template to serve several languages |
+| **Mustache template** | Slower | **Highest** — the output shape is right there in the template; easy to read + review | **Yes** — byte-identical across every port's render engine (two engines ledger a handful of engine-specific cases; [`docs/CONFORMANCE.md`](../CONFORMANCE.md) records them) | The output shape matters more than raw speed; you want one template to serve several languages |
 | **Groovy** (JVM) | Slower | Medium | JVM | Scriptable JVM authoring without a compile step |
 | **Cross-language** (TS/Python emitting Java/C#) | — | — | Yes | One team authors all generators in their preferred language for any target |
 
@@ -75,7 +75,8 @@ template is *cleaner to look at* — the generated shape is visible in the templ
 instead of buried in string assembly. Pick speed (direct) when the logic is gnarly or
 the run is hot; pick a template (Mustache) when the shape is what you're iterating on,
 or when you want the same output across languages. Mustache is also the natural
-cross-language bridge: the render engine is byte-identical in every port, so one
+cross-language bridge: the render engine is byte-identical in every port (a
+handful of engine-specific cases sit on C#'s and Rust's ledgers), so one
 template emits identical output anywhere.
 
 ## 4. Regeneration strategy — the run skips itself

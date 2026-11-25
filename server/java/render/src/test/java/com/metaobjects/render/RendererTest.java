@@ -27,6 +27,38 @@ public class RendererTest {
         assertEquals("- a\n- b\n- c\n", new Renderer().render(req));
     }
 
+    @Test
+    public void namesTheReferenceResolvesDoNotRaiseAsMissing() {
+        // The engine follows the reference (TypeScript on mustache.js): a dotted name is tried
+        // whole against each context, and a list's length is a property.
+        var shadowed = new RenderRequest(
+            "{{#items}}[{{a.b}}]{{/items}}", null,
+            Map.of("a", Map.of("b", 1), "items", List.of(Map.of("a", Map.of("c", 2)))),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("[1]", new Renderer().render(shadowed));
+
+        var length = new RenderRequest(
+            "count: {{items.length}}", null, Map.of("items", List.of(1, 2, 3)),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("count: 3", new Renderer().render(length));
+    }
+
+    @Test
+    public void aZeroOrNaNNumberIsFalsyForASection() {
+        var zero = new RenderRequest(
+            "{{#n}}yes{{/n}}{{^n}}zero{{/n}} printed: {{n}}", null,
+            Map.of("n", 0),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("zero printed: 0", new Renderer().render(zero));
+
+        // No JSON payload can carry NaN, so the shared corpus cannot pin it.
+        var nan = new RenderRequest(
+            "{{#n}}yes{{/n}}{{^n}}zero{{/n}}", null,
+            Map.of("n", Double.NaN),
+            new InMemoryProvider(Map.of()), "text", null, null);
+        assertEquals("zero", new Renderer().render(nan));
+    }
+
     /** A value object's generated record, as a template's payload (ADR-0056). */
     public record Tag(String label) {}
     public record Profile(String bio, Integer count, List<Tag> tags, Tag sponsor) {}

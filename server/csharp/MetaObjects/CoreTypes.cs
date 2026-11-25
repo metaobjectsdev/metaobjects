@@ -84,6 +84,8 @@ public static class CoreTypes
         // bundle so every existing model loads unchanged.
         MetaObjects.Core.Rules.RulesMetaDataProvider.Instance,
         MetaObjects.Persistence.ViewExpressions.ViewExpressionsMetaDataProvider.Instance,
+        MetaObjects.Core.Reporting.ReportingMetaDataProvider.Instance,
+        MetaObjects.Core.Requirement.RequirementsMetaDataProvider.Instance,
     ];
 
     /// <summary>
@@ -274,13 +276,14 @@ public static class CoreTypes
                     Wildcard(TYPE_ATTR),
                     Wildcard(TYPE_VALIDATOR),
                     Wildcard(TYPE_TEMPLATE),
-                    // Capability requirements are declared beside the entities they describe.
-                    Wildcard(TYPE_REQUIREMENT),
+                    // `requirement` (the requirements pack) and `api` (the rules pack) are
+                    // admitted by their packs' `extends`.
                 ],
                 (tid, n) => new MetaRoot(tid, n),
                 []));
 
-        // object — 5 subtypes (base, entity, value, projection, report)
+        // object — 4 subtypes registered here (base, entity, value, projection); report is the
+        // reporting pack's (ReportingMetaDataProvider)
         List<ChildRule> objectRules =
         [
             Wildcard(TYPE_FIELD),
@@ -311,6 +314,8 @@ public static class CoreTypes
         ];
         foreach (string subType in OBJECT_SUBTYPES)
         {
+            // object.report is the reporting pack's (it folds the registered base).
+            if (subType == OBJECT_SUBTYPE_REPORT) continue;
             // FR-033: object.value's @normalize (the object-level default normalization
             // mode for its enum fields' tolerant extract) is re-homed to the
             // metaobjects-prompt concern provider (reads prompt.json's object.value
@@ -319,14 +324,12 @@ public static class CoreTypes
             // attr.filter object lowered to a view-level WHERE). Strict attr scoping
             // (from spec object.json's projection allow-list) keeps it here and prunes
             // the discriminator attrs, which projection does not declare.
-            // FR-044: object.report carries @from / @dimensions / @measures / @segment /
-            // @filter. Strict attr scoping (from spec object.json's report allow-list)
-            // keeps those and prunes the discriminator attrs, which a report does not
-            // declare; its structural child graph also comes from the spec.
+            // FR-044: object.report (@from / @dimensions / @measures / @segment / @filter /
+            // @spine) is registered by the reporting pack from spec reporting.json, not
+            // in this loop.
             List<AttrSchema> objectAttrs = subType switch
             {
                 OBJECT_SUBTYPE_PROJECTION => [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr, ObjectSchema.CollectionNameAttr],
-                OBJECT_SUBTYPE_REPORT     => [.. ObjectSchema.ObjectAttrs, .. ReportingSchema.ReportAttrs, ObjectSchema.CollectionNameAttr],
                 OBJECT_SUBTYPE_ENTITY     => [.. ObjectSchema.ObjectAttrs, ObjectSchema.CollectionNameAttr],
                 _                         => ObjectSchema.ObjectAttrs.ToList(),
             };
@@ -607,89 +610,8 @@ public static class CoreTypes
             whenToUse:
                 "You need a DB index for query performance (fast lookups/sorts) but NOT uniqueness enforcement. @fields names the indexed columns; the db provider adds @orders / @expr / @where / @using for physical tuning."));
 
-        // requirement — 2 subtypes. The axis is CHECK POLARITY, a genuine behaviour
-        // difference (ADR-0037 §2): `functional` is checked by EXISTENCE (nothing
-        // implements it -> fail), `architectural` by UNIVERSALITY (something violates
-        // it -> fail). Registered rather than hand-parsed because the capability ledger
-        // IS a metadata model: a closed status enum and a list of FQN references to
-        // model nodes are exactly `allowedValues` plus reference resolution, both of
-        // which this registry already owns (requirements-as-metadata ruling amendment 3).
-        // A single MetaRequirement class backs both subtypes (mirrors source/template).
-        // Descriptions + whenToUse + the structural child graph come from the embedded
-        // spec/metamodel/requirement.json via ApplySpecDescriptions — the placeholder
-        // description below is overwritten there, never the shipped prose.
-        foreach (string subType in REQUIREMENT_SUBTYPES)
-        {
-            // Hierarchy IS nesting, not a parent attribute: an L1 solution CONTAINS its
-            // L2 segments. BOTH subtypes nest — an architectural requirement is flat by
-            // DEFAULT rather than by rule, and may opt into a levelled tree so a quality
-            // taxonomy can organise the non-functional set the same way a capability
-            // taxonomy organises the functional one. Declaring the child rule on
-            // `functional` only was an omission, not a design: it made an architectural
-            // node nestable under a FUNCTIONAL parent but never under another
-            // architectural one.
-            List<ChildRule> requirementRules = [Wildcard(TYPE_ATTR), Wildcard(TYPE_REQUIREMENT)];
-
-            registry.Register(
-                Def(
-                    TYPE_REQUIREMENT,
-                    subType,
-                    $"Requirement ({subType})",
-                    requirementRules,
-                    (tid, n) => new MetaRequirement(tid, n),
-                    RequirementSchema.RequirementAttrsMap.TryGetValue(subType, out var reqAttrs)
-                        ? reqAttrs.ToList()
-                        : []));
-        }
-
-        // NOTE: @implementedBy is deliberately NOT declared as a loader `references`
-        // descriptor. That pass always ERRORS on an unresolved target, and a
-        // requirement with status `planned` names nodes that do not exist YET, so declaring
-        // nodes that are GONE — declaring it here would make the entries that carry
-        // the mechanism's only controlled evidence fail to load. The loader owns what
-        // is unconditional (the status enum, shape, levels); `meta verify` owns the
-        // status-conditional resolution, where the severity actually depends on data.
-
-        // FR-044 reporting vocabulary — dimension / measure / segment. Declared as children
-        // of `object.entity` (spec/metamodel/object.json), never root-level, so no root
-        // wildcard is added above. Three types in one provider file (reporting.json)
-        // because they are one vocabulary: a report names dimensions and measures, and
-        // both may reference a segment. `measure.derived` is FR-037 R5's first arithmetic
-        // wave (R13). Descriptions + whenToUse come from the embedded reporting.json via
-        // ApplySpecDescriptions; the placeholder descriptions below are overwritten there.
-        foreach (string subType in DIMENSION_SUBTYPES)
-        {
-            registry.Register(
-                Def(
-                    TYPE_DIMENSION,
-                    subType,
-                    $"Dimension ({subType})",
-                    [Wildcard(TYPE_ATTR)],
-                    (tid, n) => new MetaDimension(tid, n),
-                    ReportingSchema.DimensionAttrsMap[subType].ToList()));
-        }
-        foreach (string subType in MEASURE_SUBTYPES)
-        {
-            registry.Register(
-                Def(
-                    TYPE_MEASURE,
-                    subType,
-                    $"Measure ({subType})",
-                    [Wildcard(TYPE_ATTR)],
-                    (tid, n) => new MetaMeasure(tid, n),
-                    ReportingSchema.MeasureAttrsMap[subType].ToList()));
-        }
-        foreach (string subType in SEGMENT_SUBTYPES)
-        {
-            registry.Register(
-                Def(
-                    TYPE_SEGMENT,
-                    subType,
-                    $"Segment ({subType})",
-                    [Wildcard(TYPE_ATTR)],
-                    (tid, n) => new MetaSegment(tid, n),
-                    ReportingSchema.SegmentAttrsMap[subType].ToList()));
-        }
+        // requirement and the reporting vocabulary (dimension / measure / segment / object.report)
+        // are their own packs: RequirementsMetaDataProvider and ReportingMetaDataProvider.
 
         // template — fourth-pillar metatype (FR-004). prompt + output + toolcall;
         // attr-only children. A single MetaTemplate class backs every subtype (mirrors

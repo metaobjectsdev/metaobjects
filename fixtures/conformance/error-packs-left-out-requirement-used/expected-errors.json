@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_TYPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['requirement.functional']"
+      }
+    }
+  ],
+  "warnings": []
+}
