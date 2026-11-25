@@ -129,8 +129,8 @@ for a TYPED boolean, since `-f` sends the string `"true"` and 422s.)
 hosted checks — every check workflow in `.github/workflows/` is a thin wrapper that calls it.
 `--quick` covers `hygiene.yml` in full plus the TypeScript half of `conformance.yml`, and the
 flagless full run
-adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integration-tests.yml`'s
-Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
+adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor, the `packs` lane (ADR-0069) and
+`integration-tests.yml`'s Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
 `MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
 running it. The no-mistakes validation gate runs the script for you — see `.no-mistakes.yaml`,
 whose `test` command runs `--affected` (only the lanes the change touches, per
