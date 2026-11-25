@@ -79,8 +79,12 @@ surfaces have no such limit.
 
 The non-TypeScript ports read a **neutral subset** of that file —
 `schema_version` and `sources` — and ignore every other top-level key, so the
-TypeScript-owned keys beside them (`migrate`, `extract`, and the rest) never
-become a four-port concern. The C# port names an unknown top-level key on standard
+TypeScript-owned keys beside them (`extract`, and the rest) never
+become a four-port concern. The one exception is Python's `migrate.dialect`
+read: whether the project chose a `meta migrate` dialect (`meta init --dialect`
+writes it) decides whether the agent files and the model-only schema page carry
+the reference migration helper's steps or the project's own tool
+([Python port](../ports/python.md)). The C# port names an unknown top-level key on standard
 error, once per key, and still ignores it ([C# port](../ports/csharp.md#configure)).
 The Node CLI remains the file's only writer; `meta init --config-only` writes it into
 a Maven- or pip-rooted project without adding a TypeScript scaffold.

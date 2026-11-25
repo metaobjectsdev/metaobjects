@@ -906,7 +906,7 @@ meta migrate --db "$DB_URL" --dialect postgres \
 # -> src/main/resources/db/migration/U4__add_program_view.sql
 ```
 
-## Agent-context scaffold is Node-only — by design
+## Agent-context scaffold
 
 The always-on `.metaobjects/AGENTS.md` and the `metaobjects-*` skills (under
 `.claude/skills/` by default, or wherever `--skills-dir` puts them, such as `.agents/skills/`
