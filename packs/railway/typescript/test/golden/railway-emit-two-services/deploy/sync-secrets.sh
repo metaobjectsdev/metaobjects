@@ -13,11 +13,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENVIRONMENT="${1:-}"
-DRY_RUN=0; [ "${2:-}" = "--dry-run" ] && DRY_RUN=1
+DRY_RUN=0
+for arg in "${@:2}"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    *) echo 'usage: bash deploy/sync-secrets.sh <environment> [--dry-run]' >&2; exit 2 ;;
+  esac
+done
 
 # copy <vault project> <vault environment> <railway service> <railway environment> <NAME>
 copy() {
   if [ "$DRY_RUN" = 1 ]; then echo "would copy $5 from $1/$2 to service $3 ($4)"; return; fi
+  # shellcheck disable=SC2016 # the inner shell expands it: the value never enters this one
   keys-axi run --project "$1" --env "$2" --only "$5" -- bash -c '
     [ -n "${!1+set}" ] || { echo "sync-secrets: $1 is not in the vault scope" >&2; exit 1; }
     printf %s "${!1}" | railway variable set "$1" --stdin --service "$2" --environment "$3" --skip-deploys >/dev/null

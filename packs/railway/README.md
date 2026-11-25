@@ -53,8 +53,9 @@ service's name when the project has one service, else the project's name.
 | `value.ref` of another app | `host` `${{svc.RAILWAY_PRIVATE_DOMAIN}}`, `port` its `@port`, `privateUrl` `http://${{svc.RAILWAY_PRIVATE_DOMAIN}}:port`, `publicUrl` `https://${{svc.RAILWAY_PUBLIC_DOMAIN}}`, with `@path` appended |
 
 Variables: when no deployment in the project declares a `value.*` node, the file says
-`variables: { managed: false }` and an apply changes no variable (the CLI reads it; the railway
-3.17.0 SDK's types do not declare it, so a type-check of the file with them reports that line).
+`variables: { managed: false }` and an apply changes no variable. The CLI reads that key and the
+railway 3.17.0 SDK's types do not declare it yet, so the file spreads it from a constant
+(`...unmanagedVariables`): the file type-checks against the SDK, where an object literal would not.
 When one does, the file manages every variable of its services: each setting of the app's
 `@settings` groups is declared, a secret as `preserve()` (the sync script sets it), a non-secret
 with no value as its `@default` or `preserve()`. An apply deletes a variable a managed file does not
@@ -111,6 +112,19 @@ export default defineConfig({
   private network, managed variables.
 
 Names, domains, repositories and project names are placeholders.
+
+The two emit fixtures are modelled on two adopters' hand-written Railway configuration (a
+hand-migrated `.railway/railway.ts`, and two `railway.json` files). The bar is coverage, not
+identity: `typescript/test/coverage.test.ts` evaluates the generated file and checks that every
+fact of that configuration is in it, fact by fact (source, watch patterns, Dockerfile path, health
+check, restart policy, draining, variable policy). Where the generated file goes further:
+
+- it type-checks against the railway SDK;
+- each service carries a comment naming the app and deployment it comes from, and each variable
+  the node it comes from;
+- secrets are never written: they are `preserve()` and the sync script copies them from the vault;
+- the facts the format cannot hold are listed in `deploy/unexpressed.md` instead of dropped;
+- domains, the health path and every reference to another service come from the model.
 
 ## Ports
 

@@ -51,6 +51,11 @@ export const VALUE_ATTR_OUTPUT = "output";
 export const VALUE_ATTR_PATH = "path";
 export const VALUE_OUTPUTS = ["url", "host", "port", "user", "password", "privateUrl", "publicUrl"] as const;
 export type ValueOutput = (typeof VALUE_OUTPUTS)[number];
+export const OUTPUT_URL = "url";
+export const OUTPUT_HOST = "host";
+export const OUTPUT_PORT = "port";
+export const OUTPUT_PRIVATE_URL = "privateUrl";
+export const OUTPUT_PUBLIC_URL = "publicUrl";
 
 /** Raised when a deployment's @app / @environment or a value.ref's @producedBy names nothing, or the wrong kind of node. */
 export const ERR_DELIVERY_UNRESOLVED_REF = "ERR_DELIVERY_UNRESOLVED_REF";
@@ -60,3 +65,13 @@ export const ERR_DELIVERY_DUPLICATE_SETTING = "ERR_DELIVERY_DUPLICATE_SETTING";
 
 /** Raised when two deployments target the same (@app, @environment). */
 export const ERR_DELIVERY_DUPLICATE_DEPLOYMENT = "ERR_DELIVERY_DUPLICATE_DEPLOYMENT";
+
+/** Raised when a value.ref asks its producer for an output it does not have: `@path` on an output that is not a URL, or an app asked for its url, user or password, or for its port with none declared. */
+export const ERR_DELIVERY_UNSUPPORTED_OUTPUT = "ERR_DELIVERY_UNSUPPORTED_OUTPUT";
+
+/** The outputs that are URLs, the only ones a value.ref `@path` may extend. */
+export const URL_OUTPUTS: readonly ValueOutput[] = [OUTPUT_URL, OUTPUT_PRIVATE_URL, OUTPUT_PUBLIC_URL];
+/** The outputs an app produces: its addresses. A resource produces every output its engine has. */
+export const APP_OUTPUTS: readonly ValueOutput[] = [OUTPUT_HOST, OUTPUT_PORT, OUTPUT_PRIVATE_URL, OUTPUT_PUBLIC_URL];
+/** The app outputs that need a runtime.process `@port`. */
+export const PORT_OUTPUTS: readonly ValueOutput[] = [OUTPUT_PORT, OUTPUT_PRIVATE_URL];

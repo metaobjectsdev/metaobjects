@@ -1,3 +1,5 @@
+import { RESTART_ALWAYS, RESTART_NEVER, RESTART_ON_FAILURE } from "@metaobjectsdev/pack-delivery";
+
 // The railway pack's vocabulary names and the Railway spellings it writes, one constant each
 // (metamodel/railway.json is the vocabulary's definition).
 
@@ -20,9 +22,9 @@ export const PARTIAL_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
 /** `runtime.process @restart` → Railway's `deploy.restartPolicyType`. */
 export const RESTART_POLICY: Readonly<Record<string, string>> = {
-  always: "ALWAYS",
-  onFailure: "ON_FAILURE",
-  never: "NEVER",
+  [RESTART_ALWAYS]: "ALWAYS",
+  [RESTART_ON_FAILURE]: "ON_FAILURE",
+  [RESTART_NEVER]: "NEVER",
 };
 
 /**

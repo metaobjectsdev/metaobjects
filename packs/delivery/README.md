@@ -46,7 +46,12 @@ the config pack and the deployment names its vault in `@secrets`. The full defin
 - A model holds at most one deployment per (`@app`, `@environment`), compared as resolved nodes, so
   `Game.server` and `acme::game::Game.server` collide (`ERR_DELIVERY_DUPLICATE_DEPLOYMENT`).
 
-Each fails the load with `ERR_DELIVERY_UNRESOLVED_REF` when it resolves to nothing or to the wrong
+A `value.ref` asks only for an output its producer has (`ERR_DELIVERY_UNSUPPORTED_OUTPUT`): `@path`
+extends a URL output only (`url`, `privateUrl`, `publicUrl`); an app produces `host`, `port`,
+`privateUrl` and `publicUrl`, and `port` and `privateUrl` need a process that declares `@port`. A
+resource's outputs depend on its engine and are left to the platform pack.
+
+A reference fails the load with `ERR_DELIVERY_UNRESOLVED_REF` when it resolves to nothing or to the wrong
 kind of node. A platform pack holds its deployments to the same rule by passing
 `validateDeployment` as its subtype's validator. `@secrets` (a config pack `vault.*`) and
 `@setting` (`Group.field` of an `object.settings`) are names only: this pack does not require the
@@ -65,6 +70,12 @@ overlay, using the loader's existing merge:
 ```
 
 The `railway` pack's `railway-worked-example` fixture is the whole example, both sides.
+
+## Readers
+
+`readBuild(app)` and `readProcesses(app)` return an app's build and processes as plain records
+(resolving accessors, so an inherited build counts). A platform pack's generator reads through
+them.
 
 ## Ports
 

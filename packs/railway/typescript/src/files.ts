@@ -7,15 +7,12 @@
  * into `railway variable set --stdin`: no script prints one or puts one on a command line.
  */
 import { RAILWAY_SDK_VERSION } from "./constants.js";
-import { isStatic, type RailwayDeployment, type RailwayProject } from "./model.js";
+import { BUILD_SUBTYPE_STATIC } from "@metaobjectsdev/pack-delivery";
+import type { RailwayDeployment, RailwayProject } from "./model.js";
 
 /** A shell word: bare when it is safe, else single-quoted. */
 function sh(s: string): string {
   return /^[A-Za-z0-9_./:@-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-function secretsOf(d: RailwayDeployment): string[] {
-  return d.settings.filter((s) => s.secret).map((s) => s.envName);
 }
 
 function md(s: string): string {
@@ -39,9 +36,9 @@ export function unexpressedFacts(d: RailwayDeployment, manageVariables: boolean)
       how: "Railway builds from the repository root; the file has no build context. Set the service's root directory in Railway, or build from the root.",
     });
   }
-  if (isStatic(b)) {
+  if (b?.kind === BUILD_SUBTYPE_STATIC && b.directory !== undefined) {
     out.push({
-      fact: `Static directory ${md(b?.directory ?? "")} (build.static)`,
+      fact: `Static directory ${md(b.directory)} (build.static)`,
       how: "Railway has no setting that serves a directory of files. Serve it with a process (runtime.process @command), or deploy the app on a static host.",
     });
   }
@@ -64,7 +61,7 @@ export function unexpressedFacts(d: RailwayDeployment, manageVariables: boolean)
       how: "The file attaches the domains to the service; the DNS record each needs (the CNAME Railway shows for it) is set at the DNS provider. deploy/doctor.sh checks each answers on the health path.",
     });
   }
-  const secrets = secretsOf(d);
+  const secrets = d.secrets;
   if (secrets.length > 0 && d.vault !== undefined) {
     out.push({
       fact: `Secret values: ${secrets.map(md).join(", ")}`,
@@ -149,11 +146,18 @@ export function renderSyncSecrets(project: RailwayProject, header: string): stri
     'cd "$(dirname "$0")/.."',
     "",
     'ENVIRONMENT="${1:-}"',
-    'DRY_RUN=0; [ "${2:-}" = "--dry-run" ] && DRY_RUN=1',
+    "DRY_RUN=0",
+    'for arg in "${@:2}"; do',
+    '  case "$arg" in',
+    "    --dry-run) DRY_RUN=1 ;;",
+    `    *) echo ${sh(`usage: ${SYNC_USAGE}`)} >&2; exit 2 ;;`,
+    "  esac",
+    "done",
     "",
     "# copy <vault project> <vault environment> <railway service> <railway environment> <NAME>",
     "copy() {",
     '  if [ "$DRY_RUN" = 1 ]; then echo "would copy $5 from $1/$2 to service $3 ($4)"; return; fi',
+    "  # shellcheck disable=SC2016 # the inner shell expands it: the value never enters this one",
     `  keys-axi run --project "$1" --env "$2" --only "$5" -- bash -c '`,
     `    [ -n "\${!1+set}" ] || { echo "sync-secrets: $1 is not in the vault scope" >&2; exit 1; }`,
     `    printf %s "\${!1}" | railway variable set "$1" --stdin --service "$2" --environment "$3" --skip-deploys >/dev/null`,
@@ -166,7 +170,7 @@ export function renderSyncSecrets(project: RailwayProject, header: string): stri
       (ds, env) => {
         const body: string[] = [];
         for (const d of ds) {
-          const secrets = secretsOf(d);
+          const secrets = d.secrets;
           if (secrets.length === 0 || d.vault === undefined) continue;
           for (const s of secrets) body.push(`copy ${sh(d.vault.scope.project)} ${sh(d.vault.scope.env)} ${sh(d.service)} ${sh(env)} ${s}`);
         }
@@ -245,20 +249,24 @@ export function renderDoctor(project: RailwayProject, header: string): string {
     "  esac",
     "}",
     "",
-    "# answers <url>",
-    "answers() {",
-    '  if curl -fsS -o /dev/null --max-time 10 "$1"; then ok "$1 answers"; else bad "$1 does not answer 2xx"; fi',
-    "}",
-    "",
+    // Only when some domain is checked: shellcheck flags a function nothing calls.
+    ...(project.deployments.some((d) => healthUrls(d).length > 0)
+      ? [
+          "# answers <url>",
+          "answers() {",
+          '  if curl -fsS -o /dev/null --max-time 10 "$1"; then ok "$1 answers"; else bad "$1 does not answer 2xx"; fi',
+          "}",
+          "",
+        ]
+      : []),
     ...caseBlock(
       project,
       (ds, env) => {
         const body: string[] = [];
         for (const d of ds) {
-          const secrets = secretsOf(d);
-          if (secrets.length > 0 && d.vault !== undefined) {
-            body.push(`in_vault ${sh(d.vault.scope.project)} ${sh(d.vault.scope.env)} ${secrets.join(" ")}`);
-            body.push(`on_railway ${sh(d.service)} ${sh(env)} ${secrets.join(" ")}`);
+          if (d.secrets.length > 0 && d.vault !== undefined) {
+            body.push(`in_vault ${sh(d.vault.scope.project)} ${sh(d.vault.scope.env)} ${d.secrets.join(" ")}`);
+            body.push(`on_railway ${sh(d.service)} ${sh(env)} ${d.secrets.join(" ")}`);
           }
         }
         body.push(`plan_clean ${sh(env)}`);
@@ -299,10 +307,10 @@ export function renderDeploy(project: RailwayProject, header: string): string {
     'cd "$(dirname "$0")/.."',
     "",
     'ENVIRONMENT="${1:-}"',
-    "YES=(); REDEPLOY=0",
+    'YES=""; REDEPLOY=0',
     'for arg in "${@:2}"; do',
     '  case "$arg" in',
-    "    --yes) YES=(--yes) ;;",
+    "    --yes) YES=--yes ;;",
     "    --redeploy) REDEPLOY=1 ;;",
     `    *) echo ${sh(`usage: ${DEPLOY_USAGE}`)} >&2; exit 2 ;;`,
     "  esac",
@@ -325,7 +333,8 @@ export function renderDeploy(project: RailwayProject, header: string): string {
     '  railway environment "$1" >/dev/null',
     "  ensure_sdk",
     "  railway config plan",
-    '  railway config apply "${YES[@]}"',
+    "  # shellcheck disable=SC2086 # YES is empty or one word",
+    "  railway config apply $YES",
     "}",
     "",
     ...caseBlock(
@@ -351,7 +360,7 @@ export function renderDeploy(project: RailwayProject, header: string): string {
 export function renderDeploySkill(project: RailwayProject, header: string): string {
   const services = [...new Set(project.deployments.map((d) => d.service))];
   const rows = project.deployments.map((d) => {
-    const secrets = secretsOf(d);
+    const secrets = d.secrets;
     const vault = d.vault === undefined ? "none" : md(`${d.vault.scope.project}/${d.vault.scope.env}`);
     return `| ${md(d.environment)} | ${md(d.service)} | ${d.branch === undefined ? "none" : md(d.branch)} | ${d.domains.length === 0 ? "none" : d.domains.map(md).join(", ")} | ${vault} (${secrets.length} secret${secrets.length === 1 ? "" : "s"}) |`;
   });

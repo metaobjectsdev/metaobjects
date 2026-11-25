@@ -1,0 +1,35 @@
+{
+  "errors": [
+    {
+      "code": "ERR_DELIVERY_UNSUPPORTED_OUTPUT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['deployment.railway'].children[0]['value.ref']"
+      }
+    },
+    {
+      "code": "ERR_DELIVERY_UNSUPPORTED_OUTPUT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['deployment.railway'].children[1]['value.ref']"
+      }
+    },
+    {
+      "code": "ERR_DELIVERY_UNSUPPORTED_OUTPUT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['deployment.railway'].children[2]['value.ref']"
+      }
+    }
+  ],
+  "warnings": []
+}

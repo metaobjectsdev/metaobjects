@@ -19,6 +19,7 @@ export default defineRailway((ctx) => {
   if (ctx.environment === "production") {
     return project("acme-prod", {
       resources: [
+        // app.service acme::tables::Tables.arena, deployed by deployment.railway acme::tables::arena-production
         service("arena", {
           source: github("acme/tables", { branch: "main" }),
           build: {
@@ -46,6 +47,7 @@ export default defineRailway((ctx) => {
             SESSION_SECRET: preserve(), // acme::tables::Session.secret, secret: copied from the vault by the sync script
           },
         }),
+        // app.service acme::tables::Tables.java, deployed by deployment.railway acme::tables::java-production
         service("java", {
           source: github("acme/tables", { branch: "main" }),
           build: {

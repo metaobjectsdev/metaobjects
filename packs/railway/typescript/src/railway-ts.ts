@@ -8,6 +8,7 @@
  * and anything else Railway runs beside them are left alone. One branch per environment the
  * model deploys to; Railway passes the environment being planned in `ctx.environment`.
  */
+import { BUILD_SUBTYPE_COMMAND, BUILD_SUBTYPE_DOCKERFILE } from "@metaobjectsdev/pack-delivery";
 import { RESTART_POLICY, RAILWAY_IAC_MODULE, RAILWAY_SDK_VERSION } from "./constants.js";
 import type { RailwayDeployment, RailwayProject } from "./model.js";
 
@@ -16,7 +17,7 @@ class Code {
   constructor(readonly text: string) {}
 }
 
-type Value = string | number | boolean | Code | readonly Value[] | { readonly [key: string]: Value | undefined };
+type Value = string | number | boolean | Code | Commented | readonly Value[] | { readonly [key: string]: Value | undefined };
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
@@ -24,8 +25,21 @@ function key(k: string): string {
   return IDENT.test(k) ? k : JSON.stringify(k);
 }
 
+/** An object whose entries each carry a trailing `// comment`. */
+class Commented {
+  constructor(
+    readonly entries: Readonly<Record<string, Value>>,
+    readonly comments: ReadonlyMap<string, string>,
+  ) {}
+}
+
 /** A value as TypeScript source, one entry per line, at `indent`. */
-function lit(v: Value, indent: string, comments: ReadonlyMap<string, string> = new Map()): string {
+function lit(v: Value, indent: string): string {
+  let comments: ReadonlyMap<string, string> = new Map();
+  if (v instanceof Commented) {
+    comments = v.comments;
+    v = v.entries;
+  }
   if (v instanceof Code) return v.text;
   if (typeof v !== "object") return JSON.stringify(v);
   const inner = `${indent}  `;
@@ -49,29 +63,33 @@ function watchPatterns(d: RailwayDeployment): string[] | undefined {
   return [...include, ...b.watchExclude.map((g) => `!${g}`)];
 }
 
+/** The block when any of its entries is set, else undefined (the key is then left out). */
+function nonEmpty(block: Record<string, Value | undefined>): Record<string, Value | undefined> | undefined {
+  return Object.values(block).some((x) => x !== undefined) ? block : undefined;
+}
+
 function buildBlock(d: RailwayDeployment): Record<string, Value | undefined> | undefined {
   const b = d.build;
   const out: Record<string, Value | undefined> = {};
-  if (b?.kind === "dockerfile" && b.path !== undefined) {
+  if (b?.kind === BUILD_SUBTYPE_DOCKERFILE && b.path !== undefined) {
     out["builder"] = "DOCKERFILE";
     out["dockerfilePath"] = b.path;
   }
-  if (b?.kind === "command" && b.command !== undefined) out["buildCommand"] = b.command;
+  if (b?.kind === BUILD_SUBTYPE_COMMAND && b.command !== undefined) out["buildCommand"] = b.command;
   out["watchPatterns"] = watchPatterns(d);
-  return Object.values(out).some((x) => x !== undefined) ? out : undefined;
+  return nonEmpty(out);
 }
 
 function deployBlock(d: RailwayDeployment): Record<string, Value | undefined> | undefined {
   const p = d.processes[0];
-  const out: Record<string, Value | undefined> = {
+  return nonEmpty({
     startCommand: p?.command,
     healthcheckPath: p?.healthPath,
     healthcheckTimeout: p?.healthTimeoutSeconds,
     restartPolicyType: p?.restart === undefined ? undefined : RESTART_POLICY[p.restart],
     drainingSeconds: p?.drainSeconds,
     cronSchedule: d.schedule,
-  };
-  return Object.values(out).some((x) => x !== undefined) ? out : undefined;
+  });
 }
 
 function sourceCall(d: RailwayDeployment, imports: Set<string>): Code | undefined {
@@ -92,15 +110,14 @@ function serviceCall(d: RailwayDeployment, manageVariables: boolean, imports: Se
   const domains = d.domains.map((domain) => (port === undefined ? domain : { domain, port }));
   const replicas: Value | undefined =
     d.region !== undefined ? { [d.region]: d.replicas ?? 1 } : d.replicas;
-  let env: Record<string, Value> | undefined;
-  const notes = new Map<string, string>();
+  let env: Commented | undefined;
   if (manageVariables) {
-    env = {};
+    const entries: Record<string, Value> = {};
     for (const v of d.variables) {
       if (v.kind === "preserve") imports.add("preserve");
-      env[v.name] = v.kind === "preserve" ? new Code("preserve()") : v.value ?? "";
-      notes.set(v.name, v.from);
+      entries[v.name] = v.kind === "preserve" ? new Code("preserve()") : v.value ?? "";
     }
+    env = new Commented(entries, new Map(d.variables.map((v) => [v.name, v.from])));
   }
   const config: Record<string, Value | undefined> = {
     source: sourceCall(d, imports),
@@ -108,22 +125,20 @@ function serviceCall(d: RailwayDeployment, manageVariables: boolean, imports: Se
     deploy: deployBlock(d),
     domains: domains.length === 0 ? undefined : domains,
     replicas,
+    env,
   };
-  const body = lit(config, indent);
-  const envText = env === undefined ? "" : `\n${indent}  env: ${lit(env, `${indent}  `, notes)},`;
-  // `env` goes last, with a comment per variable; splice it before the closing brace.
-  const withEnv = envText === "" ? body : `${body.slice(0, body.lastIndexOf("\n"))}${envText}\n${indent}}`;
-  return `service(${JSON.stringify(d.service)}, ${withEnv})`;
+  return `service(${JSON.stringify(d.service)}, ${lit(config, indent)})`;
 }
 
 function projectCall(project: RailwayProject, ds: readonly RailwayDeployment[], imports: Set<string>, indent: string): string {
   const inner = `${indent}  `;
-  const services = ds.map((d) => `${inner}  ${serviceCall(d, project.manageVariables, imports, `${inner}  `)},`).join("\n");
-  // The CLI reads `variables` (its variable policy); the railway 3.17.0 SDK's types do not declare
-  // it, so a type-check of the file with those types reports it, and Railway still honours it.
-  const variables = project.manageVariables
-    ? ""
-    : `${inner}// Read by the Railway CLI; the railway ${RAILWAY_SDK_VERSION} SDK's types do not declare it yet.\n${inner}variables: { managed: false },\n`;
+  // Each service names the model nodes its facts come from.
+  const services = ds
+    .map((d) => `${inner}  // ${d.appKey}, deployed by deployment.railway ${d.key}\n${inner}  ${serviceCall(d, project.manageVariables, imports, `${inner}  `)},`)
+    .join("\n");
+  // Spread from a constant: the railway SDK's types do not declare `variables`, which only an
+  // object literal's excess-property check would refuse, so the file type-checks.
+  const variables = project.manageVariables ? "" : `${inner}...unmanagedVariables,\n`;
   return `project(${JSON.stringify(project.name)}, {\n${variables}${inner}resources: [\n${services}\n${inner}],\n${indent}})`;
 }
 
@@ -160,6 +175,13 @@ export function renderRailwayTs(project: RailwayProject, header: string): string
     "",
     `export const partial = ${JSON.stringify(project.partial)};`,
     "",
+    ...(project.manageVariables
+      ? []
+      : [
+          `/** Read by the Railway CLI (its variable policy); the railway ${RAILWAY_SDK_VERSION} SDK's types do not declare it yet. */`,
+          "const unmanagedVariables = { variables: { managed: false } };",
+          "",
+        ]),
     "export default defineRailway((ctx) => {",
     ...branches,
     `  throw new Error(\`.railway/railway.ts: the model deploys nothing to environment "\${ctx.environment}" (it deploys to: ${declared})\`);`,

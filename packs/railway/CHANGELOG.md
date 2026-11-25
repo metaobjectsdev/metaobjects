@@ -13,4 +13,6 @@ This pack's own changelog (ADR-0069). The root `CHANGELOG.md` records core only.
   file does not hold), `deploy/sync-secrets.sh` (vault to Railway through `keys-axi`),
   `deploy/deploy.sh`, `deploy/doctor.sh` and a deploy skill. The pack now requires the config pack,
   for settings and vaults. Fixtures `railway-emit-one-service` and `railway-emit-two-services`,
-  with golden output. TypeScript port.
+  with golden output, and a coverage test that holds the generated file to every fact of the
+  hand-written configuration the fixtures are modelled on. The generated file type-checks against
+  the SDK and names, beside each service and variable, the model node it comes from. TypeScript port.

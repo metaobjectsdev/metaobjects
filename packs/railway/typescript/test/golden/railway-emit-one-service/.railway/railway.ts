@@ -14,12 +14,15 @@ import { defineRailway, github, project, service } from "railway/iac";
 
 export const partial = "game";
 
+/** Read by the Railway CLI (its variable policy); the railway 3.17.0 SDK's types do not declare it yet. */
+const unmanagedVariables = { variables: { managed: false } };
+
 export default defineRailway((ctx) => {
   if (ctx.environment === "production") {
     return project("game", {
-      // Read by the Railway CLI; the railway 3.17.0 SDK's types do not declare it yet.
-      variables: { managed: false },
+      ...unmanagedVariables,
       resources: [
+        // app.service acme::game::Game.server, deployed by deployment.railway acme::game::server-production
         service("game", {
           source: github("acme/game", { branch: "main", checkSuites: false }),
           build: {

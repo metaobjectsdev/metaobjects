@@ -16,10 +16,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENVIRONMENT="${1:-}"
-YES=(); REDEPLOY=0
+YES=""; REDEPLOY=0
 for arg in "${@:2}"; do
   case "$arg" in
-    --yes) YES=(--yes) ;;
+    --yes) YES=--yes ;;
     --redeploy) REDEPLOY=1 ;;
     *) echo 'usage: bash deploy/deploy.sh <environment> [--yes] [--redeploy]' >&2; exit 2 ;;
   esac
@@ -44,7 +44,8 @@ settle() {
   railway environment "$1" >/dev/null
   ensure_sdk
   railway config plan
-  railway config apply "${YES[@]}"
+  # shellcheck disable=SC2086 # YES is empty or one word
+  railway config apply $YES
 }
 
 case "$ENVIRONMENT" in

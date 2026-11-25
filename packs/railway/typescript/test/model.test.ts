@@ -68,15 +68,6 @@ describe("readRailway refuses what Railway cannot do", () => {
     expect(p.join("\n")).toContain('"Nope.thing" names no setting');
   });
 
-  test("@path on an output that is not a URL", async () => {
-    const p = await problems(
-      oneService(
-        (c) => (deployment(c)["children"] = [{ "value.ref": { name: "h", "@setting": "Database.url", "@producedBy": "Game.db", "@output": "host", "@path": "/x" } }]),
-      ),
-    );
-    expect(p.join("\n")).toContain("@path is appended to a URL");
-  });
-
   test("an output the engine does not supply", async () => {
     const p = await problems(
       oneService((c) => {
@@ -128,5 +119,30 @@ describe("readRailway refuses what Railway cannot do", () => {
   test("a partial name Railway refuses", async () => {
     const p = await problems(oneService((c) => (deployment(c)["@service"] = "game server")));
     expect(p.join("\n")).toContain("partial name");
+  });
+  test("a deployment with no values still declares its settings, for a project whose file manages variables", async () => {
+    const root = await loadModels([{ id: "meta.game.json", json: oneService(() => {}) }]);
+    const d = pickProject(readRailway(root, root.children().filter(isMetaObject) as MetaObject[]))!.deployments[0]!;
+    expect(d.hasValues).toBe(false);
+    expect(d.variables.map((v) => [v.name, v.kind])).toEqual([
+      ["DATABASE_URL", "preserve"],
+      ["LLM_API_KEY", "preserve"],
+      ["LLM_MODEL", "literal"],
+      ["REDIS_URL", "preserve"],
+    ]);
+  });
+
+  test("a settings problem is reported alone, not as every deployment that reads the settings", async () => {
+    const p = await problems(
+      oneService((c) => {
+        const redis = c.find((x) => (x["object.settings"] as { name?: string } | undefined)?.name === "Redis")!["object.settings"]!;
+        (redis["children"] as Record<string, Record<string, unknown>>[])[0]!["field.string"]!["@envName"] = "DATABASE_URL";
+        deployment(c)["children"] = [
+          { "value.literal": { name: "a", "@setting": "Database.url", "@literal": "x" } },
+          { "value.literal": { name: "b", "@setting": "Redis.url", "@literal": "y" } },
+        ];
+      }),
+    );
+    expect(p).toEqual(["acme::game::Redis.url: environment variable DATABASE_URL is also acme::game::Database.url"]);
   });
 });

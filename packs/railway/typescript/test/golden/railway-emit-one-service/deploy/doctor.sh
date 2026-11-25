@@ -54,11 +54,6 @@ plan_clean() {
   esac
 }
 
-# answers <url>
-answers() {
-  if curl -fsS -o /dev/null --max-time 10 "$1"; then ok "$1 answers"; else bad "$1 does not answer 2xx"; fi
-}
-
 case "$ENVIRONMENT" in
   production)
     in_vault acme-game prod LLM_API_KEY
