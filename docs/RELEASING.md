@@ -89,7 +89,7 @@ step. Each port's eject-contract test fails on a gap that is not listed, so an e
 deleted before its gap is closed.
 
 **Why this is step 0 and not a nicety:** `0.21.1` shipped *without* a `timestampMode` fix that was
-already written and sitting on an unmerged branch. Because versions are immutable on all four
+already written and sitting on an unmerged branch. Because versions are immutable on all five
 registries, the only correction was a full coordinated `0.21.2` within the hour — four publishes, an
 ~11-minute Maven deploy, and a second round of adopter notification, to ship work that already
 existed. The single shared patch number makes an omission cost four publishes, not one.
@@ -256,7 +256,7 @@ Amendment 2). Its last published version is 1.2.3, and it stays on the registry.
    that run on a `v*` tag and nowhere else. (They were dormant while Actions was off,
    2026-09-16 to 09-20, and step 3 above was what gated the cut instead; step 3 still
    earns its place, because it is the only gate that runs BEFORE the tag.) The ordering
-   matters because those runs land on the FINAL coordinated tree — all four registries bumped, docs refreshed, payload true —
+   matters because those runs land on the FINAL coordinated tree — all five registries bumped, docs refreshed, payload true —
    instead of the npm-only commit, which is a tree that never actually shipped.
    `publish-npm.yml` triggers on `npm-v*`, not `v*`, so moving the tag does not re-trigger
    a publish.
@@ -360,7 +360,7 @@ gate. **Answering that question is a human step in every release.**
 **When you cut a release that moves `metamodelVersion`:**
 
 1. `node scripts/check-metamodel-version.mjs --set <version>` — it writes the manifest
-   **and all four port constants** in one go (Kotlin emits through the JVM's). A partial
+   **and all five port constants** in one go (Kotlin emits through the JVM's). A partial
    edit is caught by `registry-conformance`, but only in the lane for the port you
    forgot, so do not hand-edit. Then re-run the corpus in every port.
 2. The changelog entry MUST say the metamodel version moved, and to what. Post-1.0 the
@@ -418,7 +418,7 @@ did not track what an adopter experiences either, and it pushed additions to shi
 into a minor or a long-lived release line.
 
 **`metamodelVersion` moves by the same decision**, and every move of it, at any release level,
-publishes all four registries. See "The two-contracts rule" above for its patch component and
+publishes all five registries. See "The two-contracts rule" above for its patch component and
 what the gate checks until that is implemented.
 
 **Do not invert the caret rule.** "Pre-1.0 `^0.22.x` resolves `<0.23.0`, so a consumer adopts
@@ -629,10 +629,10 @@ are its check.
 
 **Before `bun publish`: run the FULL local CI on the release commit and confirm it is
 green.** Its `ts-slow` section carries the real-Postgres migrate gate. Publishing is
-irreversible on all four registries, and the `v*` tag is pushed *after* `bun publish`, so
+irreversible on all five registries, and the `v*` tag is pushed *after* `bun publish`, so
 even though Actions is on (since 2026-09-20), a tag-triggered `integration-tests` run could
 never be the pre-publish gate. This is the last gate that can precede the irreversible step,
-and it is the only one that runs before it, so the flagless script (all five ports, the
+and it is the only one that runs before it, so the flagless script (all six ports, the
 reactor, the docker matrix) is what you run, not `--quick`. Run it on the commit you will
 tag, after every fix for this release has merged: the `python-v`, `csharp-v` and `java-v`
 tags must sit on that same commit, so cut the npm release commit from `main` only once the

@@ -1,10 +1,11 @@
 # Capability requirements
 
 _`requirement.functional` / `requirement.architectural` — record what your system is
-supposed to do, as metadata, checked by `verify` in every port._
+supposed to do, as metadata, checked by `verify` in every port that ships the gate._
 
-**Status:** registered vocabulary in all five ports (TypeScript, Java, C#, Python, Kotlin).
-The requirement gate runs in every port's `verify`, and every port ships a
+**Status:** registered vocabulary in all six ports (TypeScript, Java, C#, Python, Kotlin, Rust).
+The requirement gate runs in every port's `verify` but Rust's, where it is planned (RS-V2),
+and every port but Rust ships a
 `requirement-tests` generator. The authoring lint is TypeScript-only. The vocabulary is a
 provider pack, composed by default; what leaving it out does is in
 [Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives).
@@ -337,7 +338,8 @@ judgements the ledger exists to record, and no check reaches them.
 
 ## The gate in every port
 
-The gate is the same in all five ports. Each port's `verify` runs it on every run, with no
+The gate is the same in the five ports that have it (TypeScript, Java, Kotlin, C#, Python;
+Rust's is planned, RS-V2). Each port's `verify` runs it on every run, with no
 subverb to ask for it, from the port's own core library
 ([ADR-0057](../../spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md)).
 A shared corpus,
@@ -351,6 +353,7 @@ message text of each diagnostic, and the summary counts.
 | Python | `metaobjects verify` | `metaobjects verify — requirements:` |
 | Java, Kotlin | `mvn metaobjects:verify` (one goal for both, in either mode) | `metaobjects:verify — requirements:` |
 | C# | `dotnet meta verify` | `dotnet meta verify — requirements:` |
+| Rust | planned (RS-V2) | — |
 
 A bare `dotnet meta verify` runs the requirement gate with the other default gates, and needs a
 `prompts/` or `templates/` directory (else it exits 2 before any gate runs); naming
@@ -521,7 +524,7 @@ Pair it with `@trackedBy` to link the ticket it will be built under.
 **This is a recommended approach, not a contract.** The `requirement-tests` generator, its
 default renderer and the witness model described here are a reference helper
 ([ADR-0034 Amendment 3](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-3-2026-09-22--generators-are-reference-helpers-the-core-is-what-metaobjects-guarantees)).
-Every port ships one and every port can eject it, and an application may change its copy or
+Every port but Rust ships one and every port that ships it can eject it, and an application may change its copy or
 replace it. The checks in `verify` are the part MetaObjects guarantees. They are not
 ejectable in any port, because they are the contract the ports share.
 

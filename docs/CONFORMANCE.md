@@ -190,9 +190,10 @@ canonical (`fixtures/registry-conformance/expected-registry.json`).
 - *Loads strictly in every port.* Each port registers the `metaobjects-ui-web` provider
   (`view.textarea @rows`, the `view.image` attrs) and `@object` / `@objectAdapter` on
   `object.*`, loads all three fixtures strictly, and emits `implementedIn` in its manifest, which
-  byte-matches the canonical in all five ports (`KindOneVocabularyTests` in C#;
+  byte-matches the canonical in all six ports (`KindOneVocabularyTests` in C#;
   `registry-conformance.test.ts` in TypeScript; `RegistryManifestConformanceTest` in Java and
-  Kotlin; `test_registry_conformance.py` in Python).
+  Kotlin; `test_registry_conformance.py` in Python; `metaobjects/tests/registry_conformance.rs`
+  in Rust).
 - *Port-scoped, for comparison* (`ports`, language-specific by nature, never "pending"):
   `@objectAdapter` (`["java", "kotlin"]`).
 
@@ -239,7 +240,7 @@ port's ORM model carries beside it:
 Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
 `generator-registry-conformance/registry.json`.
 
-- *Gated in all five ports.* Each port's eject-contract test asserts that every generator it
+- *Gated in every port.* Each port's eject-contract test asserts that every generator it
   ships is in the registry (census), that every registered generator ships eject source
   unless the shared file exempts it (completeness), and that each generator ejected alone
   compiles or loads, references nothing in the codegen packages outside the engine surface
@@ -258,18 +259,20 @@ Amendment 8). A gate, not a corpus: it has no fixtures of its own, and reads
 
 **Capability requirements** ([features/requirements.md](features/requirements.md)):
 
-- *Vocabulary — gated in all five ports.* The types, their attributes and their closed
+- *Vocabulary — gated in all six ports.* The types, their attributes and their closed
   enums travel in `registry-conformance`'s byte-matched manifest, which every port
   reproduces exactly, and accept/reject behaviour is pinned by `requirement-*` fixtures
   in `fixtures/conformance/`. A port that drifts on what it will load fails.
-- *Checks — gated in all five ports.* Every port's `verify` runs the requirement gate
+- *Checks — gated in five of the six ports.* Every port's `verify` but Rust's runs the
+  requirement gate
   ([ADR-0057](../spec/decisions/ADR-0057-requirement-checks-and-tests-in-every-port.md),
-  which reversed a TypeScript-only split recorded here). `requirement-check-conformance`
+  which reversed a TypeScript-only split recorded here); Rust's is planned (RS-V2).
+  `requirement-check-conformance`
   pins each diagnostic's code, severity, path and message text and the summary counts
   against the TypeScript reference. Kotlin has no CLI of its own and runs the gate through
   the Java Maven goal. `verify-conformance` still holds no requirement cases: that corpus
   is template drift, and the gate has its own.
-- *Generated tests — identity gated in all five ports, text in none.*
+- *Generated tests — identity gated in those same five ports, text in none.*
   `requirement-test-identity-conformance` pins which tests a ledger yields, each one's id,
   witness key, skip state and digest, and what a project's filter is shown. The file a
   port writes is its reference helper's output and is not a cross-port contract.
@@ -317,7 +320,7 @@ manifest contains without moving these boundaries.
   `schema.postgres.sql` rather than adding a model beside them; only the seed rows are its own
   (`fixtures/cube-model/canonical/seed.sql`).
 
-**Does the generated code compile** (`codegen-compile-conformance`, all five ports):
+**Does the generated code compile** (`codegen-compile-conformance`, all six ports):
 
 - *Not a corpus, so it has no row.* It reuses
   `fixtures/persistence-conformance/canonical/meta.fitness.json` rather than adding a
@@ -394,7 +397,7 @@ fixture that could see it. A split is deliberate when no port makes a claim the 
 have to check; it is a gap when some port already made one.
 
 **A hazard for whoever removes an attribute — and it has now fired once.** Contract prose
-lives *inside* attr descriptions in `expected-registry.json`, where five ports byte-match it
+lives *inside* attr descriptions in `expected-registry.json`, where six ports byte-match it
 and nothing else gates it. `@trackedBy` still carries "NOT resolved by verify, which does not
 reach the network". `@verifiedBy` carried "verify checks each name EXISTS and is not skipped;
 it never runs them" — and that attribute was **retired in `0.24.0` (FR-038)**, which deleted
@@ -571,10 +574,12 @@ negative `limit`, an empty page for `limit=0`, and
 `api.unknownFields: drop`), `rules/` (17, ADR-0066 through a generated service: derived and declared commands, a query, permission points, the three 409 codes, a declared error and a refusal rolling back, under the default settings and three `rules.*` variants; generated lane, TypeScript and Rust; the other ports from their 1.3.0 service work), `list-query/` (21, the REST standard's list handling against a real store: search ignores case and `like` does not, `filter[or]`/`filter[and]`, the nesting cap, bare fields, a leading `%`, value formats, a default page of 50, paging past 50, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and `constraint_violation` refusals; generated lane, TypeScript, C# and Rust; the other ports from their 1.3.0 REST-standard work) and `report/` (37,
 FR-044: a view-backed `object.report` is listed, filtered, sorted and paged on
 its derived fields, answers `POST` with 405 and mounts no `/{id}`; a `@spine` report keeps
-a row with no facts, and a measure with `@default` filters and sorts as its default). All 5 ports — TS, Java,
-Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
-the port's own GENERATED API artifact booted over HTTP. `write-through/`,
-`secret-fields/`, `enum-default/`, `projection/`, `decimal/`, `duration/` and `report/` run the generated lane only, on all five ports: what
+a row with no facts, and a measure with `@default` filters and sorts as its default). The 5 ports with
+a reference lane — TS, Java, Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
+the port's own GENERATED API artifact booted over HTTP. Rust runs the generated lane alone
+(see the matrix row above): a hand-rolled server would answer every scenario by construction, and
+what is under test is the generator. `write-through/`,
+`secret-fields/`, `enum-default/`, `projection/`, `decimal/`, `duration/` and `report/` run the generated lane only, on all five ports (Rust runs two of them, `write-through/` and `secret-fields/`; the rest are on its runner's ledger): what
 they test is whether a port's generator emits the routes. The `report/` sub-corpus is the one
 that reads real views, so it runs full stack on Postgres, SQLite and MySQL
 (`report/schema.sqlite.sql`, `report/schema.mysql.sql`, both TypeScript-produced) in every
@@ -597,14 +602,15 @@ case-insensitive extension matching, union-with-de-duplication, and every
 error condition (an unresolvable path, an unsupported `resource`/`package`
 kind, and a malformed config — `"expectError": true` pins only that
 resolution RAISES, since which error code it raises with is deliberately NOT
-a cross-port contract; see the corpus README). **All four CLI surfaces run
-it** — TypeScript (the reference implementation), C#, Python, and Java (Kotlin
+a cross-port contract; see the corpus README). **All five CLI surfaces run
+it** — TypeScript (the reference implementation), C#, Python, Java (Kotlin
 inherits it, since Kotlin has no CLI entry point of its own and runs through
-the same Maven plugin as Java):
+the same Maven plugin as Java), and Rust (`cargo meta`):
 `server/typescript/packages/sdk/test/source-resolution-conformance.test.ts`,
 `server/csharp/MetaObjects.Conformance.Tests/SourceResolutionConformanceTests.cs`,
-`server/python/tests/conformance/test_source_resolution_conformance.py`, and
-`server/java/metadata/src/test/java/com/metaobjects/config/SourceResolutionConformanceTest.java`.
+`server/python/tests/conformance/test_source_resolution_conformance.py`,
+`server/java/metadata/src/test/java/com/metaobjects/config/SourceResolutionConformanceTest.java`,
+and `server/rust/metaobjects/tests/source_resolution_conformance.rs`.
 
 ### `fixtures/reference-source-conformance/` (6 cases)
 
@@ -774,16 +780,17 @@ default-physical-table-name axis has no HTTP-observable surface at all, so it
 can only be proven at the pluralizer-function level, which is what this
 corpus does for both axes in one data file.
 
-**All five ports run it** (Kotlin inherits, since `KotlinNaming.collectionSegment`
+**All six ports run it** (Kotlin inherits, since `KotlinNaming.collectionSegment`
 delegates to the same `RouteNaming.pluralize` Java runs):
 `server/typescript/packages/metadata/test/naming.test.ts`,
 `server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs`,
 `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java`
 + `server/java/metadata/src/test/java/com/metaobjects/source/Fr016SourcePhysicalNameTest.java`
 (API-surface and frozen-legacy halves split across the two modules that already
-own those two functions), and
+own those two functions),
 `server/python/tests/codegen/test_route_path_naming.py` +
-`server/python/tests/unit/test_fr016_source_name_and_kind_aliases.py` (same split).
+`server/python/tests/unit/test_fr016_source_name_and_kind_aliases.py` (same split), and
+`server/rust/metaobjects/tests/naming_conformance.rs`.
 
 ### `fixtures/requirement-check-conformance/` (49 cases)
 
@@ -795,7 +802,7 @@ model with no requirement. The expectations are written from the TypeScript refe
 a port that disagrees with one is wrong. The case list, and what each pins, is in the
 [corpus README](../fixtures/requirement-check-conformance/README.md).
 
-**Every port's `verify` is held to it:**
+**Every port's `verify` but Rust's is held to it** (Rust's gate is planned, RS-V2):
 `server/typescript/packages/cli/test/requirement-check-conformance.test.ts`,
 `server/python/tests/conformance/test_requirement_check_conformance.py`,
 `server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementCheckConformanceTest.java`
@@ -848,7 +855,7 @@ It does not pin the text of a generated file, the uncovered warning, or a requir
 outside ASCII. The case list is in the
 [corpus README](../fixtures/requirement-test-identity-conformance/README.md).
 
-**All five ports run it:**
+**All ports but Rust run it** (Rust's `requirement-tests` generator is planned, RS-V2):
 `server/typescript/packages/codegen-ts/test/requirement-test-identity-conformance.test.ts`,
 `server/java/metadata/src/test/java/com/metaobjects/conformance/RequirementTestIdentityConformanceTest.java`,
 `server/python/tests/conformance/test_requirement_test_identity_conformance.py` and
