@@ -53,7 +53,8 @@ public static class LineTotalsRoutes
                 return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = "0", expected = $"an integer from 1 to {maxRows}" });
             if (limit > maxRows)
                 return Results.BadRequest(new { error = "report_too_large", maxRows });
-            if (listQuery.Offset is { } offset && offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));
+            if (listQuery.Offset is { } __offset && __offset > 0)
+                q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));
             q = q.Take((int)(limit ?? maxRows + 1L));
 
             var rows = await q.ToListAsync();

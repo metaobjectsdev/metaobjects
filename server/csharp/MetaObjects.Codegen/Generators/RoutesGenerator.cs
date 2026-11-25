@@ -186,7 +186,7 @@ public class RoutesGenerator : PerEntityGenerator
         using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = \"0\", expected = $\"an integer from 1 to {maxRows}\" });");
         w.Line("if (limit > maxRows)");
         using (w.Hanging()) w.Line($"return {tooLarge};");
-        w.Line("if (listQuery.Offset is { } offset && offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
+        WriteSkip(w);
         w.Line("q = q.Take((int)(limit ?? maxRows + 1L));");
         w.Blank();
         w.Line("var rows = await q.ToListAsync();");
@@ -1188,11 +1188,17 @@ public class RoutesGenerator : PerEntityGenerator
     // `api.pagination`'s defaultLimit, or ApiSettings.DefaultPageLimit (50, as in every port) when the project
     // sets no block; with the block, a limit above maxLimit is 400 limit_too_large, and without it there is no
     // maximum. `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
+    // The parsed ?offset, skipped (an offset is at most 2^53 - 1; EF's Skip takes an int).
+    private static void WriteSkip(CsWriter w)
+    {
+        w.Line("if (listQuery.Offset is { } __offset && __offset > 0)");
+        using (w.Hanging()) w.Line("q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));");
+    }
+
     protected virtual void WriteListPage(CsWriter w, ApiPagination? page)
     {
         w.Line("// Pagination: ?offset=N first (skip), then ?limit=N (take).");
-        w.Line("if (listQuery.Offset is { } __offset && __offset > 0)");
-        using (w.Hanging()) w.Line("q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));");
+        WriteSkip(w);
         if (page is not null)
             w.Line("// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
         else

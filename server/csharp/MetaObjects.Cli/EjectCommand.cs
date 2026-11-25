@@ -152,13 +152,16 @@ public static class EjectCommand
             : ["", warning + "."];
     }
 
+    /// <summary>True when generator <paramref name="name"/>'s output uses the helper runtime.</summary>
+    private static bool UsesRuntime(string name) =>
+        EjectableGenerators.ReadSource(name) is { } src && HelperRuntime.UsedBy(src);
+
     /// <summary>
     /// The helper-runtime users (<see cref="HelperRuntime.UsedBy"/>) not in <paramref name="names"/>,
     /// when <paramref name="names"/> holds one; else none. They are owned, and given back, together.
     /// </summary>
     internal static List<GeneratorRegistryEntry> RuntimePartners(IReadOnlyList<string> names, IEnumerable<GeneratorRegistryEntry> entries)
     {
-        static bool UsesRuntime(string name) => EjectableGenerators.ReadSource(name) is { } src && HelperRuntime.UsedBy(src);
         if (!names.Any(UsesRuntime)) return [];
         return entries.Where(e => !names.Contains(e.Name, StringComparer.Ordinal) && UsesRuntime(e.Name)).ToList();
     }
@@ -223,7 +226,7 @@ public static class EjectCommand
             outLines.Add($"ejected \"{name}\" -> codegen/generators/{file} [{status}]{why}");
         }
         outLines.AddRange(EjectCompanions(root, names.Select(n => known[n]).ToList(), force));
-        var runtimeUsers = names.Where(n => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(n)!)).ToList();
+        var runtimeUsers = names.Where(UsesRuntime).ToList();
         if (runtimeUsers.Count > 0)
             outLines.AddRange(EjectRuntime(root, runtimeUsers, force));
 
@@ -281,10 +284,10 @@ public static class EjectCommand
         {
             targets = OwnedCopy.IdenticalCopies(root).ToList();
             // An identical helper-runtime user stays while an edited partner is still owned (see Run).
-            var editedRuntimeUser = all.Any(e => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(e.Name)!)
+            var editedRuntimeUser = all.Any(e => UsesRuntime(e.Name)
                 && OwnedCopy.Status(root, e) is not null && !targets.Contains(e));
             if (editedRuntimeUser)
-                targets.RemoveAll(e => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(e.Name)!));
+                targets.RemoveAll(e => UsesRuntime(e.Name));
             if (targets.Count == 0)
             {
                 var owned = all.Where(e => OwnedCopy.Status(root, e) is not null).ToList();
@@ -347,12 +350,12 @@ public static class EjectCommand
             }
         }
 
-        var runtimeUsers = targets.Where(t => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(t.Name)!)).ToList();
+        var runtimeUsers = targets.Where(t => UsesRuntime(t.Name)).ToList();
         var runtimeDir = Path.Combine(root, HelperRuntime.OwnedDirectory.Replace('/', Path.DirectorySeparatorChar));
         var runtimeRemoved = false;
         if (runtimeUsers.Count > 0 && Directory.Exists(runtimeDir))
         {
-            if (remaining.FirstOrDefault(e => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(e.Name)!)) is { } user)
+            if (remaining.FirstOrDefault(e => UsesRuntime(e.Name)) is { } user)
                 lines.Add($"  kept {HelperRuntime.OwnedDirectory}/ — \"{user.Name}\" is still owned and uses it");
             else
             {
