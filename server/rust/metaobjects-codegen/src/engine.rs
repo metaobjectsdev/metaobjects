@@ -366,10 +366,8 @@ fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
 /// The nearest `Cargo.toml` at or above `dir` that declares `[workspace]`.
 fn workspace_root_manifest(dir: &Path) -> Option<PathBuf> {
     dir.ancestors().map(|d| d.join("Cargo.toml")).find(|m| {
-        std::fs::read_to_string(m).is_ok_and(|t| {
-            t.lines()
-                .any(|l| strip_toml_comment(l).trim() == "[workspace]")
-        })
+        std::fs::read_to_string(m)
+            .is_ok_and(|t| logical_lines(&t).iter().any(|l| l == "[workspace]"))
     })
 }
 
@@ -383,15 +381,15 @@ struct ManifestDependencies {
 
 /// The dependencies a `Cargo.toml` declares in a table the build reads: `[dependencies]`,
 /// `[build-dependencies]`, their `target.*`, `workspace` and `[dependencies.<name>]` forms,
-/// `[patch.*]` and `[replace]`. Dev-dependencies are not built into the owned binary. A line
-/// scan, not a TOML parser: the forms cargo writes and the scaffold uses are one-line.
+/// `[patch.*]` and `[replace]`. Dev-dependencies are not built into the owned binary. A scan
+/// over logical lines (a multi-line inline table or array is one), not a TOML parser.
 fn manifest_dependencies(text: &str) -> ManifestDependencies {
     let mut out = ManifestDependencies {
         paths: Vec::new(),
         inherits_workspace: false,
     };
     let mut in_dependencies = false;
-    for line in text.lines().map(|l| strip_toml_comment(l).trim()) {
+    for line in logical_lines(text).iter().map(String::as_str) {
         if line.starts_with('[') {
             let header = line.trim_matches(|c| c == '[' || c == ']').trim();
             let first = header.split('.').next().map(str::trim);
@@ -418,7 +416,7 @@ fn manifest_dependencies(text: &str) -> ManifestDependencies {
 /// The `[package]` name a `Cargo.toml` declares.
 fn manifest_package_name(text: &str) -> Option<String> {
     let mut in_package = false;
-    for line in text.lines().map(|l| strip_toml_comment(l).trim()) {
+    for line in logical_lines(text).iter().map(String::as_str) {
         if line.starts_with('[') {
             in_package = line == "[package]";
         } else if in_package && let Some(name) = toml_key_string(line, "name") {
@@ -426,6 +424,34 @@ fn manifest_package_name(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// The logical lines of a TOML text: comments stripped, each trimmed, and the physical lines
+/// of an inline table or array still open at a line's end joined onto it with a space.
+fn logical_lines(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0i32;
+    for raw in text.lines() {
+        let line = strip_toml_comment(raw).trim();
+        depth += unquoted(line).fold(0, |d, (_, c)| match c {
+            '{' | '[' => d + 1,
+            '}' | ']' => d - 1,
+            _ => d,
+        });
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(line);
+        if depth <= 0 {
+            depth = 0;
+            out.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    out
 }
 
 /// The characters of one TOML line that sit outside any string, with their byte offsets.
@@ -1071,5 +1097,15 @@ mod tests {
         );
         assert_eq!(deps.paths, ["lit", "b\\c", "d", "e", "g"]);
         assert!(deps.inherits_workspace);
+    }
+
+    #[test]
+    fn the_line_scan_reads_inline_tables_and_arrays_that_span_lines() {
+        let deps = manifest_dependencies(
+            "[dependencies]\nlinked = { # { opens nothing\n  features = [\n    \"x\",\n  ],\n  path = \"../linked\",\n}\n\
+             next = { path = \"next\" }\n[dev-dependencies]\nskipped = {\npath = \"skipped\"\n}\n",
+        );
+        assert_eq!(deps.paths, ["../linked", "next"]);
+        assert!(!deps.inherits_workspace);
     }
 }
