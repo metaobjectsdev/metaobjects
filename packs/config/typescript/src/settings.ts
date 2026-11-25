@@ -29,7 +29,15 @@ import {
   VAULT_ATTR_DEFAULT_SCOPE,
   type Phase,
 } from "./constants.js";
+import { CONFIG_DEFINITION } from "./config-definition.embedded.js";
 import { isVault, isVaultScope } from "./nodes.js";
+
+const SETTINGS_FIELD_SUBTYPES: readonly string[] = (() => {
+  const rule = CONFIG_DEFINITION.types
+    .find((t) => t.type === TYPE_OBJECT && t.subType === OBJECT_SUBTYPE_SETTINGS)
+    ?.children.find((c) => c.type === "field");
+  return typeof rule?.subType === "string" ? [rule.subType] : (rule?.subType ?? []);
+})();
 
 export interface Setting {
   /** The environment variable: `@envName`, else `<GROUP>_<FIELD>` in upper snake case. */
@@ -106,20 +114,28 @@ export function readSettings(objects: readonly MetaObject[]): SettingsGroup[] {
   const seen = new Map<string, string>();
   const groups: SettingsGroup[] = [];
   for (const o of objects) {
-    // An abstract group is a base other groups extend: its fields are read through them.
-    if (!isSettings(o) || o.isAbstract) continue;
+    if (!isSettings(o)) continue;
     const key = o.resolutionKey();
     const settings: Setting[] = [];
     for (const f of o.fields()) {
       const where = `${key}.${f.name}`;
       const declared = text(f.attr(FIELD_ATTR_ENV_NAME));
       const envName = declared ?? deriveEnvName(o.name, f.name);
-      if (declared !== undefined && !ENV_NAME_PATTERN.test(declared)) {
-        problems.push(`${where}: @envName "${declared}" is not an environment variable name (upper case letters, digits and _, not starting with a digit)`);
+      if (!ENV_NAME_PATTERN.test(envName)) {
+        problems.push(
+          declared !== undefined
+            ? `${where}: @envName "${declared}" is not an environment variable name (upper case letters, digits and _, not starting with a digit)`
+            : `${where}: the derived environment variable name "${envName}" is not valid (upper case letters, digits and _, not starting with a digit); set @envName`,
+        );
       }
-      const other = seen.get(envName);
-      if (other !== undefined) problems.push(`${where}: environment variable ${envName} is also ${other}`);
-      else seen.set(envName, where);
+      if (!o.isAbstract) {
+        const other = seen.get(envName);
+        if (other !== undefined) problems.push(`${where}: environment variable ${envName} is also ${other}`);
+        else seen.set(envName, where);
+      }
+      if (!SETTINGS_FIELD_SUBTYPES.includes(f.typeId.subType)) {
+        problems.push(`${where}: a setting is a scalar; field.${f.typeId.subType} is not one of ${SETTINGS_FIELD_SUBTYPES.join(", ")}`);
+      }
       if (f.resolvedIsArray()) problems.push(`${where}: a setting holds one value; @isArray is not supported`);
       const secret = f.attr(FIELD_ATTR_SECRET) === true;
       const def = f.attr(FIELD_ATTR_DEFAULT);
@@ -137,7 +153,8 @@ export function readSettings(objects: readonly MetaObject[]): SettingsGroup[] {
       });
     }
     const description = text(o.attr(DOC_ATTR_DESCRIPTION));
-    groups.push({ name: o.name, key, ...(description !== undefined ? { description } : {}), settings });
+    // An abstract group is a base other groups extend: checked here, listed under its extenders.
+    if (!o.isAbstract) groups.push({ name: o.name, key, ...(description !== undefined ? { description } : {}), settings });
   }
   if (problems.length > 0) throw new ConfigModelError(problems);
   return groups;

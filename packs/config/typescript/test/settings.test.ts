@@ -54,6 +54,30 @@ describe("readSettings", () => {
     expect(problems).toContain("acme::app::Db.x: environment variable DATABASE_URL is also acme::app::Database.url");
   });
 
+  test("refuses a derived name that is no variable, a non-scalar field, and invalid settings on an abstract base", async () => {
+    const model = withSettings([
+      { "object.settings": { name: "Database", children: [{ "field.string": { name: "pool-size" } }] } },
+      { "object.value": { name: "Nested", children: [{ "field.object": { name: "inner", "@objectRef": "acme::app::Nested" } }] } },
+      { "object.settings": { name: "Api", extends: "Nested" } },
+      { "object.settings": { name: "Base", abstract: true, children: [
+        { "field.string": { name: "key", "@secret": true, "@default": "x", "@envName": "not-valid" } },
+      ] } },
+    ]);
+    let err: unknown;
+    try {
+      readSettings(await objects(model));
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ConfigModelError);
+    const problems = (err as ConfigModelError).problems.join("\n");
+    expect(problems).toContain('acme::app::Database.pool-size: the derived environment variable name "DATABASE_POOL-SIZE" is not valid');
+    expect(problems).toContain("set @envName");
+    expect(problems).toContain("acme::app::Api.inner: a setting is a scalar; field.object is not one of");
+    expect(problems).toContain("acme::app::Base.key: a @secret setting may not declare @default");
+    expect(problems).toContain('acme::app::Base.key: @envName "not-valid" is not an environment variable name');
+  });
+
   test("an abstract group is read only through the groups that extend it", async () => {
     const groups = readSettings(await objects(withSettings([
       { "object.settings": { name: "Base", abstract: true, children: [{ "field.string": { name: "host" } }] } },

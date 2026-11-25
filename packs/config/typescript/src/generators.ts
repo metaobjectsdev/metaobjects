@@ -84,7 +84,7 @@ function describe(s: Setting): string {
   return `# ${s.envName}: ${facts.join(", ")}${what}`;
 }
 
-export function renderEnvExample(ctx: GenContext): string | undefined {
+function renderEnvExample(ctx: GenContext): string | undefined {
   const groups = readSettings(scopedObjects(ctx)).filter((g) => g.settings.length > 0);
   if (groups.length === 0) return undefined;
   const lines = [
@@ -108,7 +108,7 @@ export function envExampleFile(opts: ConfigGeneratorOptions = {}): Generator {
 
 // ── keys.manifest.json ──────────────────────────────────────────────────────
 
-export function renderKeyManifest(ctx: GenContext): string | undefined {
+function renderKeyManifest(ctx: GenContext): string | undefined {
   const settings = readSettings(scopedObjects(ctx)).flatMap((g) => g.settings);
   const vaults = vaultsInScope(ctx);
   if (settings.length === 0 && vaults.length === 0) return undefined;
@@ -174,10 +174,6 @@ export function renderKeysAxiToml(vault: Vault): string {
 export function keysAxiTomlFile(opts: KeysAxiTomlOptions = {}): Generator {
   return generator("keys-axi-toml", opts, (ctx) => {
     const vault = pickVault(vaultsInScope(ctx), opts.vault);
-    if (vault === undefined) {
-      ctx.warn("keys-axi-toml: the model declares no vault, so there is no .keys-axi.toml to write");
-      return [];
-    }
-    return [{ path: opts.path ?? ".keys-axi.toml", content: renderKeysAxiToml(vault) }];
+    return vault === undefined ? [] : [{ path: opts.path ?? ".keys-axi.toml", content: renderKeysAxiToml(vault) }];
   });
 }

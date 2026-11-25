@@ -53,6 +53,14 @@ export type PackFactory = (typeId: TypeId, name: string) => MetaData;
 const ATTR = "attr";
 const WILDCARD = "*";
 
+function validateCardinality(owner: string, c: PackChildDef): void {
+  if (c.min < 0) throw new Error(`${owner}: child "${c.name}" has min ${c.min} < 0`);
+  if (c.max !== null && c.max < c.min) throw new Error(`${owner}: child "${c.name}" has max ${c.max} < min ${c.min}`);
+  if (c.type === ATTR && c.max !== 1 && c.isArray !== true) {
+    throw new Error(`${owner}: attr "${c.name}" is single-valued (max must be 1; a list-valued attr sets isArray: true)`);
+  }
+}
+
 function toAttr(owner: string, c: PackChildDef): AttrSchema {
   if (Array.isArray(c.subType)) throw new Error(`${owner}: attr @${c.name} declares a list subType; an attr has one value type`);
   return {
@@ -81,6 +89,7 @@ function split(owner: string, children: readonly PackChildDef[]): { attributes: 
   const attributes: AttrSchema[] = [];
   const childRules: ChildRule[] = [];
   for (const c of children) {
+    validateCardinality(owner, c);
     if (c.type === ATTR) attributes.push(toAttr(owner, c));
     else childRules.push(toRule(c));
   }

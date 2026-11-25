@@ -23,8 +23,6 @@ export {
   envExampleFile,
   keyManifestFile,
   keysAxiTomlFile,
-  renderEnvExample,
-  renderKeyManifest,
   renderKeysAxiToml,
   type ConfigGeneratorOptions,
   type KeysAxiTomlOptions,

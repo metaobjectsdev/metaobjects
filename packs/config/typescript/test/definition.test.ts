@@ -4,10 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { buildRegistryManifest, composeRegistry, coreProviders, MetaObject, type MetaDataTypeProvider } from "@metaobjectsdev/metadata";
+import { buildRegistryManifest, composeRegistry, coreProviders, MetaObject, type MetaDataTypeProvider, type TypeId, type TypeRegistry } from "@metaobjectsdev/metadata";
 import { DEFINITION_JSON, EMBEDDED_TS, renderEmbedded } from "../scripts/embed-definition.js";
 import { CONFIG_DEFINITION } from "../src/config-definition.embedded.js";
-import type { PackFactory } from "../src/definition.js";
+import { registerDefinition, type PackDefinition, type PackFactory } from "../src/definition.js";
 import { configProvider } from "../src/index.js";
 import { MetaVault, MetaVaultScope } from "../src/nodes.js";
 
@@ -41,4 +41,21 @@ describe("config pack definition", () => {
     const theirs = buildRegistryManifest(composeRegistry([...coreProviders, reference]));
     expect(JSON.stringify(ours)).toBe(JSON.stringify(theirs));
   });
+
+  const attr = (extra: object) => ({ type: "attr", subType: "boolean", name: "secret", min: 0, max: 1, ...extra });
+  const invalid: Record<string, object[]> = {
+    "an attr with max above 1 and no isArray": [attr({ max: 5 })],
+    "a child with min below 0": [attr({ min: -1 })],
+    "a child with max below min": [{ type: "field", subType: "string", name: "*", min: 1, max: 0 }],
+  };
+  for (const [title, children] of Object.entries(invalid)) {
+    test(`both lowerings reject ${title}`, () => {
+      const def = { provider: "bad", types: [{ type: "object", subType: "settings", description: "d", children }] };
+      const factories = { "object.settings": (t: TypeId, n: string) => new MetaObject(t, n) };
+      const lower = (apply: Apply) => () =>
+        composeRegistry([...coreProviders, { id: "bad", dependencies: ["metaobjects-core-types"], registerTypes: (r) => apply(r, def, factories) }]);
+      expect(lower(applyProviderDefinition)).toThrow();
+      expect(lower((r, d, f) => registerDefinition(r as TypeRegistry, d as PackDefinition, f))).toThrow();
+    });
+  }
 });

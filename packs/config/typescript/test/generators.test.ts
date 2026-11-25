@@ -111,8 +111,10 @@ describe("config pack generators", () => {
   });
 
   test("a model with no settings and no vault writes none of the files", async () => {
-    const empty = { "metadata.root": { package: "acme::app", children: [] } };
-    expect((await render([envExampleFile(), keyManifestFile(), keysAxiTomlFile()], empty)).size).toBe(0);
+    const entityOnly = { "metadata.root": { package: "acme::app", children: [
+      { "object.entity": { name: "Customer", children: [{ "field.long": { name: "id" } }, { "identity.primary": { name: "id", "@fields": "id" } }] } },
+    ] } };
+    expect((await render([envExampleFile(), keyManifestFile(), keysAxiTomlFile()], entityOnly)).size).toBe(0);
   });
 
   test("core's entity generator types a settings group as it does a value object: no table", async () => {
