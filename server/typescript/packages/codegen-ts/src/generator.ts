@@ -196,13 +196,23 @@ export interface Generator {
   /** Optional per-entity filter applied via ctx.matches inside generate(). */
   filter?: (entity: MetaObject) => boolean;
   generate: (ctx: GenContext) => EmittedFile[] | Promise<EmittedFile[]>;
+  /**
+   * What this generator provides that another part of the run asks about (ADR-0034 Amendment
+   * 12): the entity modules, the query modules, the routes it mounts, the docs pages. The runner,
+   * the docs generators and the gates read this one declaration through {@link providesOf} and
+   * never a generator's name, so a generator of your own that declares the same thing is seen the
+   * same way. Leave it out when your generator provides none of these.
+   */
+  provides?: GeneratorProvides;
   /** Named output target (registry key). Defaults to "default". */
   target?: string;
   /** Marks the generator that produces entity modules — the runner uses its
    *  target as the entity-module target for cross-target import resolution, and
    *  aggregates it into `ctx.config.includeEntityModule`, which the api reference reads
    *  to document the model, its Zod schemas and its `relations()` only when something
-   *  emits them. A copy ejected before the marker is matched by its name. */
+   *  emits them. A copy ejected before the marker is matched by its name. *
+   *  @deprecated Declare `provides: { entityModule: true }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsEntityModule?: boolean;
   /** FR-038 §8 — declare the output namespace this generator exclusively owns.
    *  A full `meta gen` run already removes every file it recorded writing in a
@@ -247,13 +257,17 @@ export interface Generator {
    *  aggregates this across the active suite into `ctx.config.includeHonoRoutes`,
    *  so a generator that documents the API surface (api-docs) can AUTO-DETECT
    *  that Hono routes are actually being emitted and document them — rather than
-   *  silently omitting the Hono CRUD registrars whenever the variant is wired. */
+   *  silently omitting the Hono CRUD registrars whenever the variant is wired. *
+   *  @deprecated Declare `provides: { routes: { framework: "hono" } }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsHonoRoutes?: boolean;
   /** Marks a generator that mounts the CRUD routes (`routesFile`, `routesFileHono`) and carries
    *  the `expose` option it was built with. The runner aggregates it across the suite
    *  (`runRoutesExpose`), per surface (a `emitsHonoRoutes` generator is the Hono one), so the API docs list the verbs each routes file actually mounts, not all five.
    *  Absent `expose` means every verb. A copy ejected before this marker existed needs
-   *  `meta eject routes --force` (or the same one-line addition) to be honoured. */
+   *  `meta eject routes --force` (or the same one-line addition) to be honoured. *
+   *  @deprecated Declare `provides: { routes: { framework, expose, filter } }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   mountsRoutes?: {
     readonly expose?: ExposeOption;
     /** The generator's own `filter` option (not its built-in gates): an entity it rejects is
@@ -264,12 +278,16 @@ export interface Generator {
    *  The runner reads it, per target, to tell an api reference generator in the same target
    *  that there are model pages to link back to (`ctx.docs.modelPages`). It changes nothing
    *  about whether or where this generator runs: the list decides that, as for every
-   *  generator (ADR-0034 Amendment 9). An owned copy keeps it. */
+   *  generator (ADR-0034 Amendment 9). An owned copy keeps it. *
+   *  @deprecated Declare `provides: { modelDocs: true }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsModelDocs?: boolean;
   /** Marks a generator that writes the api reference pages (`apiDocsFile()`), with the
    *  directory under its target they go in. The runner reads it, per target, so the model
    *  pages in the same target link to them (`ctx.docs.apiSurfaces`). Like `emitsModelDocs`,
-   *  a cross-link fact only. */
+   *  a cross-link fact only. *
+   *  @deprecated Declare `provides: { apiDocs: { subDir } }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsApiDocs?: { readonly subDir: string };
   /** Marks a generator that reads the files the rest of the run generated
    *  (`ctx.runOutput`). The runner runs every marked generator after every unmarked one,
@@ -278,17 +296,23 @@ export interface Generator {
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
    *  entity generator reads to decide whether it may reference those constants.
-   *  Same mechanism as emitsHonoRoutes/includeHonoRoutes. */
+   *  Same mechanism as emitsHonoRoutes/includeHonoRoutes. *
+   *  @deprecated Declare `provides: { names: true }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsNames?: boolean;
   /** Marks the `report-export` generator. The runner aggregates it, per target (as `emitsNames`),
    *  into `ctx.config.includeReportExport` / `RenderContext.includeReportExport`, which the routes
    *  generators read to emit the `format` branch on a report list route. Without a marked
-   *  generator in the route file's target the routes are byte-identical to before export existed. */
+   *  generator in the route file's target the routes are byte-identical to before export existed. *
+   *  @deprecated Declare `provides: { reportExport: true }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsReportExport?: boolean;
   /** Marks the generator that writes the `<Entity>.queries.ts` data-access modules
    *  (`queriesFile()`). The runner aggregates it across the run into
    *  `ctx.config.includeQueries`, which the api reference reads to document the query helpers
-   *  only when something emits them. A copy ejected before the marker is matched by its name. */
+   *  only when something emits them. A copy ejected before the marker is matched by its name. *
+   *  @deprecated Declare `provides: { queries: true }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsQueries?: boolean;
   /** Marks a generator that emits a CLIENT UI artifact — a form, a hook, a grid or
    *  its columns. The runner aggregates it across the suite into
@@ -303,8 +327,81 @@ export interface Generator {
    *  GENERATOR fact; no metadata predicate can answer it.
    *
    *  Run-scoped, like emitsHonoRoutes and unlike emitsNames: the page asks "is this
-   *  surface in the run?", not "does it land in my target?". */
+   *  surface in the run?", not "does it land in my target?". *
+   *  @deprecated Declare `provides: { uiTier: true }` instead (ADR-0034 Amendment 12). Still read, through
+   *  {@link providesOf}, so an owned copy that sets it keeps working. */
   emitsUiTier?: boolean;
+}
+
+/**
+ * The one declaration of what a generator provides (ADR-0034 Amendment 12). Each key is a fact
+ * another part of the run reads; a key left out is "not provided".
+ */
+export interface GeneratorProvides {
+  /** The entity modules (`<Entity>.ts`: the model, its Zod schemas and its `relations()`). The
+   *  runner takes this generator's target as the entity-module target for cross-target imports,
+   *  and the api reference documents the model only when something provides it. */
+  readonly entityModule?: boolean;
+  /** The `<Entity>.queries.ts` data-access modules. The api reference documents the query
+   *  helpers only when something provides them. */
+  readonly queries?: boolean;
+  /** The `<Entity>Names` artifact, per target. The entity modules in the same target reference
+   *  its constants only when it is there. */
+  readonly names?: boolean;
+  /** The report export writers, per target. The routes in the same target mount a report list
+   *  route's `format` branch only when they are there. */
+  readonly reportExport?: boolean;
+  /** The CRUD routes it mounts, on which framework, with the `expose` and `filter` options it was
+   *  built with: the api reference lists the verbs each surface mounts (absent `expose` means all
+   *  five; an entity `filter` rejects is mounted nowhere). */
+  readonly routes?: GeneratorRoutes;
+  /** A client UI artifact: a form, a hook, a grid or its columns. `agent/ui.md` describes a UI
+   *  tier only when the run provides one. */
+  readonly uiTier?: boolean;
+  /** The per-object model pages and their index. An api reference in the same target links to
+   *  them. */
+  readonly modelDocs?: boolean;
+  /** The api reference pages, in `subDir` under the generator's target. The model pages in the
+   *  same target link to them. */
+  readonly apiDocs?: { readonly subDir: string };
+}
+
+/** The routes a generator mounts, as {@link GeneratorProvides.routes} declares them. */
+export interface GeneratorRoutes {
+  /** The routes surface: the Fastify REST routes or the opt-in Hono routes. */
+  readonly framework: "fastify" | "hono";
+  readonly expose?: ExposeOption;
+  /** The generator's own `filter` option (not its built-in gates). */
+  readonly filter?: (entity: MetaObject) => boolean;
+}
+
+/**
+ * What a generator provides: its {@link Generator.provides} declaration, with the deprecated
+ * single-purpose markers an owned copy ejected before the declaration still sets folded in. The
+ * one reader of both; every consumer asks this.
+ */
+export function providesOf(g: Generator): GeneratorProvides {
+  const p = g.provides ?? {};
+  const legacyRoutes: GeneratorRoutes | undefined =
+    g.mountsRoutes !== undefined || g.emitsHonoRoutes === true
+      ? {
+          framework: g.emitsHonoRoutes === true ? "hono" : "fastify",
+          ...(g.mountsRoutes?.expose !== undefined && { expose: g.mountsRoutes.expose }),
+          ...(g.mountsRoutes?.filter !== undefined && { filter: g.mountsRoutes.filter }),
+        }
+      : undefined;
+  const routes = p.routes ?? legacyRoutes;
+  const apiDocs = p.apiDocs ?? g.emitsApiDocs;
+  return {
+    entityModule: p.entityModule === true || g.emitsEntityModule === true,
+    queries: p.queries === true || g.emitsQueries === true,
+    names: p.names === true || g.emitsNames === true,
+    reportExport: p.reportExport === true || g.emitsReportExport === true,
+    uiTier: p.uiTier === true || g.emitsUiTier === true,
+    modelDocs: p.modelDocs === true || g.emitsModelDocs === true,
+    ...(routes !== undefined && { routes }),
+    ...(apiDocs !== undefined && { apiDocs }),
+  };
 }
 
 export type GeneratorFactory<TOpts = void> = TOpts extends void

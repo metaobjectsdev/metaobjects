@@ -19,6 +19,40 @@ here.**
   declares a lifecycle and no listed service generator covers it: the flat routes do not enforce
   it.
 
+- **codegen-ts: an entity named after a reserved word gets a queries module that parses.** An
+  entity called `Case` (or `Default`, `Class`, …) wrote `const [case] = await db.select()…` in
+  its `<Entity>.queries.ts`, which is a syntax error; the row variable now takes the `Row` suffix
+  (`caseRow`) that a collection-name clash already took.
+
+- **codegen-ts-angular: the generated form binds its controls.** Each control in
+  `<Entity>.form.component.ts` read `[formControlName]=""email""`, a binding whose quoted
+  expression was cut short by the attribute's own quotes, so Angular bound no control. It now
+  writes `formControlName="email"`. The form also imports `Validators` only when a control uses
+  it, and the `__ensureValidatorsImport__` line that kept the import alive is gone. The TanStack
+  and Angular templates now write through the code writer (ADR-0063). Their output is otherwise
+  the same code, with imports merged per module and sorted.
+
+- **The generator-authoring surface is named and promised.** Each port names the modules you write
+  your own generator against, in four roles: the generator interface, the model walk, the code
+  writer and the naming helpers. They are listed in a new `surface` block of
+  `fixtures/generator-registry-conformance/registry.json`. That surface is versioned with the port's
+  codegen package under the compatibility policy; the rest of the engine is internal. A generator
+  will declare what it provides in one place instead of flags named after packaged generators, and
+  reference templates that `meta eject` copies stay your own code, never surface. Decision record:
+  ADR-0034 Amendment 12, ADR-0035 Amendment 7, ADR-0065 Amendment 5. TypeScript pins the
+  surface's exported names in `codegen-ts/test/authoring-surface.snapshot.json`, and the engine
+  entry (`@metaobjectsdev/codegen-ts/engine`) now also exports `objectRefTarget`. The other ports'
+  snapshot tests follow.
+
+- **codegen-ts: a generator declares what it provides in one place.** `provides` on a `Generator`
+  (`entityModule`, `queries`, `names`, `reportExport`, `routes` with its framework, `expose` and
+  `filter`, `uiTier`, `modelDocs`, `apiDocs`) replaces the nine single-purpose markers
+  (`emitsEntityModule`, `emitsQueries`, `emitsNames`, `emitsReportExport`, `emitsHonoRoutes`,
+  `mountsRoutes`, `emitsUiTier`, `emitsModelDocs`, `emitsApiDocs`). The runner, the docs
+  generators and the gates read it through one function, `providesOf`, so a generator of your own
+  under any name is seen as the stock one is. The old markers are deprecated and still read, so an
+  owned copy that sets them keeps working; a re-ejected copy declares `provides`.
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint

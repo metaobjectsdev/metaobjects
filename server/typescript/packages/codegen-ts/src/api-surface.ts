@@ -46,10 +46,12 @@ import {
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { flatSurfaceFields } from "./flattened.js";
+import { flat } from "./writer/code-writer.js";
+import { json, legacyMemberLines } from "./writer/ts-writer.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { isProjection } from "./projection/projection-detector.js";
 import { hasAnyRdbSource, hasWritableRdbSource, isReport, servedReport } from "./source-detect.js";
-import { getPkFields } from "./pk-resolver.js";
+import { DEFAULT_ID_FIELD, getPkFields } from "./pk-resolver.js";
 import { resourcePath, restPath } from "./templates/entity-ui-descriptor.js";
 import { declaresTphDiscriminator, isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin, tphStorageObject } from "./tph.js";
 import { tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";
@@ -207,13 +209,13 @@ export function writeDeniedFieldNames(obj: MetaObject, hierarchy: readonly MetaO
 }
 
 /**
- * The `writeDeniedColumns` line of a mount that accepts writes, or "" when no field is denied
- * (the output stays byte-identical for a model with no `@formExclude` or credential field).
+ * The `writeDeniedColumns` member of a mount that accepts writes, as `key: value,` lines: none
+ * when no field is denied (a model with no `@formExclude` or credential field gets no key).
  * `hierarchy` is a TPH subtype's base and every subtype, when the mount serves one.
  */
-export function writeDeniedColumnsLine(entity: MetaObject, indent: string, hierarchy: readonly MetaObject[] = [entity]): string {
+export function writeDeniedColumnsMembers(entity: MetaObject, hierarchy: readonly MetaObject[] = [entity]): string[] {
   const names = writeDeniedFieldNames(entity, hierarchy);
-  return names.length === 0 ? "" : `\n${indent}writeDeniedColumns: ${JSON.stringify(names)},`;
+  return names.length === 0 ? [] : [`writeDeniedColumns: ${jsonLiteral(names)},`];
 }
 
 /** The declared shape of a value object, as a generated mount takes it (`ValueObjectShape` in runtime-ts). */
@@ -266,12 +268,12 @@ export function knownFieldNames(hierarchy: readonly MetaObject[]): string[] {
 
 /**
  * The `knownFields` option of a mount that accepts writes: present when the project refuses
- * undeclared body keys (`api.unknownFields: reject`, the default), and "" under `drop`, which
+ * undeclared body keys (`api.unknownFields: reject`, the default), and absent under `drop`, which
  * keeps the mount dropping them silently. `root` is the loaded root the setting is read from.
  */
-export function knownFieldsLine(entity: MetaObject, indent: string, root?: MetaData, hierarchy: readonly MetaObject[] = [entity]): string {
-  if (apiUnknownFieldsOf(root ?? entity) !== UNKNOWN_FIELDS_REJECT) return "";
-  return `\n${indent}knownFields: ${JSON.stringify(knownFieldNames(hierarchy))},`;
+export function knownFieldsMembers(entity: MetaObject, root?: MetaData, hierarchy: readonly MetaObject[] = [entity]): string[] {
+  if (apiUnknownFieldsOf(root ?? entity) !== UNKNOWN_FIELDS_REJECT) return [];
+  return [`knownFields: ${jsonLiteral(knownFieldNames(hierarchy))},`];
 }
 
 /**
@@ -281,15 +283,15 @@ export function knownFieldsLine(entity: MetaObject, indent: string, root?: MetaD
  * (`DEFAULT_PAGE_LIMIT`). `root` is the loaded root the setting is read from (`ctx.loadedRoot`);
  * without one the object's own root answers.
  */
-export function paginationLine(entity: MetaObject, indent: string, root?: MetaData): string {
+export function paginationMembers(entity: MetaObject, root?: MetaData): string[] {
   const page = apiPaginationOf(root ?? entity);
-  if (page === undefined) return "";
-  return `\n${indent}pagination: { defaultLimit: ${page.defaultLimit}, maxLimit: ${page.maxLimit} },`;
+  if (page === undefined) return [];
+  return [`pagination: { defaultLimit: ${page.defaultLimit}, maxLimit: ${page.maxLimit} },`];
 }
 
 /**
- * The wire options a generated mount takes (ADR-0019 Amendment 2), one `\n<indent>key: value,`
- * line each, or "" when the object needs none:
+ * The wire options a generated mount takes (ADR-0019 Amendment 2), one `key: value,` line
+ * each, or none when the object needs none:
  *
  *  - `decimalColumns`: the object's `field.decimal` names (always, when it has any: under
  *    `native` the mount still renders a SQLite number at 15 digits);
@@ -303,34 +305,65 @@ export function paginationLine(entity: MetaObject, indent: string, root?: MetaDa
  * root the setting is read from (`ctx.loadedRoot`). `hierarchy` widens the credential marks to a
  * TPH subtype's base and every subtype, when the mount serves one.
  */
-export function decimalColumnsLine(
+export function decimalColumnsMembers(
   entity: MetaObject | readonly MetaObject[],
-  indent: string,
   root?: MetaData,
   hierarchy?: readonly MetaObject[],
-): string {
+): string[] {
   const objects: readonly MetaObject[] = Array.isArray(entity) ? entity : [entity as MetaObject];
   const first = objects[0];
-  if (first === undefined) return "";
+  if (first === undefined) return [];
   // A report's read model is a detached object with no root of its own, so a generator passes the
   // loaded root; without one the object's own root answers.
   const wire = wireFormatOf(root ?? first);
   const names = [...new Set(objects.flatMap((o) => decimalFieldNames(o)))];
-  let lines = "";
+  const lines: string[] = [];
   const hidden = markedFieldNames(objects, hierarchy ?? objects, isCredentialField);
-  if (hidden.length > 0) lines += `\n${indent}hiddenColumns: ${JSON.stringify(hidden)},`;
+  if (hidden.length > 0) lines.push(`hiddenColumns: ${jsonLiteral(hidden)},`);
   if (names.length > 0) {
-    lines += `\n${indent}decimalColumns: ${JSON.stringify(names)},`;
-    if (wire.decimals === WIRE_DECIMALS_STRING) lines += `\n${indent}decimalWire: ${JSON.stringify(wire.decimals)},`;
+    lines.push(`decimalColumns: ${jsonLiteral(names)},`);
+    if (wire.decimals === WIRE_DECIMALS_STRING) lines.push(`decimalWire: ${JSON.stringify(wire.decimals)},`);
   }
   if (wire.nullMembers !== WIRE_NULL_MEMBERS_NATIVE) {
     const shapes: Record<string, ValueObjectShapeData> = {};
     for (const o of objects) for (const [column, shape] of Object.entries(valueObjectShapes(o))) shapes[column] ??= shape;
     if (Object.keys(shapes).length > 0) {
-      lines += `\n${indent}nullMembers: ${JSON.stringify(wire.nullMembers)},`;
-      lines += `\n${indent}valueObjects: ${JSON.stringify(shapes)},`;
+      lines.push(`nullMembers: ${JSON.stringify(wire.nullMembers)},`);
+      lines.push(`valueObjects: ${jsonLiteral(shapes)},`);
     }
   }
+  return lines;
+}
+
+/**
+ * The options of a read-only mount (`mountReadOnlyCrudRoutes`) past its fixed ones, as
+ * `key: value,` lines, for a projection or a served report. Both route flavors take the same set.
+ *
+ *  - `idColumn` when the item route reads a key other than `id` (the view's key for that
+ *    column, which is the field name);
+ *  - `itemRoutes: false` for a keyless object (a projection with no identity, every report):
+ *    no row to address, so no `/:id` route of any verb;
+ *  - a report's `resource`, its row cap and, when the report-export generator is wired, the
+ *    `export` module (`exportRef`, the name its import is bound to);
+ *  - the wire options, and a projection's pagination (a report's list is capped instead).
+ */
+export function readOnlyMountMembers(
+  entity: MetaObject,
+  root: MetaData | undefined,
+  opts: { reportMaxRows?: number | undefined; exportRef?: string | undefined },
+): string[] {
+  const idField = itemRouteField(entity);
+  const report = isReport(entity);
+  const lines: string[] = [];
+  if (idField !== undefined && idField !== DEFAULT_ID_FIELD) lines.push(`idColumn: ${JSON.stringify(idField)},`);
+  if (idField === undefined) lines.push("itemRoutes: false,");
+  if (report) {
+    lines.push(`resource: "report",`);
+    if (opts.reportMaxRows !== undefined) lines.push(`reportMaxRows: ${opts.reportMaxRows},`);
+    if (opts.exportRef !== undefined) lines.push(`export: ${opts.exportRef},`);
+  }
+  lines.push(...decimalColumnsMembers(entity, root));
+  if (!report) lines.push(...paginationMembers(entity, root));
   return lines;
 }
 
@@ -386,4 +419,42 @@ export function hasGeneratedForm(entity: MetaObject): boolean {
   // to be a subtype.
   if (declaresTphDiscriminator(entity)) return false;
   return servesWriteApi(entity) && !isProjection(entity);
+}
+
+/**
+ * A JSON value as a one-line TypeScript literal, spaced the way the rest of the generated code is:
+ * `["a", "b"]`, `{ "members": ["x"] }`. (`JSON.stringify` writes them with no spaces.)
+ */
+function jsonLiteral(value: unknown): string {
+  return flat(json(value));
+}
+
+// --- The 1.2 string forms ---------------------------------------------------------------
+// An owned 1.2 routes generator splices these onto its mount calls (`\n<indent>key: value,`
+// per member). They are kept so such a copy still loads and emits; new code spreads the
+// `*Members` arrays into the writer instead.
+
+/** @deprecated Spread {@link writeDeniedColumnsMembers} into the writer. */
+export function writeDeniedColumnsLine(entity: MetaObject, indent: string, hierarchy: readonly MetaObject[] = [entity]): string {
+  return legacyMemberLines(writeDeniedColumnsMembers(entity, hierarchy), indent);
+}
+
+/** @deprecated Spread {@link knownFieldsMembers} into the writer. */
+export function knownFieldsLine(entity: MetaObject, indent: string, root?: MetaData, hierarchy: readonly MetaObject[] = [entity]): string {
+  return legacyMemberLines(knownFieldsMembers(entity, root, hierarchy), indent);
+}
+
+/** @deprecated Spread {@link paginationMembers} into the writer. */
+export function paginationLine(entity: MetaObject, indent: string, root?: MetaData): string {
+  return legacyMemberLines(paginationMembers(entity, root), indent);
+}
+
+/** @deprecated Spread {@link decimalColumnsMembers} into the writer. */
+export function decimalColumnsLine(
+  entity: MetaObject | readonly MetaObject[],
+  indent: string,
+  root?: MetaData,
+  hierarchy?: readonly MetaObject[],
+): string {
+  return legacyMemberLines(decimalColumnsMembers(entity, root, hierarchy), indent);
 }

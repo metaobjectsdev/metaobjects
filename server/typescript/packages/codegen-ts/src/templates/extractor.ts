@@ -39,7 +39,9 @@ import { mirrorName } from "./extract-delegate-emitter.js";
 import { enumUnionAliasName } from "./inferred-types.js";
 import { enumValues } from "../enum-meta.js";
 import type { RenderContext } from "../render-context.js";
-import { emittedVoName, importBinding, valueObjectImport } from "./value-object-import.js";
+import { emittedVoName, valueObjectImport } from "./value-object-import.js";
+import type { CodeWriter } from "../writer/code-writer.js";
+import { TsWriter } from "../writer/ts-writer.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -161,20 +163,11 @@ function strictArg(field: MetaData, root: MetaData, ownerName: string, ctx?: Ren
  * deduped, cycle-safe). Each maps the all-nullable `<VO>Extracted` mirror onto the strict `<VO>`
  * interface. ADR-0056: the root mirror is named for its value object like every nested one.
  */
-function emitMappers(payloadVo: MetaData, root: MetaData, ctx?: RenderContext): string {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  emitMapper(payloadVo, root, seen, out, ctx);
-  return out.join("\n\n");
+function writeMappers(w: CodeWriter, payloadVo: MetaData, root: MetaData, ctx?: RenderContext): void {
+  writeMapper(w, payloadVo, root, new Set<string>(), ctx);
 }
 
-function emitMapper(
-  vo: MetaData,
-  root: MetaData,
-  seen: Set<string>,
-  out: string[],
-  ctx?: RenderContext,
-): void {
+function writeMapper(w: CodeWriter, vo: MetaData, root: MetaData, seen: Set<string>, ctx?: RenderContext): void {
   // ADR-0044/#228: dedupe by resolutionKey() — see extract-delegate-emitter's emitMirror for why
   // bare-name dedupe silently drops the second colliding VO's toStrict mapper.
   if (seen.has(vo.resolutionKey())) return;
@@ -183,73 +176,53 @@ function emitMapper(
   const fn = mapperName(vo, ctx);
   const strict = emittedVoName(ctx, vo);
   const mir = mirrorName(vo, ctx);
-  const assigns = fields(vo).map((f) => `    ${f.name}: ${strictArg(f, root, strict, ctx)},`);
-  out.push(
-    [
-      `/** Map the all-nullable \`${mir}\` mirror onto the strict \`${strict}\` payload. Generated. */`,
-      `function ${fn}(m: ${mir}): ${strict} {`,
-      `  return {`,
-      ...assigns,
-      `  };`,
-      `}`,
-    ].join("\n"),
-  );
+  w.blank().line(`/** Map the all-nullable \`${mir}\` mirror onto the strict \`${strict}\` payload. Generated. */`);
+  w.block(`function ${fn}(m: ${mir}): ${strict} {`, () => {
+    w.block("return {", () => {
+      for (const f of fields(vo)) w.line(`${f.name}: ${strictArg(f, root, strict, ctx)},`);
+    }, "};");
+  });
 
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
       const target = refVo(f);
-      if (target !== undefined) emitMapper(target, root, seen, out, ctx);
+      if (target !== undefined) writeMapper(w, target, root, seen, ctx);
     }
   }
 }
 
 /**
- * One payload-type import group: the strict types (VO interface + its own enum
- * union-aliases) imported from a single VO entity module.
- */
-interface PayloadImportGroup {
-  /** The module specifier of the VO's entity module (ADR-0056 — `valueObjectImport`). */
-  specifier: string;
-  /** The strict type names exported by that module, in discovery order. */
-  types: string[];
-}
-
-/**
- * Group the strict payload types reachable from `vo` BY THE ENTITY MODULE THAT EXPORTS THEM.
+ * Import, type-only, the strict payload types reachable from `vo`, each FROM THE ENTITY MODULE
+ * THAT EXPORTS IT.
  *
  * Each value-object gets its own generated entity module (`entityFile()` emits `<VO>.ts` exporting
  * `export interface <VO>`), and `renderEnumTypeAliases` hoists every `field.enum` union-alias INTO
  * the OWNING VO's module (`export type <Owner><Field> = ...` co-located with the interface). So a
  * VO's interface AND the aliases for its own enum fields are imported from `./<VO>.js` — NOT from a
- * single `payloads.ts` (which no generator emits). Deduped, in discovery order, one group per VO.
+ * single `payloads.ts` (which no generator emits). Deduped, one module per VO.
  */
-function reachablePayloadGroups(
+function usePayloadTypes(
+  w: TsWriter,
   vo: MetaData,
   root: MetaData,
   ctx: RenderContext | undefined,
   outPath: string,
-): PayloadImportGroup[] {
-  const groups: PayloadImportGroup[] = [];
+): void {
   const seenVo = new Set<string>();
-  const seenAlias = new Set<string>();
   const visit = (cur: MetaData) => {
     // ADR-0044/#228: dedupe by resolutionKey() — bare-name dedupe would treat a colliding
-    // second VO as "already seen" and drop its own import group entirely.
+    // second VO as "already seen" and drop its own imports entirely.
     if (seenVo.has(cur.resolutionKey())) return;
     seenVo.add(cur.resolutionKey());
     // The VO interface + its OWN enum aliases share the VO's entity module, which declares them
     // under the value object's own name. They are bound under its local name, aliased when
     // another object shares the short name (`Note as AcmeAlphaNote`).
     const { name: localName, exported, specifier } = valueObjectImport(ctx, cur, outPath);
-    const types: string[] = [importBinding(exported, localName)];
+    w.useType(exported, specifier, localName);
     for (const f of fields(cur)) {
       const alias = enumAlias(f, localName);
-      if (alias !== undefined && !seenAlias.has(alias)) {
-        seenAlias.add(alias);
-        types.push(importBinding(enumAlias(f, exported)!, alias));
-      }
+      if (alias !== undefined) w.useType(enumAlias(f, exported)!, specifier, alias);
     }
-    groups.push({ specifier, types });
     // Recurse into nested object refs (their interfaces live in their own modules).
     for (const f of fields(cur)) {
       if (isObjectField(f)) {
@@ -259,7 +232,6 @@ function reachablePayloadGroups(
     }
   };
   visit(vo);
-  return groups;
 }
 
 /** Collect the mirror-interface names reachable from `vo` (root mirror + nested VO mirrors). */
@@ -332,57 +304,53 @@ export function renderExtractor(
   const rootMapper = mapperName(vo, ctx);
 
   const rootMirror = mirrorName(vo, ctx);
-  const payloadGroups = reachablePayloadGroups(vo, root, ctx, outPath);
-  const mirrorTypes = reachableMirrorTypes(vo, root, ctx);
-  const mappers = emitMappers(vo, root, ctx);
-
-  // One type-only import per VO entity module (the VO interface + its own enum
-  // union-aliases co-located there), at the module entityFile() writes it to.
-  const payloadImports = payloadGroups
-    .map((g) => `import type { ${g.types.join(", ")} } from ${JSON.stringify(g.specifier)};`)
-    .join("\n");
-
   const failPrefix = `${extractName}: `;
 
-  return (
-    `// GENERATED — extractor for "${templateName}".\n` +
-    `//\n` +
-    `// Turns dirty LLM text into a fully-typed \`${strictType}\` graph (nested objects +\n` +
-    `// arrays-of-objects populated) in one call, by delegating to the nested-capable extract and\n` +
-    `// mapping the all-nullable mirror onto the strict payload. No registry / binding / factory.\n` +
-    `\n` +
-    `import {\n  ${extractLenientWithName},\n  type ${mirrorTypes.join(",\n  type ")},\n} from "./${templateName}.response.js";\n` +
-    `${payloadImports}\n` +
-    `import type { MetaRoot } from "@metaobjectsdev/metadata";\n` +
-    `import type { ExtractionResult } from "@metaobjectsdev/render";\n` +
-    `\n` +
-    `/**\n` +
-    ` * Extract a fully-typed \`${strictType}\` from dirty \`text\` using the loaded \`root\` (which must\n` +
-    ` * declare the "${strictType}" payload value-object). Runs the tolerant extract, then maps the\n` +
-    ` * extracted mirror onto the strict payload.\n` +
-    ` *\n` +
-    ` * @throws Error iff a \`@required\` field was lost, or was present but unusable (MALFORMED —\n` +
-    ` *         an undeclared enum member, text where a number belongs): the strict opt-in gate.\n` +
-    ` */\n` +
-    `export function ${extractName}(root: MetaRoot, text: string): ${strictType} {\n` +
-    `  const r = ${extractLenientWithName}(root, text);\n` +
-    `  if (r.report.hasLostRequired() || r.report.hasMalformedRequired()) {\n` +
-    `    const unusable: string[] = [];\n` +
-    `    if (r.report.hasLostRequired()) unusable.push("lost required field(s): " + r.report.lostRequired().join(", "));\n` +
-    `    if (r.report.hasMalformedRequired()) unusable.push("malformed required field(s): " + r.report.malformedRequired().join(", "));\n` +
-    `    throw new Error(${JSON.stringify(failPrefix)} + unusable.join("; "));\n` +
-    `  }\n` +
-    `  return ${rootMapper}(r.data!);\n` +
-    `}\n` +
-    `\n` +
-    `/**\n` +
-    ` * Extract a \`${strictType}\` from dirty \`text\` using the loaded \`root\`, never throwing.\n` +
-    ` * Re-exposes the nested-capable extract; inspect \`report\` for lost/malformed/defaulted fields.\n` +
-    ` */\n` +
-    `export function ${extractLenientPublic}(root: MetaRoot, text: string): ExtractionResult<${rootMirror}> {\n` +
-    `  return ${extractLenientWithName}(root, text);\n` +
-    `}\n` +
-    `\n` +
-    `${mappers}\n`
+  const w = new TsWriter();
+  w.header(
+    `// GENERATED — extractor for "${templateName}".`,
+    "//",
+    `// Turns dirty LLM text into a fully-typed \`${strictType}\` graph (nested objects +`,
+    "// arrays-of-objects populated) in one call, by delegating to the nested-capable extract and",
+    "// mapping the all-nullable mirror onto the strict payload. No registry / binding / factory.",
   );
+  const responseModule = `./${templateName}.response.js`;
+  w.use(extractLenientWithName, responseModule);
+  for (const m of reachableMirrorTypes(vo, root, ctx)) w.useType(m, responseModule);
+  // One type-only import per VO entity module (the VO interface + its own enum
+  // union-aliases co-located there), at the module entityFile() writes it to.
+  usePayloadTypes(w, vo, root, ctx, outPath);
+  const metaRoot = w.useType("MetaRoot", "@metaobjectsdev/metadata");
+  const extractionResult = w.useType("ExtractionResult", "@metaobjectsdev/render");
+
+  w.text(`
+    /**
+     * Extract a fully-typed \`${strictType}\` from dirty \`text\` using the loaded \`root\` (which must
+     * declare the "${strictType}" payload value-object). Runs the tolerant extract, then maps the
+     * extracted mirror onto the strict payload.
+     *
+     * @throws Error iff a \`@required\` field was lost, or was present but unusable (MALFORMED —
+     *         an undeclared enum member, text where a number belongs): the strict opt-in gate.
+     */
+    export function ${extractName}(root: ${metaRoot}, text: string): ${strictType} {
+      const r = ${extractLenientWithName}(root, text);
+      if (r.report.hasLostRequired() || r.report.hasMalformedRequired()) {
+        const unusable: string[] = [];
+        if (r.report.hasLostRequired()) unusable.push("lost required field(s): " + r.report.lostRequired().join(", "));
+        if (r.report.hasMalformedRequired()) unusable.push("malformed required field(s): " + r.report.malformedRequired().join(", "));
+        throw new Error(${JSON.stringify(failPrefix)} + unusable.join("; "));
+      }
+      return ${rootMapper}(r.data!);
+    }
+
+    /**
+     * Extract a \`${strictType}\` from dirty \`text\` using the loaded \`root\`, never throwing.
+     * Re-exposes the nested-capable extract; inspect \`report\` for lost/malformed/defaulted fields.
+     */
+    export function ${extractLenientPublic}(root: ${metaRoot}, text: string): ${extractionResult}<${rootMirror}> {
+      return ${extractLenientWithName}(root, text);
+    }
+  `);
+  writeMappers(w, vo, root, ctx);
+  return w.toString();
 }

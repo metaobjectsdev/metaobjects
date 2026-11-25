@@ -29,11 +29,10 @@
  *   A template's first line is `// REFERENCE TEMPLATE — copy this into your repo`.
  *   That line IS the contract: a file telling a reader to own it is a file that must
  *   lint clean where it lands. Keying on it covers every copy of that text in the tree,
- *   and there are four kinds — each package's `src/reference/`, the private
- *   `test-generators` package (tests that need an adopter's owned generators),
- *   and the two `examples/<name>/codegen/generators/` scaffolds a reader copies from.
- *   All four carried the identical findings at identical line numbers, so a path-keyed
- *   gate would have fixed one and left three teaching the errors.
+ *   and there are two kinds — each package's `src/reference/`, and the two
+ *   `examples/<name>/codegen/generators/` scaffolds a reader copies from.
+ *   All of them carried the identical findings at identical line numbers, so a path-keyed
+ *   gate would have fixed one and left the rest teaching the errors.
  *
  * SCOPE — lint only, deliberately NOT `biome check`:
  *   A lint finding is an ERROR the adopter must act on. Formatting and import order are

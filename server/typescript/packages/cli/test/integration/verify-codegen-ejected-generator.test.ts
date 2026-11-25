@@ -95,11 +95,11 @@ async function setupRepo(): Promise<string> {
 function editOwnedGenerator(root: string, marker: string): void {
   const p = join(root, EJECTED);
   const src = readFileSync(p, "utf8");
-  const anchor = "`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\\n` +";
+  const anchor = "content: new Writer(";
   if (!src.includes(anchor)) {
-    throw new Error("the ejected entity template no longer has the header line this test edits");
+    throw new Error("the ejected entity generator no longer has the content line this test edits");
   }
-  writeFileSync(p, src.replace(anchor, `${anchor}\n    \`// ${marker}\\n\` +`), "utf8");
+  writeFileSync(p, src.replace(anchor, `content: \`// ${marker}\\n\` + new Writer(`), "utf8");
 }
 
 /** The other sanctioned move: hand-editing inside a generated file. */

@@ -31,16 +31,43 @@ import { templateSymbolBase } from "../naming.js";
 import { responseShape } from "./find-inbound.js";
 import { isRequired } from "./fr010-field-mapping.js";
 import {
-  nestedMirrorInterfaces,
-  nestedMappers,
+  writeNestedMirrorInterfaces,
+  writeNestedMappers,
   mirrorName,
   mapperName,
-  delegateHelpers,
+  writeDelegateHelpers,
   usedHelpers,
   hasNested,
 } from "./extract-delegate-emitter.js";
 import type { RenderContext } from "../render-context.js";
-import { emittedVoName, importBinding, valueObjectImport } from "./value-object-import.js";
+import { emittedVoName, useValueObjectType, valueObjectImport } from "./value-object-import.js";
+import type { CodeWriter } from "../writer/code-writer.js";
+import { TsWriter } from "../writer/ts-writer.js";
+
+/**
+ * A Zod expression for the strict schema: a one-line expression, or an object schema whose
+ * fields the writer prints one per line between `open` (`z.object({`, possibly wrapped as
+ * `z.array(z.object({`) and `close` (`})`, plus whatever the wrapping appends).
+ */
+type ZodExpr = string | { readonly open: string; readonly fields: readonly (readonly [string, ZodExpr])[]; readonly close: string };
+
+/** `e` wrapped: `before` + e + `after`, keeping an object schema's fields on their own lines. */
+function wrapZod(e: ZodExpr, before: string, after: string): ZodExpr {
+  return typeof e === "string" ? `${before}${e}${after}` : { open: before + e.open, fields: e.fields, close: e.close + after };
+}
+
+/** Write `lead` + `e` + `trail`: one line, or an object schema opened, its fields, and closed. */
+function writeZod(w: CodeWriter, lead: string, e: ZodExpr, trail: string): void {
+  if (typeof e === "string") {
+    w.line(lead, e, trail);
+  } else if (e.fields.length === 0) {
+    w.line(lead, e.open, e.close, trail);
+  } else {
+    w.open(lead, e.open);
+    for (const [name, fe] of e.fields) writeZod(w, `${name}: `, fe, ",");
+    w.close(e.close, trail);
+  }
+}
 
 /**
  * Wire-shape validators per field subtype, for a JSON reply from a model.
@@ -108,10 +135,10 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
  * same "payload tier disagrees with the rest of the toolchain" shape ADR-0052
  * came out of.
  */
-function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, depth: number): string {
+function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>): ZodExpr {
   // isArray is a native (reserved) property on MetaData, not an attr.
   const isArray = field.resolvedIsArray();
-  let base: string;
+  let base: ZodExpr;
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     // ADR-0059 R7: the VO the loader bound for @objectRef, resolved where it was declared.
     const inner = refTarget(field, FIELD_ATTR_OBJECT_REF);
@@ -120,7 +147,7 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
       // schemas not in scope for v1).
       base = "z.unknown()";
     } else {
-      base = renderObjectSchema(inner, root, new Set(seen).add(inner.resolutionKey()), depth + 1);
+      base = objectSchema(inner, root, new Set(seen).add(inner.resolutionKey()));
     }
   } else if (field.subType === FIELD_SUBTYPE_ENUM) {
     // The members are declared, resolving (so an `extends`-inherited @values is seen),
@@ -137,23 +164,16 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
     ? (field as MetaField).validators().find((v) => v.subType === VALIDATOR_SUBTYPE_ARRAY)
     : undefined;
   const count = `${bounds?.min !== undefined ? `.min(${bounds.min})` : ""}${bounds?.max !== undefined ? `.max(${bounds.max})` : ""}`;
-  const shaped = isArray ? `z.array(${base})${count}` : base;
+  const shaped = isArray ? wrapZod(base, "z.array(", `)${count}`) : base;
   // `.optional()` wraps the ARRAY, not its element: an absent list and a list of
   // absent things are different claims.
-  return isRequired(field) ? shaped : `${shaped}.optional()`;
+  return isRequired(field) ? shaped : wrapZod(shaped, "", ".optional()");
 }
 
-/** Render a `z.object({ ... })` for an object.value node.
- *  At depth 0 the schema starts at column 0 (consumer's `const Foo = z.object({`),
- *  so fields sit at 2 spaces and the closing `})` at 0 spaces — matching the
- *  surrounding `const NameSchema = ...` statement's indent. Nested schemas
- *  step in two spaces per depth level. */
-function renderObjectSchema(vo: MetaData, root: MetaData, seen: ReadonlySet<string>, depth: number): string {
+/** The `z.object({ ... })` schema for an object.value node, one entry per field. */
+function objectSchema(vo: MetaData, root: MetaData, seen: ReadonlySet<string>): ZodExpr {
   const fields = vo.children().filter((c) => c.type === TYPE_FIELD);
-  const fieldIndent = "  ".repeat(depth + 1);
-  const closeIndent = "  ".repeat(depth);
-  const lines = fields.map((f) => `${fieldIndent}${f.name}: ${fieldZod(f, root, seen, depth)},`);
-  return `z.object({\n${lines.join("\n")}\n${closeIndent}})`;
+  return { open: "z.object({", fields: fields.map((f) => [f.name, fieldZod(f, root, seen)] as const), close: "})" };
 }
 
 /**
@@ -193,7 +213,7 @@ export function renderOutputParser(
   }
   const { vo } = shape;
 
-  const schema = renderObjectSchema(vo, root, new Set([vo.resolutionKey()]), 0);
+  const schema = objectSchema(vo, root, new Set([vo.resolutionKey()]));
   // One base for every symbol in this file, shared with promptRender()'s handle — the
   // three template emitters used to spell the same node three ways (see naming.ts).
   const base = templateSymbolBase(templateName);
@@ -201,7 +221,7 @@ export function renderOutputParser(
   // ADR-0056: the strict parse returns the @responseRef value object's OWN interface (declared by
   // entityFile()). The wire schema below validates the reply; the interface types it. `tsc` checks
   // the schema's output is assignable to the interface, so the two cannot drift silently.
-  const { name: dataName, exported: dataExported, specifier: dataSpecifier } = valueObjectImport(ctx, vo, outPath);
+  const dataImport = valueObjectImport(ctx, vo, outPath);
   const errorName = `${base}ValidationError`;
   const parseName = `parse${base}`;
   const safeParseName = `safeParse${base}`;
@@ -233,42 +253,54 @@ export function renderOutputParser(
   // best-effort parse of model output.
   const emitStrict = format !== RESPONSE_FORMAT_XML;
 
-  const strictBody = `const ${schemaName} = ${schema};
+  const w = new TsWriter();
+  // Render-package imports the (single, loader-delegating) extract block needs. Kept minimal so
+  // the file has no unused imports (tsc noUnusedLocals-safe). `zod` and the response value
+  // object are imported only when the strict tier is emitted — an XML reply's file would
+  // otherwise carry unused imports.
+  const RENDER = "@metaobjectsdev/render";
+  const formatName = w.use("Format", RENDER);
+  const extractOptions = w.useType("ExtractOptions", RENDER);
+  const extractionResult = w.useType("ExtractionResult", RENDER);
+  if (emitStrict) {
+    const z = w.use("z", "zod");
+    const dataName = useValueObjectType(w, dataImport);
+    writeZod(w, `const ${schemaName} = `, schema, ";");
+    w.blank().line(`export type ${errorName} = ${z}.ZodError;`);
+    w.blank().text(`
+      /**
+       * Parse an LLM response into a typed ${dataName}. The reply must BE the JSON document (a
+       * structured-output / JSON-mode reply); prose or a code fence around it fails. For a raw
+       * model reply use \`${extractLenientWithName}\`.
+       * @throws ZodError on validation failure.
+       */
+      export function ${parseName}(text: string): ${dataName} {
+        return ${schemaName}.parse(JSON.parse(text));
+      }
 
-export type ${errorName} = z.ZodError;
-
-/**
- * Parse an LLM response into a typed ${dataName}. The reply must BE the JSON document (a
- * structured-output / JSON-mode reply); prose or a code fence around it fails. For a raw
- * model reply use \`${extractLenientWithName}\`.
- * @throws ZodError on validation failure.
- */
-export function ${parseName}(text: string): ${dataName} {
-  return ${schemaName}.parse(JSON.parse(text));
-}
-
-/**
- * Parse an LLM response with explicit error handling (Result-style).
- * Does not throw on validation failure.
- */
-export function ${safeParseName}(
-  text: string,
-): { success: true; data: ${dataName} } | { success: false; error: ${errorName} } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    return {
-      success: false,
-      error: new z.ZodError([{ code: "custom", path: [], message: \`invalid JSON: \${(err as Error).message}\` }]),
-    };
+      /**
+       * Parse an LLM response with explicit error handling (Result-style).
+       * Does not throw on validation failure.
+       */
+      export function ${safeParseName}(
+        text: string,
+      ): { success: true; data: ${dataName} } | { success: false; error: ${errorName} } {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch (err) {
+          return {
+            success: false,
+            error: new ${z}.ZodError([{ code: "custom", path: [], message: \`invalid JSON: \${(err as Error).message}\` }]),
+          };
+        }
+        const result = ${schemaName}.safeParse(parsed);
+        return result.success
+          ? { success: true, data: result.data }
+          : { success: false, error: result.error };
+      }
+    `);
   }
-  const result = ${schemaName}.safeParse(parsed);
-  return result.success
-    ? { success: true, data: result.data }
-    : { success: false, error: result.error };
-}
-`;
 
   // ---- FR-010 tolerant extract block ----
   // Unconditional since ADR-0052: a declared @responseRef IS the request for the
@@ -277,18 +309,14 @@ export function ${safeParseName}(
   // ADR-0056: the mirror is named for the value object, like every nested one.
   const extractedName = mirrorName(vo, ctx);
   const payloadFqnConst = `${templateName.toUpperCase()}_PAYLOAD_NAME`;
-  const formatEnum = format === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
+  const formatEnum = `${formatName}.${format === RESPONSE_FORMAT_XML ? "XML" : "JSON"}`;
 
   // The nullable mirror is the return shape of the delegating extract. Use the nested-aware
   // emitter so the mirror's nested-object / array-of-object components are typed (not
   // `unknown`), and so a mirror interface is emitted for every reachable nested value-object.
   // ADR-0044/#228: `ctx` qualifies a mirror's name when its VO's bare short name collides across
   // packages, matching the entity-domain emitted name (e.g. `AcmeAlphaNoteExtracted`).
-  const mirrorDecls = nestedMirrorInterfaces(vo, root, ctx);
-
-  // Render-package imports the (single, loader-delegating) extract block needs. Kept minimal so
-  // the file has no unused imports (tsc noUnusedLocals-safe).
-  const renderImports = ["Format", "type ExtractOptions", "type ExtractionResult"];
+  // (Written below, by writeNestedMirrorInterfaces.)
 
   // ---- Runtime-delegating extract (the single metadata-driven extract path) ----
   // Resolves this payload's MetaObject from a loaded MetaRoot by its baked simple name and
@@ -318,68 +346,51 @@ export function ${safeParseName}(
   const bakedPayloadName = payloadNameCollides ? vo.resolutionKey() : payloadName;
   const rootMapper = mapperName(vo, ctx);
   void hasNested;
-  const lookupExpr = payloadNameCollides
-    ? `resolveObjectRef(root, ${payloadFqnConst}, "").node`
-    : `root.findObject(${payloadFqnConst})`;
-  const delegating = `
-/** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime.${
-    payloadNameCollides
-      ? " ADR-0042 FQN (this payload's bare name collides with a same-short-name value object elsewhere in the run)."
-      : ""
-  } */
-export const ${payloadFqnConst} = ${JSON.stringify(bakedPayloadName)};
-
-${mirrorDecls}
-
-${nestedMappers(vo, root, ctx)}
-
-${delegateHelpers(usedHelpers(vo, root))}
-
-/**
- * Runtime-delegating tolerant best-effort extraction for a RAW model reply (prose, code
- * fences, a truncated or mis-typed field): a bad reply never throws — each field is classified
- * in \`report\` and \`data\` carries what was recovered (\`orThrow\` from the render package
- * makes a lost @required field an error). Throws only when \`root\` does not declare the payload
- * value object — a setup error, not a reply error. FULLY populates
- * nested-object and array-of-object components by delegating to the metadata-driven runtime
- * \`extractObject\` (which assembles the whole graph reflection-free via the Phase A object
- * model, reading the live metadata directly), then maps the assembled graph into the typed
- * \`${extractedName}\` mirror.
- *
- * @param root a loaded MetaRoot (e.g. \`(await new MetaDataLoader().load(...)).root\`) that declares
- *             the \`${payloadName}\` value-object.
- */
-export function ${extractLenientWithName}(
-  root: MetaRoot,
-  text: string,
-  opts?: Partial<ExtractOptions> | null,
-): ExtractionResult<${extractedName}> {
-  const mo = ${lookupExpr};
-  if (mo === undefined) {
-    throw new Error(\`${extractLenientWithName}: payload "\${${payloadFqnConst}}" not found in the supplied MetaRoot\`);
-  }
-  const outcome = extractObject(mo, text, ${formatEnum}, opts);
-  return { data: ${rootMapper}(outcome.data), report: outcome.report };
-}
-`;
-
   // The delegating overload needs runtime-ts (extractObject) + the MetaRoot type from metadata
   // (+ resolveObjectRef, ADR-0044/#228, only when this payload's own bare name collides).
-  const metadataImport = payloadNameCollides
-    ? `import type { MetaRoot } from "@metaobjectsdev/metadata";\nimport { resolveObjectRef } from "@metaobjectsdev/metadata";\n`
-    : `import type { MetaRoot } from "@metaobjectsdev/metadata";\n`;
-  const runtimeImport = `import { extractObject } from "@metaobjectsdev/runtime-ts";\n`;
-
-  // `zod` is imported only when the strict tier is emitted — an XML reply's file
-  // would otherwise carry an unused import (tsc noUnusedLocals-unsafe).
-  return (
-    (emitStrict ? `import { z } from "zod";\n` : "") +
-    (emitStrict ? `import type { ${importBinding(dataExported, dataName)} } from ${JSON.stringify(dataSpecifier)};\n` : "") +
-    `import {\n  ${renderImports.join(",\n  ")},\n} from "@metaobjectsdev/render";\n` +
-    metadataImport +
-    runtimeImport +
-    `\n` +
-    (emitStrict ? `${strictBody}\n` : "") +
-    `${delegating}`
+  const metaRoot = w.useType("MetaRoot", "@metaobjectsdev/metadata");
+  const extractObject = w.use("extractObject", "@metaobjectsdev/runtime-ts");
+  const lookupExpr = payloadNameCollides
+    ? `${w.use("resolveObjectRef", "@metaobjectsdev/metadata")}(root, ${payloadFqnConst}, "").node`
+    : `root.findObject(${payloadFqnConst})`;
+  w.blank().doc(
+    `Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime.${
+      payloadNameCollides
+        ? " ADR-0042 FQN (this payload's bare name collides with a same-short-name value object elsewhere in the run)."
+        : ""
+    }`,
   );
+  w.line(`export const ${payloadFqnConst} = ${JSON.stringify(bakedPayloadName)};`);
+  writeNestedMirrorInterfaces(w, vo, root, ctx);
+  writeNestedMappers(w, vo, root, ctx);
+  writeDelegateHelpers(w, usedHelpers(vo, root));
+  w.blank().text(`
+    /**
+     * Runtime-delegating tolerant best-effort extraction for a RAW model reply (prose, code
+     * fences, a truncated or mis-typed field): a bad reply never throws — each field is classified
+     * in \`report\` and \`data\` carries what was recovered (\`orThrow\` from the render package
+     * makes a lost @required field an error). Throws only when \`root\` does not declare the payload
+     * value object — a setup error, not a reply error. FULLY populates
+     * nested-object and array-of-object components by delegating to the metadata-driven runtime
+     * \`extractObject\` (which assembles the whole graph reflection-free via the Phase A object
+     * model, reading the live metadata directly), then maps the assembled graph into the typed
+     * \`${extractedName}\` mirror.
+     *
+     * @param root a loaded MetaRoot (e.g. \`(await new MetaDataLoader().load(...)).root\`) that declares
+     *             the \`${payloadName}\` value-object.
+     */
+    export function ${extractLenientWithName}(
+      root: ${metaRoot},
+      text: string,
+      opts?: Partial<${extractOptions}> | null,
+    ): ${extractionResult}<${extractedName}> {
+      const mo = ${lookupExpr};
+      if (mo === undefined) {
+        throw new Error(\`${extractLenientWithName}: payload "\${${payloadFqnConst}}" not found in the supplied MetaRoot\`);
+      }
+      const outcome = ${extractObject}(mo, text, ${formatEnum}, opts);
+      return { data: ${rootMapper}(outcome.data), report: outcome.report };
+    }
+  `);
+  return w.toString();
 }

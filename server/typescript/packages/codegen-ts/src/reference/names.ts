@@ -64,8 +64,8 @@ export function namesFile(opts?: NamesFileOpts): Generator {
     name: "names",
     // §A6 — the marker the runner aggregates into ResolvedGenConfig.includeNames, so the
     // entity generator can tell whether this artifact will exist. Exactly the mechanism
-    // routesFileHono already uses via emitsHonoRoutes/includeHonoRoutes.
-    emitsNames: true,
+    // routesFileHono already uses via provides.routes/includeHonoRoutes.
+    provides: { names: true },
     generate: (ctx: GenContext): EmittedFile[] => {
       const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";

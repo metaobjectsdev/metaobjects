@@ -5,8 +5,9 @@ import { describe, expect, test } from "bun:test";
 import { OBJECT_SUBTYPE_ENTITY } from "@metaobjectsdev/metadata";
 import { code, Import, imp, joinCode } from "../src/poet.js";
 import { renderInferredTypes } from "../src/templates/inferred-types.js";
-import { WRITER_ERRORS, WriterError } from "../src/writer/code-writer.js";
-import { arr, call, key, props, str, TsWriter } from "../src/writer/ts-writer.js";
+import { CodeWriter, WRITER_ERRORS, WriterError } from "../src/writer/code-writer.js";
+import { YamlWriter } from "../src/writer/yaml-writer.js";
+import { arr, call, docSample, json, key, legacyMemberLines, props, str, TsWriter } from "../src/writer/ts-writer.js";
 import { metaObject } from "./_meta-build.js";
 
 function errorCode(fn: () => unknown): string | undefined {
@@ -150,6 +151,108 @@ describe("the writer is extended by subclassing (ADR-0063)", () => {
     w.line("const x = ", w.use("x", "zod"), "(", w.use("y", "./local"), ");");
     expect(w.toString()).toBe(
       ['import { y } from "./local";', 'import { x } from "zod";', "", "const x = x(y);", ""].join("\n"),
+    );
+  });
+});
+
+describe("TsWriter.reopen", () => {
+  test("closes the open block and opens the next on one line", () => {
+    const w = new TsWriter();
+    w.open("const s = z.object({");
+    w.line("a: z.string(),");
+    w.reopen("}).superRefine((row, ctx) => {");
+    w.blank();
+    w.line("check(row, ctx);");
+    w.close("});");
+    expect(w.toString()).toBe(
+      ["const s = z.object({", "  a: z.string(),", "}).superRefine((row, ctx) => {", "  check(row, ctx);", "});", ""].join("\n"),
+    );
+  });
+
+  test("with no block open is an unbalanced close", () => {
+    expect(errorCode(() => new TsWriter().reopen("} else {"))).toBe(WRITER_ERRORS.unbalancedClose);
+  });
+});
+
+describe("TsWriter use/useType with a local alias", () => {
+  test("binds the import under the alias and returns it", () => {
+    const w = new TsWriter();
+    const a = w.useType("Order", "./shop/Order", "ShopOrder");
+    const b = w.use("parse", "zod", "zParse");
+    w.line(`export type X = ${a}; export const p = ${b};`);
+    expect(w.toString()).toBe(
+      'import { parse as zParse } from "zod";\nimport type { Order as ShopOrder } from "./shop/Order";\n\nexport type X = ShopOrder; export const p = zParse;\n',
+    );
+  });
+
+  test("one alias naming two different exports is an import conflict", () => {
+    const w = new TsWriter();
+    w.useType("Order", "./a", "Local");
+    expect(() => w.useType("Other", "./a", "Local")).toThrow(/ERR_WRITER_IMPORT_CONFLICT|names both/);
+  });
+});
+
+describe("TsWriter doc samples and the 1.2 member form", () => {
+  test("docSample indents a laid-out sample for a doc comment", () => {
+    const sample = new CodeWriter();
+    sample.block("app.register(async (s) => {", () => sample.line("await routes(s);"), "});");
+    const w = new TsWriter();
+    w.doc("Register it:", "", ...docSample(sample));
+    expect(w.toString()).toBe(
+      ["/**", " * Register it:", " *", " *     app.register(async (s) => {", " *       await routes(s);", " *     });", " */", ""].join("\n"),
+    );
+  });
+
+  test("legacyMemberLines puts the break before each member, and is empty for none", () => {
+    expect(legacyMemberLines(["a: 1,", "b: 2,"], "    ")).toBe("\n    a: 1,\n    b: 2,");
+    expect(legacyMemberLines([], "    ")).toBe("");
+  });
+});
+
+describe("TsWriter json", () => {
+  test("writes a JSON value as a literal that fits or breaks, keys always quoted", () => {
+    const value = { or: [{ active: { eq: true } }, { age: { gte: 18 } }], note: null, tags: [] };
+    const fits = new TsWriter();
+    fits.line("const f = ", json(value), ";");
+    expect(fits.toString()).toBe(
+      'const f = { "or": [{ "active": { "eq": true } }, { "age": { "gte": 18 } }], "note": null, "tags": [] };\n',
+    );
+    const narrow = new TsWriter({ width: 40 });
+    narrow.line("const f = ", json({ a: "x", b: [1, 2] }), ";");
+    expect(narrow.toString()).toBe('const f = { "a": "x", "b": [1, 2] };\n');
+    const broken = new TsWriter({ width: 30 });
+    broken.line("const f = ", json({ alpha: "x", beta: [1, 2] }), ";");
+    expect(broken.toString()).toBe('const f = {\n  "alpha": "x",\n  "beta": [1, 2],\n};\n');
+  });
+});
+
+describe("indentation-delimited blocks", () => {
+  test("indented() writes the body one level in and no line around it", () => {
+    const w = new CodeWriter();
+    w.line("CREATE VIEW v AS");
+    w.indented(() => {
+      w.line("SELECT");
+      w.indented(() => w.line("a,").line("b"));
+      w.line("FROM t");
+    });
+    w.line("-- after");
+    expect(w.toString()).toBe("CREATE VIEW v AS\n  SELECT\n    a,\n    b\n  FROM t\n-- after\n");
+  });
+
+  test("YamlWriter keys indent their block and items carry the dash on their first line", () => {
+    const w = new YamlWriter();
+    w.key("cubes", () => {
+      w.item(() => {
+        w.line("name: orders");
+        w.key("joins", () => {
+          w.item(() => w.line("name: a").line("sql: x"));
+          w.item(() => w.line("name: b"));
+        });
+        w.key("meta", () => w.line(`grains: [${"day"}, ${"month"}]`));
+      });
+    });
+    expect(w.toString()).toBe(
+      "cubes:\n  - name: orders\n    joins:\n      - name: a\n        sql: x\n      - name: b\n    meta:\n      grains: [day, month]\n",
     );
   });
 });

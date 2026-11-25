@@ -26,6 +26,8 @@
 //                                        the generated React form submits;
 //   - `HH:MM[:SS[.f]]` (+ an offset)   — Postgres time / timetz, `<input type="time">`.
 
+import { CodeWriter } from "@metaobjectsdev/codegen-ts/engine";
+
 const TIME_OF_DAY = "(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?";
 const UTC_OFFSET = "(?:[Zz]|[+-](?:[01]\\d|2[0-3])(?::?[0-5]\\d)?)?";
 // 31-day months, 30-day months, February 1–28 in any year, and February 29 in a leap
@@ -99,18 +101,37 @@ export const ZOD_TIMESTAMP_EXPR =
 export const UTC_TIMESTAMP_HELPER = "utcIsoTimestamp";
 
 /** The normalizer's declaration, emitted at the top of a module that uses it. */
-export const UTC_TIMESTAMP_HELPER_DECL = [
-  "/** A field.timestamp instant in UTC (`YYYY-MM-DDTHH:MM:SS[.fff]Z`): a value already spelled so is kept",
-  " *  as sent, an offset is applied, a zoneless value is UTC and a date alone is midnight UTC.",
-  " *  SQLite/D1 compare timestamps as text, so instants are stored in UTC. Generated. */",
-  `function ${UTC_TIMESTAMP_HELPER}(v: string): string {`,
-  "  if (/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/.test(v)) return v;",
-  "  const m = /^(\\d{4}-\\d{2}-\\d{2})(?:[Tt ](\\d{2}:\\d{2})(?::(\\d{2})(?:\\.(\\d+))?)?(?:([Zz])|([+-]\\d{2}):?(\\d{2})?)?)?$/.exec(v);",
-  "  if (m === null) return v;",
-  '  const t = Date.parse(`${m[1]}T${m[2] ?? "00:00"}:${m[3] ?? "00"}.${(m[4] ?? "").slice(0, 3).padEnd(3, "0")}${m[6] === undefined ? "Z" : `${m[6]}:${m[7] ?? "00"}`}`);',
-  '  return Number.isNaN(t) ? v : new Date(t).toISOString().replace(/\\.?0+Z$/, "Z");',
-  "}",
-].join("\n");
+/** Write the `utcIsoTimestamp` normalizer a timestamp WRITE shape transforms through. */
+export function writeUtcTimestampHelper(w: CodeWriter): void {
+  w.text(`
+    /** A field.timestamp instant in UTC (\`YYYY-MM-DDTHH:MM:SS[.fff]Z\`): a value already spelled so is kept
+     *  as sent, an offset is applied, a zoneless value is UTC and a date alone is midnight UTC.
+     *  SQLite/D1 compare timestamps as text, so instants are stored in UTC. Generated. */
+    function ${UTC_TIMESTAMP_HELPER}(v: string): string {
+      if (/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$/.test(v)) {
+        return v;
+      }
+      const m = /^(\\d{4}-\\d{2}-\\d{2})(?:[Tt ](\\d{2}:\\d{2})(?::(\\d{2})(?:\\.(\\d+))?)?(?:([Zz])|([+-]\\d{2}):?(\\d{2})?)?)?$/
+        .exec(v);
+      if (m === null) {
+        return v;
+      }
+      const t = Date.parse(
+        \`\${m[1]}T\${m[2] ?? "00:00"}:\${m[3] ?? "00"}.\${(m[4] ?? "").slice(0, 3).padEnd(3, "0")}\${
+          m[6] === undefined ? "Z" : \`\${m[6]}:\${m[7] ?? "00"}\`
+        }\`,
+      );
+      return Number.isNaN(t) ? v : new Date(t).toISOString().replace(/\\.?0+Z$/, "Z");
+    }
+  `);
+}
+
+/** {@link writeUtcTimestampHelper}'s declaration as text, with no final newline. */
+export const UTC_TIMESTAMP_HELPER_DECL = ((): string => {
+  const w = new CodeWriter();
+  writeUtcTimestampHelper(w);
+  return w.toString().trimEnd();
+})();
 
 /** `field.timestamp` (string mode, instant — not `@localTime`) on a WRITE shape: the format
  *  check, then the to-UTC rewrite above. A module emitting it must also emit

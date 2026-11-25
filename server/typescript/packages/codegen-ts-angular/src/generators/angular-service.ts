@@ -33,7 +33,7 @@ export const angularServiceFile = function angularServiceFile(
     // Marks this generator as part of the CLIENT UI tier — the runner aggregates it
     // into ctx.config.includeUiTier so `agent/ui.md` describes a tier that this run
     // actually emits, rather than one the metadata merely permits.
-    emitsUiTier: true,
+    provides: { uiTier: true },
     // A service is a client of a generated READ endpoint — no endpoint, no service
     // (an `object.value`, a sourceless entity/projection or an abstract object has
     // nothing to fetch, and its emitted output could never compile; see api-surface.ts).

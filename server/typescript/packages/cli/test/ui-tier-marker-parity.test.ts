@@ -1,7 +1,7 @@
 // F75 — the two halves of "does this run emit a client UI tier?" must agree.
 //
 // `agent/ui.md` gates on that answer. The declared half is each generator's
-// `emitsUiTier` marker; the compatibility half is `UI_TIER_GENERATOR_NAMES`, which keeps
+// `provides.uiTier` declaration; the compatibility half is `UI_TIER_GENERATOR_NAMES`, which keeps
 // a copy ejected before the marker existed from silently losing the page. A generator
 // present in one half and not the other is the bug this file exists to catch: add a UI
 // generator without the marker and the page stops emitting for everyone who wires it;
@@ -12,7 +12,7 @@
 //
 // It does NOT cover the three `angular-*` names: `codegen-ts-angular` is source-only
 // (ADR-0048), unpublished, and not a dependency of `cli`, so nothing here can import its
-// generators. They do carry `emitsUiTier: true` — the gate simply cannot see them, and
+// generators. They do carry `provides: { uiTier: true }` — the gate simply cannot see them, and
 // saying so is the point: the set below is 4 of the 7 names, not all of them. Closing
 // that needs a devDependency on a source-only package, which is a build decision that
 // belongs with the ADR's promotion bar rather than with this gate.
@@ -26,8 +26,8 @@ import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/c
 const SHIPPED: Generator[] = [formFile(), tanstackQuery(), tanstackGrid(), tanstackGridHook()];
 
 describe("UI-tier marker parity", () => {
-  test("every shipped UI generator declares emitsUiTier", () => {
-    expect(SHIPPED.map((g) => [g.name, g.emitsUiTier])).toEqual(
+  test("every shipped UI generator declares provides.uiTier", () => {
+    expect(SHIPPED.map((g) => [g.name, g.provides?.uiTier])).toEqual(
       SHIPPED.map((g) => [g.name, true]),
     );
   });

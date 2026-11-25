@@ -15,7 +15,7 @@ import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import { defineConfig, runGen } from "@metaobjectsdev/codegen-ts";
 import { namesFile } from "@metaobjectsdev/codegen-ts/generators";
 import { buildExpectedSchema, diff, emit } from "@metaobjectsdev/migrate-ts";
-import { barrel, entityFile, queriesFile, routesFile } from "@metaobjectsdev/test-generators";
+import { barrel, entityFile, queriesFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
 import type pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { indexEmitted, type EmittedFiles, type OutputLayout } from "./output-layout.ts";

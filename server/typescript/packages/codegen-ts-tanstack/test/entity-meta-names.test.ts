@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runGen, defineConfig, type Generator } from "@metaobjectsdev/codegen-ts";
 import { namesFile } from "@metaobjectsdev/codegen-ts/generators";
-import { entityFile } from "@metaobjectsdev/test-generators";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { tanstackQuery, tanstackGridHook } from "../src/index.js";
 import { tanstackQuery as refQuery } from "../src/reference/hooks.js";
 import { tanstackGridHook as refGridHook } from "../src/reference/grid-hook.js";

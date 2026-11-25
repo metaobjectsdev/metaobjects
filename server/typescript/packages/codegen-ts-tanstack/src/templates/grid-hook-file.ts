@@ -8,7 +8,7 @@
 //   const grid = useSubscriberDefaultGrid();
 //   <EntityGrid {...grid} columns={subscriberDefaultColumns} grid={subscriberDefaultGrid} />
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { str, TsWriter } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaLayout, MetaRoot } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts/engine";
@@ -62,14 +62,25 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** The grid hooks module for `entity`, or "" when it declares no dataGrid. */
 export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): string {
+  if (extractGrids(entity, ctx.loadedRoot).length === 0) return "";
+  const w = new TsWriter();
+  writeGridHookFile(w, entity, ctx);
+  return w.toString();
+}
+
+/** Write one use<Entity><Grid>Grid() hook per dataGrid layout of `entity` into `w`. */
+export function writeGridHookFile(w: TsWriter, entity: MetaObject, ctx: RenderContext): void {
   const entityName = entity.name;
   const lcEntity   = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const grids      = extractGrids(entity, ctx.loadedRoot);
-
-  if (grids.length === 0) return "";
-
   const pkg = effectivePackage(entity);
+
+  w.header(
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entityName} (${entity.fqn()})`,
+  );
 
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
@@ -80,100 +91,62 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
     entityName,
     ctx.extStyle,
   );
-
-  // ts-poet symbols (imp()) — typed and deduped on emit.
-  const useStateSym = imp("useState@react");
-  const useMemoSym  = imp("useMemo@react");
-  const useQuerySym = imp("useQuery@@tanstack/react-query");
-  const SortingStateSym       = imp("t:SortingState@@tanstack/react-table");
-  const PaginationStateSym    = imp("t:PaginationState@@tanstack/react-table");
-  const ColumnFiltersStateSym = imp("t:ColumnFiltersState@@tanstack/react-table");
-  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
-  const buildFilterQsSym    = imp("buildFilterQs@@metaobjectsdev/runtime-web");
-
-  const entityImports: Code = code`
-import { ${entityName} } from ${JSON.stringify(metaModuleOf(entity, ctx))};
-import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityModule)};
-`;
-
-  // Collect names of all filter preset consts needed.
-  const filterPresetImports: string[] = grids
-    .filter((g) => g.hasFilterPreset)
-    .map((g) => `${lcEntity}${capitalize(g.name)}Filter`);
-
+  const meta = w.use(entityName, metaModuleOf(entity, ctx));
+  const row = w.useType(entityName, entityModule, `${entityName}Row`);
   // Columns file is a same-target sibling of the grid-hook (both emitted to
-  // selfTarget) — always relative, package-layout aware.
+  // selfTarget) — always relative, package-layout aware. It holds the filter presets.
   const columnsModule = siblingSpecifier(ctx.selfTarget, pkg, `${entityName}.columns`, ctx.extStyle);
-  const filterPresetImportCode: Code =
-    filterPresetImports.length > 0
-      ? code`import { ${filterPresetImports.join(", ")} } from ${JSON.stringify(columnsModule)};\n`
-      : code``;
 
-  const sections: Code[] = grids.map((grid) => {
-    const cap      = capitalize(grid.name);
-    const hookName = `use${entityName}${cap}Grid`;
-    const presetConst = grid.hasFilterPreset ? `${lcEntity}${cap}Filter` : null;
-
+  const useState = w.use("useState", "react");
+  const rowsType = `{ rows: ${row}[]; total: number }`;
+  for (const grid of grids) {
+    const cap = capitalize(grid.name);
+    const preset = grid.hasFilterPreset ? w.use(`${lcEntity}${cap}Filter`, columnsModule) : undefined;
     const initialSorting = grid.defaultSort
-      ? `[{ id: ${JSON.stringify(grid.defaultSort.field)}, desc: ${JSON.stringify(grid.defaultSort.order === "desc")} }]`
-      : `[]`;
-    const initialPagination = `{ pageIndex: 0, pageSize: ${grid.pageSize} }`;
+      ? `[{ id: ${str(grid.defaultSort.field)}, desc: ${JSON.stringify(grid.defaultSort.order === "desc")} }]`
+      : "[]";
 
-    return code`
-export function ${hookName}() {
-  const [sorting,       setSorting]       = ${useStateSym}<${SortingStateSym}>(${initialSorting});
-  const [pagination,    setPagination]    = ${useStateSym}<${PaginationStateSym}>(${initialPagination});
-  const [columnFilters, setColumnFilters] = ${useStateSym}<${ColumnFiltersStateSym}>([]);
-  const [search,        setSearch]        = ${useStateSym}<string>("");
-
-  const fetcher = ${useEntityPathFetcherSym}();
-
-  const qs = ${useMemoSym}(() => {
-    const filterObj: Record<string, unknown> = ${presetConst ? `{ ...${presetConst} }` : `{}`};
-    for (const f of columnFilters) {
-      filterObj[f.id] = f.value as unknown;
-    }
-    const sortEntry = sorting[0];
-    const sort = sortEntry
-      ? \`\${sortEntry.id}:\${sortEntry.desc ? "desc" : "asc"}\`
-      : undefined;
-    return ${buildFilterQsSym}({
-      ...filterObj,
-      ...(sort !== undefined ? { sort } : {}),
-      limit:  pagination.pageSize,
-      offset: pagination.pageIndex * pagination.pageSize,
-      ...(search !== "" ? { search } : {}),
-      withCount: 1,
+    w.blank();
+    w.block(`export function use${entityName}${cap}Grid() {`, () => {
+      w.line(`const [sorting, setSorting] = ${useState}<${w.useType("SortingState", "@tanstack/react-table")}>(${initialSorting});`);
+      w.line(`const [pagination, setPagination] = ${useState}<${w.useType("PaginationState", "@tanstack/react-table")}>({ pageIndex: 0, pageSize: ${grid.pageSize} });`);
+      w.line(`const [columnFilters, setColumnFilters] = ${useState}<${w.useType("ColumnFiltersState", "@tanstack/react-table")}>([]);`);
+      w.line(`const [search, setSearch] = ${useState}<string>("");`);
+      w.blank();
+      w.line(`const fetcher = ${w.use("useEntityPathFetcher", "@metaobjectsdev/tanstack")}();`);
+      w.blank();
+      w.open(`const qs = ${w.use("useMemo", "react")}(() => {`);
+      w.line(`const filterObj: Record<string, unknown> = ${preset !== undefined ? `{ ...${preset} }` : "{}"};`);
+      w.block("for (const f of columnFilters) {", () => w.line("filterObj[f.id] = f.value as unknown;"));
+      w.line("const sortEntry = sorting[0];");
+      w.line('const sort = sortEntry ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}` : undefined;');
+      w.block(`return ${w.use("buildFilterQs", "@metaobjectsdev/runtime-web")}({`, () => {
+        w.line("...filterObj,");
+        w.line("...(sort !== undefined ? { sort } : {}),");
+        w.line("limit: pagination.pageSize,");
+        w.line("offset: pagination.pageIndex * pagination.pageSize,");
+        w.line('...(search !== "" ? { search } : {}),');
+        w.line("withCount: 1,");
+      }, "});");
+      w.close("}, [sorting, pagination, columnFilters, search]);");
+      w.blank();
+      w.block(`const query = ${w.use("useQuery", "@tanstack/react-query")}<${rowsType}>({`, () => {
+        w.line(`queryKey: [${str(lcEntity)}, "grid", ${str(grid.name)}, qs],`);
+        w.line(`queryFn: () => fetcher<${rowsType}>(\`\${${meta}.$path}?\${qs}\`),`);
+      }, "});");
+      w.blank();
+      w.block("return {", () => {
+        w.line("data: query.data?.rows ?? [],");
+        w.line("rowCount: query.data?.total ?? 0,");
+        w.line("state: { sorting, pagination, columnFilters },");
+        w.line("onSortingChange: setSorting,");
+        w.line("onPaginationChange: setPagination,");
+        w.line("onColumnFiltersChange: setColumnFilters,");
+        w.line("search,");
+        w.line("onSearchChange: setSearch,");
+        w.line("isLoading: query.isLoading,");
+        w.line("error: query.error,");
+      }, "};");
     });
-  }, [sorting, pagination, columnFilters, search]);
-
-  const query = ${useQuerySym}<{ rows: ${entityName}Row[]; total: number }>({
-    queryKey: [${JSON.stringify(lcEntity)}, "grid", ${JSON.stringify(grid.name)}, qs],
-    queryFn: () => fetcher<{ rows: ${entityName}Row[]; total: number }>(
-      \`\${${entityName}.$path}?\${qs}\`,
-    ),
-  });
-
-  return {
-    data: query.data?.rows ?? [],
-    rowCount: query.data?.total ?? 0,
-    state: { sorting, pagination, columnFilters },
-    onSortingChange:       setSorting,
-    onPaginationChange:    setPagination,
-    onColumnFiltersChange: setColumnFilters,
-    search,
-    onSearchChange: setSearch,
-    isLoading: query.isLoading,
-    error:     query.error,
-  };
-}
-`;
-  });
-
-  const header =
-    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n`;
-
-  const body = joinCode(sections, { on: "\n" });
-  return header + entityImports.toString() + filterPresetImportCode.toString() + body.toString();
+  }
 }

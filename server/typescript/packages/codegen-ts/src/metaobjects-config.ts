@@ -97,27 +97,27 @@ export interface ResolvedGenConfig {
   /** "package" (default, R63) — files placed in a sub-path derived from each object's metadata package; "flat" — all files in outDir. */
   outputLayout?: OutputLayout;
   /** Whether the OPT-IN Hono routes generator (routesFileHono) is active in the
-   *  run — aggregated by the runner from the suite's `emitsHonoRoutes` markers.
+   *  run — aggregated by the runner from the suite's `provides.routes` (framework "hono") declarations.
    *  api-docs reads this to AUTO-DETECT whether to document the Hono CRUD surface
    *  (it otherwise mirrors the default Fastify-only suite). Undefined ⇒ false. */
   includeHonoRoutes?: boolean;
   /** Whether a generator in the run writes the `<Entity>.ts` entity modules (the suite's
-   *  `emitsEntityModule` markers, or an `entity-file` by name). api-docs documents the model,
+   *  `provides.entityModule` declarations, or an `entity-file` by name). api-docs documents the model,
    *  its Zod schemas and its `relations()` only then. Undefined ⇒ documented. */
   includeEntityModule?: boolean;
   /** Whether a generator in the run writes the `<Entity>.queries.ts` modules (the suite's
-   *  `emitsQueries` markers, or a `queries-file` by name). api-docs documents the query
+   *  `provides.queries` declarations, or a `queries-file` by name). api-docs documents the query
    *  helpers only then. Undefined ⇒ documented, which is what a caller that is not a run
    *  (a thin docs entrypoint) wants. */
   includeQueries?: boolean;
-  /** Likewise for the Fastify REST routes: a routes generator that mounts them (`mountsRoutes`
+  /** Likewise for the Fastify REST routes: a routes generator that mounts them (`provides.routes`
    *  on a non-Hono generator, or a `routes-file` by name). Undefined ⇒ documented. */
   includeRestRoutes?: boolean;
   /** The `expose` option the run's routes generators were built with (`runRoutesExpose`), per
    *  routes surface, for the api reference to document only the verbs they mount. Absent documents all five. */
   routesExpose?: RoutesExpose;
   /** §A6 — whether the OPT-IN names generator (namesFile) is active in the run,
-   *  aggregated by the runner from the suite's `emitsNames` markers. A generator that
+   *  aggregated by the runner from the suite's `provides.names` declarations. A generator that
    *  wants to REFERENCE `<Entity>Names` reads this to know the artifact will exist:
    *  the names generator is opt-in under ADR-0034 scaffold-and-own, so an
    *  unconditional import would break every project that has not enabled it.
@@ -125,14 +125,14 @@ export interface ResolvedGenConfig {
    *  which the runner sets from this same aggregation. */
   includeNames?: boolean;
   /** Whether the `report-export` generator is active in the route file's target (aggregated from
-   *  the suite's `emitsReportExport` markers). A report's routes mount the `?format=` branch, and
+   *  the suite's `provides.reportExport` declarations). A report's routes mount the `?format=` branch, and
    *  import the `<Report>.export` module, only when this is true. Undefined => false. */
   includeReportExport?: boolean;
   /** Whether the `report-export` generator is active in ANY target of the run: the same fact for a
    *  generator that describes the routes from a target of its own. Undefined => false. */
   reportExportInRun?: boolean;
   /** Whether any CLIENT UI generator (form, hook, grid, columns) is active in the
-   *  run — aggregated by the runner from the suite's `emitsUiTier` markers.
+   *  run — aggregated by the runner from the suite's `provides.uiTier` declarations.
    *  `agent/ui.md` reads this to decide whether a UI tier exists to describe;
    *  a metadata predicate can only say a UI *could* be generated. Undefined ⇒ false. */
   includeUiTier?: boolean;

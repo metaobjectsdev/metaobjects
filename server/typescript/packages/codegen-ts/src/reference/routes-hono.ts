@@ -10,16 +10,18 @@
 //                `mountReadOnlyCrudRoutes` and takes its persistence client as INJECTED DEPS
 //                (`register<Entity>Routes(app, { db })`) rather than a module-singleton
 //                import — which is what makes it portable to any host that can hand Hono a
-//                request. If your framework is not Hono, THIS is the file to retarget: swap
-//                the mount helper and the exported signature; the metadata walk is
-//                framework-neutral and stays as-is.
+//                request. If your framework is not Hono, its copied
+//                ../templates/routes-file-hono.ts is the file to retarget: swap the mount
+//                helper and the exported signature; the metadata walk is framework-neutral
+//                and stays as-is.
 // use-when:      you want generated Hono CRUD routes per entity.
 // emits:         <target>/<Entity>.routes.hono.ts — full CRUD for write-through entities,
 //                read-only (GET list + GET :id) for projections, GET list alone for a keyless
 //                projection or a served report. Skipped for any sourceless
 //                object and for TPH subtypes.
-// owns:          ALL of it. The route COMPOSITION is below (`renderRoutesHono`), not a call
-//                into the engine. And the emitted file does not import its mount helpers from
+// owns:          ALL of it. The route COMPOSITION is `writeRoutesFileHono` in
+//                ../templates/routes-file-hono.ts, which `meta eject routes-hono` copied beside
+//                this file — edit it there. And the emitted file does not import its mount helpers from
 //                `@metaobjectsdev/runtime-ts`: `meta eject routes-hono` also copied their
 //                SOURCE (the Hono adapter, filter parser, error envelopes, pagination) into
 //                `codegen/runtime/`, and the emitted imports point there. Fix an adapter
@@ -34,15 +36,7 @@
 //                attribute — those were never registered vocabulary, so `meta verify`
 //                rejects them (ERR_UNKNOWN_ATTR).
 // composes-with: entity.ts (imports the table/schemas/allowlists), queries.ts.
-//
-// The composition (`renderRoutesHono`) is the relocated body of the engine's
-// `renderRoutesFileHono` — byte-identical output to start, now YOURS to change. It imports
-// the engine from the package and the renderers from `../templates/`, which `meta eject`
-// copies beside it.
 
-// ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the Code
-// fragments composed here must share ONE ts-poet instance with the engine's.
-import { code, imp } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
@@ -51,208 +45,16 @@ import {
   type RenderContext,
   resolveExpose,
   type ExposeOption,
-  type CrudVerb,
-  authSeamJsDoc,
-  exposeLine,
-  isProjection,
-  isWriteThrough,
-  isReport,
-  itemRouteField,
-  decimalColumnsLine,
-  paginationLine,
-  writeDeniedColumnsLine,
-  knownFieldsLine,
   servesReadApi,
   DEFAULT_OUTPUT_LAYOUT,
   entityOutputPath,
   effectivePackage,
-  entityModuleSpecifier,
-  siblingSpecifier,
-  httpRuntimeSpecifier,
   ownedRuntimeImport,
-  GENERATED_HEADER,
-  GENERATED_EDIT_NOTE,
-  sidecarLine,
-  DEFAULT_ID_FIELD,
   isTphSubtype,
   claimRouteSegment,
 } from "@metaobjectsdev/codegen-ts/engine";
+import { renderRoutesFileHono } from "../templates/routes-file-hono.js";
 import { renderRoutesIndex, routesIndexFileName } from "../templates/routes-index.js";
-
-// --- composition (OWNED) — assembles one <Entity>.routes.hono.ts. Change this to change the output. ---
-// Dispatch: a projection or served report → mountReadOnlyCrudRoutes (GET list, + GET :id
-// when it has an id column to address a row by); every other
-// writable entity → mountCrudRoutes. `apiPrefix` is composed into the path string (Hono has
-// no register-with-prefix primitive). TPH subtypes never reach here — see the filter below.
-
-function renderRoutesHono(
-  entity: MetaObject,
-  ctx: RenderContext,
-  // #348 — resolved by the generator from its `expose` option. undefined = all five verbs,
-  // emitting no `expose` key at all, so output stays byte-identical without it.
-  //
-  // Applies to the CRUD mount only. The projection branch above uses
-  // mountReadOnlyCrudRoutes, a different helper that is read-only by construction and
-  // takes no `expose` — there is no writable surface there to narrow.
-  expose?: readonly CrudVerb[],
-  // Row cap of a served report (`routesFile({ reportMaxRows })`). undefined emits no key.
-  reportMaxRows?: number,
-): string {
-  const entityName = entity.name;
-  const handlerName = `register${entityName}Routes`;
-
-  const entityFileSpec = entityModuleSpecifier(
-    ctx.selfTarget,
-    ctx.entityModuleTarget,
-    effectivePackage(entity),
-    entityName,
-    ctx.extStyle,
-  );
-
-  // Where the mount helpers come from: the package, or an owned copy (owned-runtime.ts).
-  const runtimeSpec = httpRuntimeSpecifier("hono", ctx, effectivePackage(entity));
-
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n${sidecarLine(`${entityName}.extra.ts`)}`;
-
-  // Path composition: apiPrefix is a literal string in the URL.
-  const pathExpr = ctx.apiPrefix
-    ? `\`${ctx.apiPrefix}\${${entityName}.$path}\``
-    : `${entityName}.$path`;
-  // The same path with Hono's trailing wildcard, for the auth recipe in the JSDoc.
-  // `"/users/*"` matches `/users` itself, so one app.use covers list, get and writes.
-  const authPathExpr = ctx.apiPrefix
-    ? `\`${ctx.apiPrefix}\${${entityName}.$path}/*\``
-    : `\`\${${entityName}.$path}/*\``;
-
-  // --- Projection / report path: read-only routes (GET list, + GET :id when keyed) ---
-  if (isProjection(entity)) {
-    const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-    // A keyless read-only object (a projection with no identity and no `id` column, and
-    // every report: FR-044) has no row to address, so it mounts GET list and the collection 405
-    // and no `/:id` route of any verb. Every key is absent for a projection keyed on `id`, which
-    // keeps its output byte-identical.
-    const idField = itemRouteField(entity);
-    const keyless = idField === undefined;
-    const report = isReport(entity);
-    const noun = report ? "report" : "projection";
-    const exposes = keyless
-      ? "Exposes GET list only. POST returns 405."
-      : "Exposes GET list + GET :id only. POST/PATCH/DELETE return 405.";
-    // The mount addresses `id` by default. A projection keyed on another field names it
-    // (the view's key for that column, which is the field name), so `GET /:id` reads the
-    // same column the by-id query does. Absent for `id`, which keeps that output's bytes.
-    const keylessOpts = (indent: string): string =>
-      (idField !== undefined && idField !== DEFAULT_ID_FIELD
-        ? `\n${indent}idColumn: ${JSON.stringify(idField)},`
-        : "") +
-      (keyless ? `\n${indent}itemRoutes: false,` : "") +
-      (report ? `\n${indent}resource: "report",` : "") +
-      (report && reportMaxRows !== undefined ? `\n${indent}reportMaxRows: ${reportMaxRows},` : "") +
-      (report && ctx.includeReportExport ? `\n${indent}export: ${entityName}Export,` : "") +
-      decimalColumnsLine(entity, indent, ctx.loadedRoot) +
-      (report ? "" : paginationLine(entity, indent, ctx.loadedRoot));
-    const HonoSym = imp("t:Hono@hono");
-    const mountReadOnlyCrudRoutesSym = imp(`mountReadOnlyCrudRoutes@${runtimeSpec}`);
-
-    // The report-export generator is wired for this target: mount its `?format=` branch with the
-    // module it emitted beside this file. Absent, the file is byte-identical to before export existed.
-    const exportImport =
-      report && ctx.includeReportExport
-        ? `import { ${entityName}Export } from ${JSON.stringify(
-            siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entityName}.export`, ctx.extStyle),
-          )};\n`
-        : "";
-    const literalImports = code`
-import {
-  ${entityName},
-  ${camelName}View,
-  ${entityName}FilterAllowlist,
-  ${entityName}SortAllowlist,
-} from ${JSON.stringify(entityFileSpec)};
-`;
-
-    const body = code`
-/**
- * Mount read-only REST endpoints for ${entityName} (${noun} — view-backed, no writes).
- *
- * ${exposes}
- * Customize: register this as-is, or import individual route helpers from
- * ${runtimeSpec}.
-${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: false })}
- */
-export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {
-  ${mountReadOnlyCrudRoutesSym}({
-    app,
-    path: ${pathExpr},
-    db: deps.db,
-    view: ${camelName}View,
-    filterAllowlist: ${entityName}FilterAllowlist,
-    sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${keylessOpts("    ")}
-  });
-}
-`;
-
-    return header + literalImports.toString() + exportImport + body.toString();
-  }
-
-  // --- Vanilla / write-through entity path: full CRUD routes ---
-  const tableVar = ctx.collectionName(entityName);
-
-  // #214: a write-through entity reads through its replica view so derived origin.*
-  // columns are present. Without this the Hono adapter returned rows missing every
-  // derived field the generated type and Zod schema promise, and a filter or sort on
-  // one — both ALLOWED by the generated allowlists — hit a column the table does not
-  // have, producing a 500. Fastify has done this since #214; Hono was simply never
-  // wired, exactly as it was never wired for #286's `.all()`/`.get()` fix.
-  const writeThrough = isWriteThrough(entity);
-  const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const readViewLine = writeThrough ? `\n    readView: ${camelName}View,` : "";
-  const exposeLineHono = exposeLine(expose, "    ");
-
-  const HonoSym = imp("t:Hono@hono");
-  const mountCrudRoutesSym = imp(`mountCrudRoutes@${runtimeSpec}`);
-
-  const literalImports = code`
-import {
-  ${entityName},
-  ${tableVar},
-  ${entityName}InsertSchema,
-  ${entityName}UpdateSchema,
-  ${entityName}FilterAllowlist,
-  ${entityName}SortAllowlist,${writeThrough ? `\n  ${camelName}View,` : ""}
-} from ${JSON.stringify(entityFileSpec)};
-`;
-
-  const body = code`
-/**
- * Mount the 5 standard REST endpoints for ${entityName} using Drizzle directly.
- *
- * Customize: register this as-is for stock CRUD, OR import the per-verb
- * helpers (mountListRoute, mountGetRoute, ...) from
- * ${runtimeSpec} and mix with your own handlers
- * (auth, side effects, etc.).
-${authSeamJsDoc({ framework: "hono", handlerName, mountPathExpr: authPathExpr, narrowable: true })}
- */
-export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unknown }): void {
-  ${mountCrudRoutesSym}({
-    app,
-    path: ${pathExpr},
-    db: deps.db,
-    table: ${tableVar},${readViewLine}
-    insertSchema: ${entityName}InsertSchema,
-    updateSchema: ${entityName}UpdateSchema,
-    filterAllowlist: ${entityName}FilterAllowlist,
-    sortAllowlist: ${entityName}SortAllowlist,
-    dialect: ${JSON.stringify(ctx.dialect)},${decimalColumnsLine(entity, "    ", ctx.loadedRoot)}${writeDeniedColumnsLine(entity, "    ")}${knownFieldsLine(entity, "    ", ctx.loadedRoot)}${paginationLine(entity, "    ", ctx.loadedRoot)}${exposeLineHono}
-  });
-}
-`;
-
-  return header + literalImports.toString() + body.toString();
-}
 
 export interface RoutesFileHonoOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -300,13 +102,13 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     servesReadApi(e) && userFilter(e);
   const generator: Generator = {
     name: "routes-file-hono",
-    // Marks this as the Hono routes generator so the runner can aggregate
-    // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
-    emitsHonoRoutes: true,
     // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts.
-    mountsRoutes: {
-      ...(opts?.expose !== undefined && { expose: opts.expose }),
-      ...(opts?.filter !== undefined && { filter: opts.filter }),
+    provides: {
+      routes: {
+        framework: "hono",
+        ...(opts?.expose !== undefined && { expose: opts.expose }),
+        ...(opts?.filter !== undefined && { filter: opts.filter }),
+      },
     },
     // TPH subtypes are EXCLUDED, matching the Fastify generator. A TPH subtype shares
     // its base's table, so mounting vanilla CRUD for it produced routes with no
@@ -355,7 +157,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
         effectivePackage(entity),
         `${entity.name}.routes.hono.ts`,
       ),
-      content: renderRoutesHono(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows),
+      content: renderRoutesFileHono(entity, renderContext, resolveExpose(entity, opts?.expose), opts?.reportMaxRows),
     };
   });
   if (opts?.target) {

@@ -277,9 +277,9 @@ eject any of them and not the others.
 
 The model and api page sets link to each other, so the runner tells every generator the
 same facts on `ctx.docs`, read from the list: the api surfaces in each target (the
-directory each `apiDocsFile()` writes to, from its `emitsApiDocs` marker) and whether the
-model pages are written (`docsFile()`'s `emitsModelDocs` marker). An owned copy keeps the
-marker, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
+directory each `apiDocsFile()` writes to, from its `provides.apiDocs` declaration) and whether
+the model pages are written (`docsFile()`'s `provides.modelDocs`). An owned copy keeps the
+declaration, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
 somewhere else (another port's, with a `baseUrl` each) and wins over the fact. The agent
 pages need the physical schema, which `meta gen` computes from your dialect and the
 project's `naming` setting when the list includes `agentDocsFile()` (the generator package

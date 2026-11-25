@@ -104,7 +104,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     // Marks this generator as part of the CLIENT UI tier — the runner aggregates it
     // into ctx.config.includeUiTier so `agent/ui.md` describes a tier that this run
     // actually emits, rather than one the metadata merely permits.
-    emitsUiTier: true,
+    provides: { uiTier: true },
     filter: (e: MetaObject) => passesOtherGates(e) && hasDataGridLayout(e),
     generate: async (ctx) => {
       warnMissingDataGridLayout(ctx, passesOtherGates, "<Entity>.columns.tsx");

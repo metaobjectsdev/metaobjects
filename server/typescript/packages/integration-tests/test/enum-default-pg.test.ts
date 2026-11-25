@@ -17,7 +17,7 @@ import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:tes
 import { buildExpectedSchema, diff, emit, introspectPostgres } from "@metaobjectsdev/migrate-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, queriesFile } from "@metaobjectsdev/codegen-ts/generators";
 import { ObjectManager } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect, sql } from "kysely";
