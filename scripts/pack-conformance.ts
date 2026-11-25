@@ -11,8 +11,9 @@
  * in its providers.json, because a scenario that loads only the default bundle tests
  * core, not the pack.
  *
- * Error codes: the core list (fixtures/conformance/ERROR-CODES.json) plus the pack's own
- * packs/<name>/fixtures/conformance/ERROR-CODES.json when it declares codes of its own.
+ * Error codes: the core list (fixtures/conformance/ERROR-CODES.json) plus
+ * packs/<name>/fixtures/conformance/ERROR-CODES.json of the pack and of every pack it
+ * requires, for each that declares codes of its own.
  * An optional packs/<name>/typescript/conformance-expected-failures.json is the port's
  * ledger, in the core ledger's format.
  *
@@ -23,7 +24,7 @@ import { join } from "node:path";
 import { runCorpus, loadErrorCodes, loadLedger, type CorpusResult } from "../server/typescript/packages/conformance/src/index.js";
 import { createTsAdapter } from "../server/typescript/packages/metadata/test/conformance/adapter.js";
 import type { MetaDataTypeProvider } from "../server/typescript/packages/metadata/src/index.js";
-import { PACK_CORPUS, REPO_ROOT, loadPackClosure, packDir, packNamesFromArgs, readPackManifest } from "./lib/packs.js";
+import { PACK_CORPUS, REPO_ROOT, loadPackClosure, packDir, packNamesFromArgs, packsById, readPackManifest } from "./lib/packs.js";
 
 const ERROR_CODES = "ERROR-CODES.json";
 
@@ -34,10 +35,14 @@ export async function runPackConformance(name: string, root: string = REPO_ROOT)
   const closure = await loadPackClosure(name, root);
   const extra: Record<string, MetaDataTypeProvider> = {};
   for (const p of closure) extra[p.id] = p;
-  const errorCodes = [
-    ...(await loadErrorCodes(join(root, "fixtures/conformance", ERROR_CODES))),
-    ...(await loadErrorCodes(join(corpusRoot, ERROR_CODES))),
-  ];
+  // The codes a scenario may expect: core's, and those of this pack and every pack it
+  // requires (a required pack's check runs on this pack's models too).
+  const byId = packsById(root);
+  const errorCodes = [...(await loadErrorCodes(join(root, "fixtures/conformance", ERROR_CODES)))];
+  for (const p of closure) {
+    // A pack with no codes of its own has no file; loadErrorCodes reads that as none.
+    errorCodes.push(...(await loadErrorCodes(join(packDir(byId.get(p.id) ?? name, root), PACK_CORPUS, ERROR_CODES))));
+  }
   return runCorpus({
     corpusRoot,
     adapter: createTsAdapter(extra),

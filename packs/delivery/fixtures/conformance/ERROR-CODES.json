@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "codes": {
+    "ERR_DELIVERY_UNRESOLVED_REF": "A deployment's @app or @environment, or a value.ref's @from, names no node, or names a node of the wrong kind (@app takes an app.*, @environment an environment.*, @from a resource.* or an app.*)."
+  }
+}

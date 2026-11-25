@@ -1,0 +1,54 @@
+{
+  "metadata.root": {
+    "package": "acme::game",
+    "children": [
+      { "system.internal": {
+          "name": "Game",
+          "@description": "A multiplayer game: one Spring service, its database, cache and image bucket.",
+          "children": [
+            { "app.service": {
+                "name": "server",
+                "@needs": ["db", "cache", "images"],
+                "@calls": ["Chat", "Payments"],
+                "@settings": ["Database", "Redis", "Llm", "Chat", "Payments"],
+                "children": [
+                  { "build.dockerfile": {
+                      "name": "image",
+                      "@path": "Dockerfile",
+                      "@watchExclude": ["docs/**", "e2e-tests/**", "scripts/**", "assets/**", "*.md"]
+                  } },
+                  { "runtime.process": {
+                      "name": "web",
+                      "@port": 8080,
+                      "@healthPath": "/actuator/health/container",
+                      "@healthTimeoutSeconds": 300,
+                      "@drainSeconds": 180,
+                      "@restart": "onFailure"
+                  } }
+                ]
+            } },
+            { "resource.database": { "name": "db", "@engine": "postgres", "@version": "18" } },
+            { "resource.cache": { "name": "cache", "@engine": "redis" } },
+            { "resource.bucket": { "name": "images", "@engine": "r2", "@managedBy": "external" } },
+            { "system.external": { "name": "Chat" } },
+            { "system.external": { "name": "Payments" } }
+          ]
+      } },
+      { "environment.standing": { "name": "production" } },
+      { "deployment.railway": {
+          "name": "server-production",
+          "@app": "Game.server",
+          "@environment": "production",
+          "@project": "game",
+          "@service": "game",
+          "@branch": "main",
+          "@domains": ["app.example.com", "play.example.com"],
+          "@secrets": "keys",
+          "children": [
+            { "value.ref": { "name": "dbUrl", "@setting": "Database.url", "@from": "Game.db", "@output": "url" } },
+            { "value.literal": { "name": "profile", "@setting": "Spring.profile", "@literal": "prod" } }
+          ]
+      } }
+    ]
+  }
+}

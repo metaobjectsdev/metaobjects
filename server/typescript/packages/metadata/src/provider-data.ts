@@ -18,6 +18,7 @@ import type { AttrValue, MetaData } from "./shared/meta-data.js";
 import type { DataType } from "./data-type.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 import { SUBTYPE_BASE } from "./shared/base-types.js";
+import type { NodeValidator } from "./validation-types.js";
 
 /**
  * A UNIFIED child requirement (spec §3.1). Every constraint on a type — both its
@@ -175,6 +176,13 @@ export interface ProviderDefinition {
  */
 export type FactoryMap = Record<string, (typeId: TypeId, name: string) => MetaData>;
 
+/**
+ * Optional, also code: a `"<type>.<subType>"` → imperative validator map. A type the
+ * definition registers carries its validator on its `TypeDefinition` (`validate`), the
+ * extension point a provider outside core uses for checks the data cannot express.
+ */
+export type ValidatorMap = Record<string, NodeValidator>;
+
 const ATTR_CHILD_TYPE = "attr";
 
 /** Whether a `ChildDef` declares an attribute (vs a structural child). */
@@ -229,6 +237,7 @@ export function defineProviderFromData(
   data: ProviderDefinition,
   factories: FactoryMap,
   externalBase?: ExternalBaseLookup,
+  validators?: ValidatorMap,
 ): TypeDefinition[] {
   // Pre-compute each type's OWN lowered attrs + childRules, keyed by "type.subType",
   // so base-composition can fold a base's contributions into its subtypes. A
@@ -263,6 +272,7 @@ export function defineProviderFromData(
 
     const self = lowered.get(key)!;
     const { attributes, childRules } = composeWithBase(t, self, lowered, externalBase);
+    const validate = validators?.[key];
 
     return {
       typeId: new TypeId(t.type, t.subType),
@@ -278,6 +288,7 @@ export function defineProviderFromData(
       ...(t.implementedIn !== undefined ? { implementedIn: t.implementedIn } : {}),
       ...(t.maxOccurs !== undefined ? { maxOccurs: t.maxOccurs } : {}),
       ...(t.defaultName !== undefined ? { defaultName: t.defaultName } : {}),
+      ...(validate !== undefined ? { validate } : {}),
     };
   });
 }
@@ -293,6 +304,7 @@ export function applyProviderDefinition(
   registry: TypeRegistry,
   data: ProviderDefinition,
   factories: FactoryMap,
+  validators?: ValidatorMap,
 ): void {
   // A pack may add a subtype to a type another provider owns (the reporting pack's
   // object.report): its `extendsBase` folds in that type's `base` as already
@@ -303,7 +315,7 @@ export function applyProviderDefinition(
       ? undefined
       : { attributes: [...base.attributes], childRules: [...base.childRules] };
   };
-  for (const def of defineProviderFromData(data, factories, externalBase)) {
+  for (const def of defineProviderFromData(data, factories, externalBase, validators)) {
     registry.register(def);
   }
   const commonAttrs = universalCommonAttrs(data);

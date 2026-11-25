@@ -1,0 +1,91 @@
+{
+  "pack": "metaobjects-railway",
+  "types": [
+    {
+      "type": "deployment",
+      "subType": "railway",
+      "description": "An app deployed as one Railway service in one Railway environment. Takes every deployment.base attribute (@app, @environment, @domains, @replicas, @region, @branch, @secrets, and value.* children) and adds where it lives on Railway.",
+      "whenToUse": "Each (app, environment) pair that runs on Railway.",
+      "attrs": [
+        {
+          "name": "app",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The app deployed: `System.app` (`Shop.web`), or `pkg::System.app` from another package. It must resolve to an app.* node (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "branch",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The repository branch whose pushes deploy here."
+        },
+        {
+          "name": "domains",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The public host names that route to the app here."
+        },
+        {
+          "name": "environment",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The environment.* node it deploys to, by name (or `pkg::name`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "project",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The Railway project's name."
+        },
+        {
+          "name": "region",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The platform's region name."
+        },
+        {
+          "name": "replicas",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "How many copies run. Absent means the platform's default."
+        },
+        {
+          "name": "secrets",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The vault the deployment's secret settings come from, by name (a vault.* of the config pack). Recorded by name only: this pack does not require the config pack."
+        },
+        {
+          "name": "service",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The Railway service's name. Absent means the app's name."
+        }
+      ],
+      "children": [
+        {
+          "childType": "value",
+          "childSubType": [
+            "literal",
+            "ref"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    }
+  ],
+  "extends": [],
+  "commonAttrs": [],
+  "defaultSubTypes": {}
+}

@@ -1,0 +1,10 @@
+{
+  "id": "metaobjects-railway",
+  "version": "0.1.0",
+  "stability": "preview",
+  "description": "Railway as a deployment platform: deployment.railway. Vocabulary only so far; the emitter comes later.",
+  "requires": { "metamodel": ">=1.3 <2", "packs": { "metaobjects-delivery": ">=0.1.0 <0.2.0" } },
+  "ports": {
+    "typescript": { "package": "@metaobjectsdev/pack-railway", "core": ">=1.3.0 <2.0.0", "publish": false }
+  }
+}

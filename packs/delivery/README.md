@@ -1,0 +1,68 @@
+# delivery pack
+
+`metaobjects-delivery`, version 0.1.0, **preview**, unpublished. An independent pack
+([ADR-0069](../../spec/decisions/ADR-0069-independent-packs.md)). Requires
+[`systems`](../systems/README.md).
+
+It answers: **what runs where, and what differs per environment?** Facts true in every
+environment sit under the app (how it is built, how its process runs). A deployment places one app
+in one environment on one platform, and holds only what differs there.
+
+## Vocabulary
+
+| Node | Where | What it is | Attributes |
+|---|---|---|---|
+| `environment.standing`, `.ephemeral`, `.local` | document root | A named environment: production, a pull-request preview, a workstation | (documentation only) |
+| `build.dockerfile` | under an `app.*`, at most one build | Built as an image from a Dockerfile | `@path`, `@context`, `@watchExclude` |
+| `build.command` | under an `app.*` | Built by a command the platform's builder runs | `@command`, `@watchExclude` |
+| `build.static` | under an `app.*` | A directory of files served as they are | `@directory`, `@command`, `@watchExclude` |
+| `runtime.process` | under an `app.*` | How one of its processes runs | `@command`, `@port`, `@healthPath`, `@healthTimeoutSeconds`, `@drainSeconds`, `@restart` (`always`, `onFailure`, `never`) |
+| `deployment.<platform>` | document root | An app in an environment on a platform. A **platform pack** registers the subtype (the [`railway`](../railway/README.md) pack registers `deployment.railway`) | `@app`, `@environment`, `@domains`, `@replicas`, `@region`, `@branch`, `@secrets`, plus the platform's own |
+| `value.literal` | under a deployment | A setting's fixed value there | `@setting`, `@literal` |
+| `value.ref` | under a deployment | A setting's value produced by another node at deploy time | `@setting`, `@from`, `@output` |
+
+`deployment.base` is the abstract anchor platform packs specialise (`extendsBase: true`); this pack
+registers no concrete deployment, and an authored `deployment.base` fails to load
+(`ERR_ABSTRACT_SUBTYPE_AUTHORED`). A secret needs no value node: the setting is marked secret in
+the config pack and the deployment names its vault in `@secrets`. The full definition is
+[`metamodel/delivery.json`](metamodel/delivery.json).
+
+## References
+
+- `@app` names an app as `System.app`, or `pkg::System.app` from another package.
+- `@environment` names an `environment.*` node.
+- `value.ref`'s `@from` names a `resource.*` or `app.*` the same way; `@output` says which of its
+  values (url, host, port, privateUrl, ...), for a platform generator to map. This is how an address
+  stays out of a repository: it is named, never written.
+
+Each fails the load with `ERR_DELIVERY_UNRESOLVED_REF` when it resolves to nothing or to the wrong
+kind of node. A platform pack holds its deployments to the same rule by passing
+`validateDeployment` as its subtype's validator. `@secrets` (a config pack `vault.*`) and
+`@setting` (`Group.field` of an `object.settings`) are names only: this pack does not require the
+config pack.
+
+## The estate pattern
+
+The app's repository declares its own deployments. A separate estate repository loads that model,
+adds deployments the app never declared (a staging environment), and overrides the ones it did by
+overlay, using the loader's existing merge:
+
+```json
+{ "metadata.root": { "package": "acme::game", "children": [
+  { "deployment.railway": { "name": "server-production", "overlay": true, "@replicas": 2 } }
+] } }
+```
+
+The `railway` pack's `railway-worked-example` fixture is the whole example, both sides.
+
+## Ports
+
+TypeScript only (ADR-0069's port rule: elsewhere a model that uses it fails by name).
+
+## Checks
+
+```
+bun scripts/pack-vocabulary.ts delivery
+bun scripts/pack-conformance.ts delivery
+scripts/ci-local.sh --only packs
+```

@@ -1,0 +1,10 @@
+{
+  "id": "metaobjects-systems",
+  "version": "0.1.0",
+  "stability": "preview",
+  "description": "What exists and what talks to what: systems, apps (service, client, job) and the resources they use.",
+  "requires": { "metamodel": ">=1.3 <2", "packs": {} },
+  "ports": {
+    "typescript": { "package": "@metaobjectsdev/pack-systems", "core": ">=1.3.0 <2.0.0", "publish": false }
+  }
+}

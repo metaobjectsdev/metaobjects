@@ -1,0 +1,67 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.service": {
+                "name": "api",
+                "@needs": [
+                  "db"
+                ],
+                "@calls": [
+                  "Payments"
+                ]
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db",
+                "@engine": "postgres"
+              }
+            },
+            {
+              "system.external": {
+                "name": "Payments"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "api-production",
+          "@app": "Shop.api",
+          "@environment": "production",
+          "@project": "shop",
+          "children": [
+            {
+              "value.ref": {
+                "name": "dbUrl",
+                "@setting": "Database.url",
+                "@from": "Shop.database",
+                "@output": "url"
+              }
+            },
+            {
+              "value.ref": {
+                "name": "payments",
+                "@setting": "Payments.url",
+                "@from": "Shop.Payments",
+                "@output": "url"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

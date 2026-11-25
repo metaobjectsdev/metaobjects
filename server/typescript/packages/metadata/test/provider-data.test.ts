@@ -482,3 +482,18 @@ test("a type with no children → empty attributes and childRules", () => {
   expect(def.attributes).toEqual([]);
   expect(def.childRules).toEqual([]);
 });
+
+test("a validator map puts each validator on its type's definition, and only there", () => {
+  const data: ProviderDefinition = {
+    provider: "t",
+    types: [
+      { type: "field", subType: "string", description: "A text field." },
+      { type: "field", subType: "int", description: "A whole number." },
+    ],
+  };
+  const reg = new TypeRegistry();
+  const validate = () => {};
+  applyProviderDefinition(reg, data, { "field.string": FIELD_FACTORY, "field.int": FIELD_FACTORY }, { "field.string": validate });
+  expect(reg.find("field", "string")!.validate).toBe(validate);
+  expect(reg.find("field", "int")!.validate).toBeUndefined();
+});

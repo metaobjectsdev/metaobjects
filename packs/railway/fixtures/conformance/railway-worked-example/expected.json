@@ -1,0 +1,152 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "system.internal": {
+          "name": "Game",
+          "package": "acme::game",
+          "@description": "A multiplayer game: one Spring service, its database, cache and image bucket.",
+          "children": [
+            {
+              "app.service": {
+                "name": "server",
+                "@calls": [
+                  "Chat",
+                  "Payments"
+                ],
+                "@needs": [
+                  "db",
+                  "cache",
+                  "images"
+                ],
+                "@settings": [
+                  "Database",
+                  "Redis",
+                  "Llm",
+                  "Chat",
+                  "Payments"
+                ],
+                "children": [
+                  {
+                    "build.dockerfile": {
+                      "name": "image",
+                      "@path": "Dockerfile",
+                      "@watchExclude": [
+                        "docs/**",
+                        "e2e-tests/**",
+                        "scripts/**",
+                        "assets/**",
+                        "*.md"
+                      ]
+                    }
+                  },
+                  {
+                    "runtime.process": {
+                      "name": "web",
+                      "@drainSeconds": 180,
+                      "@healthPath": "/actuator/health/container",
+                      "@healthTimeoutSeconds": 300,
+                      "@port": 8080,
+                      "@restart": "onFailure"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db",
+                "@engine": "postgres",
+                "@version": "18"
+              }
+            },
+            {
+              "resource.cache": {
+                "name": "cache",
+                "@engine": "redis"
+              }
+            },
+            {
+              "resource.bucket": {
+                "name": "images",
+                "@engine": "r2",
+                "@managedBy": "external"
+              }
+            },
+            {
+              "system.external": {
+                "name": "Chat"
+              }
+            },
+            {
+              "system.external": {
+                "name": "Payments"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production",
+          "package": "acme::game"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "server-production",
+          "package": "acme::game",
+          "@app": "Game.server",
+          "@branch": "main",
+          "@domains": [
+            "app.example.com",
+            "play.example.com"
+          ],
+          "@environment": "production",
+          "@notes": "The estate overrides what differs: two replicas in production.",
+          "@project": "game",
+          "@replicas": 2,
+          "@secrets": "keys",
+          "@service": "game",
+          "children": [
+            {
+              "value.ref": {
+                "name": "dbUrl",
+                "@from": "Game.db",
+                "@output": "url",
+                "@setting": "Database.url"
+              }
+            },
+            {
+              "value.literal": {
+                "name": "profile",
+                "@literal": "prod",
+                "@setting": "Spring.profile"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "staging",
+          "package": "acme::estate"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "server-staging",
+          "package": "acme::estate",
+          "@app": "acme::game::Game.server",
+          "@description": "A deployment the app's own model never declared.",
+          "@domains": [
+            "staging.example.com"
+          ],
+          "@environment": "staging",
+          "@project": "game",
+          "@service": "game"
+        }
+      }
+    ]
+  }
+}
