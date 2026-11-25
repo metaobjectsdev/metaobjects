@@ -64,11 +64,12 @@ function deploymentTarget(node: MetaData): [MetaData, MetaData] | undefined {
 // An app runs once per environment: two deployments for one (app, environment) leave a
 // generator to pick by load order. The error lands on the later one.
 function checkDeploymentUnique(node: MetaData, ctx: ValidationContext): void {
+  if (node.isAbstract) return; // a template for the deployments that extend it, never deployed itself
   const mine = deploymentTarget(node);
   const root = topLevelNodeOf(node).parent;
   if (mine === undefined || root === undefined) return;
   // ADR-0039: resolving, the deployments the model effectively holds.
-  const deployments = root.children().filter((c) => c.type === TYPE_DEPLOYMENT);
+  const deployments = root.children().filter((c) => c.type === TYPE_DEPLOYMENT && !c.isAbstract);
   const first = deployments.find((d) => {
     const t = deploymentTarget(d);
     return t !== undefined && t[0] === mine[0] && t[1] === mine[1];

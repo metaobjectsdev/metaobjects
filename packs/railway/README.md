@@ -110,6 +110,12 @@ export default defineConfig({
 - [`railway-emit-two-services/`](fixtures/conformance/railway-emit-two-services/): two services
   from one monorepo, each built from its own directory, one calling the other over Railway's
   private network, managed variables.
+- [`railway-emit-environments/`](fixtures/conformance/railway-emit-environments/): one service in
+  production and staging from one abstract `deployment.railway` that holds what both share (app,
+  project, service, repository, a value); each environment's deployment `extends` it and holds its
+  own `@environment`, `@branch`, `@domains`, `@replicas` and values, and staging overrides the base
+  value by reusing its name. The abstract base is never rendered as a service. The pattern is
+  described in the delivery pack's README ("One abstract deployment, one per environment").
 
 Names, domains, repositories and project names are placeholders.
 

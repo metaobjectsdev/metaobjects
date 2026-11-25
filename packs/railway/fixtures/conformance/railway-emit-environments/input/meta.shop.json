@@ -1,0 +1,68 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "system.internal": {
+          "name": "Shop",
+          "@description": "One service deployed to two environments from one abstract deployment: the base holds what is true in both, each environment's deployment holds only what differs.",
+          "children": [
+            { "app.service": {
+                "name": "server",
+                "@settings": ["Runtime"],
+                "children": [
+                  { "build.dockerfile": {
+                      "name": "image",
+                      "@path": "server/Dockerfile",
+                      "@watchInclude": ["server/**"]
+                  } },
+                  { "runtime.process": {
+                      "name": "web",
+                      "@port": 8080,
+                      "@healthPath": "/health"
+                  } }
+                ]
+            } }
+          ]
+      } },
+      { "object.settings": { "name": "Runtime", "children": [
+        { "field.string": { "name": "logLevel", "@envName": "LOG_LEVEL" } },
+        { "field.string": { "name": "banner", "@envName": "BANNER" } }
+      ]}},
+      { "environment.standing": { "name": "production" } },
+      { "environment.standing": { "name": "staging" } },
+      { "deployment.railway": {
+          "name": "server-base",
+          "abstract": true,
+          "@app": "Shop.server",
+          "@project": "acme-shop",
+          "@service": "shop",
+          "@repo": "acme/shop",
+          "children": [
+            { "value.literal": { "name": "log", "@setting": "Runtime.logLevel", "@literal": "info" } }
+          ]
+      } },
+      { "deployment.railway": {
+          "name": "server-production",
+          "extends": "server-base",
+          "@environment": "production",
+          "@branch": "main",
+          "@domains": ["shop.example.com"],
+          "@replicas": 2,
+          "children": [
+            { "value.literal": { "name": "banner", "@setting": "Runtime.banner", "@literal": "production" } }
+          ]
+      } },
+      { "deployment.railway": {
+          "name": "server-staging",
+          "extends": "server-base",
+          "@environment": "staging",
+          "@branch": "staging",
+          "@domains": ["staging.shop.example.com"],
+          "children": [
+            { "value.literal": { "name": "log", "@setting": "Runtime.logLevel", "@literal": "debug" } },
+            { "value.literal": { "name": "banner", "@setting": "Runtime.banner", "@literal": "staging" } }
+          ]
+      } }
+    ]
+  }
+}

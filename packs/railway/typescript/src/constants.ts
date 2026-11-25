@@ -20,8 +20,11 @@ export const RAILWAY_IAC_MODULE = "railway/iac";
 /** A Railway named partial: 1 to 64 of `a-z A-Z 0-9 . _ -` (Railway's IaC page). */
 export const PARTIAL_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
+/** The values of Railway's `deploy.restartPolicyType`. */
+export type RestartPolicyType = "ALWAYS" | "ON_FAILURE" | "NEVER";
+
 /** `runtime.process @restart` → Railway's `deploy.restartPolicyType`. */
-export const RESTART_POLICY: Readonly<Record<string, string>> = {
+export const RESTART_POLICY: Readonly<Record<string, RestartPolicyType>> = {
   [RESTART_ALWAYS]: "ALWAYS",
   [RESTART_ON_FAILURE]: "ON_FAILURE",
   [RESTART_NEVER]: "NEVER",

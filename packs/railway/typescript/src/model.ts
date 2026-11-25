@@ -394,7 +394,7 @@ export function readRailway(
   // A settings or vault problem makes every deployment that reads them look wrong too: report it alone.
   if (problems.length > 0) throw new RailwayModelError(problems);
   // ADR-0039: resolving, the deployments the model effectively holds.
-  const all = root.children().filter(isRailwayDeployment);
+  const all = root.children().filter((d) => isRailwayDeployment(d) && !d.isAbstract);
   const ctx: Context = { all, groups, vaults };
   const deployments = all
     .filter((d) => inScope(d.resolutionKey()))

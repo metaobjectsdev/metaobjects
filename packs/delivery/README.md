@@ -71,6 +71,18 @@ overlay, using the loader's existing merge:
 
 The `railway` pack's `railway-worked-example` fixture is the whole example, both sides.
 
+### One abstract deployment, one per environment
+
+What is true of every environment (the app, the project, the service, the repository, the values
+that do not change) is written once, in an abstract deployment (`"abstract": true`, which is core's
+structural keyword, not a new attribute). Each environment's deployment `extends` it and holds only
+the differences: its `@environment`, `@branch`, `@domains`, `@replicas` and its own `value.*`
+children. A child value that reuses the base value's name overrides it. An abstract deployment may
+omit `@app` and `@environment`, a concrete one must resolve both (its own or inherited), and an
+abstract one is never counted by the one-deployment-per-(`@app`, `@environment`) check or
+deployed. The `railway` pack's `railway-emit-environments` fixture shows it, and
+`abstract-deployment-with-environment` is the case where the base also names an environment.
+
 ## Readers
 
 `readBuild(app)` and `readProcesses(app)` return an app's build and processes as plain records

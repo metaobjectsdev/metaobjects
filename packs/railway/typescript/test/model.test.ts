@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isMetaObject, type MetaObject } from "@metaobjectsdev/metadata";
-import { RailwayModelError, pickProject, readRailway } from "../src/index.js";
+import { RailwayModelError, pickProject, readRailway, unexpressedFacts } from "../src/index.js";
 import { fixtureSources, loadModels } from "./model.js";
 
 type Json = { "metadata.root": { package: string; children: Record<string, Record<string, unknown>>[] } };
@@ -144,5 +144,73 @@ describe("readRailway refuses what Railway cannot do", () => {
       }),
     );
     expect(p).toEqual(["acme::game::Redis.url: environment variable DATABASE_URL is also acme::game::Database.url"]);
+  });
+});
+
+async function readFixture(scenario: string, edit?: (children: Record<string, Record<string, unknown>>[]) => void) {
+  const sources = fixtureSources(scenario).map((s) => {
+    if (edit === undefined) return s;
+    const model = JSON.parse(s.json) as Json;
+    edit(model["metadata.root"].children);
+    return { id: s.id, json: JSON.stringify(model) };
+  });
+  const root = await loadModels(sources);
+  const objects = root.children().filter(isMetaObject) as MetaObject[];
+  return pickProject(readRailway(root, objects))!;
+}
+
+describe("an abstract deployment is the shared part of each environment's deployment", () => {
+  test("the abstract base yields no service; each environment's deployment is one", async () => {
+    const project = await readFixture("railway-emit-environments");
+    expect(project.deployments.map((d) => `${d.environment}:${d.key}`).sort()).toEqual(["production:acme::shop::server-production", "staging:acme::shop::server-staging"]);
+    expect(project.environments).toEqual(["production", "staging"]);
+  });
+
+  test("each inherits the base's facts and holds its own differences; staging overrides the base's value by name", async () => {
+    const project = await readFixture("railway-emit-environments");
+    const production = project.deployments.find((d) => d.environment === "production")!;
+    const staging = project.deployments.find((d) => d.environment === "staging")!;
+    for (const d of [production, staging]) {
+      expect(d.repo).toBe("acme/shop");
+      expect(d.service).toBe("shop");
+      expect(d.project).toBe("acme-shop");
+    }
+    expect([production.branch, production.replicas, [...production.domains]]).toEqual(["main", 2, ["shop.example.com"]]);
+    expect([staging.branch, staging.replicas, [...staging.domains]]).toEqual(["staging", undefined, ["staging.shop.example.com"]]);
+    const value = (d: typeof production, name: string) => d.variables.find((v) => v.name === name)?.value;
+    expect(value(production, "LOG_LEVEL")).toBe("info");
+    expect(value(staging, "LOG_LEVEL")).toBe("debug");
+    expect([value(production, "BANNER"), value(staging, "BANNER")]).toEqual(["production", "staging"]);
+  });
+
+  test("a base that names an environment does not collide with its own concrete child", async () => {
+    const project = await readFixture("abstract-deployment-with-environment");
+    expect(project.deployments.map((d) => d.key)).toEqual(["acme::shop::server-production"]);
+  });
+});
+
+describe("a declared fact the file cannot hold is listed, not dropped", () => {
+  test("@branch and @checkSuites on an image source", async () => {
+    const project = await readFixture("railway-emit-one-service", (c) => {
+      const d = deployment(c);
+      delete d["@repo"];
+      d["@image"] = "ghcr.io/acme/game:1";
+    });
+    const facts = unexpressedFacts(project.deployments[0]!, project.manageVariables).map((f) => f.fact);
+    expect(facts.some((f) => f.includes("@branch"))).toBe(true);
+    expect(facts.some((f) => f.includes("@checkSuites"))).toBe(true);
+  });
+
+  test("a runtime.process @port with no domain to carry it", async () => {
+    const project = await readFixture("railway-emit-one-service");
+    const facts = unexpressedFacts(project.deployments[0]!, project.manageVariables).map((f) => f.fact);
+    expect(facts.some((f) => f.includes("8080") && f.includes("@port"))).toBe(true);
+  });
+
+  test("no port row when a domain carries the port, and no branch row on a repository source", async () => {
+    const project = await readFixture("railway-emit-two-services");
+    const java = project.deployments.find((d) => d.service === "java")!;
+    const facts = unexpressedFacts(java, project.manageVariables).map((f) => f.fact);
+    expect(facts.some((f) => f.includes("@port") || f.includes("@branch"))).toBe(false);
   });
 });

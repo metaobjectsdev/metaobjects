@@ -14,5 +14,6 @@ From deployment.railway `acme::game::server-production`.
 |---|---|
 | resource.database `db` (postgres 18) | Not declared, so the partial neither creates nor deletes it. It must exist in the Railway project under the name `db`, which every reference to it uses. |
 | resource.cache `cache` (redis) | Not declared, so the partial neither creates nor deletes it. It must exist in the Railway project under the name `cache`, which every reference to it uses. |
+| Port `8080` (runtime.process @port) | The file carries a port only beside a domain, and this deployment has none. Railway takes the port from the service's PORT variable (or a domain's target port): set PORT=8080 on the service in Railway. References from other services to this port use the model's value. |
 | Secret values: `LLM_API_KEY` | Never in the file. deploy/sync-secrets.sh production copies them from the vault scope `acme-game/prod`; deploy/doctor.sh checks the names are in the vault and on Railway. |
 | Non-secret settings: `DATABASE_URL`, `REDIS_URL`, `LLM_MODEL` | The file leaves variables unmanaged, so these keep the value set on Railway (or the application's default). Declare a value.* node on the deployment to have the file manage variables. |

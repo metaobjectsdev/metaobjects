@@ -55,6 +55,25 @@ export function unexpressedFacts(d: RailwayDeployment, manageVariables: boolean)
       how: `Not declared, so the partial neither creates nor deletes it. It must exist in the Railway project under the name ${md(r.name)}, which every reference to it uses.`,
     });
   }
+  if (d.image !== undefined && d.branch !== undefined) {
+    out.push({
+      fact: `Branch ${md(d.branch)} (deployment.railway @branch)`,
+      how: `The service's source is the image ${md(d.image)}, which has no branch to deploy from. The file leaves the branch out.`,
+    });
+  }
+  if (d.image !== undefined && d.checkSuites !== undefined) {
+    out.push({
+      fact: `Check suites ${md(String(d.checkSuites))} (deployment.railway @checkSuites)`,
+      how: `The service's source is the image ${md(d.image)}, which has no check suites to wait for. The file leaves the setting out.`,
+    });
+  }
+  const port = d.processes.find((p) => p.port !== undefined)?.port;
+  if (port !== undefined && d.domains.length === 0) {
+    out.push({
+      fact: `Port ${md(String(port))} (runtime.process @port)`,
+      how: `The file carries a port only beside a domain, and this deployment has none. Railway takes the port from the service's PORT variable (or a domain's target port): set PORT=${port} on the service in Railway. References from other services to this port use the model's value.`,
+    });
+  }
   if (d.domains.length > 0) {
     out.push({
       fact: `DNS for ${d.domains.map(md).join(", ")}`,

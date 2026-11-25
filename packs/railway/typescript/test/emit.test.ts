@@ -36,7 +36,7 @@ function walk(dir: string): string[] {
   });
 }
 
-describe.each(["railway-emit-one-service", "railway-emit-two-services"])("%s", (scenario) => {
+describe.each(["railway-emit-one-service", "railway-emit-two-services", "railway-emit-environments"])("%s", (scenario) => {
   test("the generators write the golden files, and only those", async () => {
     const files = await render(await loadFixture(scenario), railwayFiles());
     const golden = join(GOLDEN, scenario);
