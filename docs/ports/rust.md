@@ -245,9 +245,10 @@ writes (the transport, the command helpers) is inside the generator, so an owned
 transport too. Every file in `codegen/` is an input of the skip key, whether `eject` wrote it or you
 added it (a module beside the generator list, say), so editing any of them regenerates. Only the
 crate's build directory (`codegen/target`) and its `Cargo.lock` are left out. A crate it depends on by
-`path` (a linked checkout of a pack's generators, say) is an input too, followed through that crate's
-own path dependencies, except the `metaobjects` and `metaobjects-codegen` engine crates, whose source
-the engine's own hash already covers.
+`path` (a linked checkout of a pack's generators, say), in a build table or a `[patch]`, is an input
+too, followed through that crate's own path dependencies and the workspace it inherits from. The
+`metaobjects` and `metaobjects-codegen` engine crates are left out, because the engine's own hash
+already covers their source; a path dependency on `metaobjects-render` is hashed like any other.
 
 `cargo meta gen --list` shows each owned copy as `identical`, or as `DIFFERS` with how many shipped
 lines it lacks and how many are its own.

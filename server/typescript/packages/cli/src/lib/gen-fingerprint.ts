@@ -26,7 +26,7 @@ import { GEN_CONFIG_FILE } from "./gen-collection.js";
 import { CLI_ALIASED_PACKAGES } from "./load-metaobjects-config.js";
 
 /** Bumped whenever what goes into the fingerprint changes, so an old stored key never matches. */
-export const FINGERPRINT_FORMAT = 3;
+export const FINGERPRINT_FORMAT = 4;
 
 /** One input: what kind it is, which one, and the SHA-256 of its content. */
 export interface FingerprintEntry {
@@ -170,9 +170,13 @@ function packageEntries(kind: string, dir: string): FingerprintEntry[] {
 
 /**
  * The packages a package runs on: every `@metaobjectsdev/*` dependency, followed all the
- * way, by full identity; every other dependency by its `package.json` (its version).
+ * way, by full identity; every other dependency by its `package.json` (its version). A
+ * dependency named in `skip` is left out: a generator package's copy of a package the CLI
+ * aliases onto its engine never runs, so only the engine's copy counts.
  */
-function packageClosureEntries(kind: string, rootDir: string, seen: Set<string>): FingerprintEntry[] {
+function packageClosureEntries(
+  kind: string, rootDir: string, seen: Set<string>, skip: ReadonlySet<string> = new Set(),
+): FingerprintEntry[] {
   const entries: FingerprintEntry[] = [];
   const visit = (dir: string): void => {
     let real = dir;
@@ -182,6 +186,7 @@ function packageClosureEntries(kind: string, rootDir: string, seen: Set<string>)
     entries.push(...packageEntries(kind, dir));
     const pkg = readJson(join(dir, "package.json"));
     for (const dep of dependencyNames(pkg)) {
+      if (skip.has(dep)) continue;
       const depDir = findPackageDir(dep, dir);
       if (depDir === undefined) {
         entries.push({ kind, name: `${dep}/package.json`, hash: "absent" });
@@ -290,7 +295,7 @@ function configGraphEntries(configFile: string, projectRoot: string, seen: Set<s
       // `@metaobjectsdev/*` package (a pack, which the CLI does not depend on) runs from the
       // project like a third-party one, and a linked copy is hashed by content below.
       if (CLI_ALIASED_PACKAGES.has(name)) continue;
-      entries.push(...packageClosureEntries("generator-package", dir, seen));
+      entries.push(...packageClosureEntries("generator-package", dir, seen, CLI_ALIASED_PACKAGES));
     }
   }
   return entries;

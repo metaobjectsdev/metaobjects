@@ -491,45 +491,63 @@ fn a_crate_the_owned_crate_reaches_by_path_is_an_input_and_an_engine_crate_is_no
         "[package]\nname = \"codegen\"\n\n[[bin]]\nname = \"codegen\"\npath = \"main.rs\"\n\n\
          [dependencies]\n\
          metaobjects = { path = \"../engine/metaobjects\" }\n\
-         linked-generators = { path = \"../linked\" }\n\n\
-         [dev-dependencies]\nscratch-only = { path = \"../dev-only\" }\n",
+         linked-generators = { path = '../ws/linked' } # path = \"../commented-out\"\n\n\
+         [dev-dependencies]\nscratch-only = { path = \"../dev-only\" }\n\n\
+         [patch.crates-io]\nforked = { path = \"../fork\" }\n",
     );
     p.write("codegen/main.rs", "fn main() {}\n");
+    // The linked crate is a member of a workspace and inherits one dependency from its root.
     p.write(
-        "linked/Cargo.toml",
-        "[package]\nname = \"linked-generators\"\n\n[dependencies.deeper]\npath = \"../deeper\"\n",
+        "ws/Cargo.toml",
+        "[workspace]\nmembers = [\"linked\"]\n\n[workspace.dependencies]\nshared = { path = \"shared\" }\n",
     );
-    p.write("linked/src/lib.rs", "// v1\n");
-    p.write("deeper/Cargo.toml", "[package]\nname = \"deeper\"\n");
-    p.write("deeper/src/lib.rs", "// v1\n");
+    p.write(
+        "ws/linked/Cargo.toml",
+        "[package]\nname = \"linked-generators\"\n\n[dependencies.deeper]\npath = \"../deeper\"\n\n\
+         [dependencies]\nshared = { workspace = true }\n",
+    );
+    for dir in [
+        "ws/linked",
+        "ws/deeper",
+        "ws/shared",
+        "fork",
+        "dev-only",
+        "commented-out",
+    ] {
+        if dir != "ws/linked" {
+            p.write(&format!("{dir}/Cargo.toml"), "[package]\nname = \"dep\"\n");
+        }
+        p.write(&format!("{dir}/src/lib.rs"), "// v1\n");
+    }
     p.write(
         "engine/metaobjects/Cargo.toml",
         "[package]\nname = \"metaobjects\"\n",
     );
     p.write("engine/metaobjects/src/lib.rs", "// v1\n");
-    p.write(
-        "dev-only/Cargo.toml",
-        "[package]\nname = \"scratch-only\"\n",
-    );
-    p.write("dev-only/src/lib.rs", "// v1\n");
     gen_ok(&p);
     assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
 
-    // An edit to the linked crate's source, and to a crate it reaches by path in turn.
-    p.write("linked/src/lib.rs", "// v2\n");
-    let r = gen_ok(&p);
-    assert_eq!(r.outcome, Outcome::Generated);
-    assert_eq!(r.no_skip_reason, Some("an input changed"));
-    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
-    p.write("deeper/src/lib.rs", "// v2\n");
-    assert_eq!(gen_ok(&p).outcome, Outcome::Generated);
-    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+    // An edit to the linked crate's source, to a crate it reaches by path in turn, to one it
+    // inherits from its workspace, and to a patched crate.
+    for dir in ["ws/linked", "ws/deeper", "ws/shared", "fork"] {
+        p.write(&format!("{dir}/src/lib.rs"), "// v2\n");
+        let r = gen_ok(&p);
+        assert_eq!(
+            r.outcome,
+            Outcome::Generated,
+            "an edit to {dir} must regenerate"
+        );
+        assert_eq!(r.no_skip_reason, Some("an input changed"));
+        assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+    }
 
     // Not inputs: the linked crate's build output, an engine crate (the engine's own source
-    // hash covers it) and a dev-dependency, which is not built into the owned binary.
-    p.write("linked/target/debug/out.rs", "build output");
+    // hash covers it), a dev-dependency, which is not built into the owned binary, and a
+    // path that only a comment names.
+    p.write("ws/linked/target/debug/out.rs", "build output");
     p.write("engine/metaobjects/src/lib.rs", "// v2\n");
     p.write("dev-only/src/lib.rs", "// v2\n");
+    p.write("commented-out/src/lib.rs", "// v2\n");
     assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
 }
 

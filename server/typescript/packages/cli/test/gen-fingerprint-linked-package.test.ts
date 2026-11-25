@@ -9,7 +9,8 @@
 // stale output.
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { genCommand } from "../src/commands/gen.js";
 import {
   computeGenInputs, decideGenSkip, keyFor, withModel,
@@ -20,8 +21,9 @@ import { collectionLoadOptions } from "../src/lib/collection-load-options.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { modelHashTree } from "@metaobjectsdev/codegen-ts";
 
-// Inside the monorepo, so the config's engine imports resolve as in the other command tests.
-const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures/__tmp__");
+// Throwaway projects live in RAM scratch. The config's engine import resolves anyway: the
+// CLI rewrites it onto its own copy.
+const SCRATCH = process.env.DEV_SCRATCH ?? tmpdir();
 const made: string[] = [];
 afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
 
@@ -45,8 +47,7 @@ const ENGINE: FingerprintEntry[] = [{ kind: "engine", name: "(test)", hash: "fix
 const SELECTION: GenSelection = { entities: [], generators: undefined, strict: false, baseline: "default" };
 
 function makeProject(): { root: string; linkedIndex: string } {
-  mkdirSync(WORKSPACE_TMP, { recursive: true });
-  const root = mkdtempSync(join(WORKSPACE_TMP, "gen-linked-"));
+  const root = mkdtempSync(join(SCRATCH, "gen-linked-"));
   made.push(root);
   mkdirSync(join(root, ".git"));
   mkdirSync(join(root, "metaobjects"));
@@ -60,7 +61,9 @@ function makeProject(): { root: string; linkedIndex: string } {
   // member, a clone or `bun link`, and the project's node_modules holds a symlink to it.
   const source = join(root, "linked-checkout");
   mkdirSync(source);
-  writeFileSync(join(source, "package.json"), JSON.stringify({ name: LINKED, version: "0.1.0", type: "module", main: "index.ts" }) + "\n");
+  writeFileSync(join(source, "package.json"), JSON.stringify({
+    name: LINKED, version: "0.1.0", type: "module", main: "index.ts", dependencies: { [ENGINE_PKG]: "*" },
+  }) + "\n");
   writeFileSync(join(source, "index.ts"), linkedSource("first\n"));
   mkdirSync(join(root, "node_modules", "@metaobjectsdev"), { recursive: true });
   symlinkSync(source, join(root, "node_modules", LINKED), "dir");
@@ -109,9 +112,9 @@ describe("the skip key covers a linked @metaobjectsdev/* generator package (ADR-
   });
 
   test("an import the CLI aliases onto its engine is not hashed from the project's copy", async () => {
-    // The config imports `@metaobjectsdev/codegen-ts`, which the CLI rewrites onto its own
-    // copy: the engine half counts that. A linked copy in the project's node_modules never
-    // runs, so editing it must leave the key alone.
+    // The config imports `@metaobjectsdev/codegen-ts`, and the linked package depends on it;
+    // the CLI points both at its own copy, which the engine half counts. A linked copy in the
+    // project's node_modules never runs, so editing it must leave the key alone.
     const p = makeProject();
     const fake = join(p.root, "engine-checkout");
     mkdirSync(fake);

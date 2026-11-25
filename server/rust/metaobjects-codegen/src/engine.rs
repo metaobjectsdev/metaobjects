@@ -297,7 +297,8 @@ pub const OWNED_MANIFEST: &str = "codegen/Cargo.toml";
 pub const OWNED_MAIN: &str = "codegen/main.rs";
 
 /// The crates whose sources [`ENGINE_SOURCE_HASH`] already covers. A path dependency on one
-/// of them is the engine, counted once as such.
+/// of them is the engine, counted once as such. The third engine crate, `metaobjects-render`,
+/// is not in that hash, so a path dependency on it is hashed like any other.
 const ENGINE_CRATES: &[&str] = &["metaobjects", "metaobjects-codegen"];
 
 /// What in a path dependency's directory is not an input: cargo's build output and VCS state.
@@ -305,23 +306,36 @@ const PATH_DEPENDENCY_NOT_INPUTS: &[&str] = &["target", ".git"];
 
 /// Every crate the owned crate reaches through a `path` dependency (a linked or source
 /// checkout: a pack's generators, a sibling crate of the adopter's), followed through each
-/// one's own manifest, by the content of its directory. Its version does not move when its
-/// code does, and cargo rebuilds the owned binary from it, so an edit there changes what the
-/// owned generators emit. An engine crate is left out (see [`ENGINE_CRATES`]); a registry or
-/// git dependency is named by `codegen/Cargo.toml` itself, which the key already hashes.
+/// one's own manifest and through the workspace a `workspace = true` dependency inherits
+/// from, by the content of its directory. Its version does not move when its code does, and
+/// cargo rebuilds the owned binary from it, so an edit there changes what the owned
+/// generators emit. An engine crate is left out (see [`ENGINE_CRATES`]); a registry or git
+/// dependency is named by `codegen/Cargo.toml` itself, which the key already hashes.
 fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
     let mut entries = Vec::new();
-    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut crates: HashSet<PathBuf> = HashSet::new();
+    let mut scanned: HashSet<PathBuf> = HashSet::new();
     let mut queue = vec![owned_manifest.to_path_buf()];
     while let Some(manifest) = queue.pop() {
+        let manifest = std::fs::canonicalize(&manifest).unwrap_or(manifest);
+        if !scanned.insert(manifest.clone()) {
+            continue;
+        }
         let Ok(text) = std::fs::read_to_string(&manifest) else {
             continue;
         };
         let base = manifest.parent().unwrap_or(Path::new("."));
-        for rel in manifest_path_dependencies(&text) {
+        let deps = manifest_dependencies(&text);
+        if deps.inherits_workspace
+            && let Some(root) = workspace_root_manifest(base)
+        {
+            // The inherited entries' paths live in the root's `[workspace.dependencies]`.
+            queue.push(root);
+        }
+        for rel in deps.paths {
             let dir = base.join(&rel);
             let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-            if !seen.insert(dir.clone()) {
+            if !crates.insert(dir.clone()) {
                 continue;
             }
             let dep_manifest = dir.join("Cargo.toml");
@@ -349,27 +363,56 @@ fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
     entries
 }
 
-/// The `path` of every dependency a `Cargo.toml` declares in a table the build compiles
-/// (`[dependencies]`, `[build-dependencies]`, their `target.*` and `workspace` forms, and
-/// `[dependencies.<name>]`). Dev-dependencies are not built into the owned binary. A line
+/// The nearest `Cargo.toml` at or above `dir` that declares `[workspace]`.
+fn workspace_root_manifest(dir: &Path) -> Option<PathBuf> {
+    dir.ancestors().map(|d| d.join("Cargo.toml")).find(|m| {
+        std::fs::read_to_string(m).is_ok_and(|t| {
+            t.lines()
+                .any(|l| strip_toml_comment(l).trim() == "[workspace]")
+        })
+    })
+}
+
+/// What a manifest's build-relevant dependency tables say.
+struct ManifestDependencies {
+    /// The `path` of every dependency, as written (relative to the manifest's directory).
+    paths: Vec<String>,
+    /// Whether any dependency inherits its declaration from the workspace (`workspace = true`).
+    inherits_workspace: bool,
+}
+
+/// The dependencies a `Cargo.toml` declares in a table the build reads: `[dependencies]`,
+/// `[build-dependencies]`, their `target.*`, `workspace` and `[dependencies.<name>]` forms,
+/// `[patch.*]` and `[replace]`. Dev-dependencies are not built into the owned binary. A line
 /// scan, not a TOML parser: the forms cargo writes and the scaffold uses are one-line.
-fn manifest_path_dependencies(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
+fn manifest_dependencies(text: &str) -> ManifestDependencies {
+    let mut out = ManifestDependencies {
+        paths: Vec::new(),
+        inherits_workspace: false,
+    };
     let mut in_dependencies = false;
-    for line in text.lines().map(str::trim) {
-        if line.starts_with('#') {
-            continue;
-        }
+    for line in text.lines().map(|l| strip_toml_comment(l).trim()) {
         if line.starts_with('[') {
-            let header = line.trim_start_matches('[').split(']').next().unwrap_or("");
-            in_dependencies = header
-                .split('.')
-                .map(|s| s.trim())
-                .any(|s| s == "dependencies" || s == "build-dependencies");
+            let header = line
+                .trim_start_matches('[')
+                .split(']')
+                .next()
+                .unwrap_or("")
+                .trim();
+            let mut segments = header.split('.').map(str::trim);
+            in_dependencies = header == "replace"
+                || segments.clone().next() == Some("patch")
+                || segments.any(|s| s == "dependencies" || s == "build-dependencies");
             continue;
         }
-        if in_dependencies && let Some(path) = toml_key_string(line, "path") {
-            out.push(path);
+        if !in_dependencies {
+            continue;
+        }
+        if let Some(path) = toml_key_string(line, "path") {
+            out.paths.push(path);
+        }
+        if toml_key_value(line, "workspace").is_some_and(|v| v.starts_with("true")) {
+            out.inherits_workspace = true;
         }
     }
     out
@@ -378,7 +421,7 @@ fn manifest_path_dependencies(text: &str) -> Vec<String> {
 /// The `[package]` name a `Cargo.toml` declares.
 fn manifest_package_name(text: &str) -> Option<String> {
     let mut in_package = false;
-    for line in text.lines().map(str::trim) {
+    for line in text.lines().map(|l| strip_toml_comment(l).trim()) {
         if line.starts_with('[') {
             in_package = line == "[package]";
         } else if in_package && let Some(name) = toml_key_string(line, "name") {
@@ -388,22 +431,71 @@ fn manifest_package_name(text: &str) -> Option<String> {
     None
 }
 
-/// The basic-string value of `key` on one TOML line, whether the line is `key = "v"` or an
-/// inline table holding it (`dep = { path = "v", ... }`).
-fn toml_key_string(line: &str, key: &str) -> Option<String> {
-    let mut from = 0;
-    while let Some(at) = line[from..].find(key).map(|i| i + from) {
-        from = at + key.len();
-        let before = line[..at].chars().next_back();
-        if before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-') {
-            continue;
+/// One TOML line without its trailing comment (a `#` outside any string).
+fn strip_toml_comment(line: &str) -> &str {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (i, c) in line.char_indices() {
+        match quote {
+            Some('"') if escaped => escaped = false,
+            Some('"') if c == '\\' => escaped = true,
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None if c == '"' || c == '\'' => quote = Some(c),
+            None if c == '#' => return &line[..i],
+            None => {}
         }
-        let rest = line[from..].trim_start();
-        let Some(rest) = rest.strip_prefix('=') else {
-            continue;
-        };
-        let rest = rest.trim_start().strip_prefix('"')?;
-        return rest.find('"').map(|end| rest[..end].to_string());
+    }
+    line
+}
+
+/// The raw text after `key =` on one TOML line, whether the line is `key = v` or an inline
+/// table holding it (`dep = { path = "v", ... }`). Occurrences inside strings are skipped.
+fn toml_key_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut prev: Option<char> = None;
+    for (i, c) in line.char_indices() {
+        match quote {
+            Some('"') if escaped => escaped = false,
+            Some('"') if c == '\\' => escaped = true,
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None if c == '"' || c == '\'' => quote = Some(c),
+            None => {
+                let bounded = !prev.is_some_and(|p| p.is_alphanumeric() || p == '_' || p == '-');
+                if bounded && line[i..].starts_with(key) {
+                    let after = &line[i + key.len()..];
+                    let next = after.chars().next();
+                    if !next.is_some_and(|n| n.is_alphanumeric() || n == '_' || n == '-')
+                        && let Some(value) = after.trim_start().strip_prefix('=')
+                    {
+                        return Some(value.trim_start());
+                    }
+                }
+            }
+        }
+        prev = Some(c);
+    }
+    None
+}
+
+/// The string value of `key` on one TOML line: a basic string (`"v"`, with `\\` and `\"`
+/// unescaped) or a literal one (`'v'`).
+fn toml_key_string(line: &str, key: &str) -> Option<String> {
+    let value = toml_key_value(line, key)?;
+    if let Some(rest) = value.strip_prefix('\'') {
+        return rest.find('\'').map(|end| rest[..end].to_string());
+    }
+    let rest = value.strip_prefix('"')?;
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => out.push(chars.next()?),
+            other => out.push(other),
+        }
     }
     None
 }
