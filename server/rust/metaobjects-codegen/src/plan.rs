@@ -45,6 +45,16 @@ pub const STORE_CRATE: &str = "meta_store";
 pub const STORE_SUFFIX: &str = "_store";
 /// The suffix of the command crate of a package: `shop` is driven by `shop_cli`.
 pub const CLI_SUFFIX: &str = "_cli";
+/// The suffix of a package's contract crate: `shop`'s operations are in `shop_contract`.
+pub const CONTRACT_SUFFIX: &str = "_contract";
+/// The crate every service crate uses.
+pub const SERVICE_CRATE: &str = "meta_service";
+/// The suffix of a package's service crate: `shop`'s service is `shop_service`.
+pub const SERVICE_SUFFIX: &str = "_service";
+/// The crate every transport crate uses.
+pub const HTTP_CRATE: &str = "meta_http";
+/// The suffix of a package's transport crate: `shop`'s routes are in `shop_http`.
+pub const HTTP_SUFFIX: &str = "_http";
 
 // ---- metamodel names -------------------------------------------------------------------
 
@@ -1351,6 +1361,8 @@ impl Plan {
             CLI_CRATE,
             CONTRACT_CRATE,
             STORE_CRATE,
+            SERVICE_CRATE,
+            HTTP_CRATE,
         ] {
             claim_crate(
                 shared.to_string(),
@@ -1364,6 +1376,8 @@ impl Plan {
                 claim_crate(format!("{cname}{CLIENT_SUFFIX}"), origin("client"))?;
                 claim_crate(format!("{cname}{CLI_SUFFIX}"), origin("commands"))?;
                 claim_crate(format!("{cname}{STORE_SUFFIX}"), origin("store"))?;
+                claim_crate(format!("{cname}{SERVICE_SUFFIX}"), origin("service"))?;
+                claim_crate(format!("{cname}{HTTP_SUFFIX}"), origin("transport"))?;
             }
         }
         for (cname, c) in &self.crates {
@@ -1699,17 +1713,18 @@ fn report_fields(
         plan.optional = !f.required;
         plan.required = f.required;
         plan.primary = false;
-        plan.credential = false;
+        // A column that carries a credential's type carries its value too (a dimension over it,
+        // or its `min`/`max`), so it stays a credential: never returned, filtered or sorted.
         plan.doc = None;
         plan.create = Presence::Absent;
         plan.patch = false;
         plan.rules = Rules::default();
-        plan.filter_ops = if matches!(plan.kind, Kind::Object | Kind::Map) {
+        plan.filter_ops = if plan.credential || matches!(plan.kind, Kind::Object | Kind::Map) {
             Vec::new()
         } else {
             ops_for_subtype(&f.sub_type).to_vec()
         };
-        plan.sortable = true;
+        plan.sortable = !plan.credential;
         out.push(plan);
     }
     Ok(out)

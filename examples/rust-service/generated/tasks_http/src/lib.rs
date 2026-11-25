@@ -37,19 +37,19 @@ where
     let app = Arc::new(App { service, actor });
 
     let a = app.clone();
-    let list_task = move |RawQuery(raw): RawQuery| async move {
+    let on_list_task = move |RawQuery(raw): RawQuery| async move {
         let l = meta_http::list(raw.as_deref(), &task::LIST)?;
         meta_http::page(a.service.list_task(&l.query, l.with_count).await, &[])
     };
 
     let a = app.clone();
-    let get_task = move |Path(id): Path<String>| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_get_task = move |Path(id): Path<String>| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         meta_http::ok(a.service.get_task(id).await, &[])
     };
 
     let a = app.clone();
-    let create_task = move |headers: HeaderMap, body: Bytes| async move {
+    let on_create_task = move |headers: HeaderMap, body: Bytes| async move {
         let check = tasks::TaskPatch::validate;
         let input = meta_http::create_body::<tasks::TaskCreate, _>(&body, &task::BODY, check)?;
         let actor = a.actor.actor(&headers);
@@ -57,8 +57,8 @@ where
     };
 
     let a = app.clone();
-    let update_task = move |Path(id): Path<String>, headers: HeaderMap, body: Bytes| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_update_task = move |Path(id): Path<String>, headers: HeaderMap, body: Bytes| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let check = tasks::TaskPatch::validate;
         let patch = meta_http::update_body(&body, &task::BODY, check)?;
         let actor = a.actor.actor(&headers);
@@ -66,38 +66,38 @@ where
     };
 
     let a = app.clone();
-    let delete_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_delete_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let actor = a.actor.actor(&headers);
         meta_http::no_content(a.service.delete_task(actor.as_ref(), id).await)
     };
 
     let a = app.clone();
-    let start_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_start_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let actor = a.actor.actor(&headers);
         meta_http::ok(a.service.start_task(actor.as_ref(), id).await, &[])
     };
 
     let a = app.clone();
-    let finish_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_finish_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let actor = a.actor.actor(&headers);
         meta_http::ok(a.service.finish_task(actor.as_ref(), id).await, &[])
     };
 
     let a = app.clone();
-    let reopen_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_reopen_task = move |Path(id): Path<String>, headers: HeaderMap| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let actor = a.actor.actor(&headers);
         meta_http::ok(a.service.reopen_task(actor.as_ref(), id).await, &[])
     };
 
     let mut router = Router::new();
-    router = router.route("/tasks", get(list_task).post(create_task));
-    router = router.route("/tasks/{id}", get(get_task).patch(update_task.clone()).put(update_task).delete(delete_task));
-    router = router.route("/tasks/{id}/start", post(start_task));
-    router = router.route("/tasks/{id}/finish", post(finish_task));
-    router = router.route("/tasks/{id}/reopen", post(reopen_task));
+    router = router.route("/tasks", get(on_list_task).post(on_create_task));
+    router = router.route("/tasks/{id}", get(on_get_task).patch(on_update_task.clone()).put(on_update_task).delete(on_delete_task));
+    router = router.route("/tasks/{id}/start", post(on_start_task));
+    router = router.route("/tasks/{id}/finish", post(on_finish_task));
+    router = router.route("/tasks/{id}/reopen", post(on_reopen_task));
     router
 }

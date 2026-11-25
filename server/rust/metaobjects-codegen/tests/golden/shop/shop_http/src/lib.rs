@@ -38,19 +38,19 @@ where
     let app = Arc::new(App { service, actor });
 
     let a = app.clone();
-    let list_order = move |RawQuery(raw): RawQuery| async move {
+    let on_list_order = move |RawQuery(raw): RawQuery| async move {
         let l = meta_http::list(raw.as_deref(), &order::LIST)?;
         meta_http::page(a.service.list_order(&l.query, l.with_count).await, &[])
     };
 
     let a = app.clone();
-    let get_order = move |Path(id): Path<String>| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_get_order = move |Path(id): Path<String>| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         meta_http::ok(a.service.get_order(id).await, &[])
     };
 
     let a = app.clone();
-    let create_order = move |headers: HeaderMap, body: Bytes| async move {
+    let on_create_order = move |headers: HeaderMap, body: Bytes| async move {
         let check = shop::OrderPatch::validate;
         let input = meta_http::create_body::<shop::OrderCreate, _>(&body, &order::BODY, check)?;
         let actor = a.actor.actor(&headers);
@@ -58,8 +58,8 @@ where
     };
 
     let a = app.clone();
-    let update_order = move |Path(id): Path<String>, headers: HeaderMap, body: Bytes| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_update_order = move |Path(id): Path<String>, headers: HeaderMap, body: Bytes| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let check = shop::OrderPatch::validate;
         let patch = meta_http::update_body(&body, &order::BODY, check)?;
         let actor = a.actor.actor(&headers);
@@ -67,26 +67,26 @@ where
     };
 
     let a = app.clone();
-    let delete_order = move |Path(id): Path<String>, headers: HeaderMap| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_delete_order = move |Path(id): Path<String>, headers: HeaderMap| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let actor = a.actor.actor(&headers);
         meta_http::no_content(a.service.delete_order(actor.as_ref(), id).await)
     };
 
     let a = app.clone();
-    let categories_of_order = move |Path(id): Path<String>| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_categories_of_order = move |Path(id): Path<String>| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         meta_http::ok(a.service.categories_of_order(id).await, &[])
     };
 
     let a = app.clone();
-    let list_order_category = move |RawQuery(raw): RawQuery| async move {
+    let on_list_order_category = move |RawQuery(raw): RawQuery| async move {
         let l = meta_http::list(raw.as_deref(), &order_category::LIST)?;
         meta_http::page(a.service.list_order_category(&l.query, l.with_count).await, &[])
     };
 
     let a = app.clone();
-    let create_order_category = move |headers: HeaderMap, body: Bytes| async move {
+    let on_create_order_category = move |headers: HeaderMap, body: Bytes| async move {
         let check = shop::OrderCategoryPatch::validate;
         let input = meta_http::create_body::<shop::OrderCategoryCreate, _>(&body, &order_category::BODY, check)?;
         let actor = a.actor.actor(&headers);
@@ -94,19 +94,19 @@ where
     };
 
     let a = app.clone();
-    let list_category = move |RawQuery(raw): RawQuery| async move {
+    let on_list_category = move |RawQuery(raw): RawQuery| async move {
         let l = meta_http::list(raw.as_deref(), &category::LIST)?;
         meta_http::page(a.service.list_category(&l.query, l.with_count).await, &[])
     };
 
     let a = app.clone();
-    let get_category = move |Path(id): Path<String>| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_get_category = move |Path(id): Path<String>| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         meta_http::ok(a.service.get_category(id).await, &[])
     };
 
     let a = app.clone();
-    let create_category = move |headers: HeaderMap, body: Bytes| async move {
+    let on_create_category = move |headers: HeaderMap, body: Bytes| async move {
         let check = shop::CategoryPatch::validate;
         let input = meta_http::create_body::<shop::CategoryCreate, _>(&body, &category::BODY, check)?;
         let actor = a.actor.actor(&headers);
@@ -114,8 +114,8 @@ where
     };
 
     let a = app.clone();
-    let update_category = move |Path(id): Path<String>, headers: HeaderMap, body: Bytes| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_update_category = move |Path(id): Path<String>, headers: HeaderMap, body: Bytes| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let check = shop::CategoryPatch::validate;
         let patch = meta_http::update_body(&body, &category::BODY, check)?;
         let actor = a.actor.actor(&headers);
@@ -123,18 +123,18 @@ where
     };
 
     let a = app.clone();
-    let delete_category = move |Path(id): Path<String>, headers: HeaderMap| async move {
-        let id = meta_http::int_key(&id)?;
+    let on_delete_category = move |Path(id): Path<String>, headers: HeaderMap| async move {
+        let id: i64 = meta_http::int_key(&id)?;
         let actor = a.actor.actor(&headers);
         meta_http::no_content(a.service.delete_category(actor.as_ref(), id).await)
     };
 
     let mut router = Router::new();
-    router = router.route("/orders", get(list_order).post(create_order));
-    router = router.route("/orders/{id}", get(get_order).patch(update_order.clone()).put(update_order).delete(delete_order));
-    router = router.route("/orders/{id}/categories", get(categories_of_order));
-    router = router.route("/order_categories", get(list_order_category).post(create_order_category));
-    router = router.route("/categories", get(list_category).post(create_category));
-    router = router.route("/categories/{id}", get(get_category).patch(update_category.clone()).put(update_category).delete(delete_category));
+    router = router.route("/orders", get(on_list_order).post(on_create_order));
+    router = router.route("/orders/{id}", get(on_get_order).patch(on_update_order.clone()).put(on_update_order).delete(on_delete_order));
+    router = router.route("/orders/{id}/categories", get(on_categories_of_order));
+    router = router.route("/order_categories", get(on_list_order_category).post(on_create_order_category));
+    router = router.route("/categories", get(on_list_category).post(on_create_category));
+    router = router.route("/categories/{id}", get(on_get_category).patch(on_update_category.clone()).put(on_update_category).delete(on_delete_category));
     router
 }

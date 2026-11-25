@@ -512,8 +512,6 @@ fn toml_key_string(line: &str, key: &str) -> Option<String> {
     None
 }
 
-/// Everything a run knows before it renders: the loaded model, where the files go, the
-/// manifest and the skip key.
 /// A generator the run applies: one the host offered, or the one an entry's options
 /// constructed in its place.
 enum Selected<'g> {
@@ -532,6 +530,8 @@ impl<'g> std::ops::Deref for Selected<'g> {
     }
 }
 
+/// Everything a run knows before it renders: the loaded model, where the files go, the
+/// manifest and the skip key.
 struct Prepared<'g> {
     loaded: LoadedProject,
     project_root: PathBuf,
@@ -613,6 +613,17 @@ fn prepare<'g>(
             "the generator {out} is not in the \"generators\" list of {}; the project runs: {}",
             generator_list::GENERATOR_LIST_FILE,
             listed.join(", ")
+        )));
+    }
+    // With no list, an opt-in generator never runs, and a flag naming it says so.
+    if listed.is_none()
+        && let Some(flagged) = &opts.generators
+        && let Some(out) = flagged.iter().find(|n| !generator_list::runs_unlisted(n))
+    {
+        return Err(RunError::GeneratorList(format!(
+            "the generator {out} is opt-in and runs only when the project's {} lists it; add it \
+             there (`cargo meta init --transport` writes a list with it)",
+            generator_list::GENERATOR_LIST_FILE,
         )));
     }
     // An entry with options constructs its generator from them, and that one runs in the

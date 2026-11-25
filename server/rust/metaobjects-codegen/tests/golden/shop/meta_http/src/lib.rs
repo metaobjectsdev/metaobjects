@@ -87,22 +87,17 @@ pub fn invalid_id() -> Response {
 }
 
 /// The whole-number key `text` spells: an optional `-` and ASCII digits with no leading zero,
-/// no exponent, hex, plus sign, whitespace or negative zero.
-pub fn int_key(text: &str) -> Result<i64, Response> {
+/// no exponent, hex, plus sign, whitespace or negative zero, and in the key type's range.
+pub fn int_key<K: std::str::FromStr>(text: &str) -> Result<K, Response> {
     let digits = text.strip_prefix('-').unwrap_or(text);
     let canonical = !digits.is_empty()
         && digits.bytes().all(|b| b.is_ascii_digit())
         && (digits == "0" || !digits.starts_with('0'))
         && text != "-0";
-    match canonical.then(|| text.parse::<i64>().ok()).flatten() {
+    match canonical.then(|| text.parse::<K>().ok()).flatten() {
         Some(key) => Ok(key),
         None => Err(invalid_id()),
     }
-}
-
-/// The text key `text` names: any text.
-pub fn text_key(text: &str) -> Result<String, Response> {
-    Ok(text.to_string())
 }
 
 /// A list query and whether its count was asked for, ready for a service's list call.

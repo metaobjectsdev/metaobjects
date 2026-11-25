@@ -17,14 +17,7 @@ use crate::layers::store::{StoredCrate, StoredEntity, stored_crates};
 use crate::names::{crate_name, pascal, snake, type_ident};
 use crate::plan::{Plan, Presence, StructPlan};
 
-/// The crate every service crate uses.
-pub const SERVICE_CRATE: &str = "meta_service";
-
-/// The suffix of a package's service crate: `shop`'s service is `shop_service`.
-pub const SERVICE_SUFFIX: &str = "_service";
-
-/// The suffix of a package's contract crate (the `contract-types` generator's).
-pub const CONTRACT_SUFFIX: &str = "_contract";
+pub use crate::plan::{CONTRACT_SUFFIX, SERVICE_CRATE, SERVICE_SUFFIX};
 
 const ATTR_INPUT_REF: &str = "inputRef";
 const ATTR_OUTPUT_REF: &str = "outputRef";
