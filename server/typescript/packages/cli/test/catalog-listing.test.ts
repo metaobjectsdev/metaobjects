@@ -14,10 +14,11 @@ import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { genCommand } from "../src/commands/gen.js";
 import { ejectGenerator } from "../src/commands/eject.js";
 import {
-  buildCatalogListing, wiredGeneratorNames, ownedGeneratorNames, renderCatalogText,
+  buildCatalogListing, wiredGeneratorNames, ownedGeneratorNames, renderCatalogText, RECOMMENDED_SERVICE_NOTE,
   type GeneratorCatalogRow, type LibraryCatalogRow,
 } from "../src/lib/catalog-listing.js";
 import { composeCatalog } from "../src/lib/catalog.js";
+import { RECOMMENDED_SERVICE_GENERATORS } from "../src/lib/recommended-services.js";
 
 const FIXTURE = join(import.meta.dir, "fixtures", "catalog-probe");
 
@@ -100,6 +101,20 @@ describe("meta gen --list — the catalog", () => {
         expect(String(r.package), String(r.name)).toStartWith("@metaobjectsdev/");
         expect(typeof r.description, String(r.name)).toBe("string");
       }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("the text view names the recommended service list once, and every name in it is a catalog row", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "meta-catalog-"));
+    try {
+      expect(await genCommand(["--list"], tmp, "text")).toBe(0);
+      const text = logged.join("\n");
+      expect(text.split(RECOMMENDED_SERVICE_NOTE).length - 1).toBe(1);
+      expect(text).toContain("meta init --with-services");
+      const catalog = composeCatalog();
+      for (const name of RECOMMENDED_SERVICE_GENERATORS) expect(catalog[name], name).toBeDefined();
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

@@ -570,6 +570,7 @@ static int RunVerify(string[] rest)
         // ResolveMetadataDirOrExit).
         Libraries = resolvedMeta.Libraries,
         Imports = resolvedMeta.Imports,
+        ReferenceFiles = resolvedMeta.ReferenceFiles,
         Providers = resolvedMeta.Providers,
         // ADR-0058 — same source as Libraries; the --codegen gate's regen reads it from
         // the loaded root rather than a flag (see VerifyCommand.RunCodegenDrift).

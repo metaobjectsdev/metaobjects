@@ -200,6 +200,34 @@ public static class PayloadAccessors
         public override string? ToString() => Target.ToString();
     }
 
+    /// <summary>
+    /// Whether <paramref name="key"/> is a member of the context <paramref name="ctx"/> (a present
+    /// <c>null</c> counts as present), and its value. Used by the renderer's missing-variable check,
+    /// which must tell an ABSENT name from a null one. A delegate or dynamic object cannot be
+    /// inspected, so every name is taken as present.
+    /// </summary>
+    internal static bool TryLookup(object? ctx, string key, out object? value)
+    {
+        value = null;
+        switch (ctx)
+        {
+            case null: return false;
+            case IDictionary<string, object?> map: return map.TryGetValue(key, out value);
+            case System.Collections.IDictionary dict:
+                if (!dict.Contains(key)) return false;
+                value = dict[key];
+                return true;
+            case TypedView view:
+                if (ViewLookup(view, key, false) is { } found) { value = found; return true; }
+                if (view.Target.GetType().GetMember(key, PublicInstance).Length > 0) return true;
+                return false;
+            case Delegate or System.Dynamic.IDynamicMetaObjectProvider:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /// <summary>The overlay type <see cref="ViewLookup"/> is registered for.</summary>
     internal static Type ViewType => typeof(TypedView);
 

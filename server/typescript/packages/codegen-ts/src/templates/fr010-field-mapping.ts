@@ -205,31 +205,12 @@ export function extractMapHelpersUsed(vo: MetaData): string[] {
   return [...used].sort();
 }
 
+/** The escape for each control character {@link jsonStringLiteral} rewrites, by char code (tab, LF, CR). */
+const CONTROL_ESCAPES: Readonly<Record<number, string>> = { 9: "\\t", 10: "\\n", 13: "\\r" };
+
 /** A TS double-quoted string literal for `value`, with the load-bearing chars escaped. */
 export function jsonStringLiteral(value: string): string {
-  let out = '"';
-  for (const ch of value) {
-    switch (ch) {
-      case "\\":
-        out += "\\\\";
-        break;
-      case '"':
-        out += '\\"';
-        break;
-      case "\t":
-        out += "\\t";
-        break;
-      case "\n":
-        out += "\\n";
-        break;
-      case "\r":
-        out += "\\r";
-        break;
-      default:
-        out += ch;
-    }
-  }
-  return out + '"';
+  return `"${value.replace(/[\\"\t\n\r]/g, (ch) => CONTROL_ESCAPES[ch.charCodeAt(0)] ?? `\\${ch}`)}"`;
 }
 
 /** A TS array literal `["a", "b"]` for the given members. */

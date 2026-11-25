@@ -1,0 +1,11 @@
+{ "metadata.root": { "package": "acme::app", "children": [
+  { "object.settings": { "name": "Database", "@description": "The primary database.", "children": [
+    { "field.string": { "name": "url", "@required": true, "@secret": true } },
+    { "field.int": { "name": "poolSize", "@default": 10, "@envName": "DB_POOL_SIZE" } },
+    { "field.string": { "name": "commitSha", "@phase": "build" } }
+  ]}},
+  { "vault.infisical": { "name": "keys", "@defaultScope": "dev", "children": [
+    { "scope.env": { "name": "dev", "@project": "acme-app" } },
+    { "scope.env": { "name": "production", "@project": "acme-app-prod", "@env": "prod" } }
+  ]}}
+]}}

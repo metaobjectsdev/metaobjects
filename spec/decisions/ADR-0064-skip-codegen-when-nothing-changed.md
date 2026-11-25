@@ -55,9 +55,12 @@ before anything renders:
   version (a linked or locally built engine changes with its content), plus its templates,
   partials, helpers and options: in practice the engine package and its MetaObjects
   dependencies, the port's codegen config and every owned generator file it reaches, and the
-  template roots. A generator that reads anything else declares it as an extra input; one that
-  cannot declare its inputs is marked not cacheable (`cache: false` in TypeScript, the port's
-  equivalent elsewhere), and a run that includes it never skips.
+  template roots. Every generator package the codegen config imports is part of that identity,
+  whatever its npm scope, third-party and independently published packs included, and is hashed
+  like any other generator package; only the packages the CLI aliases onto its own engine copy
+  count as the engine instead. A generator that reads anything else declares it as an extra
+  input; one that cannot declare its inputs is marked not cacheable (`cache: false` in
+  TypeScript, the port's equivalent elsewhere), and a run that includes it never skips.
 - **The run.** The project config (`.metaobjects/config.json`) and every flag that changes
   output: generator selection, strict mode, the baseline mode.
 

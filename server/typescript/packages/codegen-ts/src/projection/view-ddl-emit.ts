@@ -5,6 +5,7 @@ import type {
 } from "./view-spec.js";
 import { isRelativeNow } from "./report-spec.js";
 import { relativeNowSql } from "./time-sql.js";
+import { CodeWriter } from "../writer/code-writer.js";
 
 // Quote an identifier only when it isn't a plain lowercase snake identifier —
 // exactly postgres's own rule. This keeps snake_case output unquoted (the common
@@ -549,11 +550,33 @@ export function tphScopeSql(values: readonly (string | number)[], literal: (v: s
   return values.length === 1 ? ` = ${literal(values[0]!)}` : ` IN (${values.map(literal).join(", ")})`;
 }
 
-function renderJoin(
+/**
+ * A view's text: the body alone (`bodyOnly`), or `CREATE VIEW <name> AS` and the body, ended by
+ * `;`. The body is written one level in, and its clauses at that level.
+ */
+export function viewDdlText(quotedName: string, bodyOnly: boolean | undefined, body: (w: CodeWriter) => void): string {
+  const w = new CodeWriter({ trailingComma: false });
+  if (bodyOnly !== true) w.line(`CREATE VIEW ${quotedName} AS`);
+  w.indented(() => body(w));
+  const text = w.toString().trimEnd();
+  return bodyOnly === true ? text : `${text};`;
+}
+
+/** A `SELECT` and its column list, one per line one level in, comma-separated. */
+export function writeSelectList(w: CodeWriter, columns: readonly string[]): void {
+  w.line("SELECT");
+  w.indented(() => {
+    columns.forEach((c, i) => w.line(i < columns.length - 1 ? `${c},` : c));
+  });
+}
+
+/** One LEFT OUTER JOIN per node, the node's own joins after it, every one at the same level. */
+function writeJoin(
+  w: CodeWriter,
   node: JoinNode,
   parentAlias: string,
   options: EmitOptions,
-): string {
+): void {
   const table = options.joinTables[node.targetEntity];
   if (!table) {
     throw new Error(
@@ -577,11 +600,8 @@ function renderJoin(
   const scope = node.tphScope !== undefined
     ? ` AND ${childAlias}.${quoteIfNeeded(node.tphScope.column)}${tphScopeSql(node.tphScope.values, (v) => sqlLiteral(v, options.dialect))}`
     : "";
-  let sql = `  ${joinKw} ${viewRelation(node.targetEntity, table, options)} ${childAlias} ON ${onClause}${scope}`;
-  for (const childJoin of node.children) {
-    sql += "\n" + renderJoin(childJoin, childAlias, options);
-  }
-  return sql;
+  w.line(`${joinKw} ${viewRelation(node.targetEntity, table, options)} ${childAlias} ON ${onClause}${scope}`);
+  for (const childJoin of node.children) writeJoin(w, childJoin, childAlias, options);
 }
 
 export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
@@ -589,13 +609,16 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   const members = (spec.union?.members ?? []).map((m) => {
     const table = options.joinTables[m.joinTree.baseEntity];
     if (table === undefined) throw new Error(`view-ddl-emit: no table name registered for union member base "${m.joinTree.baseEntity}".`);
-    return emitViewBody(m, { ...options, baseTableName: table });
+    return { spec: m, options: { ...options, baseTableName: table } };
   });
-  const joiner = spec.union?.all === true ? "\n  UNION ALL\n" : "\n  UNION\n";
-  const body = [emitViewBody(spec, options), ...members].join(joiner);
-  if (options.bodyOnly) return body;
-  return `CREATE VIEW ${quoteIfNeeded(spec.viewName)} AS
-${body};`;
+  const union = spec.union?.all === true ? "UNION ALL" : "UNION";
+  return viewDdlText(quoteIfNeeded(spec.viewName), options.bodyOnly, (w) => {
+    writeViewBody(w, spec, options);
+    for (const m of members) {
+      w.line(union);
+      writeViewBody(w, m.spec, m.options);
+    }
+  });
 }
 
 /** A @grain view's array column on its base row. */
@@ -604,10 +627,26 @@ function grainCol(spec: ViewSpec): string {
 }
 
 /** One SELECT of a view: its columns, base, grain, joins, WHERE and GROUP BY. */
-function emitViewBody(spec: ViewSpec, options: EmitOptions): string {
-  const cols = spec.selectSpec.columns
-    .map((c) => "    " + renderColumn(c, options, spec.joinTree.baseAlias))
-    .join(",\n");
+function writeViewBody(w: CodeWriter, spec: ViewSpec, options: EmitOptions): void {
+  // SQLite orders collect elements in an outer query over the grouped one — see
+  // sqliteCollectInner for why. Every other column passes straight through. The grouped
+  // query sits at the outer one's level inside its parentheses.
+  const collects = options.dialect === "sqlite" && spec.selectSpec.columns.some(isCollect);
+  if (!collects) {
+    writeGroupedBody(w, spec, options);
+    return;
+  }
+  writeSelectList(w, spec.selectSpec.columns.map((c) => isCollect(c)
+    ? sqliteCollectOuter(c)
+    : `${GROUPED_ALIAS}.${quoteIfNeeded(c.dbColAlias)} AS ${quoteIfNeeded(c.dbColAlias)}`));
+  w.line("FROM (");
+  writeGroupedBody(w, spec, options);
+  w.line(`) ${GROUPED_ALIAS}`);
+}
+
+/** The grouped SELECT: its columns, base, grain, joins, WHERE and GROUP BY. */
+function writeGroupedBody(w: CodeWriter, spec: ViewSpec, options: EmitOptions): void {
+  writeSelectList(w, spec.selectSpec.columns.map((c) => renderColumn(c, options, spec.joinTree.baseAlias)));
   // rc.21 part B (U14): a @grain view reads one row per element of the base row's jsonb array.
   const grain = spec.grain === undefined ? ""
     : options.dialect === "postgres"
@@ -615,37 +654,11 @@ function emitViewBody(spec: ViewSpec, options: EmitOptions): string {
       // failing the whole query on Postgres, or iterating an object's keys on SQLite).
       ? ` CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(${grainCol(spec)}) = 'array' THEN ${grainCol(spec)} END) WITH ORDINALITY AS ${GRAIN_ALIAS}(value, ordinality)`
       : ` CROSS JOIN json_each(CASE WHEN json_type(${grainCol(spec)}) = 'array' THEN ${grainCol(spec)} END) ${GRAIN_ALIAS}`;
-  const fromClause = `  FROM ${viewRelation(spec.joinTree.baseEntity, options.baseTableName, options)} ${spec.joinTree.baseAlias}${grain}`;
-  const joinsClause = spec.joinTree.joins
-    .map((j) => renderJoin(j, spec.joinTree.baseAlias, options))
-    .join("\n");
+  w.line(`FROM ${viewRelation(spec.joinTree.baseEntity, options.baseTableName, options)} ${spec.joinTree.baseAlias}${grain}`);
+  for (const j of spec.joinTree.joins) writeJoin(w, j, spec.joinTree.baseAlias, options);
   // #207 — a projection-level row @filter is an outer WHERE that scopes which base
   // rows the view returns. It renders AFTER the joins and BEFORE any GROUP BY (it
   // filters rows, not aggregate groups — a post-aggregate HAVING is a separate concern).
-  const whereClause =
-    spec.where !== undefined
-      ? `\n  WHERE ${renderFilterCond(spec.where, options)}`
-      : "";
-  const groupByClause =
-    spec.groupBy.length > 0
-      ? `\n  GROUP BY ${spec.groupBy.map(quoteRef).join(", ")}`
-      : "";
-
-  const grouped = `  SELECT
-${cols}
-${fromClause}${joinsClause ? "\n" + joinsClause : ""}${whereClause}${groupByClause}`;
-
-  // SQLite orders collect elements in an outer query over the grouped one — see
-  // sqliteCollectInner for why. Every other column passes straight through.
-  const collects = options.dialect === "sqlite" && spec.selectSpec.columns.some(isCollect);
-  const body = !collects ? grouped : `  SELECT
-${spec.selectSpec.columns
-  .map((c) => "    " + (isCollect(c)
-    ? sqliteCollectOuter(c)
-    : `${GROUPED_ALIAS}.${quoteIfNeeded(c.dbColAlias)} AS ${quoteIfNeeded(c.dbColAlias)}`))
-  .join(",\n")}
-  FROM (
-${grouped}
-  ) ${GROUPED_ALIAS}`;
-  return body;
+  if (spec.where !== undefined) w.line(`WHERE ${renderFilterCond(spec.where, options)}`);
+  if (spec.groupBy.length > 0) w.line(`GROUP BY ${spec.groupBy.map(quoteRef).join(", ")}`);
 }

@@ -8,6 +8,8 @@ import { uiProvider } from "../src/presentation/ui/ui-provider.js";
 import { uiWebProvider } from "../src/presentation/ui-web/ui-web-provider.js";
 import { rulesProvider } from "../src/core/rules/rules-provider.js";
 import { viewExpressionsProvider } from "../src/persistence/view-expressions/view-expressions-provider.js";
+import { reportingProvider } from "../src/core/reporting/reporting-provider.js";
+import { requirementsProvider } from "../src/core/requirement/requirements-provider.js";
 import { TypeRegistry, TypeId } from "../src/registry.js";
 import { MetaField } from "../src/core/field/meta-field.js";
 import {
@@ -99,7 +101,7 @@ describe("coreTypesProvider", () => {
     expect(registry.defaultSubTypeOf(TYPE_METADATA)).toBe(SUBTYPE_ROOT);
   });
 
-  it("coreProviders is an eight-provider bundle: coreTypesProvider + dbProvider + docProvider + promptProvider + uiProvider + uiWebProvider + rulesProvider + viewExpressionsProvider", () => {
+  it("coreProviders is a ten-provider bundle: coreTypesProvider + dbProvider + docProvider + promptProvider + uiProvider + uiWebProvider + rulesProvider + viewExpressionsProvider + reportingProvider + requirementsProvider", () => {
     // FR-033 S1-field-A re-homed the field's filter/sort/teaching/extract/storage
     // attrs out of core into the concern providers. promptProvider (renamed from
     // templateProvider; id metaobjects-prompt) carries @xmlText/@example/@instruction
@@ -112,8 +114,10 @@ describe("coreTypesProvider", () => {
     // PresentationOnly-excluded rows, so the manifest itself is unaffected.
     // rulesProvider (metaobjects-rules) and viewExpressionsProvider
     // (metaobjects-view-expressions) are packs split out of core in 1.3.0; they are in
-    // the default bundle so no model changes, and each can be composed out.
-    expect(coreProviders).toHaveLength(8);
+    // the default bundle so no model changes, and each can be composed out. So are
+    // reportingProvider (metaobjects-reporting) and requirementsProvider
+    // (metaobjects-requirements), split out the same way.
+    expect(coreProviders).toHaveLength(10);
     expect(coreProviders[0]).toBe(coreTypesProvider);
     expect(coreProviders[1]).toBe(dbProvider);
     expect(coreProviders[2]).toBe(docProvider);
@@ -122,6 +126,8 @@ describe("coreTypesProvider", () => {
     expect(coreProviders[5]).toBe(uiWebProvider);
     expect(coreProviders[6]).toBe(rulesProvider);
     expect(coreProviders[7]).toBe(viewExpressionsProvider);
+    expect(coreProviders[8]).toBe(reportingProvider);
+    expect(coreProviders[9]).toBe(requirementsProvider);
   });
 
   it("registerCoreTypes registers the structural types but not the DB-domain attrs", () => {
@@ -133,10 +139,14 @@ describe("coreTypesProvider", () => {
     const viaProviders = composeRegistry(coreProviders);
 
     // dbProvider only extends and adds no types, so the only types composeRegistry adds
-    // over core alone are the two packs' (business rules, origin.function).
-    const packTypes = ["api", "operation", "binding", "transition"];
+    // over core alone are the packs' (business rules, origin.function, reporting,
+    // requirements).
+    const packTypes = ["api", "operation", "binding", "transition", "dimension", "measure", "segment", "requirement"];
     const coreOnly = viaProviders.allTypes().filter(
-      (t) => !packTypes.includes(t.type) && !(t.type === "origin" && t.subType === "function"),
+      (t) =>
+        !packTypes.includes(t.type) &&
+        !(t.type === "origin" && t.subType === "function") &&
+        !(t.type === "object" && t.subType === "report"),
     );
     expect(viaWrapper.allTypes().length).toBe(coreOnly.length);
 

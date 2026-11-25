@@ -4,7 +4,9 @@
 
 **Accepted** (2026-11-04). Registers no vocabulary: `metamodelVersion` is unchanged. Adds one
 error code, `ERR_PROVIDER_ATTR_SHADOW`, and records which provider registered each attribute.
-Amends nothing; it states how ADR-0007 and ADR-0018 are meant to scale. Closes #527.
+Amends nothing in its decision; it states how ADR-0007 and ADR-0018 are meant to scale. Closes #527.
+[Amendment 1](#amendment-1-2026-11-21--an-attribute-folded-from-the-base-is-not-a-new-claim)
+records the one exception the rule has since gained.
 
 ## Context
 
@@ -95,3 +97,19 @@ a collision.
 - **Last registration wins** — what happened before; the result depends on provider order.
 - **One new code for all three cases** — would have changed the established
   `ERR_PROVIDER_ATTR_CONFLICT` fixture and message for existing consumers.
+
+## Amendments
+
+### Amendment 1 (2026-11-21) — an attribute folded from the base is not a new claim
+
+A subtype declared with `extendsBase: true` folds in the attributes of its registered
+`<type>.base`. `object.report`, registered by the reporting pack, is the first. A folded
+attribute is the base provider's, not a claim by the provider that registers the subtype. The
+registry does not run the rule above on it, and the base provider stays the owner in `meta types`
+and in any error message. Nothing else is excepted: a subtype that declares its own attribute,
+under a name another provider holds on the base or on a related slot, is still refused.
+
+Matching is by object identity in TypeScript, C# and Python: the folded definition holds the base's
+attribute object. Rust matches by name. The two differ only when a subtype redeclares a base
+attribute with the same name; Rust then reads the redeclaration as folded, and the other ports read
+it as a new claim. That difference is accepted.

@@ -20,10 +20,11 @@
 // consumer having wired an extra generator, since the entity generator is
 // scaffold-and-own (ADR-0034) and cannot be changed from the package.
 
-import { code, type Code } from "../poet.js";
+import type { Code } from "../poet.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
-import { renderEntityConstants } from "./entity-constants.js";
+import { TsWriter } from "../writer/ts-writer.js";
+import { writeEntityConstants } from "./entity-constants.js";
 
 /** File name (no directory) of an entity's DB-free descriptor module. */
 export function entityMetaFileName(entityName: string): string {
@@ -49,16 +50,16 @@ export function renderEntityMetaFile(
   _apiPrefix = "",
   names?: { readonly name: string; readonly symbol: Code } | undefined,
 ): string {
-  const body = code`
-// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
-// Source metadata: ${entity.name}
-//
-// Browser-safe: this module contains ONLY the entity descriptor — plain data, no
-// Drizzle table and no database import of any kind. The generated UI files import it
-// from here so a client bundle never pulls the ORM in. \`${entity.name}.ts\` also
-// exports this descriptor, for server-side and pre-existing consumers.
-
-${renderEntityConstants(entity, "", names)}
-`;
-  return body.toString();
+  const w = new TsWriter();
+  w.header(
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entity.name}`,
+    "//",
+    "// Browser-safe: this module contains ONLY the entity descriptor — plain data, no",
+    "// Drizzle table and no database import of any kind. The generated UI files import it",
+    `// from here so a client bundle never pulls the ORM in. \`${entity.name}.ts\` also`,
+    "// exports this descriptor, for server-side and pre-existing consumers.",
+  );
+  writeEntityConstants(w, entity, names);
+  return w.toString();
 }

@@ -7,6 +7,7 @@
 
 import nunjucks from "nunjucks";
 import { JINJA_EXTENSIONS } from "../engine.js";
+import { ERR_VAR_NOT_ON_PAYLOAD } from "../verify-shared.js";
 import type { Provider } from "../provider.js";
 
 /** A parsed nunjucks node. `fields` names the node's own child slots, in order. */
@@ -26,6 +27,7 @@ interface NunjucksInternals {
   parser: { parse(src: string): NjNode };
   lib: { escape(value: string): string };
   compiler: { Compiler: { prototype: CaptureCompiler } };
+  runtime: { ensureDefined(value: unknown, lineno: number, colno: number): unknown };
 }
 
 const internals = nunjucks as unknown as NunjucksInternals;
@@ -95,10 +97,23 @@ function environment(provider: Provider): nunjucks.Environment {
   };
   return new nunjucks.Environment(loader as unknown as nunjucks.ILoader, {
     autoescape: true,
-    throwOnUndefined: false,
+    throwOnUndefined: true, // `{{ x }}` on an undefined value raises; see `ensureDefinedOnly`
     trimBlocks: false,
     lstripBlocks: false,
   });
+}
+
+/**
+ * nunjucks' own `throwOnUndefined` check also refuses `null`, which Mustache (and Jinja's
+ * default) render as empty. Narrowed to `undefined` only, so a missing variable raises the
+ * same error the Mustache path does and a present `null` still renders empty. The engine
+ * does not know the variable's name at this point, so the message carries none.
+ */
+function ensureDefinedOnly(value: unknown): unknown {
+  if (value === undefined) {
+    throw new Error(`render verify failed: ${ERR_VAR_NOT_ON_PAYLOAD}`);
+  }
+  return value;
 }
 
 /** Render Jinja `text` against `context`, escaping every `{{ … }}` with `escaper`. */
@@ -116,6 +131,8 @@ export function renderJinjaText(
   const compiler = internals.compiler.Compiler.prototype;
   const prevEscape = internals.lib.escape;
   const prevCapture = compiler.compileCapture;
+  const prevEnsure = internals.runtime.ensureDefined;
+  internals.runtime.ensureDefined = ensureDefinedOnly;
   internals.lib.escape = (v: unknown) => escaper(typeof v === "string" ? v : String(v));
   compiler.compileCapture = safeCapture(prevCapture);
   try {
@@ -123,5 +140,6 @@ export function renderJinjaText(
   } finally {
     internals.lib.escape = prevEscape;
     compiler.compileCapture = prevCapture;
+    internals.runtime.ensureDefined = prevEnsure;
   }
 }

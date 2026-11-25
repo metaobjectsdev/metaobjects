@@ -7,11 +7,12 @@
   "workspaces": [
     "server/typescript/packages/*",
     "client/web/packages/*",
-    "examples/dynamic-grid"
+    "examples/dynamic-grid",
+    "packs/*/typescript"
   ],
   "scripts": {
-    "build": "bun run --filter '*' build",
-    "typecheck": "bun run --filter '*' typecheck",
+    "build": "bun run --filter './server/typescript/packages/*' --filter './client/web/packages/*' --filter './examples/dynamic-grid' build",
+    "typecheck": "bun run --filter './server/typescript/packages/*' --filter './client/web/packages/*' --filter './examples/dynamic-grid' typecheck",
     "test": "cd server/typescript && bun test",
     "regen:showcase": "bun scripts/regen-showcase.ts",
     "site:payload": "bun scripts/build-site-payload.ts",

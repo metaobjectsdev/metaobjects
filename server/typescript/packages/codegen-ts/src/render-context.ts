@@ -121,7 +121,7 @@ export interface RenderContext {
   outputLayout: OutputLayout;
   /**
    * §A6 — whether the run emits the `<Entity>Names` artifact (the runner aggregates the
-   * suite's `emitsNames` markers; `ctx.config.includeNames` carries the same fact for
+   * suite's `provides.names` declarations; `ctx.config.includeNames` carries the same fact for
    * generators). A template may reference those constants ONLY when this is true: the
    * names generator is opt-in under ADR-0034 scaffold-and-own, so an unconditional
    * import would break every project that has not enabled it. Defaults to FALSE, which

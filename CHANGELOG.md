@@ -10,43 +10,6 @@ here.**
 
 ## [Unreleased]
 
-- **C#: a list with no `limit` answers 50 rows (breaking).** A generated entity, TPH or projection
-  list route in a project that sets no `api.pagination` returned every matching row when the
-  request carried no `limit`; it now answers the first 50 (`ApiSettings.DefaultPageLimit`), as every
-  port does. An explicit `limit` is still served as asked (no maximum without the setting), and a
-  project that sets `api.pagination` is unchanged. Without the setting a `limit` or `offset` that is
-  not a non-negative integer is now `400 pagination.invalid_value` instead of being ignored, and
-  `limit=0` is a page of zero rows. The `dotnet meta verify --codegen` advisory `unbounded-list-pages`
-  is retired. The C# generated lane now runs the shared `list-query/` sub-corpus: the paging and
-  refusal scenarios its routes answer today, with search and `or`/`and` to follow. Regenerate, and
-  check any client that reads a whole list without a `limit`:
-  [docs/features/migrations/default-list-page-of-fifty.md](docs/features/migrations/default-list-page-of-fifty.md).
-- **C#: the route helpers are their own package, `MetaObjects.AspNetCore`, and `MetaObjects.Codegen`
-  and the `dotnet meta` tool no longer carry EF Core.** `FilterParser`, `FilterParseResult`,
-  `FilterPredicate`, `EfCoreFilterDispatch`, `ValueObjectValidator`, `ConstraintErrors`,
-  `ValidationIssues`, `UnknownFieldCheck`, `Iso8601TimestampConverter`, `DecimalWire`,
-  `DurationWire`, `DecimalRangeEndpointFilter`, `ReportExportHttp` and `SerializerKeys` moved from
-  `MetaObjects.Codegen` (namespace `MetaObjects.Codegen.Runtime`) to the new `MetaObjects.AspNetCore`
-  package (namespace `MetaObjects.AspNetCore`), which depends on ASP.NET Core and EF Core and on no
-  MetaObjects package. `MetaObjects.Codegen` drops its EF Core and ASP.NET Core references: the tool
-  installs about 42% smaller (14 DLLs to 6), and the first restore of a `codegen/` project no longer
-  pulls EF Core's 11 packages. `ExtractObject` and `M2MResolver` stay in `MetaObjects.Codegen` under
-  `MetaObjects.Codegen.Runtime`. The packaged routes generator now writes `using MetaObjects.AspNetCore;`,
-  so the next `dotnet meta gen` moves that line in every generated routes file. `dotnet meta gen` and
-  `dotnet meta verify` warn when a generated file imports `MetaObjects.AspNetCore` and the project
-  that compiles it (the one `.csproj` in its directory or above, a project it references, or a
-  `Directory.Build.props`/`.targets` above them) does not reference the package, and when generated
-  output still imports the helpers from `MetaObjects.Codegen.Runtime`. Both warnings are advisory.
-  `dotnet meta eject routes` still copies the helpers into `codegen/runtime/` as `Codegen.Runtime`.
-  **Upgrade:** add `<PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" />` to the
-  app that compiles the generated routes, run `dotnet meta gen`, and change any hand-written
-  `using MetaObjects.Codegen.Runtime;` that names one of the helpers (a host registering
-  `Iso8601TimestampConverter`, say) to `using MetaObjects.AspNetCore;`. A routes generator you
-  ejected before the helpers were handed over writes `using MetaObjects.Codegen.Runtime;`: set its
-  `HelperRuntimeNamespace` constant to `"MetaObjects.AspNetCore"`, or re-eject with
-  `dotnet meta eject routes --force`. An app that only uses the ejected helpers in `codegen/runtime/`
-  needs nothing.
-
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
@@ -432,6 +395,37 @@ here.**
   included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
   column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
   includes `like`.
+- **Reporting and requirements are vocabulary packs, out of core.** The reporting vocabulary
+  (`object.report`, `dimension.*`, `measure.*` including `measure.derived` and its `@expr`,
+  `segment.filter`, the entity's dimension, measure and segment children and `@segment` on
+  `origin.aggregate` and `origin.first`) is now registered by its own provider,
+  `metaobjects-reporting`. The requirements vocabulary (`requirement.functional`,
+  `requirement.architectural` and the root's `requirement.*` child) is registered by
+  `metaobjects-requirements`. Both are in the default bundle of every port, so a model that loads
+  today loads and generates the same. An embedder can leave either out, and a model that then uses
+  its types gets a loader error naming the unknown type or subtype (new fixtures
+  `error-packs-left-out-*-used`). The `verify` requirements gate reads the nodes the pack
+  registered: with the pack left out, a model with no requirements gets a silent ledger. The core
+  vocabulary pin loses these types and attributes, and the registry manifest changes in one row:
+  the root's `requirement` child rule now states `min: 0, max: null`, as `api` did when the rules
+  pack moved out. A subtype a pack declares with `extendsBase` may now fold a base another provider
+  registered (`object.report` folds `object.base`); those folded attributes stay owned by the base's
+  provider. GOVERNANCE.md now says an attribute promoted from a pack into core keeps its name and
+  meaning.
+- **A template that names a variable the payload lacks fails to render, in every render path.**
+  Mustache and Jinja raise `render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)` for a missing
+  variable or dotted path, where they used to render it empty. A variable that is present and null
+  still renders empty. The Rust `metaobjects-render` crate raises it too, so all six renderers
+  agree. Render fixtures may now carry `expected-error.txt` in place of `expected.txt`.
+- **Business rules: two operations or transitions whose permission names come out equal are
+  refused (rule P3).** A permission name is the declared `@permission`, or else the derived
+  `<package>.<path>`, compared exactly as the policy receives it, so `p::Order.open` and
+  `p.Order.open` are two names. When two permission points resolve to
+  the same name and at least one of the two names is derived, the loader reports
+  `ERR_TRANSITION_NAME_COLLISION` on the later one. Two equal declared names stay legal: that is a
+  shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared}` and
+  `rules-permission-name-package-separator-distinct`. Java now accepts dotted operation names
+  (`Order.open`), as TypeScript, C# and Python already did.
 - **Python: a primitive array persists on SQLite and MySQL.** The `ObjectManagerDb`'s SQLite and
   MySQL dialects bound no list, so an `isArray` string, number, date, uuid or enum field could not be
   written there. The column the TypeScript-owned schema gives it (`TEXT` on SQLite, `JSON` on MySQL)
@@ -525,7 +519,7 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
 ## [1.3.0] — unreleased
 
 
-_npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.3.0` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
 
 **New metamodel vocabulary, experimental: `api.*`, `operation.*`, `binding.*` and `transition.*`
 (ADR-0066).** It is additive: nothing that loaded before stops loading. This vocabulary ships in
@@ -562,10 +556,6 @@ the one `metamodelVersion` value, `1.3`.
 
 Each item below is described in full under Security, Added, Changed or Fixed; this list is where to start.
 
-- **C#: add the `MetaObjects.AspNetCore` package to the app that compiles generated routes.** The
-  helpers those routes call moved out of `MetaObjects.Codegen` into it, and the regenerated routes
-  import `MetaObjects.AspNetCore`; a hand-written `using MetaObjects.Codegen.Runtime;` for them
-  changes the same way. `dotnet meta gen` and `verify` warn while the reference is missing.
 - **`validator.atLeastOne` takes no `@max`.** A model that carries `@max: 1` on an `atLeastOne`
   fails to load; a rule meaning "exactly one of these fields" is the new `validator.exactlyOne`.
 - **C# durations on the wire.** A `field.duration` is written in each language's standard form

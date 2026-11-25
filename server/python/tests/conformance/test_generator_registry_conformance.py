@@ -109,11 +109,12 @@ def test_every_manifest_entry_declares_one_of_the_seven_layers() -> None:
     )
 
 
-def test_registry_python_slice_is_all_native() -> None:
-    # The Python slice of the manifest is entirely tier: native.
-    assert all(e.tier == "native" for e in GENERATOR_REGISTRY.values()), (
-        "Every Python registry entry must be tier 'native'; found: "
-        + ", ".join(f"{k}={v.tier}" for k, v in GENERATOR_REGISTRY.items() if v.tier != "native")
+def test_registry_python_slice_tiers_are_native_or_neutral() -> None:
+    # The Python slice is native, plus the neutral docs generators (requirements, agent-docs).
+    # Each entry's tier is held to the manifest by test_registry_tiers_agree_with_manifest.
+    assert all(e.tier in ("native", "neutral") for e in GENERATOR_REGISTRY.values()), (
+        "Every Python registry entry must be tier 'native' or 'neutral'; found: "
+        + ", ".join(f"{k}={v.tier}" for k, v in GENERATOR_REGISTRY.items() if v.tier not in ("native", "neutral"))
     )
 
 

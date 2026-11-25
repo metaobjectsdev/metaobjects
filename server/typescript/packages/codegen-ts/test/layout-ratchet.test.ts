@@ -204,6 +204,22 @@ describe("the layout ratchet", () => {
     ).toEqual([]);
   });
 
+  // Generator source outside the scanned packages escapes the ratchet. That is how the
+  // private `test-generators` package (owned copies of the reference generators, retired in
+  // 1.3.0) sat outside it, so any package that carries a reference generator is scanned.
+  test("no package outside the scanned set carries a reference generator", () => {
+    const MARKER = "// REFERENCE TEMPLATE";
+    const unscanned = readdirSync(PACKAGES).filter(
+      (p) => !(SCANNED_PACKAGES as readonly string[]).includes(p) && existsSync(join(PACKAGES, p, "src")),
+    );
+    const outside = unscanned.flatMap((p) =>
+      walk(join(PACKAGES, p, "src"))
+        .filter((f) => f.endsWith(".ts") && readFileSync(f, "utf8").startsWith(MARKER))
+        .map((f) => relative(PACKAGES, f).replaceAll("\\", "/")),
+    );
+    expect(outside, "add the package to SCANNED_PACKAGES (layout-ratchet/analyze.ts)").toEqual([]);
+  });
+
   test("every allowlisted file still needs its entry", () => {
     const stale = Object.keys(entries).filter((file) => (findings.get(file)?.length ?? 0) === 0);
     expect(stale, "these files no longer type layout (or no longer exist): remove their allowlist entries").toEqual([]);

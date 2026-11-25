@@ -67,6 +67,19 @@ public final class TemplateVerify {
      */
     public static final String ERR_PAYLOAD_REF_UNRESOLVED = "ERR_PAYLOAD_REF_UNRESOLVED";
 
+    /** A responding prompt's {@code @responseRef} names no loaded value shape with fields (an error). */
+    public static final String ERR_RESPONSE_UNRESOLVED = "ERR_RESPONSE_UNRESOLVED";
+
+    /**
+     * An xml prompt's {@code @requiredTags} entry names neither the reply type nor one of its
+     * fields (a warning): the body teaches the model the tag and the extractor reads the reply
+     * type's fields, so a renamed reply field stops matching a tag the prompt still asks for.
+     */
+    public static final String ERR_RESPONSE_TAG_UNDECLARED = "ERR_RESPONSE_TAG_UNDECLARED";
+
+    /** One reply finding: the code, the {@code @responseRef} value or offending tag, and whether it is a warning. */
+    public record ResponseFinding(String code, String path, boolean warning) {}
+
     /** A single drift finding: which template, prompt-vs-output, the error code, the path. */
     public record Drift(String template, String kind, String code, String path) {}
 
@@ -100,6 +113,14 @@ public final class TemplateVerify {
 
         for (com.metaobjects.MetaData child : loader.getRoot().getChildren()) {
             if (!(child instanceof MetaTemplate tmpl)) continue;
+
+            // The reply (@responseRef): its field tree, and an xml prompt's tag contract against it.
+            // Independent of the payload check below, so it runs first.
+            for (ResponseFinding f : responseFindings(loader, tmpl)) {
+                Drift drift = new Drift(tmpl.getName(), KIND_PROMPT, f.code(), f.path());
+                if (f.warning()) warnings.add(drift);
+                else errors.add(drift);
+            }
 
             String payloadRef = tmpl.getPayloadRef();
             // Missing @payloadRef is already a load-time error (prompt schema requires it).
@@ -177,6 +198,49 @@ public final class TemplateVerify {
         }
 
         return new Outcome(errors, warnings, unresolved);
+    }
+
+    /**
+     * The reply findings for one template, matching {@code response-verify.ts} (pinned by
+     * {@code fixtures/response-verify-conformance}). Empty for anything that is not a
+     * {@code template.prompt} carrying {@code @responseRef} — a prompt that elicits no typed reply
+     * has nothing here. Every read is the resolving one (ADR-0039): a prompt may inherit
+     * {@code @responseRef}, {@code @responseFormat} and {@code @requiredTags} via {@code extends}.
+     */
+    public static List<ResponseFinding> responseFindings(MetaDataLoader loader, MetaTemplate tmpl) {
+        if (!TemplateConstants.SUBTYPE_PROMPT.equals(tmpl.getSubType())) return List.of();
+        String responseRef = attrString(tmpl, TemplateConstants.ATTR_RESPONSE_REF);
+        if (responseRef == null) return List.of();
+
+        MetaObject reply = valueObjectOrNull(References.refTarget(tmpl, TemplateConstants.ATTR_RESPONSE_REF));
+        List<PayloadField> tree = reply == null
+                ? List.of()
+                : derivePayloadFieldTree(loader, reply, new LinkedHashSet<>());
+        if (tree.isEmpty()) {
+            return List.of(new ResponseFinding(ERR_RESPONSE_UNRESOLVED, responseRef, false));
+        }
+
+        String format = attrString(tmpl, TemplateConstants.ATTR_RESPONSE_FORMAT);
+        if (format == null || !TemplateConstants.RESPONSE_FORMAT_XML.equals(format.toLowerCase(java.util.Locale.ROOT))) {
+            return List.of();
+        }
+        List<String> tags = tmpl.getRequiredTags();
+        if (tags == null) return List.of();
+        Set<String> known = new LinkedHashSet<>();
+        known.add(reply.getShortName());
+        collectFieldNames(tree, known);
+        List<ResponseFinding> out = new ArrayList<>();
+        for (String tag : tags) {
+            if (!known.contains(tag)) out.add(new ResponseFinding(ERR_RESPONSE_TAG_UNDECLARED, tag, true));
+        }
+        return out;
+    }
+
+    private static void collectFieldNames(List<PayloadField> tree, Set<String> out) {
+        for (PayloadField f : tree) {
+            out.add(f.name());
+            if (f.fields() != null) collectFieldNames(f.fields(), out);
+        }
     }
 
     // -------------------------------------------------------------------------

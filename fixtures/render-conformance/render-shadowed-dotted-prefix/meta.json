@@ -1,0 +1,1 @@
+{ "format": "text", "note": "a dotted name, printed or as a section, is tried whole against each context from the innermost outward: the first context on which the full path resolves wins, and one that holds the first segment but not the rest, or that reaches a null, is skipped, not a stop" }

@@ -1,0 +1,1 @@
+{ "format": "text", "note": "a variable absent from the payload (undefined, not null) raises; the message is matched as a prefix, since only the Mustache path can name the variable" }

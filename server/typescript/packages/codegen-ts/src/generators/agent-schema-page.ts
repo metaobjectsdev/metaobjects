@@ -53,6 +53,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy, MetaField, MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import type { Provider } from "@metaobjectsdev/render";
+import { compareCodeUnits } from "../code-unit-order.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { enumValues, intValueMapOf } from "../enum-meta.js";
 import { isAbstract } from "../instance-artifacts.js";
@@ -329,6 +330,9 @@ export interface AgentSchemaPageData {
   readonly physical: boolean;
   /** The dialect a physical page names; `""` on a model-only page. */
   readonly dialect: string;
+  /** The project chose a `meta migrate` dialect: the page tells a reader to change the schema
+   *  with `meta migrate`. Otherwise with the project's own migration tool, fed by `meta schema`. */
+  readonly hasMigrate: boolean;
   readonly descriptionNudge: boolean;
   readonly hasTables: boolean;
   readonly tables: readonly AgentSchemaTable[];
@@ -495,13 +499,13 @@ export function agentSchemaPageData(
       t.columns.some((c) => c.description !== undefined && c.description !== ""),
   );
   const tables = [...input.tables]
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => compareCodeUnits(a.name, b.name))
     .map((table) => {
       const key = input.qualify(table);
       return tableOf(table, input, physical, input.provenance.get(key), facts.declaredBy.get(key) ?? new Map());
     });
   const views = [...input.views]
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => compareCodeUnits(a.name, b.name))
     .map((view): AgentSchemaView => {
       const key = input.qualify(view);
       const fqn = input.provenance.get(key);
@@ -517,6 +521,7 @@ export function agentSchemaPageData(
     generatedMarker: GENERATED_MARKER,
     physical,
     dialect: physical ? input.dialect : "",
+    hasMigrate: input.migrate,
     descriptionNudge: !anyDescription && input.tables.length > 0,
     hasTables: tables.length > 0,
     tables,

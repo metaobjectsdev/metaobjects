@@ -26,9 +26,9 @@ path = "src/main.rs"
 [dependencies]
 metaobjects = { path = "../metaobjects", version = "0.1.0" }
 metaobjects-codegen = { path = "../metaobjects-codegen", version = "0.1.0" }
-
-[dev-dependencies]
+metaobjects-render = { path = "../metaobjects-render", version = "0.1.0" }
 serde_json.workspace = true
+
 
 [lints]
 workspace = true

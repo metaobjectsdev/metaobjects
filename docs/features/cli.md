@@ -25,10 +25,10 @@ command surface splits in two:
 
 | Capability | Tool | Invocation | Notes |
 |---|---|---|---|
-| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s). A new `.metaobjects/config.json` also carries `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" }`, the generated list routes' page size and the refusal of undeclared write keys ([api-contract.md](api-contract.md)); for `--dialect sqlite` it also adds `@libsql/kysely-libsql` to the project's `dependencies`, the SQLite driver the CLI's optional peer names (run your package manager's install afterwards); `--force` over an existing config does not add it |
-| **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
+| Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s). A new `.metaobjects/config.json` also carries `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" }`, the generated list routes' page size and the refusal of undeclared write keys ([api-contract.md](api-contract.md)); for `--dialect sqlite` it also adds `@libsql/kysely-libsql` to the project's `dependencies`, the SQLite driver the CLI's optional peer names (run your package manager's install afterwards); `--force` over an existing config does not add it. `--with-services` wires the recommended service list ([business-rules.md](business-rules.md#the-service-layer-typescript)) instead of the empty one, and `--with-docs` the two docs generators |
+| **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); the Python CLI writes the same files itself (`metaobjects agent-docs`, no Node); the C# and Java/Kotlin CLIs still redirect here |
 | **Expected schema** (`schema`) | **Node `meta`** | `meta schema [--dialect <d>] [--as ddl\|json]` | **any backend** — read-only: prints the schema the metadata expects as DDL or as the neutral document ([schema-snapshot-format.md](schema-snapshot-format.md)); reads no database; writes nothing unless `--out` names a file |
-| **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
+| **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — the reference migration helper, one option beside each language's own tool (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
 | **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; part of the bare-`verify` default |
@@ -43,7 +43,7 @@ command surface splits in two:
 | Java/Kotlin scaffold | Maven plugin | `mvn metaobjects:init` | writes the port-neutral `.metaobjects/config.json` and an empty `metaobjects/meta.app.json`, each only when missing; it never edits `pom.xml` and wires no generator. Details and the `-Dmeta.init.withDocs=true` opt-in: [docs/ports/java.md](../ports/java.md) |
 | Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates\|deps` (`metaobjects:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): unset (default — `codegen` and `templates`; the template gate is skipped with a note when `templateRoot` is unset) / `codegen` (regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine) / `deps` (opt-in dependency drift, the `path` transport only). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
 | Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2). **The generator list is `metaobjects.config.yaml`** (ADR-0034 Amendment 9, [below](#declarative-config-metaobjectsconfigyaml--python-codegen)): `gen` and `verify --codegen` run each target's `generators` (and its `templateSpec`, the declarative Mustache template-codegen surface shared with C#) into its `outDir`, and with no config they exit 2 and write nothing. `--generators` only narrows the list to declared entries. `metaobjects docs` was removed in 1.1.0: it prints the line that points at [the migration section](migrations/docs-are-generators.md#python) and exits 2 |
-| Rust codegen (ADR-0065) | `cargo-meta` (`metaobjects-cli`, unpublished; installed from a checkout) | `cargo meta init` / `gen` / `verify --codegen` / `eject` | A Cargo subcommand, invoked `cargo meta` so it never shadows the Node `meta`. Three generators ship, each writing one crate per metadata package: `entity`, `client` and `commands` (the last Rust-only by decision, ADR-0065 Amendment 1). `gen` skips a run whose key matches (ADR-0064), writes only changed bytes, removes a generated file nothing emits any more, and refuses to overwrite or delete a hand-edited generated file (exit 1). `verify` ships the ADR-0021 D2 subverbs it can: a bare `verify` is `--codegen`, which renders in memory and exits 1 on drift (`--full`, or a set `CI`, never answers from the stored key); `--db`, `--templates` and `--deps` are rejected, exit 2. **The generator list is the shipped three until the project owns one**: `cargo meta eject <generator>` writes a `codegen/` crate (`Cargo.toml`, `main.rs`, `generators/<name>.rs`), and `gen` / `verify` then build and run that crate; `--generators` only narrows the list. No `fmt`, no template generator and no `migrate`. `cargo meta --help` lists the options; [the Rust port page](../ports/rust.md) has the detail |
+| Rust codegen (ADR-0065) | `cargo-meta` (`metaobjects-cli`, unpublished; installed from a checkout) | `cargo meta init` / `gen` / `verify --codegen` / `verify --templates` / `eject` | A Cargo subcommand, invoked `cargo meta` so it never shadows the Node `meta`. Three generators ship, each writing one crate per metadata package: `entity`, `client` and `commands` (the last Rust-only by decision, ADR-0065 Amendment 1). `gen` skips a run whose key matches (ADR-0064), writes only changed bytes, removes a generated file nothing emits any more, and refuses to overwrite or delete a hand-edited generated file (exit 1). `verify` ships the ADR-0021 D2 subverbs it can: a bare `verify` runs the gates (`--codegen`, which renders in memory and exits 1 on drift, `--templates` and the rules gate) (`--full`, or a set `CI`, never answers from the stored key); `--templates` is the template drift gate (`template.*` bodies under `prompts/`, or `--prompts <dir>`, against their payload value objects, plus each prompt's reply), and a bare `verify` runs it too; `--db` and `--deps` are rejected, exit 2. **The generator list is the shipped three until the project owns one**: `cargo meta eject <generator>` writes a `codegen/` crate (`Cargo.toml`, `main.rs`, `generators/<name>.rs`), and `gen` / `verify` then build and run that crate; `--generators` only narrows the list. No `fmt`, no template generator and no `migrate`. `cargo meta --help` lists the options; [the Rust port page](../ports/rust.md) has the detail |
 
 ## `verify` is one verb with explicit subverbs (ADR-0021 D2)
 
@@ -178,7 +178,7 @@ Rules of the contract:
   It is not a subverb and nothing mutes it. A model with no operation and no transition gets no
   line. A model with one gets a summary line, and an error-severity finding exits non-zero. The
   codes, settings and the checks are in [business-rules.md](business-rules.md#what-verify-reports).
-  Rust's bare `cargo meta verify` runs it too, beside the codegen drift gate; `verify --codegen` runs the drift gate alone.
+  Rust's bare `cargo meta verify` runs it too, beside the codegen drift and template gates; `verify --codegen` or `verify --templates` runs that gate alone.
 
 ### The prompt directory: `--prompts` everywhere (F101)
 
@@ -245,7 +245,13 @@ field tree via the render `Verify` engine, resolving refs through a filesystem p
 at `-Dmeta.verify.templateRoot`), and `-Dmeta.verify.mode=deps` (opt-in, never in the unset default set: the dependency drift check of `verify --deps`, resolving `path` dependencies only; see the Java port page). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
-Node-only by the ADR-0015 design — see below.)
+Node-only by the ADR-0015 design — see below.) The **Rust `cargo meta`** port runs the codegen
+and template gates: bare `cargo meta verify` renders the generated crates in memory and diffs
+them (a local run may answer from the stored skip key; `--full`, or a set `CI`, always renders),
+checks every `template.*` body under `prompts/` (or `--prompts <dir>`) against its payload value
+object plus each prompt's `@responseRef` reply, and runs the business-rules gate; `--codegen` and
+`--templates` run one gate alone, and the port has no requirement gate ([the Rust port
+page](../ports/rust.md)).
 
 ## Owned generators: the unchanged-copy notice, `eject --undo`, and `gen --strict`
 
@@ -272,8 +278,10 @@ nothing. No port has a `doctor` command: `eject --list` (or the matching goal) i
 Every port's `gen` loads the metadata, then computes a key before it renders anything: the
 loaded model (each node in its canonical effective form, so reformatting or splitting a metadata
 file changes nothing) plus everything the generators are built from (the engine's built code,
-the codegen config and every owned generator, the template roots, declared extra inputs, the
-project config, the output-changing flags). When the key matches the last successful run and
+every generator package the config imports beyond the engine's own (a pack or a third-party
+package: by its content when linked, by its version when installed), the codegen config and every
+owned generator, the template roots, declared extra inputs, the project config, the
+output-changing flags). When the key matches the last successful run and
 every generated file still holds the bytes that run left, `gen` says so and renders and writes
 nothing. The key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json` (on the JVM,
 one per owner module), which is not committed.
@@ -847,14 +855,15 @@ content, every port must produce the same canonical bytes, or classify the
 same refusal (`"overlay"` vs `"error"`). Each port's own test suite runs it,
 the same way `fixtures/conformance/` gates the loader.
 
-## Schema is Node-only — by design
+## The schema commands are in the Node `meta` — by design
 
-No port other than the Node `meta` exposes `migrate` or `verify --db`. The C#,
+No port other than the Node `meta` exposes `schema`, `migrate` or `verify --db`. The C#,
 Java, Python, and Kotlin command surfaces are **codegen only** (`gen` + codegen
 `verify`), and so is the Rust port's `cargo meta`: it rejects `verify --db`
 with exit 2 and names `meta verify --db`. The Java port's former `metaobjects:migrate` / live-DB `metaobjects:verify` Maven
 goals and the C#/Python migrate surfaces were removed in the schema-authority
-consolidation; the only schema entry point anywhere is the Node `meta`.
+consolidation. `meta migrate` is the reference migration helper, one option: a project may
+migrate with its own language's tool instead, handed the expected schema `meta schema` prints.
 
 ## Migration output formats (`--migration-format`)
 
@@ -905,7 +914,7 @@ meta migrate --db "$DB_URL" --dialect postgres \
 # -> src/main/resources/db/migration/U4__add_program_view.sql
 ```
 
-## Agent-context scaffold is Node-only — by design
+## Agent-context scaffold
 
 The always-on `.metaobjects/AGENTS.md` and the `metaobjects-*` skills (under
 `.claude/skills/` by default, or wherever `--skills-dir` puts them, such as `.agents/skills/`
@@ -925,10 +934,16 @@ and Java with Kotlin, each with no client, React, React with TanStack or Angular
 committed at `agent-context-shipped/` (a manifest and each distinct file once), and a port's
 package embeds it so its command can copy one stack out with no Node on the path.
 `agent-context-shipped/README.md` is the contract that command follows, and the sdk's
-`shipped.test.ts` fails when the tree is stale. Until each port's command lands, the stubs
-below still redirect to the Node CLI.
+`shipped.test.ts` fails when the tree is stale. **Python's command has landed**:
+`metaobjects agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [--no-wire-root]`
+copies one stack out of a committed copy of the tree inside the wheel (refreshed by
+`scripts/sync-python-agent-context.sh`, gated for drift), pins the guide links to the release
+tag, and keeps the Node CLI's re-run rules: an identical file is not rewritten, a hand-edited
+file gets the fresh text beside it as `<file>.new`, and the `.metaobjects/.agent-context.json`
+manifest is rewritten only when its text changed. `--skills-dir` and `--no-skills` stay with
+the Node CLI. Until the other ports' commands land, their stubs below still redirect.
 
-The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
+The C# and Java/Kotlin CLIs keep a **non-executing `agent-docs` pointer
 stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta
 agent-docs --server <lang>` to stderr and exits non-zero. The **live staleness check**
 in `gen`/`verify` stays per-port (it only *reads* the scaffold to nudge when it drifts);

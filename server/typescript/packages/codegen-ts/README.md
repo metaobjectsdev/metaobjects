@@ -137,7 +137,7 @@ entityModuleTarget, pkg, name, extStyle)`:
 
 Companion helpers: `siblingSpecifier` (same-target sibling module, e.g.
 `<Entity>.columns`) and `barrelModuleSpecifier` (barrel re-exports). A generator
-declares it produces the entity module with `emitsEntityModule: true` (set by
+declares it produces the entity module with `provides: { entityModule: true }` (set by
 `entityFile()`); the runner derives the entity-module target from it. With a single
 target, every specifier takes the relative branch, so output is unchanged.
 

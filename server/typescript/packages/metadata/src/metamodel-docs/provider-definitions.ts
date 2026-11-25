@@ -29,6 +29,8 @@ import { PROMPT_DEFINITION } from "../template/prompt-definition.embedded.js";
 import { API_DEFINITION } from "../core/api/api-definition.embedded.js";
 import { TRANSITION_DEFINITION } from "../core/transition/transition-definition.embedded.js";
 import { VIEW_EXPRESSIONS_DEFINITION } from "../persistence/view-expressions/view-expressions-definition.embedded.js";
+import { REPORTING_DEFINITION } from "../core/reporting/reporting-definition.embedded.js";
+import { REQUIREMENT_DEFINITION } from "../core/requirement/requirement-definition.embedded.js";
 
 /**
  * Every embedded provider definition the core metamodel composes from. The
@@ -52,8 +54,11 @@ export const ALL_PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
   UI_WEB_DEFINITION,
   TEMPLATE_DEFINITION,
   PROMPT_DEFINITION,
-  // The business-rules pack (metaobjects-rules) and the view-expressions pack.
+  // The business-rules pack (metaobjects-rules), the view-expressions pack, the
+  // reporting pack and the requirements pack.
   API_DEFINITION,
   TRANSITION_DEFINITION,
   VIEW_EXPRESSIONS_DEFINITION,
+  REPORTING_DEFINITION,
+  REQUIREMENT_DEFINITION,
 ];

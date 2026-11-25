@@ -5,6 +5,7 @@
 //! Dependency snapshots are not resolved here: a config that declares
 //! `dependencies` gets them back unresolved in [`Collection::dependencies`].
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::config::{
@@ -41,6 +42,9 @@ pub struct Collection {
     pub source_roots: Vec<PathBuf>,
     /// The project's own metadata files.
     pub own_files: Vec<PathBuf>,
+    /// The loader ids ([`Collection::read_sources`]) of the REFERENCE files: those only
+    /// `{ "path": …, "reference": true }` sources reach. Empty when none is declared.
+    pub reference_ids: BTreeSet<String>,
     /// Declared dependencies, validated but NOT resolved against any snapshot.
     pub dependencies: Vec<DependencySpec>,
     /// The shipped-library selection as authored.
@@ -278,9 +282,16 @@ pub fn resolve_collection(
         }
     }
 
+    let reference_ids: BTreeSet<String> = own_sources
+        .iter()
+        .filter(|s| s.reference)
+        .map(|s| s.file.to_string_lossy().into_owned())
+        .collect();
+
     let migrate = config.migrate.clone();
     Ok(Collection {
         config_dir,
+        reference_ids,
         files: own_files.clone(),
         own_files,
         sources: own_sources,

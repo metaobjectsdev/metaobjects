@@ -296,6 +296,222 @@ pub const OWNED_MANIFEST: &str = "codegen/Cargo.toml";
 /// The owned crate's generator list.
 pub const OWNED_MAIN: &str = "codegen/main.rs";
 
+/// The crate directories [`ENGINE_SOURCE_HASH`] was taken over, as `build.rs` hashed them
+/// (`metaobjects-codegen` and `metaobjects`). A path dependency on one of them is the engine,
+/// counted once as such; any other directory is hashed, `metaobjects-render` included.
+const ENGINE_CRATE_DIRS: &str = env!("METAOBJECTS_ENGINE_CRATE_DIRS");
+
+/// What in a path dependency's directory is not an input: cargo's build output and VCS state.
+const PATH_DEPENDENCY_NOT_INPUTS: &[&str] = &["target", ".git"];
+
+/// Every crate the owned crate reaches through a `path` dependency (a linked or source
+/// checkout: a pack's generators, a sibling crate of the adopter's), followed through each
+/// one's own manifest and through the workspace a `workspace = true` dependency inherits
+/// from, by the content of its directory. Its version does not move when its code does, and
+/// cargo rebuilds the owned binary from it, so an edit there changes what the owned
+/// generators emit. An engine crate is left out (see [`ENGINE_CRATE_DIRS`]); a registry or git
+/// dependency is named by `codegen/Cargo.toml` itself, which the key already hashes.
+fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
+    let engine: HashSet<PathBuf> = std::env::split_paths(ENGINE_CRATE_DIRS).collect();
+    let mut entries = Vec::new();
+    // Every manifest queued so far, by canonical path: each is scanned once.
+    let mut queued: HashSet<PathBuf> = HashSet::new();
+    // Every crate directory already hashed: a crate is one entry however it is reached.
+    let mut hashed: HashSet<PathBuf> = HashSet::new();
+    let mut queue = Vec::new();
+    let mut enqueue = |manifest: PathBuf, queue: &mut Vec<(PathBuf, String)>| -> String {
+        let manifest = std::fs::canonicalize(&manifest).unwrap_or(manifest);
+        let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+        if queued.insert(manifest.clone()) {
+            queue.push((manifest, text.clone()));
+        }
+        text
+    };
+    enqueue(owned_manifest.to_path_buf(), &mut queue);
+    while let Some((manifest, text)) = queue.pop() {
+        let base = manifest.parent().unwrap_or(Path::new("."));
+        let deps = manifest_dependencies(&text);
+        if deps.inherits_workspace
+            && let Some(root) = workspace_root_manifest(base)
+        {
+            // The inherited entries' paths live in the root's `[workspace.dependencies]`.
+            enqueue(root, &mut queue);
+        }
+        for rel in deps.paths {
+            let dir = base.join(&rel);
+            let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+            if engine.contains(&dir) || !hashed.insert(dir.clone()) {
+                continue;
+            }
+            let dep_text = enqueue(dir.join("Cargo.toml"), &mut queue);
+            let name = manifest_package_name(&dep_text).unwrap_or(rel);
+            // A crate with no manifest: cargo will fail on it; until it exists, its absence
+            // is the input.
+            let hash = if dep_text.is_empty() {
+                ABSENT.to_string()
+            } else {
+                hash_tree_except(&dir, PATH_DEPENDENCY_NOT_INPUTS)
+            };
+            entries.push(InputEntry::new(
+                KIND_GENERATOR,
+                format!("path-dependency:{name}"),
+                hash,
+            ));
+        }
+    }
+    entries
+}
+
+/// The nearest `Cargo.toml` at or above `dir` that declares `[workspace]`.
+fn workspace_root_manifest(dir: &Path) -> Option<PathBuf> {
+    dir.ancestors().map(|d| d.join("Cargo.toml")).find(|m| {
+        std::fs::read_to_string(m)
+            .is_ok_and(|t| logical_lines(&t).iter().any(|l| l == "[workspace]"))
+    })
+}
+
+/// What a manifest's build-relevant dependency tables say.
+struct ManifestDependencies {
+    /// The `path` of every dependency, as written (relative to the manifest's directory).
+    paths: Vec<String>,
+    /// Whether any dependency inherits its declaration from the workspace (`workspace = true`).
+    inherits_workspace: bool,
+}
+
+/// The dependencies a `Cargo.toml` declares in a table the build reads: `[dependencies]`,
+/// `[build-dependencies]`, their `target.*`, `workspace` and `[dependencies.<name>]` forms,
+/// `[patch.*]` and `[replace]`. Dev-dependencies are not built into the owned binary. A scan
+/// over logical lines (a multi-line inline table or array is one), not a TOML parser.
+fn manifest_dependencies(text: &str) -> ManifestDependencies {
+    let mut out = ManifestDependencies {
+        paths: Vec::new(),
+        inherits_workspace: false,
+    };
+    let mut in_dependencies = false;
+    for line in logical_lines(text).iter().map(String::as_str) {
+        if line.starts_with('[') {
+            let header = line.trim_matches(|c| c == '[' || c == ']').trim();
+            let first = header.split('.').next().map(str::trim);
+            in_dependencies = header == "replace"
+                || first == Some("patch")
+                || header
+                    .split('.')
+                    .any(|s| matches!(s.trim(), "dependencies" | "build-dependencies"));
+            continue;
+        }
+        if !in_dependencies {
+            continue;
+        }
+        if let Some(path) = toml_key_string(line, "path") {
+            out.paths.push(path);
+        }
+        if toml_key_value(line, "workspace").is_some_and(|v| v.starts_with("true")) {
+            out.inherits_workspace = true;
+        }
+    }
+    out
+}
+
+/// The `[package]` name a `Cargo.toml` declares.
+fn manifest_package_name(text: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in logical_lines(text).iter().map(String::as_str) {
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package && let Some(name) = toml_key_string(line, "name") {
+            return Some(name);
+        }
+    }
+    None
+}
+
+/// The logical lines of a TOML text: comments stripped, each trimmed, and the physical lines
+/// of an inline table or array still open at a line's end joined onto it with a space.
+fn logical_lines(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0i32;
+    for raw in text.lines() {
+        let line = strip_toml_comment(raw).trim();
+        depth += unquoted(line).fold(0, |d, (_, c)| match c {
+            '{' | '[' => d + 1,
+            '}' | ']' => d - 1,
+            _ => d,
+        });
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(line);
+        if depth <= 0 {
+            depth = 0;
+            out.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    out
+}
+
+/// The characters of one TOML line that sit outside any string, with their byte offsets.
+fn unquoted(line: &str) -> impl Iterator<Item = (usize, char)> + '_ {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    line.char_indices().filter(move |&(_, c)| {
+        match quote {
+            Some('"') if escaped => escaped = false,
+            Some('"') if c == '\\' => escaped = true,
+            Some(q) if c == q => quote = None,
+            Some(_) => {}
+            None if c == '"' || c == '\'' => quote = Some(c),
+            None => return true,
+        }
+        false
+    })
+}
+
+/// One TOML line without its trailing comment (a `#` outside any string).
+fn strip_toml_comment(line: &str) -> &str {
+    match unquoted(line).find(|&(_, c)| c == '#') {
+        Some((i, _)) => &line[..i],
+        None => line,
+    }
+}
+
+/// The raw text after `key =` on one TOML line, whether the line is `key = v` or an inline
+/// table holding it (`dep = { path = "v", ... }`). Occurrences inside strings are skipped.
+fn toml_key_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    let ident = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+    unquoted(line).find_map(|(i, _)| {
+        let bounded = !line[..i].chars().next_back().is_some_and(ident);
+        let after = line[i..].strip_prefix(key)?;
+        if !bounded || after.chars().next().is_some_and(ident) {
+            return None;
+        }
+        after.trim_start().strip_prefix('=').map(str::trim_start)
+    })
+}
+
+/// The string value of `key` on one TOML line: a basic string (`"v"`, with `\\` and `\"`
+/// unescaped) or a literal one (`'v'`).
+fn toml_key_string(line: &str, key: &str) -> Option<String> {
+    let value = toml_key_value(line, key)?;
+    if let Some(rest) = value.strip_prefix('\'') {
+        return rest.find('\'').map(|end| rest[..end].to_string());
+    }
+    let rest = value.strip_prefix('"')?;
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => out.push(chars.next()?),
+            other => out.push(other),
+        }
+    }
+    None
+}
+
 /// Everything a run knows before it renders: the loaded model, where the files go, the
 /// manifest and the skip key.
 struct Prepared<'g> {
@@ -474,6 +690,7 @@ fn prepare<'g>(
             OWNED_DIR,
             hash_tree_except(&project_root.join(OWNED_DIR), OWNED_NOT_INPUTS),
         ));
+        entries.extend(path_dependency_entries(&project_root.join(OWNED_MANIFEST)));
     }
     let key = fold(&entries);
     let stored = fingerprint::read_stored(&gen_state);
@@ -503,6 +720,7 @@ fn render(p: &mut Prepared<'_>, opts: &RunOptions) -> Result<Vec<EmittedFile>, R
         root: p.loaded.result.root,
         entities: &opts.entities,
         collection: &p.loaded.collection,
+        reference_nodes: &p.loaded.reference_nodes,
     };
     let mut emitted: Vec<EmittedFile> = Vec::new();
     for g in &p.selected {
@@ -837,5 +1055,85 @@ fn remove_empty_parents(path: &Path, stop: &Path) {
             break;
         }
         cur = dir.parent();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_dependency_on_the_engine_crates_is_left_to_the_engine_hash() {
+        // The directories `build.rs` hashed into ENGINE_SOURCE_HASH: this crate and the loader.
+        let engine = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let scratch =
+            std::env::var_os("DEV_SCRATCH").map_or_else(std::env::temp_dir, PathBuf::from);
+        let dir = scratch.join(format!("mo-engine-path-deps-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let manifest = dir.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            format!(
+                "[dependencies]\nmetaobjects = {{ path = {:?} }}\nmetaobjects-codegen = {{ path = {:?} }}\n",
+                engine.join("../metaobjects"),
+                engine,
+            ),
+        )
+        .unwrap();
+        let entries = path_dependency_entries(&manifest);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(entries, Vec::new());
+    }
+
+    #[test]
+    fn a_path_dependency_on_the_workspace_root_it_inherits_from_is_still_hashed() {
+        let scratch =
+            std::env::var_os("DEV_SCRATCH").map_or_else(std::env::temp_dir, PathBuf::from);
+        let dir = scratch.join(format!("mo-engine-ws-root-dep-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("codegen")).unwrap();
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"app\"\n\n[workspace]\nmembers = [\"codegen\"]\n\n\
+             [workspace.dependencies]\nserde = \"1\"\n",
+        )
+        .unwrap();
+        let manifest = dir.join("codegen/Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"codegen\"\n\n[dependencies]\nserde.workspace = true\napp = { path = \"..\" }\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/lib.rs"), "// v1\n").unwrap();
+        let before = path_dependency_entries(&manifest);
+        std::fs::write(dir.join("src/lib.rs"), "// v2\n").unwrap();
+        let after = path_dependency_entries(&manifest);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(before.len(), 1);
+        assert_eq!(after.len(), 1);
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn the_line_scan_reads_the_forms_cargo_accepts() {
+        let deps = manifest_dependencies(
+            "[package]\nname = \"x\"\n[[bin]]\npath = \"main.rs\"\n\
+             [dependencies]\na = { path = 'lit' } # path = \"comment\"\nb = { version = \"1\", path = \"b\\\\c\" }\n\
+             c.workspace = true\n[dependencies.d]\npath = \"d\"\n\
+             [target.'cfg(unix)'.build-dependencies]\ne = { path = \"e\" }\n\
+             [dev-dependencies]\nf = { path = \"f\" }\n[patch.crates-io]\ng = { path = \"g\" }\n",
+        );
+        assert_eq!(deps.paths, ["lit", "b\\c", "d", "e", "g"]);
+        assert!(deps.inherits_workspace);
+    }
+
+    #[test]
+    fn the_line_scan_reads_inline_tables_and_arrays_that_span_lines() {
+        let deps = manifest_dependencies(
+            "[dependencies]\nlinked = { # { opens nothing\n  features = [\n    \"x\",\n  ],\n  path = \"../linked\",\n}\n\
+             next = { path = \"next\" }\n[dev-dependencies]\nskipped = {\npath = \"skipped\"\n}\n",
+        );
+        assert_eq!(deps.paths, ["../linked", "next"]);
+        assert!(!deps.inherits_workspace);
     }
 }

@@ -10,7 +10,7 @@
 #   <lanes>  space-separated lane names, or one of two words:
 #              ALL   every lane below
 #              NONE  no test lane (the `gates` lane still runs; see below)
-#   Lanes: ts-fast ts-unit java-slow python csharp rust. These are the ci-local sections a
+#   Lanes: ts-fast ts-unit java-slow python csharp rust packs. These are the ci-local sections a
 #   change can select. ts-slow, cube and mutation are not selectable here:
 #   the first two need docker, and mutation is diff-scoped
 #   inside ts-fast already (gate_completeness_diff in ci-local.sh), which this map neither
@@ -35,9 +35,10 @@
 # Editing this file edits the rule above (`scripts/*` -> ALL), so a change to the map
 # runs everything, and scripts/test-ci-lane-selection.sh asserts the map still says so.
 #
-server/typescript/*   | ts-fast ts-unit | the TypeScript server port
+packs/*               | packs           | an independent pack (ADR-0069): its own lane only under --affected (the hosted workflows select by port, where packs/ is ts); core never reads packs/ (scripts/check-pack-boundary.ts)
+server/typescript/*   | ts-fast ts-unit packs | the TypeScript server port; packs runs too, as a canary that reports a pack the change breaks and blocks nothing (ADR-0069)
 examples/dynamic-grid/* | ts-fast ts-unit | a workspace member: ts-fast typechecks it, ts-unit runs its suite, and no other port reads it
-client/web/*          | ts-fast ts-unit | the universal web client, built and tested by the TypeScript lanes
+client/web/*          | ts-fast ts-unit packs | the universal web client, built and tested by the TypeScript lanes; packs as for server/typescript
 server/java/*         | java-slow       | the Java and Kotlin ports (the reactor holds both conformance suites)
 server/python/*       | python          | the Python port
 server/csharp/*       | csharp          | the C# port
@@ -52,6 +53,7 @@ agent-context-shipped/* | ALL           | the static agent files every port's pa
 docs/*                | ALL             | port tests read it: Java walks every page for <generators> blocks and reads docs/ports, TypeScript and Python read the recipes and docs/features pages, so a page edit is not prose-only
 README.md             | NONE            | root prose; the gates lane checks its claims, examples and test references
 CHANGELOG.md          | NONE            | root prose, same gates
+changelog.d/*         | NONE            | changelog fragments, assembled into CHANGELOG.md at release; the gates lane checks their shape
 CONTRIBUTING.md       | NONE            | root prose, same gates
 AGENTS.md             | NONE            | root prose, same gates
 CLAUDE.md             | NONE            | root prose, same gates

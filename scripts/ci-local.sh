@@ -28,7 +28,8 @@
 #                                    # Run one or more named sections. Mutually
 #                                    #   exclusive with --quick (exit 2 if combined).
 #                                    #   gates  → leak-scan, pom parity, fixture-lint,
-#                                    #            doc-template drift, embedded-library drift
+#                                    #            doc-template drift, embedded-library drift,
+#                                    #            the pack boundary and pack manifests
 #                                    #   leak-scan → the public-repo leak scan ALONE
 #                                    #            (hygiene.yml's PR gate; also in gates)
 #                                    #   ts     → ts build+typecheck, ts conformance,
@@ -82,6 +83,17 @@
 #                                    #            parallel lane; --quick and
 #                                    #            --no-integration drop it; no other
 #                                    #            section includes it
+#                                    #   packs  → the independent packs under packs/
+#                                    #            (ADR-0069): per pack with a TypeScript
+#                                    #            port, its typecheck, its pinned
+#                                    #            vocabulary (and that it leaves core
+#                                    #            alone), its load corpus and its own
+#                                    #            tests, against core's working tree.
+#                                    #            BLOCKING for a pack whose own files the
+#                                    #            change touches (or MO_CI_PACKS_BLOCKING=1);
+#                                    #            otherwise a CANARY: a red pack is recorded
+#                                    #            as a named SKIP and never fails the run.
+#                                    #            Passes with a note when packs/ holds none
 #   scripts/ci-local.sh --affected   # AFFECTED-LANE tier: run only the lanes this change needs.
 #                                    #   Lists the changed paths since the merge base with the
 #                                    #   base branch (plus uncommitted and untracked files),
@@ -90,7 +102,7 @@
 #                                    #   rule each path matched, then runs the selected ones as
 #                                    #   `--only <lane> ... --no-integration` would. The
 #                                    #   selectable lanes are ts-fast, ts-unit, java-slow,
-#                                    #   python, csharp and rust; a change confined to one port
+#                                    #   python, csharp, rust and packs; a change confined to one port
 #                                    #   selects that port, anything shared, any path the map
 #                                    #   does not claim, or no resolvable base selects all of
 #                                    #   them, and a change to only the root prose files
@@ -130,6 +142,11 @@
 # ends, so output never interleaves. The summary lists every step with its time, the
 # slowest steps and each lane's wall time. Every step still runs and still fails the
 # run; only the order changes. --quick and --only run serially as before.
+# A waiting lane also starts only while the machine has MO_CI_LANE_MIN_FREE_MB of memory
+# available (MemAvailable, default 8192; 0 turns the check off), so the run never starts a
+# lane into a machine that is already short. The first lane always starts. Without this a
+# run on a busy machine drove memory to earlyoom's limit, and the SIGTERMs it sent showed
+# up as a crashed C# test host and SIGTERMed bun workers, not as a memory problem.
 # Worker counts inside the runners: MO_CI_PY_WORKERS (pytest-xdist, default 8),
 # MO_CI_TS_WORKERS (bun test --parallel for the integration suite and the codegen-ts suite
 # in conformance: typescript, default 6) and
@@ -183,8 +200,8 @@ while [ $# -gt 0 ]; do
     --no-integration) NO_INTEG=1 ;;
     --integration-only) INTEG_ONLY=1 ;;
     --only) shift; case "${1:-}" in
-        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube, got '${1:-}'" >&2; exit 2 ;;
+        gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube|packs) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|leak-scan|ts|ts-fast|ts-unit|ts-slow|mutation|java|java-fast|java-slow|python|csharp|rust|cube|packs, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -198,6 +215,10 @@ done
 MO_CI_JOBS="${MO_CI_JOBS:-8}"
 case "$MO_CI_JOBS" in
   ''|*[!0-9]*|0) echo "MO_CI_JOBS must be a positive integer (got '${MO_CI_JOBS}')" >&2; exit 2 ;;
+esac
+MO_CI_LANE_MIN_FREE_MB="${MO_CI_LANE_MIN_FREE_MB:-8192}"
+case "$MO_CI_LANE_MIN_FREE_MB" in
+  ''|*[!0-9]*) echo "MO_CI_LANE_MIN_FREE_MB must be a non-negative integer (got '${MO_CI_LANE_MIN_FREE_MB}')" >&2; exit 2 ;;
 esac
 
 in_lane() { # in_lane <section> — true when the section is selected
@@ -285,6 +306,20 @@ step_if() {  # step_if <tool> "<name>" <cmd...>  — SKIP (or FAIL under --stric
   fi
 }
 
+step_canary() {  # step_canary "<name>" "<red message>" <cmd...>  — like step, but red records a named SKIP
+  local name="$1" red="$2"; shift 2
+  local t0=$SECONDS dt
+  echo ""
+  echo "── ▶ $name ──────────────────────────────────────────────"
+  if "$@"; then
+    dt=$((SECONDS - t0)); record PASS "$dt" "$name"
+    echo "── ✓ $name ($(fmt_dur "$dt"))"
+  else
+    dt=$((SECONDS - t0)); record SKIP "$dt" "$red"
+    echo "  ⊘ $red ($(fmt_dur "$dt"))" >&2
+  fi
+}
+
 # ── hygiene.yml: public-repo leak scan (the SECURITY gate kept in CI) ──────────
 gate_leak_scan() {
   local base="${MO_CI_LEAK_BASE:-origin/main}"
@@ -319,6 +354,10 @@ gate_publish_intent() { scripts/check-publish-intent.sh; }
 # could see it. Both paths now read scripts/publish-set.mjs, which also asserts the
 # set is tier-ordered and closed over its own sibling deps. Offline (manifests only).
 gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-publish-set.mjs; }
+# Changelog entries are one file per change under changelog.d/, folded into CHANGELOG.md by
+# release.mjs, so parallel PRs do not conflict on the top of [Unreleased]. This checks each
+# fragment has the shape assembly expects, and tests the assembly itself.
+gate_changelog_fragments() { node scripts/changelog-fragments.mjs --check && node scripts/test-changelog-fragments.mjs; }
 
 # ── no root script may be another root script's lifecycle hook ───────────────
 # npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. So
@@ -356,7 +395,8 @@ gate_uv_lock_version() { scripts/check-uv-lock-version.sh; }
 # itself the one thing nothing tested. That is the worst place in the tree for an unrun
 # test — a wrong answer here does not fail, it silently stops testing a port.
 gate_ci_port_selection() {
-  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh
+  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh \
+    && scripts/test-ci-lane-memory.sh
 }
 
 # ── the no-magic-physical-names gate is wired in all five ports ───────────────
@@ -455,8 +495,8 @@ gate_owned_template_copies() { bun scripts/sync-owned-template-copies.ts --check
 # biome.json of its own, and the per-package reference-byte-identical gates compare
 # EMITTED OUTPUT, which is unchanged whether a template asserts non-null or narrows.
 # Discovery keys on the "REFERENCE TEMPLATE — copy this into your repo" header rather
-# than a path, so it reaches all 22 copies (three src/reference dirs, test-generators,
-# and both examples/ scaffolds) — every one carried the identical findings. Lint only,
+# than a path, so it reaches every copy (three src/reference dirs and both examples/
+# scaffolds) — every one carried the identical findings. Lint only,
 # deliberately not `biome check`: formatting is a diff the adopter's own formatter owns
 # and re-runs. bun_install FIRST — biome comes from the codegen packages' node_modules.
 gate_reference_templates_lint() {
@@ -562,7 +602,7 @@ gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --che
 gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && node scripts/test-release-branch.mjs && bash tools/prerelease/test-prerelease-link.sh && bash tools/prerelease/test-estate-run.sh; }
 
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
-# `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
+# `bun test` transpiles per file and never typechecks, and `bun run
 # typecheck` walks WORKSPACE PACKAGES only — so every script here, including every
 # gate in this lane, was checked by nothing. Two accessor defects came straight out
 # of that gap in one session: a property read that does not exist on the type, so it
@@ -607,6 +647,62 @@ gate_requirements_vocabulary() { bun_install && bun scripts/check-requirements-v
 # into a failing gate: adding a type, attribute or child rule under metaobjects-core-types
 # changes the computed view and fails with a message pointing at the pack mechanism.
 gate_core_vocabulary_pin() { bun_install && bun scripts/check-core-vocabulary-pin.ts && bun scripts/test-core-vocabulary-pin.ts; }
+# ── independent packs (ADR-0069) ───────────────────────────────────────────────
+# The boundary: core never names a pack, the bundle holds none, and core's release tooling
+# never enumerates packs/. The manifests: each pack.json agrees with the native manifest of
+# every port that carries it. One test file covers both, and the pack tooling below.
+gate_pack_boundary()  { bun_install && bun scripts/check-pack-boundary.ts && bun test scripts/packs.test.ts; }
+gate_pack_manifests() { bun_install && bun scripts/check-pack-manifests.ts; }
+# One pack's TypeScript checks, against core's working tree.
+gate_pack_ts() { # gate_pack_ts <name>
+  local n="$1" dir="packs/$1/typescript"
+  ( cd "$dir" && bun run typecheck ) || return 1
+  bun scripts/pack-vocabulary.ts "$n" || return 1
+  bun scripts/pack-conformance.ts "$n" || return 1
+  if [ -n "$(find "$dir" -path "$dir/node_modules" -prune -o \( -name '*.test.ts' -o -name '*.test.tsx' \) -print -quit)" ]; then
+    ( cd "$dir" && bun test ) || return 1
+  fi
+}
+# packs_changed_paths — print this change's paths, once per run for every pack; fail when the
+# base cannot be resolved or the listing fails, so every uncertainty makes every pack block.
+packs_changed_paths() {
+  local base mb
+  base="${MO_CI_AFFECTED_BASE:-$(default_base)}"
+  [ -n "$base" ] && mb="$(git merge-base HEAD "$base" 2>/dev/null)" && [ -n "$mb" ] || return 1
+  changed_paths "$mb"
+}
+# The packs lane. A pack is a preview product on its own release line, so a core change that
+# turns one red must not block core: it is reported as a named SKIP (the canary) and the pack
+# is fixed in its own PR. A change to the pack itself blocks, as any product's own change does.
+run_packs_steps() {
+  want packs || return 0
+  local n paths="" all_block=0
+  local -a packs=()
+  for n in packs/*/typescript/package.json; do
+    [ -f "$n" ] || continue
+    n="${n#packs/}"; packs+=("${n%%/*}")
+  done
+  if [ "${#packs[@]}" -eq 0 ]; then
+    echo ""; echo "── packs: no independent pack with a TypeScript port under packs/ — nothing to check ──"
+    return 0
+  fi
+  if ! have bun; then step_if bun "packs" true; return 0; fi
+  if [ "${MO_CI_LIST_ONLY:-0}" != "1" ] && [ "${MO_CI_WORKSPACE_BUILT:-0}" != "1" ] \
+     && ! step_passed "ts build + typecheck" && ! step_passed "ts build"; then
+    step "packs: core build" gate_ts_build
+  fi
+  # A pack blocks when this change touches its own files, when MO_CI_PACKS_BLOCKING=1, or when
+  # the change cannot be listed. Captured once, not piped: under pipefail, `grep -q` exiting on
+  # its first match can kill the writer with SIGPIPE and turn a match into "not blocking".
+  if [ "${MO_CI_PACKS_BLOCKING:-0}" = "1" ] || ! paths="$(packs_changed_paths)"; then all_block=1; fi
+  for n in "${packs[@]}"; do
+    if [ "$all_block" -eq 1 ] || grep -q "^packs/$n/" <<<"$paths"; then
+      step "pack $n" gate_pack_ts "$n"
+    else
+      step_canary "pack $n (canary)" "pack $n canary: red against core's tree (non-blocking, ADR-0069; fix it in the pack's own PR)" gate_pack_ts "$n"
+    fi
+  done
+}
 
 # ── forward scaffolding: a requirement may come BEFORE its vocabulary ──────────
 # Phase 3. Author the promise and the counterexample first, then scaffold the
@@ -637,13 +733,17 @@ gate_fixture_lint() {
 }
 # bun_install first: under `--only ts` this gate runs without fixture-lint
 # (whose install it historically piggybacked on), so it must install itself.
-gate_ts_build_typecheck() { bun_install && bun run --filter '*' build && bun run --filter '*' typecheck; }
+# `bun run build` / `bun run typecheck` are the root package.json scripts, which name
+# core's workspace directories rather than `--filter '*'`: the workspace also holds
+# packs/*/typescript, and a preview pack's red typecheck must not fail core (ADR-0069).
+# The packs lane builds and checks the packs.
+gate_ts_build_typecheck() { bun_install && bun run build && bun run typecheck; }
 # Build only (no typecheck) — the ts-slow lane needs the workspace dist/ to run the
 # integration tests, but the typecheck already runs in ts-fast, so don't repeat it.
-gate_ts_build() { bun_install && bun run --filter '*' build; }
+gate_ts_build() { bun_install && bun run build; }
 # The full run's other half of gate_ts_build_typecheck: it builds before its lanes fork (every
 # lane that runs the CLI or the integration suite reads dist/) and typechecks inside one.
-gate_ts_typecheck() { bun run --filter '*' typecheck; }
+gate_ts_typecheck() { bun run typecheck; }
 
 # migrate-ts real-Postgres suites — apply / lifecycle / rollback / introspection against a
 # real engine. ADR-0015 makes migrate-ts the project's ONLY migrate engine, so this is the
@@ -993,10 +1093,24 @@ gate_completeness_diff() {
   stryker_run --mutate "$(echo "$changed" | paste -sd, -)"
 }
 gate_doc_template_drift() {
-  bash scripts/sync-doc-templates.sh \
-    && git diff --exit-code -- \
-        server/typescript/packages/codegen-ts/templates \
-        server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
+  local copies=(
+    server/typescript/packages/codegen-ts/templates
+    server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
+    server/python/src/metaobjects/render/bundled_templates
+  )
+  bash scripts/sync-doc-templates.sh || return 1
+  git diff --exit-code -- "${copies[@]}" || return 1
+  # `git diff` cannot see a copy the sync wrote that was never committed (a new template).
+  local untracked
+  untracked=$(git ls-files --others --exclude-standard -- "${copies[@]}")
+  if [ -n "$untracked" ]; then
+    echo "  untracked template copies (commit them):"; echo "$untracked" | sed 's/^/    /'
+    return 1
+  fi
+}
+# The Python wheel's copy of the shipped agent files must equal the repo-root tree.
+gate_python_agent_context_drift() {
+  diff -r -x README.md agent-context-shipped server/python/src/metaobjects/agent_context/shipped
 }
 gate_embedded_library_drift() {
   bun run scripts/generate-embedded-library.ts \
@@ -1293,9 +1407,27 @@ lane_start() { # lane_start <index>
   LANE_PID[$1]=$!
 }
 
+# mem_available_mb — MemAvailable in MiB, or nothing when it cannot be read (not Linux).
+mem_available_mb() { awk '/^MemAvailable:/ { print int($2 / 1024); exit }' /proc/meminfo 2>/dev/null; }
+
+# lane_has_memory <running> <recent> — true when another lane may start now. A lane started in
+# the last LANE_WARMUP_S seconds has not grown into its memory yet, so each of those <recent>
+# lanes holds one more MO_CI_LANE_MIN_FREE_MB in reserve; otherwise every lane would pass the
+# check in the same second. The first lane always may start, so a machine that never has the
+# headroom still runs every lane, one at a time.
+LANE_WARMUP_S=30
+lane_has_memory() {
+  local avail
+  [ "$1" -eq 0 ] && return 0
+  [ "$MO_CI_LANE_MIN_FREE_MB" -eq 0 ] && return 0
+  avail="$(mem_available_mb)"
+  [ -z "$avail" ] && return 0
+  [ "$avail" -ge $((MO_CI_LANE_MIN_FREE_MB * ($2 + 1))) ]
+}
+
 run_lanes() {
-  local max="$MO_CI_JOBS" n=${#LANE_NAMES[@]} i d ready running=0 left
-  local -a st=()
+  local max="$MO_CI_JOBS" n=${#LANE_NAMES[@]} i d ready running=0 left held=0 now recent t
+  local -a st=() started_at=()
   left=$n
   for ((i = 0; i < n; i++)); do st[i]=wait; done
   while [ "$left" -gt 0 ]; do
@@ -1311,7 +1443,14 @@ run_lanes() {
       ready=1
       for d in ${LANE_AFTER[i]//,/ }; do [ -e "$CI_TMP/lane-$d.done" ] || ready=0; done
       [ "$ready" -eq 1 ] || continue
-      lane_start "$i"; st[i]=run; running=$((running + 1))
+      now="$(date +%s)"; recent=0
+      for t in "${started_at[@]:-}"; do [ -n "$t" ] && [ $((now - t)) -lt "$LANE_WARMUP_S" ] && recent=$((recent + 1)); done
+      if ! lane_has_memory "$running" "$recent"; then
+        [ "$held" -eq 1 ] || echo "  ▸ lane ${LANE_NAMES[i]} waits: less than ${MO_CI_LANE_MIN_FREE_MB} MiB of memory available"
+        held=1; break
+      fi
+      held=0
+      lane_start "$i"; st[i]=run; running=$((running + 1)); started_at+=("$now")
       echo "  ▸ lane ${LANE_NAMES[i]} started${LANE_AFTER[i]:+ (after ${LANE_AFTER[i]})}"
     done
     [ "$left" -gt 0 ] && sleep 1
@@ -1335,6 +1474,7 @@ run_gates_offline() {
   if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
   if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
   if want gates; then step    "publish-set parity"               gate_publish_set;            fi
+  if want gates; then step    "changelog fragments"              gate_changelog_fragments;    fi
   if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
   if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
   if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi
@@ -1345,6 +1485,7 @@ run_gates_offline() {
   if want gates; then step    "positioning claims"               gate_positioning_claims;     fi
   if want gates; then step    "hosted assess prompt builds"      gate_assess_prompt;          fi
   if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
+  if want gates; then step    "python agent-context copy"        gate_python_agent_context_drift; fi
 }
 # Every gate below runs bun over workspace TypeScript, and on a FRESH CI checkout there is
 # no node_modules — so a bare `@metaobjectsdev/*` specifier either fails to resolve (what
@@ -1367,6 +1508,8 @@ run_gates_bun() {
   if want gates; then step_if bun "requirements ledger verifies" gate_requirements_ledger;    fi
   if want gates; then step_if bun "requirements cover vocabulary" gate_requirements_vocabulary; fi
   if want gates; then step_if bun "core vocabulary is pinned"    gate_core_vocabulary_pin;    fi
+  if want gates; then step_if bun "pack boundary"                gate_pack_boundary;          fi
+  if want gates; then step_if bun "pack manifests agree"         gate_pack_manifests;         fi
   if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
   if want gates; then step_if bun "requirement harness"       gate_requirement_harness;    fi
   if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
@@ -1525,6 +1668,8 @@ run_ts_serial_steps() {
     step_if bun "completeness-gate (mutation, changed files)" gate_completeness_diff
   fi
 }
+# The packs build against the dist/ the ts steps write, so in a parallel run they share its lane.
+run_ts_then_packs() { run_ts_serial_steps; run_packs_steps; }
 # One function per other port, shared by the serial heavy tier and the parallel --affected lanes.
 run_csharp_steps()  { if want csharp; then step_if dotnet "conformance: csharp" gate_conf_csharp; fi; }
 run_python_steps()  { if want python; then step_if uv "conformance: python" gate_conf_python; fi; }
@@ -1542,7 +1687,7 @@ run_java_reactor_steps() { if want_any java java-slow; then step_if mvn "java-re
 AFFECTED_PARALLEL=0
 if [ "$AFFECTED" -eq 1 ]; then
   _groups=0
-  in_lane_any ts-fast ts-unit && _groups=$((_groups + 1))
+  in_lane_any ts-fast ts-unit packs && _groups=$((_groups + 1))
   for _g in java-slow python csharp rust; do in_lane "$_g" && _groups=$((_groups + 1)); done
   [ "$_groups" -gt 1 ] && AFFECTED_PARALLEL=1
 fi
@@ -1567,6 +1712,7 @@ echo "metaobjects local CI  (mode: $_mode)"
 # without running them, then exit 0.  Useful for verifying section selection.
 if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
   step()    { echo "  + $1"; }
+  step_canary() { echo "  + $1"; }
   step_if() { local t="$1" n="$2"; have "$t" && echo "  + $n" || echo "  ⊘ $n (no $t, would skip)"; }
   run_integration_for() { local label="$1"; shift; local r; for r in "$@"; do echo "  + integration-tests ($r)"; done; }
   run_cube_lane() { echo "  + cube-model live check (Cube + Postgres)"; }
@@ -1595,7 +1741,7 @@ if [ "$AFFECTED_PARALLEL" -eq 1 ]; then
   in_lane python                  && lane python "" run_python_steps
   in_lane csharp                  && lane csharp "" run_csharp_steps
   in_lane rust                    && lane rust   "" run_rust_steps
-  in_lane_any ts-fast ts-unit     && lane ts     "" run_ts_serial_steps
+  in_lane_any ts-fast ts-unit packs && lane ts  "" run_ts_then_packs
   run_or_list_lanes
 elif [ "$PARALLEL" -eq 0 ]; then
   # Fast tier: shared gates and TS checks, in their original order.
@@ -1608,6 +1754,7 @@ elif [ "$PARALLEL" -eq 0 ]; then
   # (docker/sidecar integration). Isolating integration means a docker/sidecar
   # hiccup no longer fails the code signal, and vice versa. `--only ts` still runs both.
   run_ts_serial_steps
+  run_packs_steps
   run_drift_gates
 
   if [ "$QUICK" -eq 1 ]; then
@@ -1730,6 +1877,7 @@ else
   lane java-integ   java          lane_java_integ
   lane showcase     java,csharp   lane_showcase
   lane rust         ""            run_rust_steps
+  lane packs        ""            run_packs_steps
   lane cube         ""            lane_cube
   lane gates        ""            lane_gates
 

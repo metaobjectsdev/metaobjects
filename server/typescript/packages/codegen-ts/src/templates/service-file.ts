@@ -22,8 +22,8 @@ import { pkInfoOf } from "../pk-resolver.js";
 import { hasInsertRefinements } from "./zod-validators.js";
 import { GENERATED_EDIT_NOTE, GENERATED_HEADER } from "../constants.js";
 import { withExtIfRelative, type RenderContext } from "../render-context.js";
-import { decimalColumnsLine, knownFieldsLine, paginationLine, restPath, writeDeniedColumnsLine } from "../api-surface.js";
-import { dbTypeBlock } from "../dialect-module.js";
+import { decimalColumnsMembers, knownFieldsMembers, paginationMembers, restPath, writeDeniedColumnsMembers } from "../api-surface.js";
+import { writeDbType } from "../dialect-module.js";
 import { contractObjectPath, contractOperationsPath, contractSpecifier } from "../contract-walk.js";
 import { toPascalCase } from "../naming.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
@@ -72,19 +72,14 @@ function header(w: TsWriter, what: string): void {
   w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`, `// Source metadata: ${what}`);
 }
 
-/**
- * An object literal of `key: value,` entries (an api-surface fragment may hold several): `head{}tail`
- * when there are none, else a block. The fragments' own indent is dropped and the writer's used.
- */
+/** An object literal of `key: value,` entries, one per line: `head{}tail` when there are none, else a block. */
 function objectLiteral(w: TsWriter, head: string, entries: readonly string[], tail: string): void {
-  // An entry is one `key: value,` line, or an api-surface fragment of several, each led by a break.
-  const lines = entries.flatMap((e) => e.split("\n")).map((l) => l.trim()).filter((l) => l !== "");
-  if (lines.length === 0) {
+  if (entries.length === 0) {
     w.line(`${head}{}${tail}`);
     return;
   }
   w.block(`${head}{`, () => {
-    for (const l of lines) w.line(l);
+    for (const l of entries) w.line(l);
   }, `}${tail}`);
 }
 
@@ -273,7 +268,7 @@ function renderOperation(
               ...(report ? ["report: true,"] : []),
               ...(report && pkg.reportMaxRows !== undefined ? [`reportMaxRows: ${pkg.reportMaxRows},`] : []),
               ...(exported ? [`export: ${w.use(`${name}Export`, exportSpecifier(path, obj, ctx))},`] : []),
-              report ? "" : paginationLine(obj, "", ctx.loadedRoot),
+              ...(report ? [] : paginationMembers(obj, ctx.loadedRoot)),
             ],
             ";",
           );
@@ -323,7 +318,7 @@ function renderOperation(
               `sortAllowlist: ${sort},`,
               `dialect: ${dialect},`,
               `keyField: ${keyField},`,
-              paginationLine(obj, "", ctx.loadedRoot),
+              ...paginationMembers(obj, ctx.loadedRoot),
               ...(scope === undefined ? [] : [`scope: ${scope},`]),
             ],
             ";",
@@ -368,7 +363,7 @@ function renderOperation(
     objectLiteral(
       w,
       `const writeRules: ${writeRules} = `,
-      [knownFieldsLine(obj, "", ctx.loadedRoot, e.hierarchy), writeDeniedColumnsLine(obj, "", e.hierarchy)],
+      [...knownFieldsMembers(obj, ctx.loadedRoot, e.hierarchy), ...writeDeniedColumnsMembers(obj, e.hierarchy)],
       ";",
     );
     w.blank();
@@ -703,7 +698,7 @@ function renderDeclaredOperation(op: ServiceOperation, path: string, ctx: Render
 
   if (op.input !== undefined) {
     w.doc("What the input may name: every other key is refused.");
-    objectLiteral(w, `const inputRules: ${w.useType("WriteBodyRules", runtime)} = `, [knownFieldsLine(op.input, "", ctx.loadedRoot)], ";");
+    objectLiteral(w, `const inputRules: ${w.useType("WriteBodyRules", runtime)} = `, knownFieldsMembers(op.input, ctx.loadedRoot), ";");
     w.blank();
   }
   if (op.transitions.length > 0) {
@@ -800,13 +795,10 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
   const query = w.useType("ListQueryInput", runtime);
   const type = serviceTypeName(pkg.package);
   const stem = type.replace(/Service$/, "");
-  const { import: dbImport, alias: dbAlias } = dbTypeBlock(ctx.dialect);
 
   // The dialect's Drizzle base type, the queries generator's. A sync SQLite driver (bun:sqlite,
   // better-sqlite3) is accepted: the runtime drives its transaction with statements.
-  const dbModule = /from "([^"]+)"/.exec(dbImport)![1]!;
-  for (const t of /import type \{ ([^}]+) \}/.exec(dbImport)![1]!.split(",").map((s) => s.trim())) w.useType(t, dbModule);
-  w.line(dbAlias);
+  writeDbType(w, ctx.dialect);
 
   const hasPolicy = pkg.permissions.length > 0;
   const hasBodies = pkg.operations.length > 0;
@@ -963,24 +955,24 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
     const src = sourcesOf(w, e, path, ctx);
     const decimals =
       e.discriminator !== undefined
-        ? decimalColumnsLine(e.obj, "", ctx.loadedRoot, e.hierarchy)
-        : decimalColumnsLine(e.hierarchy.length > 1 ? e.hierarchy : e.obj, "", ctx.loadedRoot);
+        ? decimalColumnsMembers(e.obj, ctx.loadedRoot, e.hierarchy)
+        : decimalColumnsMembers(e.hierarchy.length > 1 ? e.hierarchy : e.obj, ctx.loadedRoot);
     w.blank();
     w.doc(`The wire form (ADR-0019) of a ${e.obj.name} row: what a transport sends.`);
-    objectLiteral(w, `export const ${wireMapperName(e.obj.name)} = ${withWire()}(${timestampWire()}(${src.read}), `, [decimals], ");");
+    objectLiteral(w, `export const ${wireMapperName(e.obj.name)} = ${withWire()}(${timestampWire()}(${src.read}), `, decimals, ");");
     if (src.view !== undefined) {
       w.blank();
       w.doc(
         `The wire form of a ${e.obj.name} row a write answers: read back through the replica view, or the`,
         "table's row when the view has none, so it is mapped against both.",
       );
-      objectLiteral(w, `export const ${writeWireMapperName(e.obj.name)} = ${withWire()}(${timestampWire()}(${src.table}, ${src.view}), `, [decimals], ");");
+      objectLiteral(w, `export const ${writeWireMapperName(e.obj.name)} = ${withWire()}(${timestampWire()}(${src.table}, ${src.view}), `, decimals, ");");
     }
     for (const r of e.relations) {
       w.blank();
       w.doc(`The wire form of a row of ${e.obj.name}'s ${r.name}.`);
       const target = w.use(ctx.collectionName(r.target.name), modulesOf(path, r.target, ctx).entity);
-      objectLiteral(w, `export const ${wireMapperName(r.fn)} = ${withWire()}(${timestampWire()}(${target}), `, [decimalColumnsLine(r.targetObjects, "", ctx.loadedRoot)], ");");
+      objectLiteral(w, `export const ${wireMapperName(r.fn)} = ${withWire()}(${timestampWire()}(${target}), `, decimalColumnsMembers(r.targetObjects, ctx.loadedRoot), ");");
     }
   }
   return w.toString();

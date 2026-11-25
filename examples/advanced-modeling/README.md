@@ -61,8 +61,8 @@ resolves at generation time — not `verify`'s own `prompts/` default. See
 "Gotchas" below.)
 
 `examples/advanced-modeling/` is **not** part of the Bun workspace (the repo-root
-`package.json` globs `server/typescript/packages/*`, `client/web/packages/*` and
-`examples/dynamic-grid`, not this example), so there is no local install step — the CLI's
+`package.json` globs `server/typescript/packages/*`, `client/web/packages/*`,
+`examples/dynamic-grid` and `packs/*/typescript`, not this example), so there is no local install step — the CLI's
 config loader resolves the `@metaobjectsdev/*` imports in
 `metaobjects.config.ts` from the CLI's own install regardless of the
 example's `node_modules` (which doesn't exist).

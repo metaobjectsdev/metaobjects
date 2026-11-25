@@ -87,6 +87,7 @@ docsSiteFile({ assetBase: "/vendor/npm" })
 | Model map | `map.html` | Every top-level node and the edges between them. Open a slice (a package, a requirement subtree, a prompt), colour by kind, API, claims, capability or status, and hide or show value objects and nodes outside the slice. The URL keeps the choice (`?slice=&colour=&focus=`) |
 | Object | `model/<package>/<Name>.html` | Why it exists (the requirements that claim it), its fields, inherited ones marked, relationships, indexes, a one-hop mini-map, its routes and the files generated from it. A projection shows its read model and each field's origin; a report shows where its rows come from, its dimensions and its measures |
 | Prompt | `model/<package>/<Name>.html` | The payload and reply types, the template text with each variable marked, and which payload fields the text never uses |
+| Any other node | `model/<package>/<Name>.html` | A generic page for every other top-level type, including vocabulary an application registers itself (a `capability.module`, a `page.list`): its attributes, each one linked when it names a node, its members, the requirements that claim it, what references it and the files generated from it |
 | Features, qualities | `requirements/features.html`, `requirements/qualities.html` | The requirement tree, one card per entry |
 | Requirement | `requirements/<package>/<id>.html` | Its status, what it claims, the entries below it with their roll-up, what the gate found, its authoring advisories apart, and links to its slice of the map and its trace |
 | Matrix | `matrix.html` | Requirements against stored entities and prompts. An empty column is a node nothing claims |
@@ -95,7 +96,10 @@ docsSiteFile({ assetBase: "/vendor/npm" })
 | Gaps | `gaps.html` | The gate's findings and coverage warnings, the authoring lint's advisories (listed apart, never as a verdict), undecided gaps as the gate counts them (a roll-up parent of outstanding work is left out), and the checks this explorer adds: planned entries with live work below, prompts nothing claims, fields named like a reference with no `identity.reference`, payload fields the text never uses |
 
 An object named `index` gets `index.node.html`, so it never takes its package's index page,
-and a model with no package puts its pages under `model/-root/`.
+and a model with no package puts its pages under `model/-root/`. A node whose id carries its
+type (because a node of another type has the same name in its package, see
+[explorer-data.md](explorer-data.md)) carries it in its file name too: the page `Lead` beside
+the entity `Lead` is `Lead.page-list.html`.
 
 Every page works at phone width: the navigation scrolls, the tiles stack in two columns, and
 wide tables scroll inside their card.

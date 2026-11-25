@@ -93,7 +93,7 @@ export default defineConfig({
   dialect: "postgres",                 // "postgres" | "sqlite" | "d1" | "mysql" (mysql: codegen + runtime; migrate does not own it)
   // orm: "prisma",                    // keep Prisma: contract-only targets + prismaSchemaFile(); see `typescript-prisma.md`
   extStyle: "js",                      // "js" (default) for Node ESM / plain tsc; "none" for a bundler-resolution toolchain — see `owning-generators.md` "Your framework isn't the default"
-  apiPrefix: "/api",                   // flows to routes AND client fetch URLs
+  apiPrefix: "/api",                   // where the generated routes mount; the web client sets `baseUrl` on its fetcher provider
   timestampMode: "string",             // "string" (default, ISO-8601 wire contract) | "date" (Drizzle native Date)
   pluralizeCollections: true,          // default; table VARS auto-pluralize (AgentConfig → agentConfigs)
   collectionNameOverrides: {           // per-entity escape hatch for names the rule gets wrong

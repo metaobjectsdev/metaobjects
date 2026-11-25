@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_TYPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[4]['measure.aggregate']"
+      }
+    },
+    {
+      "code": "ERR_UNKNOWN_SUBTYPE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.report']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,1 @@
+{ "format": "text", "note": "a variable tag whose name is absent from the payload (undefined, not null) raises on the direct render path, with the same error the verify gate raises; no opt-in needed" }

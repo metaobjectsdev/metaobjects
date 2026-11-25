@@ -203,6 +203,8 @@ public class YamlConformanceTests
         var registry = Provider.ComposeRegistry([
             CoreTypes.CoreTypesProvider,
             MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
+            MetaObjects.Core.Reporting.ReportingMetaDataProvider.Instance,
+            MetaObjects.Core.Requirement.RequirementsMetaDataProvider.Instance,
         ]);
         var parseOpts = new ParseOptions(registry)
         {

@@ -18,7 +18,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { buildExpectedSchema, diff, emit, introspectPostgres } from "@metaobjectsdev/migrate-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import pg from "pg";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";

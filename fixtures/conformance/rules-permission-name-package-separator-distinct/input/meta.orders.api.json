@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "p::Order",
+    "children": [
+      {
+        "api.operational": {
+          "name": "Orders",
+          "children": [
+            {
+              "operation.query": {
+                "name": "open",
+                "@outputRef": "p::Order"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

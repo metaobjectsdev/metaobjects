@@ -24,7 +24,7 @@
 // (ERR_UNKNOWN_ATTR); the doc line here used to claim it turned generation ON,
 // while the filter beside it read it as an opt-OUT. Neither is true now.
 
-import { code, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { arr, call, props, str, TsWriter, type Props } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject, MetaView } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
@@ -56,7 +56,7 @@ import {
   entityModuleSpecifier,
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
-  sidecarLine,
+  sidecarComment,
   viewForContext,
   VIEW_CONTEXT_FORM,
   effectivePackage,
@@ -148,7 +148,7 @@ function htmlTypeForSubType(subType: string): string | undefined {
  *  static path is a plain string literal; a path threaded through an array
  *  element carries a runtime `${index}` and must be a template literal. */
 function registerArg(path: string, dynamic: boolean): string {
-  return dynamic ? `\`${path}\`` : JSON.stringify(path);
+  return dynamic ? `\`${path}\`` : str(path);
 }
 
 /** A stable, identifier-safe useFieldArray hook variable for a static path. */
@@ -156,10 +156,24 @@ function arrayHookVar(path: string): string {
   return `${path.replace(/[^A-Za-z0-9]+/g, "_")}Array`;
 }
 
+/** One field's markup, written later, and the useFieldArray hooks it needs at the component top. */
 interface FieldRender {
-  jsx: string;
-  /** useFieldArray declarations to hoist to the top of the component. */
-  hooks: string[];
+  write: (w: TsWriter) => void;
+  hooks: FieldArrayHook[];
+}
+
+/** A useFieldArray declaration hoisted to the top of the component. */
+interface FieldArrayHook {
+  hookVar: string;
+  path: string;
+}
+
+/** `<fieldset>` with a legend: the shell every nested value object renders in. */
+function writeFieldset(w: TsWriter, path: string, legend: string, body: () => void): void {
+  w.block(`<fieldset className="metaobjects-fieldset" key=${str(path)}>`, () => {
+    w.line(`<legend className="metaobjects-fieldset-legend">${legend}</legend>`);
+    body();
+  }, "</fieldset>");
 }
 
 /**
@@ -180,19 +194,21 @@ function renderNestedField(
   depth: number,
 ): FieldRender {
   const vo = resolveValueObject(field, ctx);
+  const label = humanize(field.name);
   if (vo === undefined) {
     // Scalar / enum / unresolved object → a single bound input.
     const numeric = numericInputControl(field.subType);
     const htmlType = numeric?.htmlType ?? htmlTypeForSubType(field.subType);
     const typeAttr =
-      (htmlType !== undefined ? ` type=${JSON.stringify(htmlType)}` : "") +
-      (numeric?.step !== undefined ? ` step=${JSON.stringify(numeric.step)}` : "") +
-      (numeric?.inputMode !== undefined ? ` inputMode=${JSON.stringify(numeric.inputMode)}` : "");
+      (htmlType !== undefined ? ` type=${str(htmlType)}` : "") +
+      (numeric?.step !== undefined ? ` step=${str(numeric.step)}` : "") +
+      (numeric?.inputMode !== undefined ? ` inputMode=${str(numeric.inputMode)}` : "");
     return {
-      jsx: `<div className="metaobjects-field" key=${JSON.stringify(path)}>
-  <label className="metaobjects-field-label">${humanize(field.name)}</label>
-  <input className="metaobjects-field-input"${typeAttr} {...form.register(${registerArg(path, dynamic)})} />
-</div>`,
+      write: (w) =>
+        w.block(`<div className="metaobjects-field" key=${str(path)}>`, () => {
+          w.line(`<label className="metaobjects-field-label">${label}</label>`);
+          w.line(`<input className="metaobjects-field-input"${typeAttr} {...form.register(${registerArg(path, dynamic)})} />`);
+        }, "</div>"),
       hooks: [],
     };
   }
@@ -201,10 +217,10 @@ function renderNestedField(
   if (visited.has(voKey) || depth >= MAX_VO_DEPTH) {
     // Cycle or too deep — emit a labeled shell + TODO instead of a flat input.
     return {
-      jsx: `<fieldset className="metaobjects-fieldset" key=${JSON.stringify(path)}>
-  <legend className="metaobjects-fieldset-legend">${humanize(field.name)}</legend>
-  {/* TODO(#95): nested value object ${vo.name} not expanded (recursion guard). Author this sub-form by hand. */}
-</fieldset>`,
+      write: (w) =>
+        writeFieldset(w, path, label, () =>
+          w.line(`{/* TODO(#95): nested value object ${vo.name} not expanded (recursion guard). Author this sub-form by hand. */}`),
+        ),
       hooks: [],
     };
   }
@@ -213,19 +229,12 @@ function renderNestedField(
 
   if (!field.resolvedIsArray()) {
     // Single nested value object → a fieldset recursing into its fields.
-    const inner: string[] = [];
-    const hooks: string[] = [];
-    for (const sub of vo.fields()) {
-      const r = renderNestedField(sub, `${path}.${sub.name}`, dynamic, ctx, nextVisited, depth + 1);
-      inner.push(r.jsx);
-      hooks.push(...r.hooks);
-    }
+    const inner = vo.fields().map((sub) => renderNestedField(sub, `${path}.${sub.name}`, dynamic, ctx, nextVisited, depth + 1));
     return {
-      jsx: `<fieldset className="metaobjects-fieldset" key=${JSON.stringify(path)}>
-  <legend className="metaobjects-fieldset-legend">${humanize(field.name)}</legend>
-${inner.join("\n")}
-</fieldset>`,
-      hooks,
+      write: (w) => writeFieldset(w, path, label, () => {
+        for (const r of inner) r.write(w);
+      }),
+      hooks: inner.flatMap((r) => r.hooks),
     };
   }
 
@@ -234,11 +243,11 @@ ${inner.join("\n")}
     // Already inside an array element — a static useFieldArray name is impossible.
     // Degrade to the element shape + a single clear TODO (never a flat input).
     return {
-      jsx: `<fieldset className="metaobjects-fieldset" key=${JSON.stringify(path)}>
-  <legend className="metaobjects-fieldset-legend">${humanize(field.name)}</legend>
-  {/* TODO(#95): arrays of value objects nested inside another array are not auto-wired
-      (the react-hook-form path is dynamic). Render this repeatable group by hand. */}
-</fieldset>`,
+      write: (w) =>
+        writeFieldset(w, path, label, () => {
+          w.line("{/* TODO(#95): arrays of value objects nested inside another array are not auto-wired");
+          w.line("(the react-hook-form path is dynamic). Render this repeatable group by hand. */}");
+        }),
       hooks: [],
     };
   }
@@ -246,32 +255,30 @@ ${inner.join("\n")}
   // Static path → a useFieldArray-based repeatable group.
   const hookVar = arrayHookVar(path);
   const elementPath = `${path}.\${index}`;
-  const inner: string[] = [];
-  const hooks: string[] = [`const ${hookVar} = useFieldArray({ control: form.control, name: ${JSON.stringify(path)} as never });`];
-  for (const sub of vo.fields()) {
-    const r = renderNestedField(sub, `${elementPath}.${sub.name}`, true, ctx, nextVisited, depth + 1);
-    inner.push(r.jsx);
-    hooks.push(...r.hooks);
-  }
-  const label = humanize(field.name);
+  const inner = vo.fields().map((sub) => renderNestedField(sub, `${elementPath}.${sub.name}`, true, ctx, nextVisited, depth + 1));
   const itemLabel = humanize(vo.name);
   return {
-    jsx: `<div className="metaobjects-field-array" key=${JSON.stringify(path)}>
-  <span className="metaobjects-field-array-label">${label}</span>
-  {${hookVar}.fields.map((item, index) => (
-    <fieldset className="metaobjects-fieldset" key={item.id}>
-      <legend className="metaobjects-fieldset-legend">${itemLabel} {index + 1}</legend>
-${inner.join("\n")}
-      <button type="button" className="metaobjects-field-array-remove" onClick={() => ${hookVar}.remove(index)}>
-        Remove
-      </button>
-    </fieldset>
-  ))}
-  <button type="button" className="metaobjects-field-array-add" onClick={() => ${hookVar}.append({} as never)}>
-    Add ${itemLabel}
-  </button>
-</div>`,
-    hooks,
+    write: (w) =>
+      w.block(`<div className="metaobjects-field-array" key=${str(path)}>`, () => {
+        w.line(`<span className="metaobjects-field-array-label">${label}</span>`);
+        w.block(`{${hookVar}.fields.map((item, index) => (`, () => {
+          w.block(`<fieldset className="metaobjects-fieldset" key={item.id}>`, () => {
+            w.line(`<legend className="metaobjects-fieldset-legend">${itemLabel} {index + 1}</legend>`);
+            for (const r of inner) r.write(w);
+            w.block(
+              `<button type="button" className="metaobjects-field-array-remove" onClick={() => ${hookVar}.remove(index)}>`,
+              () => w.line("Remove"),
+              "</button>",
+            );
+          }, "</fieldset>");
+        }, "))}");
+        w.block(
+          `<button type="button" className="metaobjects-field-array-add" onClick={() => ${hookVar}.append({} as never)}>`,
+          () => w.line(`Add ${itemLabel}`),
+          "</button>",
+        );
+      }, "</div>"),
+    hooks: [{ hookVar, path }, ...inner.flatMap((r) => r.hooks)],
   };
 }
 
@@ -325,7 +332,15 @@ function blankableOptionalFields(fields: readonly MetaField[]): string[] {
 const BLANK_FIELDS_CONST = "BLANK_OPTIONAL_FIELDS";
 const BLANK_NORMALIZER = "normalizeBlankOptionals";
 
+/** The React form for `entity`, as a file. */
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
+  const w = new TsWriter();
+  writeFormFile(w, entity, ctx);
+  return w.toString();
+}
+
+/** Write the React form for `entity` (header, imports and the component) into `w`. */
+export function writeFormFile(w: TsWriter, entity: MetaObject, ctx: RenderContext): void {
   const entityName = entity.name;
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
@@ -357,14 +372,19 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   // A refined (cross-field) schema cannot be `.omit()`ed; codegen exports the refined,
   // discriminator-less `<Name>InsertBodySchema` for exactly this TPH case.
   const refinedTph = tphPin !== undefined && hasInsertRefinements(entity);
-  const insertSchemaName = refinedTph ? `${entityName}InsertBodySchema` : `${entityName}InsertSchema`;
+  const entityRef = w.use(entityName, entityFileSpec);
+  const insertSchemaName = w.use(refinedTph ? `${entityName}InsertBodySchema` : `${entityName}InsertSchema`, entityFileSpec);
+  const updateSchemaName = w.use(`${entityName}UpdateSchema`, entityFileSpec);
+  const rowType = w.useType(entityName, entityFileSpec, `${entityName}Row`);
   const insertSchema = refinedTph ? insertSchemaName : omitTph(insertSchemaName);
-  const updateSchema = omitTph(`${entityName}UpdateSchema`);
+  const updateSchema = omitTph(updateSchemaName);
   const formSchema = `props.defaultValues !== undefined ? ${updateSchema} : ${insertSchema}`;
 
-  const ReactElementSym = imp("t:ReactElement@react");
-  const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");
-  const useEntityFormSym = imp("useEntityForm@@metaobjectsdev/react");
+  w.header(
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entityName} (${entity.fqn()})`,
+    sidecarComment(`${entityName}.extra.tsx`),
+  );
 
   // #223 — a blank optional control submits `""`, which is not what the user meant and,
   // on a nullable date/timestamp column, is not even a legal value. The correct handling
@@ -377,235 +397,201 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   //   EDIT   (defaultValues)    — send explicit null, which is what CLEARS the column.
   //
   // Emitted only when the entity actually has a blankable optional field, so an
-  // all-required form's output is byte-identical to before.
+  // all-required form is unchanged.
   const blankFields = blankableOptionalFields(fields);
-  const blankHelper = blankFields.length === 0 ? "" : `
-const ${BLANK_FIELDS_CONST} = ${JSON.stringify(blankFields)} as const;
+  if (blankFields.length > 0) writeBlankNormalizer(w, blankFields);
 
-/**
- * Normalize blank optional inputs on the way out of the form (#223).
- * On create a blank field is OMITTED (the column defaults); on edit it is sent as
- * explicit \`null\` (present-null clears, per the FR-035 PATCH tristate).
- */
-function ${BLANK_NORMALIZER}(values: Record<string, unknown>, isEdit: boolean): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...values };
-  for (const key of ${BLANK_FIELDS_CONST}) {
-    if (out[key] !== '') continue;
-    if (isEdit) out[key] = null;
-    else delete out[key];
-  }
-  return out;
-}
-`;
+  const isEdit = "props.defaultValues !== undefined";
   // Blanks are normalized BEFORE validation too. react-hook-form runs the resolver on the
   // raw values ahead of the submit callback, and since 1.0.9 a date/timestamp schema
   // rejects `""` — so normalizing only in the callback left a blank optional date failing
   // validation and the submit never firing. The resolver's schema is preprocessed by the
   // same tristate rule; the callback's pass below is then a no-op kept for safety.
-  const resolverSchema: Code | string = blankFields.length === 0
+  const resolverSchema = blankFields.length === 0
     ? formSchema
-    : code`${imp("z@zod")}.preprocess(\n      (v) => ${BLANK_NORMALIZER}(v as Record<string, unknown>, props.defaultValues !== undefined),\n      ${formSchema},\n    )`;
+    : call(`${w.use("z", "zod")}.preprocess`, [
+        `(v) => ${BLANK_NORMALIZER}(v as Record<string, unknown>, ${isEdit})`,
+        formSchema,
+      ]);
   // The cast chain is unchanged in spirit from the previous `props.onSubmit as never`:
   // RHF's SubmitHandler is generic over the form's own inferred shape, which is not the
   // Row type this component's prop is declared against.
-  const submitHandlerExpr = blankFields.length === 0
+  const submitHandler = blankFields.length === 0
     ? "props.onSubmit as never"
-    : `((values: Record<string, unknown>, event?: unknown) =>\n        props.onSubmit(` +
-      `${BLANK_NORMALIZER}(values, props.defaultValues !== undefined) as never, event as never)) as never`;
-
-  // The flat scalar block: a label + pre-bound input + error span, driven
-  // entirely by the entity constants via `form.input.<field>`. Unchanged.
-  const scalarBlock = (f: string) => `        <div className="metaobjects-field" key=${JSON.stringify(f)}>
-          <label className="metaobjects-field-label" htmlFor={${entityName}.${f}.name}>
-            {${entityName}.${f}.label}
-          </label>
-          <input className="metaobjects-field-input" {...form.input.${f}} />
-          {form.formState.errors.${f} !== undefined && (
-            <span className="metaobjects-field-error" role="alert">
-              {String(form.formState.errors.${f}?.message ?? '')}
-            </span>
-          )}
-        </div>`;
-
-  // Shared label + control + error wrapper used by the view-kind dispatch
-  // branches below (select / textarea / checkbox / radio). `scalarBlock`
-  // stays untouched as the plain-<input> fallback (bound via `form.input.*`).
-  const labelAndError = (f: string, control: string) =>
-    `        <div className="metaobjects-field" key=${JSON.stringify(f)}>
-          <label className="metaobjects-field-label" htmlFor={${entityName}.${f}.name}>
-            {${entityName}.${f}.label}
-          </label>
-${control}
-          {form.formState.errors.${f} !== undefined && (
-            <span className="metaobjects-field-error" role="alert">
-              {String(form.formState.errors.${f}?.message ?? '')}
-            </span>
-          )}
-        </div>`;
-
-  // Dispatch a visible scalar field to its control by declared view kind: an
-  // explicit view.textarea/checkbox/radio child, or an enum defaulting to a
-  // dropdown when it carries no explicit view. Everything else falls back to
-  // scalarBlock's typed <input> bound via `form.input.<field>`.
-  const fieldControlFor = (field: MetaField): string => {
-    const name = field.name;
-    // #356 + ADR-0039: the view declared for the FORM, resolving through extends.
-    const view = viewForContext(field, VIEW_CONTEXT_FORM);
-    const kind = viewKindFor(field, view);
-    // Enum member symbols are validated to /^[A-Za-z_][A-Za-z0-9_]*$/, so raw
-    // interpolation into JSX attribute/text positions is safe (no escaping).
-    if (kind === VIEW_SUBTYPE_DROPDOWN) {
-      const values = enumValues(field);
-      const required = field.attr(FIELD_ATTR_REQUIRED) === true;
-      const empty = required ? "" : `            <option value="">Select…</option>\n`;
-      const options = values.map((v) => `            <option value="${v}">${v}</option>`).join("\n");
-      return labelAndError(
-        name,
-        `          <select aria-label={${entityName}.${name}.label} className="metaobjects-field-input" {...form.register("${name}")}>\n${empty}${options}\n          </select>`,
-      );
-    }
-    if (kind === VIEW_SUBTYPE_TEXTAREA) {
-      const rows = (view?.attr(VIEW_TEXTAREA_ATTR_ROWS) as number | undefined) ?? 4;
-      return labelAndError(
-        name,
-        `          <textarea aria-label={${entityName}.${name}.label} className="metaobjects-field-input" rows={${rows}} {...form.register("${name}")} />`,
-      );
-    }
-    if (kind === VIEW_SUBTYPE_CHECKBOX) {
-      return labelAndError(
-        name,
-        `          <input aria-label={${entityName}.${name}.label} type="checkbox" className="metaobjects-field-checkbox" {...form.register("${name}")} />`,
-      );
-    }
-    if (kind === VIEW_SUBTYPE_RADIO) {
-      const values = enumValues(field);
-      const radios = values
-        .map(
-          (v) =>
-            `            <label className="metaobjects-field-radio"><input type="radio" value="${v}" {...form.register("${name}")} /> ${v}</label>`,
-        )
-        .join("\n");
-      return labelAndError(
-        name,
-        `          <fieldset aria-label={${entityName}.${name}.label} className="metaobjects-field-radios">\n${radios}\n          </fieldset>`,
-      );
-    }
-    if (kind === VIEW_SUBTYPE_IMAGE) {
-      // ImageMeta declares every field optional (not `| undefined`), so under
-      // exactOptionalPropertyTypes an explicit `key: undefined` literal is a
-      // TS2375 error for a consumer's tsconfig. Emit a fragment ONLY for an
-      // attr that is actually present; an absent attr contributes nothing.
-      const numFragment = (attrName: string, key: string): string | undefined => {
-        const v = view?.attr(attrName);
-        return typeof v === "number" ? `${key}: ${v}` : undefined;
-      };
-      const store = view?.attr(VIEW_IMAGE_ATTR_STORE);
-      const storeFragment = typeof store === "string" ? `store: ${JSON.stringify(store)}` : undefined;
-      const accept = view?.attr(VIEW_IMAGE_ATTR_ACCEPT);
-      const acceptFragment = Array.isArray(accept) ? `accept: ${JSON.stringify(accept)}` : undefined;
-      const fragments = [
-        numFragment(VIEW_IMAGE_ATTR_ASPECT_RATIO, "aspectRatio"),
-        numFragment(VIEW_IMAGE_ATTR_MAX_EDGE, "maxEdge"),
-        storeFragment,
-        acceptFragment,
-        numFragment(VIEW_IMAGE_ATTR_MAX_BYTES, "maxBytes"),
-      ].filter((f): f is string => f !== undefined);
-      const meta = fragments.length > 0 ? `{ ${fragments.join(", ")} }` : "{}";
-      const control = `          <Controller name=${JSON.stringify(name)} control={form.control} render={({ field: f }) => (
-            <ImageUpload value={f.value as string | null} onChange={f.onChange} meta={${meta}} />
-          )} />`;
-      return labelAndError(name, control);
-    }
-    return scalarBlock(name);
-  };
+    : [
+        "((values: Record<string, unknown>, event?: unknown) => ",
+        call("props.onSubmit", [`${BLANK_NORMALIZER}(values, ${isEdit}) as never`, "event as never"]),
+        ") as never",
+      ];
 
   // For each visible field: scalars keep the flat `form.input.<field>` block; a
   // `field.object` with a resolvable `@objectRef` recurses into the referenced
   // value object as a nested <fieldset> sub-form (issue #95). useFieldArray
   // declarations for array-of-value-object fields hoist to the component top.
-  const blocks: string[] = [];
-  const fieldArrayHooks: string[] = [];
-  for (const f of fields) {
-    if (resolveValueObject(f, ctx) === undefined) {
-      blocks.push(fieldControlFor(f));
-      continue;
-    }
-    const r = renderNestedField(f, f.name, false, ctx, new Set<string>(), 0);
-    blocks.push(r.jsx);
-    fieldArrayHooks.push(...r.hooks);
-  }
-  const fieldBlocks = blocks.join("\n");
-  const hookSection =
-    fieldArrayHooks.length > 0 ? `\n  ${fieldArrayHooks.join("\n  ")}` : "";
-
-  // Only pull in useFieldArray when an array-of-value-object field needs it.
-  const useFieldArrayImport =
-    fieldArrayHooks.length > 0 ? `import { useFieldArray } from "react-hook-form";\n` : "";
-
-  // Only pull in Controller + ImageUpload when a view.image field needs them —
-  // a native <input> can't drive a file-upload control's value/onChange
-  // contract, so image fields are wrapped in react-hook-form's <Controller>.
-  const hasImage = fields.some(
-    (f) => viewForContext(f, VIEW_CONTEXT_FORM)?.subType === VIEW_SUBTYPE_IMAGE,
+  const renders: FieldRender[] = fields.map((f) =>
+    resolveValueObject(f, ctx) === undefined
+      ? { write: (fw: TsWriter) => writeFieldControl(fw, f, entityRef), hooks: [] }
+      : renderNestedField(f, f.name, false, ctx, new Set<string>(), 0),
   );
-  const imageImports = hasImage
-    ? `import { Controller } from "react-hook-form";\nimport { ImageUpload } from "@metaobjectsdev/react/image-upload";\n`
-    : "";
+  const hooks = renders.flatMap((r) => r.hooks);
 
-  const literalImports = code`
-import {
-  ${entityName},
-  ${insertSchemaName},
-  ${entityName}UpdateSchema,
-} from ${JSON.stringify(entityFileSpec)};
-import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};
-${useFieldArrayImport}${imageImports}`;
+  w.blank();
+  w.block(`export interface ${entityName}FormProps {`, () => {
+    w.line(`onSubmit: ${w.useType("SubmitHandler", "react-hook-form")}<Partial<${rowType}>>;`);
+    w.line(`defaultValues?: Partial<${rowType}>;`);
+    w.line("submitLabel?: string;");
+    w.line("className?: string;");
+  });
+  w.blank();
+  w.doc(
+    `Generated React form for ${entityName}. All field metadata (name, label,`,
+    "placeholder, html input type, RHF validation rules) comes from the",
+    `${entityName} constants emitted alongside this file. Validation uses the`,
+    "generated Zod schema, shared with the server-side Fastify route.",
+    "",
+    "Customize: this file is regenerated on every `forge gen`. If you need a",
+    "custom layout, write your own component using useEntityForm + the",
+    `${entityName} constants directly.`,
+  );
+  const reactElement = w.useType("ReactElement", "react");
+  w.block(`export function ${entityName}Form(props: ${entityName}FormProps): ${reactElement} {`, () => {
+    w.line("const form = ", call(w.use("useEntityForm", "@metaobjectsdev/react"), [
+      entityRef,
+      resolverSchema,
+      `${isEdit} ? { defaultValues: props.defaultValues } : {}`,
+    ]), ";");
+    for (const h of hooks) {
+      w.line(`const ${h.hookVar} = ${w.use("useFieldArray", "react-hook-form")}({ control: form.control, name: ${str(h.path)} as never });`);
+    }
+    w.block("return (", () => {
+      w.open("<form");
+      w.line(`className={props.className ?? "metaobjects-form"}`);
+      w.line(`data-entity={${entityRef}.$entity}`);
+      w.line("onSubmit={", call("form.handleSubmit", [submitHandler]), "}");
+      w.reopen(">");
+      for (const r of renders) r.write(w);
+      w.block(`<div className="metaobjects-form-actions">`, () => {
+        w.block(`<button className="metaobjects-form-submit" type="submit" disabled={form.formState.isSubmitting}>`, () => {
+          w.line(`{props.submitLabel ?? "Submit"}`);
+        }, "</button>");
+      }, "</div>");
+      w.close("</form>");
+    }, ");");
+  });
+}
 
-  const body = code`${blankHelper}
-export interface ${entityName}FormProps {
-  onSubmit: ${SubmitHandlerSym}<Partial<${entityName}Row>>;
-  defaultValues?: Partial<${entityName}Row>;
-  submitLabel?: string;
-  className?: string;
+/** The module-level constant and function that normalize blank optional inputs (#223). */
+function writeBlankNormalizer(w: TsWriter, blankFields: readonly string[]): void {
+  w.blank();
+  w.line(`const ${BLANK_FIELDS_CONST} = `, arr(blankFields.map(str)), " as const;");
+  w.blank();
+  w.doc(
+    "Normalize blank optional inputs on the way out of the form (#223).",
+    "On create a blank field is OMITTED (the column defaults); on edit it is sent as",
+    "explicit `null` (present-null clears, per the FR-035 PATCH tristate).",
+  );
+  w.block(`function ${BLANK_NORMALIZER}(values: Record<string, unknown>, isEdit: boolean): Record<string, unknown> {`, () => {
+    w.line("const out: Record<string, unknown> = { ...values };");
+    w.block(`for (const key of ${BLANK_FIELDS_CONST}) {`, () => {
+      w.block(`if (out[key] !== "") {`, () => w.line("continue;"));
+      w.open("if (isEdit) {");
+      w.line("out[key] = null;");
+      w.reopen("} else {");
+      w.line("delete out[key];");
+      w.close("}");
+    });
+    w.line("return out;");
+  });
 }
 
 /**
- * Generated React form for ${entityName}. All field metadata (name, label,
- * placeholder, html input type, RHF validation rules) comes from the
- * ${entityName} constants emitted alongside this file. Validation uses the
- * generated Zod schema, shared with the server-side Fastify route.
- *
- * Customize: this file is regenerated on every \`forge gen\`. If you need a
- * custom layout, write your own component using useEntityForm + the
- * ${entityName} constants directly.
+ * The label + control + error wrapper every top-level field renders in. `control` writes the
+ * control itself (an <input>, <select>, <textarea>, radio <fieldset> or image <Controller>).
  */
-export function ${entityName}Form(props: ${entityName}FormProps): ${ReactElementSym} {
-  const form = ${useEntityFormSym}(
-    ${entityName},
-    ${resolverSchema},
-    props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
-  );${hookSection}
-  return (
-    <form
-      className={props.className ?? 'metaobjects-form'}
-      data-entity={${entityName}.$entity}
-      onSubmit={form.handleSubmit(${submitHandlerExpr})}
-    >
-${fieldBlocks}
-      <div className="metaobjects-form-actions">
-        <button className="metaobjects-form-submit" type="submit" disabled={form.formState.isSubmitting}>
-          {props.submitLabel ?? 'Submit'}
-        </button>
-      </div>
-    </form>
-  );
+function writeLabelAndError(w: TsWriter, entityRef: string, name: string, control: () => void): void {
+  w.block(`<div className="metaobjects-field" key=${str(name)}>`, () => {
+    w.line(`<label className="metaobjects-field-label" htmlFor={${entityRef}.${name}.name}>{${entityRef}.${name}.label}</label>`);
+    control();
+    w.block(`{form.formState.errors.${name} !== undefined && (`, () => {
+      w.block(`<span className="metaobjects-field-error" role="alert">`, () => {
+        w.line(`{String(form.formState.errors.${name}?.message ?? "")}`);
+      }, "</span>");
+    }, ")}");
+  }, "</div>");
 }
-`;
 
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n` +
-    sidecarLine(`${entityName}.extra.tsx`);
+/**
+ * Dispatch a visible scalar field to its control by declared view kind: an
+ * explicit view.textarea/checkbox/radio/image child, or an enum defaulting to a
+ * dropdown when it carries no explicit view. Everything else is a typed <input>
+ * bound via `form.input.<field>`, which carries the field's aria-label.
+ */
+function writeFieldControl(w: TsWriter, field: MetaField, entityRef: string): void {
+  const name = field.name;
+  const register = `{...form.register(${str(name)})}`;
+  const ariaLabel = `aria-label={${entityRef}.${name}.label}`;
+  // #356 + ADR-0039: the view declared for the FORM, resolving through extends.
+  const view = viewForContext(field, VIEW_CONTEXT_FORM);
+  const kind = viewKindFor(field, view);
+  // Enum member symbols are validated to /^[A-Za-z_][A-Za-z0-9_]*$/, so raw
+  // interpolation into JSX attribute/text positions is safe (no escaping).
+  writeLabelAndError(w, entityRef, name, () => {
+    if (kind === VIEW_SUBTYPE_DROPDOWN) {
+      w.block(`<select ${ariaLabel} className="metaobjects-field-input" ${register}>`, () => {
+        if (field.attr(FIELD_ATTR_REQUIRED) !== true) w.line(`<option value="">Select…</option>`);
+        for (const v of enumValues(field)) w.line(`<option value=${str(v)}>${v}</option>`);
+      }, "</select>");
+      return;
+    }
+    if (kind === VIEW_SUBTYPE_TEXTAREA) {
+      const rows = (view?.attr(VIEW_TEXTAREA_ATTR_ROWS) as number | undefined) ?? 4;
+      w.line(`<textarea ${ariaLabel} className="metaobjects-field-input" rows={${rows}} ${register} />`);
+      return;
+    }
+    if (kind === VIEW_SUBTYPE_CHECKBOX) {
+      w.line(`<input ${ariaLabel} type="checkbox" className="metaobjects-field-checkbox" ${register} />`);
+      return;
+    }
+    if (kind === VIEW_SUBTYPE_RADIO) {
+      w.block(`<fieldset ${ariaLabel} className="metaobjects-field-radios">`, () => {
+        for (const v of enumValues(field)) {
+          w.line(`<label className="metaobjects-field-radio"><input type="radio" value=${str(v)} ${register} /> ${v}</label>`);
+        }
+      }, "</fieldset>");
+      return;
+    }
+    if (kind === VIEW_SUBTYPE_IMAGE) {
+      // A native <input> can't drive a file-upload control's value/onChange contract, so an
+      // image field is wrapped in react-hook-form's <Controller>.
+      const controller = w.use("Controller", "react-hook-form");
+      const imageUpload = w.use("ImageUpload", "@metaobjectsdev/react/image-upload");
+      w.block(`<${controller} name=${str(name)} control={form.control} render={({ field: f }) => (`, () => {
+        w.line(`<${imageUpload} value={f.value as string | null} onChange={f.onChange} meta={`, imageMeta(view), "} />");
+      }, ")} />");
+      return;
+    }
+    w.line(`<input className="metaobjects-field-input" {...form.input.${name}} />`);
+  });
+}
 
-  return header + literalImports.toString() + body.toString();
+/**
+ * The `meta` object an image field's <ImageUpload> receives. ImageMeta declares every field
+ * optional (not `| undefined`), so under exactOptionalPropertyTypes an explicit
+ * `key: undefined` is a TS2375 error in a consumer's tsconfig: a member is written ONLY for an
+ * attr that is actually present.
+ */
+function imageMeta(view: MetaView | undefined): Props {
+  const meta = props();
+  const num = (attrName: string, key: string): void => {
+    const v = view?.attr(attrName);
+    if (typeof v === "number") meta.set(key, String(v));
+  };
+  num(VIEW_IMAGE_ATTR_ASPECT_RATIO, "aspectRatio");
+  num(VIEW_IMAGE_ATTR_MAX_EDGE, "maxEdge");
+  const store = view?.attr(VIEW_IMAGE_ATTR_STORE);
+  if (typeof store === "string") meta.set("store", str(store));
+  const accept = view?.attr(VIEW_IMAGE_ATTR_ACCEPT);
+  if (Array.isArray(accept)) meta.set("accept", arr(accept.map((a) => str(String(a)))));
+  num(VIEW_IMAGE_ATTR_MAX_BYTES, "maxBytes");
+  return meta;
 }

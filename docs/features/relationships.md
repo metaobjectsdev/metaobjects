@@ -689,7 +689,7 @@ sealed class AppDbContextGenerator : DbContextGenerator
 ```
 
 `@onUpdate` has no EF Core representation (`DeleteBehavior` covers deletes only),
-so it stays a DDL-level fact emitted by the TypeScript-owned migration engine.
+so it stays a DDL-level fact in the expected schema (`meta schema`, `meta migrate`).
 
 ```sql
 -- emitted by `meta migrate`

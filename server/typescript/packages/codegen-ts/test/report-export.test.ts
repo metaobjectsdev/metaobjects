@@ -117,7 +117,7 @@ describe("report-export writers: XML", () => {
 
 describe("report-export generator", () => {
   test("carries the marker the routes generators key on, and refuses a bad cap", () => {
-    expect(reportExport().emitsReportExport).toBe(true);
+    expect(reportExport().provides?.reportExport).toBe(true);
     expect(() => reportExport({ maxRows: 0 })).toThrow(/maxRows/);
   });
 });

@@ -904,6 +904,10 @@ public class CanonicalJsonParser extends BaseMetaDataParser implements MetaDataF
             return;
         }
 
+        // Reference sources: remember which source declared (or overlaid) each top-level node, so the
+        // loader can tell a node only reference files declare from the project's own.
+        if (isRoot) getLoader().recordTopLevelDeclaration(md, getFilename());
+
         // FR5c — capture pre-merge state BEFORE re-tagging the node's source.
         // If the existing source is a JsonSource / YamlSource / MergedSource, a
         // prior file already declared this node and the current file is a

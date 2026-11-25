@@ -24,9 +24,12 @@ _DEFAULT_PROVIDERS: tuple[str, ...] = (
     "metaobjects-ui",
     # view.textarea @rows and the view.image attrs are cross-port vocabulary.
     "metaobjects-ui-web",
-    # The business-rules and view-expressions packs are in the default bundle.
+    # The business-rules, view-expressions, reporting and requirements packs are in the default bundle.
     "metaobjects-rules",
     "metaobjects-view-expressions",
+    # Reporting and requirements are their own packs, in the default bundle.
+    "metaobjects-reporting",
+    "metaobjects-requirements",
 )
 
 

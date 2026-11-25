@@ -23,6 +23,7 @@ export interface InitFlags {
   docsOnly: boolean;
   configOnly: boolean;
   withDocs: boolean;
+  withServices: boolean;
 }
 
 /** The flag table `parseInitArgs` parses. Exported so the help text can be gated against it. */
@@ -41,6 +42,7 @@ export const INIT_OPTIONS = {
   "docs-only": { type: "boolean", default: false },
   "config-only": { type: "boolean", default: false },
   "with-docs": { type: "boolean", default: false },
+  "with-services": { type: "boolean", default: false },
 } as const;
 
 export function parseInitArgs(argv: string[]): InitFlags {
@@ -65,6 +67,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     docsOnly: !!values["docs-only"],
     configOnly: !!values["config-only"],
     withDocs: !!values["with-docs"],
+    withServices: !!values["with-services"],
   };
 }
 

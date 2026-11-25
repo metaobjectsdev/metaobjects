@@ -14,7 +14,7 @@
 //   2. the shared scenarios: every scenario the Postgres lane runs also passes here, so
 //      filtering, sorting and paging a decimal measure behave the same on both engines.
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { API_LANES, laneLabel, type ApiLane } from "../src/api-lane.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,27 +27,29 @@ import { startSqliteReportServer, type SqliteReportEngine, type SqliteReportServ
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_REPORT_DIR, "seed.json"), "utf8")) as ReportSeed;
 const META_PATH = join(API_CONTRACT_REPORT_DIR, "meta.json");
 
-// Every test boots its own server; on D1 that is a Miniflare (workerd) process. Under the default
-// parallel lane load (8 lanes) that start-up alone can pass bun's 5000ms default, so these
-// server-backed tests get the same headroom as the other server-backed integration tests.
+// Generation and the server boot happen ONCE per lane, layout and engine, not once per test.
+// On D1 the boot is a Miniflare (workerd) process, and at one boot per test the file took about
+// ten minutes, which a command cap (an agent harness's or a gate's) kills before it reports. A
+// report is read-only, so every test here only reads or is refused (405) a write; it reseeds
+// before it runs, so a shared server cannot carry state from one test into the next.
+// The boot itself still gets the headroom the other server-backed integration tests get.
 const SERVER_TEST_TIMEOUT_MS = 120_000;
 
 const ENGINES: readonly SqliteReportEngine[] = ["sqlite", "d1"];
 
-async function withServer(
-  engine: SqliteReportEngine,
-  layout: OutputLayout,
-  lane: ApiLane,
-  fn: (server: SqliteReportServerHandle) => Promise<void>,
-  seed: ReportSeed = SEED,
-): Promise<void> {
-  const server = await startSqliteReportServer(META_PATH, engine, layout, lane);
-  try {
+function sharedServer(engine: SqliteReportEngine, layout: OutputLayout, lane: ApiLane) {
+  let server: SqliteReportServerHandle | undefined;
+  beforeAll(async () => {
+    server = await startSqliteReportServer(META_PATH, engine, layout, lane);
+  }, SERVER_TEST_TIMEOUT_MS);
+  afterAll(async () => {
+    await server?.close();
+  });
+  return async (fn: (server: SqliteReportServerHandle) => Promise<void>, seed: ReportSeed = SEED): Promise<void> => {
+    if (server === undefined) throw new Error("the report server did not start");
     await server.applySeed(seed);
     await fn(server);
-  } finally {
-    await server.close();
-  }
+  };
 }
 
 async function getJson(server: SqliteReportServerHandle, path: string): Promise<unknown> {
@@ -56,11 +58,13 @@ async function getJson(server: SqliteReportServerHandle, path: string): Promise<
   return res.json();
 }
 
-// D1 starts a Miniflare (workerd) process per test and emits the same routes as SQLite (only the
+// D1 starts a Miniflare (workerd) process per suite and emits the same routes as SQLite (only the
 // db module differs), so the package layout runs on SQLite alone.
 for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) for (const engine of layout === "flat" ? ENGINES : ENGINES.filter((e) => e !== "d1")) describe(`api contract report (FR-044) — ${laneLabel(lane)} on ${engine === "d1" ? "Cloudflare D1 (local)" : "SQLite"} [${layout}]`, () => {
+  const withServer = sharedServer(engine, layout, lane);
+
   test("a ratio is a JSON string, as it is on Postgres, and the integers around it stay numbers", async () => {
-    await withServer(engine, layout, lane, async (server) => {
+    await withServer(async (server) => {
       const rows = (await getJson(server, "/api/invoice_totals")) as Array<Record<string, unknown>>;
       expect(rows.length).toBe(1);
       const row = rows[0]!;
@@ -72,7 +76,7 @@ for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) for (const en
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a ratio is a string in the withCount envelope too", async () => {
-    await withServer(engine, layout, lane, async (server) => {
+    await withServer(async (server) => {
       const body = (await getJson(server, "/api/invoice_totals?withCount=1")) as {
         rows: Array<Record<string, unknown>>; total: number;
       };
@@ -82,14 +86,14 @@ for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) for (const en
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a ratio over zero rows is null, not the string 'null' or 0", async () => {
-    await withServer(engine, layout, lane, async (server) => {
+    await withServer(async (server) => {
       const rows = (await getJson(server, "/api/invoice_totals")) as Array<Record<string, unknown>>;
       expect(rows).toEqual([{ invoices: 0, totalCents: null, paidShare: null }]);
     }, { invoices: [] });
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("a report with no decimal field is untouched: every value keeps its type", async () => {
-    await withServer(engine, layout, lane, async (server) => {
+    await withServer(async (server) => {
       expect(await getJson(server, "/api/invoice_status_totals?sort=status:asc")).toEqual(
         SEED.reports!["InvoiceStatusTotals"],
       );
@@ -103,7 +107,7 @@ for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) for (const en
   }, { timeout: SERVER_TEST_TIMEOUT_MS });
 
   test("the filter and the sort on a ratio still compare numerically after the wire change", async () => {
-    await withServer(engine, layout, lane, async (server) => {
+    await withServer(async (server) => {
       const hit = async (path: string): Promise<number> => ((await getJson(server, path)) as unknown[]).length;
       expect(await hit("/api/invoice_totals?filter[paidShare][gt]=0.3")).toBe(1);
       expect(await hit("/api/invoice_totals?filter[paidShare][gt]=0.5")).toBe(0);
@@ -116,7 +120,7 @@ for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) for (const en
 
   for (const scenario of loadScenarios(API_CONTRACT_REPORT_SCENARIOS_DIR)) {
     test(`shared scenario: ${scenario.name}`, async () => {
-      await withServer(engine, layout, lane, (server) => runScenario(scenario, server.baseUrl));
+      await withServer((server) => runScenario(scenario, server.baseUrl));
     }, { timeout: SERVER_TEST_TIMEOUT_MS });
   }
 });

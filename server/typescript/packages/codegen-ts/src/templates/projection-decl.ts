@@ -10,7 +10,8 @@
 //   - Zod Insert/Update schemas
 //   - Insert/Update types
 
-import { code, imp, joinCode, type Code, type Import } from "../poet.js";
+import { code, imp, type Code, type Import } from "../poet.js";
+import { TsWriter } from "../writer/ts-writer.js";
 import {
   MetaField, MetaObject, type MetaRoot, isMetaObject,
   FIELD_ATTR_OBJECT_REF, stripPackage, resolveColumnName, resolveTableSchema,
@@ -22,10 +23,10 @@ import type { RenderContext } from "../render-context.js";
 import { valueObjectFieldImport } from "../import-path.js";
 import type { Dialect } from "../metaobjects-config.js";
 import { columnExpr, physicalNameExpr, sourceSchemaExpr, type ObjectNames } from "../names.js";
-import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
-import { renderFilterType } from "./filter-type.js";
+import { writeFilterAllowlist, writeSortAllowlist } from "./filter-allowlist.js";
+import { writeFilterType } from "./filter-type.js";
 import { buildUiFieldDescriptor, resourcePath } from "./entity-ui-descriptor.js";
-import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
+import { writeExistingViewDecl, writeViewReadZodObject } from "./view-decl.js";
 import { primaryIdentityFieldNames } from "./zod-validators.js";
 import { effectivePackage } from "../docs-paths.js";
 
@@ -101,6 +102,18 @@ export function renderProjectionDecl(
   root: MetaRoot,
   opts: ProjectionDeclOpts,
 ): string {
+  const w = new TsWriter();
+  writeProjectionDecl(w, projection, root, opts);
+  return w.toString();
+}
+
+/** Write {@link renderProjectionDecl}'s module, header included, into `w`. */
+export function writeProjectionDecl(
+  w: TsWriter,
+  projection: MetaObject,
+  root: MetaRoot,
+  opts: ProjectionDeclOpts,
+): void {
   const { dialect, columnNamingStrategy, timestampMode = "string", allowlists = true, ctx, includeViewDecl = true, names } = opts;
 
   // A projection field's `@objectRef`: the bound value object's import, under its local name,
@@ -113,8 +126,6 @@ export function renderProjectionDecl(
     const name = stripPackage(typeof ref === "string" ? ref : "");
     return imp(`${typeOnly ? "t:" : ""}${name}${suffix}@./${name}.js`);
   };
-
-  const z = imp("z@zod");
 
   // Read-model generation needs only the view name — NOT the join/DDL
   // resolution. Deriving it directly (instead of via extractViewSpec) lets a
@@ -161,9 +172,9 @@ export function renderProjectionDecl(
     const ui = buildUiFieldDescriptor(f);
     const baseEntry = code`name: ${JSON.stringify(ui.name)}, label: ${JSON.stringify(ui.label)}, view: ${JSON.stringify(ui.view)}, dbCol: ${dbColExpr}`;
     if (ui.currency !== undefined) {
-      return code`  ${f.name}: { ${baseEntry}, currency: ${JSON.stringify(ui.currency.currency)}, locale: ${JSON.stringify(ui.currency.locale)} },`;
+      return code`${f.name}: { ${baseEntry}, currency: ${JSON.stringify(ui.currency.currency)}, locale: ${JSON.stringify(ui.currency.locale)} },`;
     }
-    return code`  ${f.name}: { ${baseEntry} },`;
+    return code`${f.name}: { ${baseEntry} },`;
   });
 
   const projName = projection.name;
@@ -183,48 +194,38 @@ export function renderProjectionDecl(
   // for a projection declaring a role:replica read-only source BEFORE its role:primary
   // one used to return a different, declaration-order-dependent string. That is why
   // both spellings here must come from the constant rather than from two resolvers.
-  const viewLine: Code = code`$view:      ${physicalNameExpr(names, viewName, projection)}`;
+  const viewLine: Code = code`$view: ${physicalNameExpr(names, viewName, projection)}`;
   // @schema for the view binding below. postgres-only downstream (view-decl gates on dialect).
   const projectionSchema = resolveTableSchema(projection);
 
   // The projection's primary-identity fields type non-null in the view decl +
   // read schema even without @required (a PK is never NULL; see ViewDeclOpts).
   const pkFieldNames: ReadonlySet<string> = new Set(primaryIdentityFieldNames(projection));
-  const sections: Code[] = [
-    ...(includeViewDecl
-      ? [renderExistingViewDecl(allFields, physicalNameExpr(names, viewName, projection), `${camelName}View`, {
-          dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames, names,
-          // A projection's own artifact names its own view, so the constant IS this view's
-          // schema — unlike the write-through replica case in entity-file.ts.
-          schema: projectionSchema === undefined ? undefined
-            : sourceSchemaExpr(names) ?? projectionSchema,
-        })]
-      : []),
-    code`
-export const ${projName}Schema = ${renderViewReadZodObject(allFields, {
-  dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames,
-})};
-`,
-    code`
-export type ${projName} = ${z}.infer<typeof ${projName}Schema>;
-`,
-    code`
-export const ${projName} = {
-  $entity:    ${JSON.stringify(projName)},
-  ${viewLine},
-  $path:      ${JSON.stringify(path)},
-${joinCode(constFieldLines, { on: "\n" })}
-} as const;
-`,
-    ...(allowlists
-      ? [renderFilterAllowlist(projection, undefined, ctx), renderSortAllowlist(projection, undefined, ctx)]
-      : []),
-    renderFilterType(projection, undefined, ctx?.loadedRoot),
-  ];
-
-  const body = joinCode(sections, { on: "\n" }).toString();
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${projName} (${projection.fqn()})\n`;
-  return header + body;
+  w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`, `// Source metadata: ${projName} (${projection.fqn()})`);
+  if (includeViewDecl) {
+    writeExistingViewDecl(w, allFields, physicalNameExpr(names, viewName, projection), `${camelName}View`, {
+      dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames, names,
+      // A projection's own artifact names its own view, so the constant IS this view's
+      // schema — unlike the write-through replica case in entity-file.ts.
+      schema: projectionSchema === undefined ? undefined
+        : sourceSchemaExpr(names) ?? projectionSchema,
+    });
+  }
+  w.blank();
+  writeViewReadZodObject(w, allFields, { dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames },
+    `export const ${projName}Schema = `, ";");
+  w.blank();
+  w.line(`export type ${projName} = ${w.use("z", "zod")}.infer<typeof ${projName}Schema>;`);
+  w.blank();
+  w.block(`export const ${projName} = {`, () => {
+    w.line(`$entity: ${JSON.stringify(projName)},`);
+    w.line(viewLine, ",");
+    w.line(`$path: ${JSON.stringify(path)},`);
+    for (const line of constFieldLines) w.line(line);
+  }, "} as const;");
+  if (allowlists) {
+    writeFilterAllowlist(w, projection, undefined, ctx);
+    writeSortAllowlist(w, projection, undefined, ctx);
+  }
+  writeFilterType(w, projection, undefined, ctx?.loadedRoot);
 }

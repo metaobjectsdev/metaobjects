@@ -9,6 +9,7 @@ import {
   variableNameFromEntity,
   listFnName,
   reverseFinderFnName,
+  singleRowVarName,
 } from "../src/naming.js";
 
 describe("toSnakeCase", () => {
@@ -150,5 +151,18 @@ describe("stripPackage", () => {
   });
   test("returns empty string when input ends with separator", () => {
     expect(stripPackage("acme::")).toBe("");
+  });
+});
+
+describe("singleRowVarName", () => {
+  test("is the camelCase entity name", () => {
+    expect(singleRowVarName("Post", "posts")).toBe("post");
+  });
+  test("takes a Row suffix when it would shadow the collection", () => {
+    expect(singleRowVarName("ProgramPurchaseStats", "programPurchaseStats")).toBe("programPurchaseStatsRow");
+  });
+  test("takes a Row suffix when it is a reserved word", () => {
+    expect(singleRowVarName("Case", "cases")).toBe("caseRow");
+    expect(singleRowVarName("Default", "defaults")).toBe("defaultRow");
   });
 });

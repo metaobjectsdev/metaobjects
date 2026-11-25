@@ -18,6 +18,7 @@ import type { AttrValue, MetaData } from "./shared/meta-data.js";
 import type { DataType } from "./data-type.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 import { SUBTYPE_BASE } from "./shared/base-types.js";
+import type { NodeValidator } from "./validation-types.js";
 
 /**
  * A UNIFIED child requirement (spec §3.1). Every constraint on a type — both its
@@ -175,6 +176,13 @@ export interface ProviderDefinition {
  */
 export type FactoryMap = Record<string, (typeId: TypeId, name: string) => MetaData>;
 
+/**
+ * Optional, also code: a `"<type>.<subType>"` → imperative validator map. A type the
+ * definition registers carries its validator on its `TypeDefinition` (`validate`), the
+ * extension point a provider outside core uses for checks the data cannot express.
+ */
+export type ValidatorMap = Record<string, NodeValidator>;
+
 const ATTR_CHILD_TYPE = "attr";
 
 /** Whether a `ChildDef` declares an attribute (vs a structural child). */
@@ -191,6 +199,15 @@ function isAttrChild(child: ChildDef): boolean {
 function isUniversalEntry(t: TypeDef): boolean {
   return t.type === CHILD_RULE_WILDCARD && t.subType === CHILD_RULE_WILDCARD;
 }
+
+/**
+ * Resolves a type's `base` when it is not in the definition being lowered: a pack
+ * that adds a subtype to a type another provider owns (`object.report` in the
+ * reporting pack) inherits the base that provider registered.
+ */
+export type ExternalBaseLookup = (
+  type: string,
+) => { attributes: AttrSchema[]; childRules: ChildRule[] } | undefined;
 
 /**
  * Turn a declarative `ProviderDefinition` + a code-supplied factory map into the
@@ -219,6 +236,8 @@ function isUniversalEntry(t: TypeDef): boolean {
 export function defineProviderFromData(
   data: ProviderDefinition,
   factories: FactoryMap,
+  externalBase?: ExternalBaseLookup,
+  validators?: ValidatorMap,
 ): TypeDefinition[] {
   // Pre-compute each type's OWN lowered attrs + childRules, keyed by "type.subType",
   // so base-composition can fold a base's contributions into its subtypes. A
@@ -252,7 +271,8 @@ export function defineProviderFromData(
     }
 
     const self = lowered.get(key)!;
-    const { attributes, childRules } = composeWithBase(t, self, lowered);
+    const { attributes, childRules } = composeWithBase(t, self, lowered, externalBase);
+    const validate = validators?.[key];
 
     return {
       typeId: new TypeId(t.type, t.subType),
@@ -268,6 +288,7 @@ export function defineProviderFromData(
       ...(t.implementedIn !== undefined ? { implementedIn: t.implementedIn } : {}),
       ...(t.maxOccurs !== undefined ? { maxOccurs: t.maxOccurs } : {}),
       ...(t.defaultName !== undefined ? { defaultName: t.defaultName } : {}),
+      ...(validate !== undefined ? { validate } : {}),
     };
   });
 }
@@ -283,8 +304,18 @@ export function applyProviderDefinition(
   registry: TypeRegistry,
   data: ProviderDefinition,
   factories: FactoryMap,
+  validators?: ValidatorMap,
 ): void {
-  for (const def of defineProviderFromData(data, factories)) {
+  // A pack may add a subtype to a type another provider owns (the reporting pack's
+  // object.report): its `extendsBase` folds in that type's `base` as already
+  // registered, since the base is not in the pack's own definition.
+  const externalBase: ExternalBaseLookup = (type) => {
+    const base = registry.find(type, SUBTYPE_BASE);
+    return base === undefined
+      ? undefined
+      : { attributes: [...base.attributes], childRules: [...base.childRules] };
+  };
+  for (const def of defineProviderFromData(data, factories, externalBase, validators)) {
     registry.register(def);
   }
   const commonAttrs = universalCommonAttrs(data);
@@ -361,7 +392,8 @@ export function universalCommonAttrs(data: ProviderDefinition): AttrSchema[] {
 
 /**
  * Fold a real `TypeDef`'s OWN lowered attrs/childRules with its `<type>.base`'s
- * (when the definition declares one and this subtype is not itself `base`).
+ * (when the definition declares one, else the already-registered base `externalBase`
+ * returns, and this subtype is not itself `base`).
  * Additive: own entries win on a name (attr) / structural-shape (rule) collision;
  * base entries the subtype lacks are appended. A NO-OP when there is no base in
  * THIS definition, or when the subtype already declares the full base set.
@@ -370,13 +402,14 @@ function composeWithBase(
   t: TypeDef,
   self: { attributes: AttrSchema[]; childRules: ChildRule[] },
   lowered: Map<string, { attributes: AttrSchema[]; childRules: ChildRule[] }>,
+  externalBase?: ExternalBaseLookup,
 ): { attributes: AttrSchema[]; childRules: ChildRule[] } {
   // OFF by default (S0): a subtype inherits its base only when it opts in via
   // `extendsBase: true`. Keeps the current canonical byte-identical — no provider
   // sets it yet — while the rail is in place for S1.
   if (t.extendsBase !== true) return self;
   if (t.subType === SUBTYPE_BASE) return self;
-  const base = lowered.get(`${t.type}.${SUBTYPE_BASE}`);
+  const base = lowered.get(`${t.type}.${SUBTYPE_BASE}`) ?? externalBase?.(t.type);
   if (base === undefined) return self;
 
   const attributes = [...self.attributes];

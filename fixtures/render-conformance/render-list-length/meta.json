@@ -1,0 +1,1 @@
+{ "format": "text", "note": "a list's length reads as a number, as a JavaScript property read finds it: printed, as a section and as an inverted section; an empty list's length is 0 and so falsy" }

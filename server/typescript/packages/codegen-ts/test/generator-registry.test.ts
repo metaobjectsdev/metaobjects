@@ -134,7 +134,7 @@ describe("generator-registry (ADR-0021 D3)", () => {
     // §A6: the marker the runner aggregates into includeNames. Registering the
     // generator without it would emit the artifact while every template still
     // embedded its own literal.
-    expect(gen?.emitsNames).toBe(true);
+    expect(gen?.provides?.names).toBe(true);
   });
 
   // ----- the catalog facets (opt-in codegen design §D2b) --------------------

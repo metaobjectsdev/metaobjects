@@ -23,17 +23,19 @@ check() { # check "<expected>" "<got>" "<what>"
 }
 lanes() { select_lanes "$@"; echo "$SELECTED_LANES"; }
 
-ALL="ts-fast ts-unit java-slow python csharp rust"
+ALL="ts-fast ts-unit java-slow python csharp rust packs"
 
 # ── 1. change sets ────────────────────────────────────────────────────────────
-check "ts-fast ts-unit"  "$(lanes server/typescript/packages/cli/src/x.ts)"                "one port: typescript"
-check "ts-fast ts-unit"  "$(lanes client/web/packages/react/src/y.tsx)"                    "one port: the web client is typescript's"
+check "ts-fast ts-unit packs" "$(lanes server/typescript/packages/cli/src/x.ts)"          "one port: typescript, with the packs canary"
+check "ts-fast ts-unit packs" "$(lanes client/web/packages/react/src/y.tsx)"              "one port: the web client is typescript's"
+check "packs"            "$(lanes packs/demo/typescript/src/index.ts packs/demo/pack.json)" "a pack-only change selects only the packs lane (ADR-0069)"
+check "ts-fast ts-unit"  "$(lanes examples/dynamic-grid/src/a.ts)"                         "the dynamic-grid example runs no pack canary"
 check "java-slow"        "$(lanes server/java/metadata/src/main/java/A.java server/java/codegen-kotlin/src/main/kotlin/B.kt)" "one port: java and kotlin"
 check "python"           "$(lanes server/python/src/metaobjects/loader.py)"               "one port: python"
 check "csharp"           "$(lanes server/csharp/MetaObjects/Loader.cs)"                   "one port: csharp"
 check "rust"             "$(lanes server/rust/metaobjects/src/loader.rs)"                 "one port: rust"
-check "ts-fast ts-unit python" "$(lanes server/python/b.py server/typescript/a.ts)"       "two ports, given out of order, run in lane order"
-check "ts-fast ts-unit java-slow python csharp" "$(lanes server/csharp/a.cs server/java/b.java server/python/c.py server/typescript/d.ts)" "all four ports touched"
+check "ts-fast ts-unit python packs" "$(lanes server/python/b.py server/typescript/a.ts)" "two ports, given out of order, run in lane order"
+check "ts-fast ts-unit java-slow python csharp packs" "$(lanes server/csharp/a.cs server/java/b.java server/python/c.py server/typescript/d.ts)" "all four ports touched"
 check "$ALL"             "$(lanes fixtures/conformance/foo/meta.json)"                    "shared fixtures run everything"
 check "$ALL"             "$(lanes spec/metamodel.md)"                                     "the spec runs everything"
 check "$ALL"             "$(lanes agent-context/skills/x.md)"                             "agent context runs everything"
@@ -49,6 +51,7 @@ check "$ALL"             "$(lanes docs/features/cli.md)"                        
 check "$ALL"             "$(lanes docs/ports/java.md)"                                    "the java port doc is read by a java test"
 check "$ALL"             "$(lanes examples/foo/README.md)"                                "markdown outside the named root files is unmapped"
 check ""                 "$(lanes README.md CHANGELOG.md CONTRIBUTING.md)"                "root prose only: no test lane, the gates lane checks it"
+check ""                 "$(lanes changelog.d/some-fix.md)"                               "a changelog fragment is prose: no test lane"
 check "python"           "$(lanes server/python/README.md)"                               "a port's own markdown still selects the port"
 check ""                 "$(lanes)"                                                       "empty diff: no test lane"
 
@@ -61,6 +64,7 @@ esac
 
 # ports, for the hosted workflows' detect jobs: derived from the same lanes
 check "ts python" "$(MO_AFFECTED_TEST=1 bash -c 'source scripts/ci-affected-ports.sh; map_paths_to_ports server/typescript/a.ts server/python/b.py')" "ports derive from lanes"
+check "ts" "$(MO_AFFECTED_TEST=1 bash -c 'source scripts/ci-affected-ports.sh; map_paths_to_ports packs/demo/pack.json')" "a pack change is the ts port, whose hosted job runs the packs lane"
 
 # ── 2. the map ────────────────────────────────────────────────────────────────
 check "" "$(lane_map_problems)" "the committed map is well formed"
@@ -95,10 +99,10 @@ check "(none)" "$(run)" "git: no change selects nothing"
 echo b >> "$tmp/repo/server/python/a.py"; commit python
 check "python" "$(run)" "git: a committed python change selects python"
 echo b >> "$tmp/repo/server/typescript/a.ts"
-check "ts-fast ts-unit python" "$(run)" "git: an uncommitted typescript change joins it"
+check "ts-fast ts-unit python packs" "$(run)" "git: an uncommitted typescript change joins it"
 commit typescript
 echo b >> "$tmp/repo/README.md"
-check "ts-fast ts-unit python" "$(run)" "git: an untracked root-prose file adds no lane"
+check "ts-fast ts-unit python packs" "$(run)" "git: an untracked root-prose file adds no lane"
 commit prose
 check "$ALL" "$(run MO_CI_FULL=1)" "MO_CI_FULL=1 selects every lane"
 check "$ALL" "$(run MO_CI_AFFECTED_BASE=no-such-ref)" "an unresolvable base selects every lane"

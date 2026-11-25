@@ -17,6 +17,9 @@ package com.metaobjects.requirement;
 
 import com.metaobjects.registry.MetaDataRegistry;
 import com.metaobjects.registry.MetaDataTypeProvider;
+import com.metaobjects.registry.spec.SpecMetamodelReader;
+
+import java.util.Map;
 
 /**
  * Requirement Types MetaData provider.
@@ -34,7 +37,13 @@ public class RequirementTypesMetaDataProvider implements MetaDataTypeProvider {
     public void registerTypes(MetaDataRegistry registry) {
         FunctionalRequirement.registerTypes(registry);
         ArchitecturalRequirement.registerTypes(registry);
+        // The rule that admits a requirement under metadata.root rides in requirement.json under
+        // the pack's logical id: leaving the pack out leaves neither the type nor the rule.
+        registry.applyProviderExtends(SpecMetamodelReader.load(), LOGICAL_ID, Map.of());
     }
+
+    /** The pack's cross-port logical id, the {@code provider} of requirement.json. */
+    public static final String LOGICAL_ID = "metaobjects-requirements";
 
     @Override
     public String getProviderId() {

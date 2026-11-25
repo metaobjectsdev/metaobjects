@@ -8,6 +8,7 @@ import {
   AGENT_CONTEXT_MANIFEST_PATH, DEFAULT_SKILLS_DIR, normalizeSkillsDir, type Manifest, type Stack,
 } from "@metaobjectsdev/sdk/agent-context";
 import { assertKnownStackValues, resolveStack } from "../lib/detect-stack.js";
+import { resolveMigrateDefaults } from "../lib/config.js";
 import { reportIgnoredScaffold } from "../lib/ignored-scaffold-check.js";
 import { parseInitArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
@@ -16,7 +17,14 @@ import { currentContentHash } from "../lib/agent-context-staleness.js";
 import { findWranglerConfig, parseWranglerConfig } from "@metaobjectsdev/migrate-ts";
 import { DEFAULT_DOCS_DIR } from "@metaobjectsdev/codegen-ts";
 import { describeError } from "../lib/error-text.js";
-import { ownPeerRange } from "../lib/install-set.js";
+import { installSetFor, ownPeerRange } from "../lib/install-set.js";
+import {
+  RECOMMENDED_SERVICE_GENERATORS,
+  RECOMMENDED_SERVICE_IMPORT,
+  recommendedServiceCalls,
+  recommendedServiceEntries,
+  recommendedServiceListText,
+} from "../lib/recommended-services.js";
 import { declaredDependencyNames, type PackageManifest } from "../lib/package-manifest.js";
 import { SUBTYPE_ROOT, TYPE_METADATA, TYPE_SUBTYPE_SEPARATOR } from "@metaobjectsdev/metadata/constants";
 import { docsRefForVersion } from "@metaobjectsdev/metadata";
@@ -120,17 +128,24 @@ function codegenDialectOf(dialect: InitDialect): CodegenDialect {
   return dialect === "d1" ? "sqlite" : dialect;
 }
 
-function buildMetaobjectsConfigBody(dialect: CodegenDialect = "sqlite", withDocs = false): string {
-  const docsImport = withDocs
-    ? `import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";\n`
-    : "";
+function buildMetaobjectsConfigBody(dialect: InitDialect = "sqlite", withDocs = false, withServices = false): string {
+  // --with-services: the recommended service list (ADR-0067 §5.1, §8). D1 holds no transaction
+  // across application code, so its service is generated without one.
+  const serviceCalls = withServices ? recommendedServiceCalls({ interactiveTransactions: dialect !== "d1" }) : [];
+  const factories = [
+    ...(withServices ? recommendedServiceEntries().map((e) => e.factoryExport) : []),
+    ...(withDocs ? ["docsFile", "apiDocsFile"] : []),
+  ];
+  const generatorsImport =
+    factories.length > 0 ? `import { ${factories.join(", ")} } from "${RECOMMENDED_SERVICE_IMPORT}";\n` : "";
   const docsTarget = withDocs ? `  targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },\n` : "";
-  const generators = withDocs ? "[docsFile(), apiDocsFile()]" : "[]";
+  const calls = [...serviceCalls, ...(withDocs ? ["docsFile()", "apiDocsFile()"] : [])];
+  const generators = `[${calls.join(", ")}]`;
   return `import { defineConfig } from "@metaobjectsdev/cli";
-${docsImport}
+${generatorsImport}
 export default defineConfig({
   outDir:  "${SCAFFOLD_OUT_DIR}",
-  dialect: "${dialect}",
+  dialect: "${codegenDialectOf(dialect)}",
   // One directory per metadata package (acme::commerce -> acme/commerce/), so two objects
   // with one name in two packages are two files. barrel() still exports every name from one
   // module, so with a barrel listed that pair is ERR_NAME_COLLISION. Omit it for the flat layout.
@@ -146,6 +161,10 @@ export default defineConfig({
   // The catalog, with each generator's import line and what it would emit for this model:
   //
   //   meta gen --list --probe
+  //
+  // The service layers (one transaction per write, the declared rules enforced, a thin transport)
+  // are a recommended list of their own: \`meta init --with-services\` writes it, or add
+  // ${recommendedServiceListText()}.
   //
   // Documentation is chosen the same way (docsFile(), apiDocsFile(), agentDocsFile()), with
   // a docs target beside \`generators\`: targets: { docs: { outDir: "${DEFAULT_DOCS_DIR}" } },
@@ -163,7 +182,7 @@ Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 codegen/generators/ is EMPTY on purpose: no code is generated until you choose it.
 `;
 
-function nextSteps(dialect: InitDialect): string {
+function nextSteps(dialect: InitDialect | undefined): string {
   return `
 Next steps:
   0. Everything here is ESM — package.json needs "type": "module" (init sets it
@@ -180,10 +199,14 @@ Next steps:
                                 #   scaffolds a working one and wires it
   4. meta gen                  # generate from exactly what you wired, documentation
                                 #   included (the docs layer of the catalog)
-${MIGRATE_STEP[dialect]}`;
+${dialect === undefined ? "" : MIGRATE_STEP[dialect]}`;
 }
 
-/** Step 5 of the next steps, per dialect: the first migration and the replay. */
+/**
+ * Step 5 of the next steps, per dialect: the first migration and the replay. Written only when
+ * the run names a dialect (`--dialect`, `--d1`): `meta migrate` is the reference migration
+ * helper, one option, and a project that chose none keeps its own migration tool.
+ */
 const MIGRATE_STEP: Record<InitDialect, string> = {
   sqlite:
     "  5. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply\n" +
@@ -238,6 +261,12 @@ export interface InitOptions {
    * is a generator like any other; this only chooses the two that need no further setup.
    */
   withDocs?: boolean;
+  /**
+   * Wire the recommended service list (ADR-0067 §5.1, §8): `entityFile()`, `rulesNamesFile()`,
+   * `contractTypes()`, `serviceFile()` and `serviceRoutesFile()`. On D1 the service is generated
+   * with `interactiveTransactions: false`. Without the flag the list stays empty.
+   */
+  withServices?: boolean;
 }
 
 export interface InitResult {
@@ -332,7 +361,18 @@ async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefin
   const overrides = hasOverride
     ? { servers: opts.servers ?? [], clients: opts.clients ?? [] }
     : { servers: prior?.servers ?? [], clients: prior?.clients ?? [] };
-  return resolveStack(opts.cwd, overrides);
+  return resolveStack(opts.cwd, overrides, await chosenMigrateDialect(opts));
+}
+
+/**
+ * Whether the project chose a `meta migrate` dialect, which is what puts the reference migration
+ * helper's steps in the always-on file. This run's `--dialect`/`--d1` says so for every dialect
+ * migrate owns (MySQL schema is not migrate's); otherwise the project's own
+ * `migrate.dialect` does. An unflagged init chooses none.
+ */
+async function chosenMigrateDialect(opts: InitOptions): Promise<boolean> {
+  if (opts.dialect !== undefined || opts.d1 === true) return resolveInitDialect(opts) !== "mysql";
+  return (await resolveMigrateDefaults(opts.cwd)).dialect !== undefined;
 }
 
 /** Writes `contents` to `path` (relative to `cwd`), unless `dryRun` — in which case
@@ -822,13 +862,33 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   // Scaffold metaobjects.config.ts at the project root. Never overwrite if it exists.
   const forgeConfigPath = join(opts.cwd, "metaobjects.config.ts");
   if (!(await fileExists(forgeConfigPath))) {
-    await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(codegenDialectOf(resolveInitDialect(opts)), opts.withDocs === true), "utf8");
-    result.created.push("metaobjects.config.ts");
-  } else if (opts.withDocs === true) {
-    result.warnings.push(
-      "--with-docs: metaobjects.config.ts already exists and was left alone. To write the docs, add " +
-        "`docsFile()` and `apiDocsFile()` from @metaobjectsdev/codegen-ts/generators to its `generators` list.",
+    await writeFile(
+      forgeConfigPath,
+      buildMetaobjectsConfigBody(resolveInitDialect(opts), opts.withDocs === true, opts.withServices === true),
+      "utf8",
     );
+    result.created.push("metaobjects.config.ts");
+    if (opts.withServices === true) {
+      // The flag wires generators whose output imports runtime packages; say what to install now,
+      // the way `meta eject` does, rather than at the first failing compile.
+      result.warnings.push(
+        `--with-services: wired ${RECOMMENDED_SERVICE_GENERATORS.join(", ")}. Their output needs: ` +
+          installSetFor(recommendedServiceEntries()).command,
+      );
+    }
+  } else {
+    if (opts.withDocs === true) {
+      result.warnings.push(
+        "--with-docs: metaobjects.config.ts already exists and was left alone. To write the docs, add " +
+          "`docsFile()` and `apiDocsFile()` from @metaobjectsdev/codegen-ts/generators to its `generators` list.",
+      );
+    }
+    if (opts.withServices === true) {
+      result.warnings.push(
+        "--with-services: metaobjects.config.ts already exists and was left alone. To generate the service " +
+          `layers, add ${recommendedServiceListText()} to its \`generators\` list.`,
+      );
+    }
   }
 
   // Scaffold a minimal root .gitignore ONLY when the project has none — never
@@ -1030,12 +1090,11 @@ function buildD1MigrateBlock(cwd: string): Record<string, unknown> {
 /**
  * The post-init message.
  *
- * Takes no arguments now. It used to take `dbStubWritten`, because the scaffold wrote a
- * throwing `src/db.ts` on some runs and not others and a static string claimed it on
- * every one. With nothing wired there is no `dbImport` and no stub, so the message is
- * the same on every path again.
+ * `dialect` is the one the run chose with `--dialect` or `--d1`, undefined when it chose
+ * none; only a chosen dialect gets the migrate step. (It once took `dbStubWritten`; with
+ * nothing wired there is no `dbImport` and no stub, so nothing else varies.)
  */
-export function nextStepsBlock(dialect: InitDialect = "sqlite"): string {
+export function nextStepsBlock(dialect?: InitDialect): string {
   return SCAFFOLD_SUMMARY + nextSteps(dialect);
 }
 
@@ -1088,6 +1147,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       docsOnly: flags.docsOnly,
       configOnly: flags.configOnly,
       withDocs: flags.withDocs,
+      withServices: flags.withServices,
     });
 
     if (result.alreadyInitialized) {
@@ -1137,7 +1197,9 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         }
         for (const w of result.warnings) log.warn(w);
       } else {
-        log.info(nextStepsBlock(resolveInitDialect(flags)));
+        // The migrate step only for a chosen dialect: an unflagged init picks no migration tool.
+        const chosen = flags.dialect !== undefined || flags.d1 === true;
+        log.info(nextStepsBlock(chosen ? resolveInitDialect(flags) : undefined));
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context
         // discovery warning) — these are otherwise dropped on the normal init path.
         for (const w of result.warnings) log.warn(w);

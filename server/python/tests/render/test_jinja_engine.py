@@ -191,8 +191,10 @@ def test_a_payload_with_no_fields_is_refused() -> None:
         _jinja("{{ x }}", 5)
 
 
-def test_a_missing_key_renders_empty_at_any_depth() -> None:
-    assert _jinja("[{{ v.x.y }}]", {"v": {}}) == "[]"
+def test_a_missing_key_raises_at_any_depth_and_a_null_renders_empty() -> None:
+    with pytest.raises(RenderError, match="ERR_VAR_NOT_ON_PAYLOAD"):
+        _jinja("[{{ v.x.y }}]", {"v": {}})
+    assert _jinja("[{{ v }}]", {"v": None}) == "[]"
 
 
 def test_an_engine_failure_is_a_render_error() -> None:

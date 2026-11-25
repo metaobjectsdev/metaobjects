@@ -71,7 +71,7 @@ export const apiDocsFile = function apiDocsFile(opts?: ApiDocsFileOpts): Generat
   const generator: Generator = {
     name: "api-docs",
     target: opts?.target ?? DOCS_TARGET_NAME,
-    emitsApiDocs: { subDir: apiDir },
+    provides: { apiDocs: { subDir: apiDir } },
     generate(ctx) {
       const provider = projectProvider(docsTemplateRoot(ctx));
       // Pages are keyed by package (DOCS_PAGE_LAYOUT), whatever the target's outputLayout:

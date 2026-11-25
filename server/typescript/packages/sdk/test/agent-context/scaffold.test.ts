@@ -283,7 +283,7 @@ describe("agentContextStaleness by content hash", () => {
   });
   test("planScaffold stamps the content hash it is given", () => {
     const d = planScaffold({
-      stack: { servers: [], clients: [], tokens: new Set() }, assembled: [], prior: undefined,
+      stack: { servers: [], clients: [], tokens: new Set(), migration: false }, assembled: [], prior: undefined,
       readCurrent: () => undefined, generatedBy: "1.1.0", contentHash: "abc",
     });
     expect(d.manifest.contentHash).toBe("abc");

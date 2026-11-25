@@ -11,43 +11,21 @@
 //                `.js` extension.
 // use-when:      you want a single `index.ts` re-exporting every generated entity module.
 // emits:         <target>/index.ts with one `export * from "./<Entity>"` per entity, alphabetical.
-// customize:     the export form (star vs named), ordering, grouping by package, what to include/exclude.
+// customize:     what to include/exclude here; the export form (star vs named), ordering and
+//                grouping by package in the copied ../templates/barrel.ts (`renderBarrel`).
 // composes-with: entity.ts (this re-exports the files entity.ts emits).
 //
-// Everything below imports ONLY from `@metaobjectsdev/codegen-ts` (the stable engine).
-// The composition (`renderBarrel`) is inlined here so you own it — change it freely.
+// The engine comes from `@metaobjectsdev/codegen-ts/engine`; the file body from
+// ../templates/barrel.ts, which `meta eject` copies beside this file.
 
 import {
   oncePerRun,
   type Generator,
   type GeneratorFactory,
-  type ExtStyle,
-  type ResolvedTarget,
-  barrelModuleSpecifier,
-  GENERATED_HEADER,
-  GENERATED_EDIT_NOTE,
   effectivePackage,
   claimBarrelNames,
 } from "@metaobjectsdev/codegen-ts/engine";
-
-interface BarrelEntry {
-  name: string;
-  package: string | undefined;
-}
-
-// --- composition (OWNED) — the barrel file body. Customize freely. ---
-function renderBarrel(
-  entries: BarrelEntry[],
-  extStyle: ExtStyle,
-  selfTarget: ResolvedTarget,
-  entityModuleTarget: ResolvedTarget,
-): string {
-  const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
-  const exports = sorted
-    .map((e) => `export * from ${JSON.stringify(barrelModuleSpecifier(selfTarget, entityModuleTarget, e.package, e.name, extStyle))};`)
-    .join("\n");
-  return `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n${exports}\n`;
-}
+import { renderBarrel } from "../templates/barrel.js";
 
 export interface BarrelOpts {
   target?: string;

@@ -29,7 +29,7 @@
 // The packages under test are this checkout's, packed with `bun pm pack` (which writes `workspace:`
 // ranges as versions), so nothing here depends on a release having been published.
 //
-// Build first (`bun run --filter '*' build`): a package is packed from its built `dist/`.
+// Build first (`bun run build`): a package is packed from its built `dist/`.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -156,7 +156,7 @@ function measure() {
       const dir = dirs.get(name);
       if (dir === undefined) throw new Error(`${name} is required by ${ENTRY} but is not a workspace package`);
       if (!existsSync(join(ROOT, dir, "dist"))) {
-        throw new Error(`${name} has no dist/: run \`bun run --filter '*' build\` first`);
+        throw new Error(`${name} has no dist/: run \`bun run build\` first`);
       }
       execFileSync("bun", ["pm", "pack", "--destination", tarballs, "--quiet"], { cwd: join(ROOT, dir), stdio: ["ignore", "ignore", "inherit"] });
     }

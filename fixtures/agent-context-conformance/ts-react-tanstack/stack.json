@@ -1,1 +1,1 @@
-{ "servers": ["typescript"], "clients": ["react", "tanstack"] }
+{ "servers": ["typescript"], "clients": ["react", "tanstack"], "migrate": true }

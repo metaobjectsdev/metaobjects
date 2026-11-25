@@ -95,6 +95,9 @@ public class RenderSnapshotTest {
             ? new FilesystemProvider(fixtureDir)
             : new InMemoryProvider(Map.of());
 
+        // An expected-error.txt fixture is gated by RenderCrossPortReportTest; it has no snapshot.
+        if (Files.isRegularFile(fixtureDir.resolve("expected-error.txt"))) return;
+
         String actual = new Renderer().render(new RenderRequest(
             template, null, payload, provider, format, null, null));
 

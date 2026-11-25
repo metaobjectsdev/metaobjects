@@ -250,11 +250,23 @@ export function reverseFinderInFnName(sourceEntity: string | MetaData, fkFieldNa
  * `Row` suffix ONLY in that exact collision case — every ordinary entity keeps the
  * existing bare camelCase local-variable spelling (`const [post] = await
  * db.insert(posts)...`).
+ *
+ * The same suffix applies when the bare spelling is a reserved word: an entity named `Case`
+ * or `Default` would otherwise emit `const [case] = …`, which does not parse.
  */
 export function singleRowVarName(entityName: string, collectionVarName: string): string {
   const bare = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  return bare === collectionVarName ? `${bare}Row` : bare;
+  return bare === collectionVarName || TS_RESERVED_WORDS.has(bare) ? `${bare}Row` : bare;
 }
+
+/** Words a TypeScript `const` binding cannot be named (ECMAScript reserved words, strict mode included). */
+const TS_RESERVED_WORDS: ReadonlySet<string> = new Set([
+  "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete",
+  "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "implements",
+  "import", "in", "instanceof", "interface", "let", "new", "null", "package", "private", "protected",
+  "public", "return", "static", "super", "switch", "this", "throw", "true", "try", "typeof", "var",
+  "void", "while", "with", "yield",
+]);
 
 /**
  * Generated Fastify route-registrar name: camelCase `<entity>Routes`. The routes

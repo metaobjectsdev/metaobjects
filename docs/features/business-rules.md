@@ -10,6 +10,8 @@ The model never says *how* an operation works. That is code. The model says wher
 is needed, which moves are legal, and what a command may return, so all three can be checked.
 
 **What 1.3.0 ships.** The vocabulary, checked when it loads and by `verify`, in all five ports.
+It is a provider pack, composed by default: see
+[Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives).
 The Rust port loads the vocabulary and runs the same loader rules, and its `verify` runs the
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. The flat generators generate nothing from
@@ -28,9 +30,9 @@ declared write rules, behind a thin Fastify transport (`service-routes`) or Hono
 [The service layer](#the-service-layer-typescript)). It also writes a command per transition and a
 shell per declared command and query, and enforces at run time what this page declares: the
 permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
-later 1.3.0 work. A lifecycle in a project that wires no service generator will be advised by
-`verify` once that check lands; until then the flat routes enforce nothing and `verify` says
-nothing about it. Every flat generator writes byte-identical code for
+later 1.3.0 work. A lifecycle in a project that wires no service generator covering it is
+named by Node `meta verify` as an advisory (rule `unenforced-lifecycle`, never an exit code); the
+flat routes enforce nothing. Every flat generator writes byte-identical code for
 a model with this vocabulary and the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
@@ -197,11 +199,13 @@ setting `rules.permissions.names` makes `verify` warn about derived names, or fa
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `transitions` name is not a transition of the target. |
 | O5 | `ERR_BAD_ATTR_VALUE` | An `errors` code is not lower snake case, is listed twice, or is one the route answers itself: `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`, `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation`, `internal`. |
 | O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one package share a name, compared without case, in one API or across the package's APIs. One operation declared in two files merges and is not refused. Neither is one operation declared identically in two APIs (a `v1` beside a `v2`): same name, subtype and every operation attribute; only the bindings may differ. |
+| P3 | `ERR_TRANSITION_NAME_COLLISION` | Two permission points ask about one permission name and at least one name is derived: an operation named `Order.open`, or one declaring `permission: p.Order.open`, beside the `open` transition of `Order` in `p`. Names are compared exactly as the policy receives them: `::` and `.` are different things in the metadata, so an `open` operation in package `p::Order` (`p::Order.open`) does not collide with that transition (`p.Order.open`). Two declared `permission` values may be equal. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest` `path` has the wrong placeholders. |
 | B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same method (declared or derived) and the same path, ignoring placeholder names. |
 
-Names are compared without case because each one becomes a command, a permission constant and a
-file, and those collide on a case-folding target.
+Names are compared without case (L5 and O0, L6, O6) because each one becomes a command, a permission
+constant and a file, and those collide on a case-folding target. P3 compares permission names
+exactly, as the policy receives them.
 
 Some refusals come from the registry:
 
@@ -403,6 +407,14 @@ await withWriteTransaction(db, async (tx) => {
   await service.createOrder({ title: "second" }, { tx });
 });
 ```
+
+A new project gets the recommended list with `meta init --with-services`: `entityFile()`,
+`rulesNamesFile()`, `contractTypes()`, `serviceFile()` and `serviceRoutesFile()` (on `--d1`, the
+service is `serviceFile({ interactiveTransactions: false })`), and init prints what their output
+needs installed. It is a list, not a mode: swap `serviceRoutesFile()` for `serviceRoutesHonoFile()`,
+or narrow `serviceFile()` with its `filter`, as with any generator. In a project that declares a
+lifecycle and wires no service generator covering it, `meta verify` advises that nothing generated
+enforces it (rule `unenforced-lifecycle`); the flat routes write the lifecycle field like any other.
 
 Both import the entity module (`entity`, for the table and the allowlists) and the contract types
 (`contract-types`), written to the same target, and `@metaobjectsdev/runtime-ts`'s `service` and

@@ -335,8 +335,27 @@ jobs:
           export PATH="$HOME/.cargo/bin:$PATH"
           scripts/ci-local.sh --only rust --strict-toolchains
 
+  # PACKS lane — the independent packs under packs/ (ADR-0069), against main's core.
+  # Blocking for a pack this push touched; a named non-failing SKIP (the canary) for a
+  # pack a core change broke. MO_CI_AFFECTED_BASE is the push's `before`, so "touched"
+  # means this push; on the nightly and on dispatch it is empty and every pack is a
+  # canary. With no pack under packs/ the lane passes with a note.
+  packs:
+    needs: detect
+    if: contains(needs.detect.outputs.ports, 'ts')
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the blocking/canary decision diffs against the push's base
+          persist-credentials: false
+      - env:
+          MO_CI_AFFECTED_BASE: ${{ github.event.before }}
+        run: scripts/ci-local.sh --only packs --strict-toolchains
+
   notify:
-    needs: [detect, gates, ts-fast, ts-unit, ts-slow, java-slow, python, csharp, rust]
+    needs: [detect, gates, ts-fast, ts-unit, ts-slow, java-slow, python, csharp, rust, packs]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: [self-hosted, linux]
     steps:

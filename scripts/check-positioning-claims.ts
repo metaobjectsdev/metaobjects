@@ -117,13 +117,6 @@ export const ALLOWED: Allowance[] = [
       "Operational, not promotional: it states what `meta verify --db` reports to an agent " +
       "running it against an adopted database. The banned claim is 'MetaObjects gives you zero drift'.",
   },
-  {
-    file: "agent-context/skills/metaobjects-audit/SKILL.md",
-    contains: "## Guardrails",
-    reason:
-      "A heading over the rules the AUDITING AGENT must follow — generic instruction vocabulary " +
-      "addressed to an agent, not a product claim addressed to a buyer.",
-  },
 ];
 
 function walk(path: string): string[] {

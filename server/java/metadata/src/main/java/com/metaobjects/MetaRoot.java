@@ -100,13 +100,14 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
             // the TS reference HAND-CODE the root; it is the single documented
             // hand-coded exception to the JSON-sourced model). The manifest's
             // STRUCTURAL children block must byte-match the cross-port golden:
-            // description "Root metadata document" and EXACTLY the five genuinely-open
-            // structural wildcards a document root legitimately holds — object / field
-            // / validator / template / requirement (mirrors the TS reference
-            // core-types.ts `def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document",
+            // description "Root metadata document" and EXACTLY the four genuinely-open
+            // structural wildcards core itself registers — object / field / validator /
+            // template (mirrors the TS reference core-types.ts
+            // `def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document",
             // [wildcard(TYPE_OBJECT), wildcard(TYPE_FIELD), wildcard(TYPE_VALIDATOR),
-            // wildcard(TYPE_TEMPLATE), wildcard(TYPE_REQUIREMENT)])`; capability
-            // requirements are declared beside the entities they describe). The
+            // wildcard(TYPE_TEMPLATE)])`. A `requirement` child is admitted by the
+            // requirements pack (requirement.json `extends`, applied by
+            // RequirementTypesMetaDataProvider), beside the entities it describes. The
             // previously-registered
             // view/identity/relationship/layout STRUCTURAL root wildcards are removed
             // to match the strict contract.
@@ -125,7 +126,6 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
                 .optionalChild(MetaField.TYPE_FIELD, "*", "*")
                 .optionalChild(MetaValidator.TYPE_VALIDATOR, "*", "*")
                 .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*")
-                .optionalChild(com.metaobjects.requirement.MetaRequirement.TYPE_REQUIREMENT, "*", "*")
                 .optionalChild(com.metaobjects.attr.MetaAttribute.TYPE_ATTR, "*", "*")
             );
             log.debug("Registered MetaRoot type (metadata.root) with unified registry");
@@ -289,6 +289,23 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
     /** Sets the project's resolved dependencies on this root ({@code null} restores the empty set). */
     public void setDependencySet(com.metaobjects.config.DependencySet dependencySet) {
         this.dependencySet = (dependencySet != null) ? dependencySet : com.metaobjects.config.DependencySet.EMPTY;
+    }
+
+    /**
+     * The resolution keys (FQNs) of the top-level nodes only REFERENCE sources declare
+     * ({@code {"path": ..., "reference": true}}). They load and resolve like any other node; no
+     * generator emits them, because another run owns them. Set by the project-aware load.
+     */
+    private transient java.util.Set<String> referenceNodes = java.util.Set.of();
+
+    /** The reference nodes of this tree; empty when no reference source was loaded. Never {@code null}. */
+    public java.util.Set<String> getReferenceNodes() {
+        return referenceNodes;
+    }
+
+    /** Sets the reference nodes ({@code null} restores the empty set). */
+    public void setReferenceNodes(java.util.Set<String> referenceNodes) {
+        this.referenceNodes = (referenceNodes != null) ? java.util.Set.copyOf(referenceNodes) : java.util.Set.of();
     }
 
     /**

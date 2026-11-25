@@ -39,7 +39,7 @@ public class CoreTypesTests
     // ------------------------------------------------------------------
 
     private static TypeRegistry ComposedRegistry() =>
-        Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider });
+        Provider.ComposeRegistry(new[] { CoreTypes.CoreTypesProvider, MetaObjects.Core.Reporting.ReportingMetaDataProvider.Instance });
 
     [Fact]
     public void Core_provider_registers_correct_subtypes_for_metadata()

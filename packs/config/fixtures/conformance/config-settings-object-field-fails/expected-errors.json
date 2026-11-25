@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_CHILD_NOT_ALLOWED",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.app.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.settings']"
+      }
+    }
+  ],
+  "warnings": []
+}

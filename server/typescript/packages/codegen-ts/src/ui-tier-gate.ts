@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import type { Generator } from "./generator.js";
+import { providesOf, type Generator, type GeneratorRoutes } from "./generator.js";
 import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption, type RoutesExpose } from "./routes-expose.js";
 
 /**
@@ -9,8 +9,8 @@ import { CRUD_VERBS, resolveExpose, type CrudVerb, type ExposeOption, type Route
  * ADR-0034 scaffold-and-own an adopter runs their OWN copy, and `meta eject` copies the
  * template verbatim, so the name survives the copy while the object identity does not.
  *
- * This set exists ONLY as a compatibility path for a copy ejected before `emitsUiTier`
- * existed. The marker is the mechanism; a name match makes the run behave as it did
+ * This set exists ONLY as a compatibility path for a copy ejected before it declared
+ * `provides.uiTier` (or its older marker, `emitsUiTier`). The declaration is the mechanism; a name match makes the run behave as it did
  * before AND says the marker is missing (see {@link warnUnmarkedUiGenerators}), because
  * a page silently disappearing is exactly the kind of degradation that must announce
  * itself.
@@ -25,10 +25,10 @@ export const UI_TIER_GENERATOR_NAMES: ReadonlySet<string> = new Set([
   "angular-service",
 ]);
 
-/** Generators in the suite that emit a UI artifact but carry no `emitsUiTier` marker. */
+/** Generators in the suite that emit a UI artifact but declare no `provides.uiTier`. */
 function unmarked(generators: readonly Generator[]): Generator[] {
   return generators.filter(
-    (g) => g.emitsUiTier !== true && UI_TIER_GENERATOR_NAMES.has(g.name),
+    (g) => providesOf(g).uiTier !== true && UI_TIER_GENERATOR_NAMES.has(g.name),
   );
 }
 
@@ -41,11 +41,11 @@ function unmarked(generators: readonly Generator[]): Generator[] {
  * `generators: []` was handed a confident page naming endpoints nothing serves.
  */
 export function runEmitsUiTier(generators: readonly Generator[]): boolean {
-  return generators.some((g) => g.emitsUiTier === true) || unmarked(generators).length > 0;
+  return generators.some((g) => providesOf(g).uiTier === true) || unmarked(generators).length > 0;
 }
 
 /**
- * A generator ejected before `emitsUiTier` existed still emits its tier, so the run is
+ * A generator ejected before it declared `provides.uiTier` still emits its tier, so the run is
  * NOT degraded — the name match above keeps `agent/ui.md` emitting. It is warned about
  * anyway: an adopter who renames their copy loses the page with no signal at all, and
  * the one-line fix belongs where the fact is known rather than in a migration note
@@ -60,9 +60,9 @@ export function warnUnmarkedUiGenerators(
   const names = stale.map((g) => `'${g.name}'`).join(", ");
   warn(
     `${names} emit${stale.length === 1 ? "s" : ""} a UI artifact but carr${stale.length === 1 ? "ies" : "y"} no ` +
-      `'emitsUiTier: true' marker — an owned copy ejected before the marker existed. ` +
+      `'provides: { uiTier: true }' declaration — an owned copy ejected before it existed. ` +
       `agent/ui.md still emits (matched by name), but a renamed copy would not: add ` +
-      `'emitsUiTier: true' beside 'name:' in your copy, or re-eject it.`,
+      `'provides: { uiTier: true }' beside 'name:' in your copy, or re-eject it.`,
   );
 }
 
@@ -76,7 +76,7 @@ export function warnUnmarkedUiGenerators(
  * One helper, called after the strings are resolved, is what keeps the answer single.
  */
 export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
-  return generators.some((g) => g.emitsHonoRoutes === true);
+  return generators.some((g) => providesOf(g).routes?.framework === "hono");
 }
 
 /**
@@ -84,23 +84,23 @@ export function runEmitsHonoRoutes(generators: readonly Generator[]): boolean {
  * when it does: it used to describe the stock queries whatever the generator list held, so a
  * project that wired none, or its own, got pages naming functions nothing exports.
  *
- * The marker, or the name `queriesFile()` carries: an owned copy keeps its name through
- * `meta eject`, so a copy ejected before `emitsQueries` existed is still found.
+ * The declaration, or the name `queriesFile()` carries: an owned copy keeps its name through
+ * `meta eject`, so a copy ejected before it declared `provides.queries` is still found.
  */
 export function runEmitsQueries(generators: readonly Generator[]): boolean {
-  return generators.some((g) => g.emitsQueries === true || g.name === "queries-file");
+  return generators.some((g) => providesOf(g).queries === true || g.name === "queries-file");
 }
 
 /** Does this run write the entity modules (`<Entity>.ts`: the model, its Zod schemas and its
  *  `relations()`)? Same reasoning, and same name fallback, as {@link runEmitsQueries}. */
 export function runEmitsEntityModule(generators: readonly Generator[]): boolean {
-  return generators.some((g) => g.emitsEntityModule === true || g.name === "entity-file");
+  return generators.some((g) => providesOf(g).entityModule === true || g.name === "entity-file");
 }
 
 /** Does this run mount the Fastify REST routes? Same reasoning, and same name fallback, as {@link runEmitsQueries}. */
 export function runEmitsRestRoutes(generators: readonly Generator[]): boolean {
   return generators.some(
-    (g) => g.emitsHonoRoutes !== true && (g.mountsRoutes !== undefined || g.name === "routes-file"),
+    (g) => providesOf(g).routes?.framework === "fastify" || (g.name === "routes-file" && providesOf(g).routes === undefined),
   );
 }
 
@@ -115,8 +115,9 @@ export function runEmitsRestRoutes(generators: readonly Generator[]): boolean {
  * generator on any surface carries an `expose` or a `filter`.
  */
 export function runRoutesExpose(generators: readonly Generator[]): RoutesExpose | undefined {
-  const rest = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes !== true));
-  const restHono = surfaceExpose(generators.filter((g) => g.emitsHonoRoutes === true));
+  const routes = generators.map((g) => providesOf(g).routes).filter((r): r is GeneratorRoutes => r !== undefined);
+  const rest = surfaceExpose(routes.filter((r) => r.framework === "fastify"));
+  const restHono = surfaceExpose(routes.filter((r) => r.framework === "hono"));
   if (rest === undefined && restHono === undefined) return undefined;
   return {
     ...(rest !== undefined && { rest: rest.expose, restMounted: rest.mounted }),
@@ -125,11 +126,8 @@ export function runRoutesExpose(generators: readonly Generator[]): RoutesExpose 
 }
 
 function surfaceExpose(
-  generators: readonly Generator[],
+  mounts: readonly GeneratorRoutes[],
 ): { expose: ExposeOption; mounted: (entity: MetaObject) => boolean } | undefined {
-  const mounts = generators
-    .map((g) => g.mountsRoutes)
-    .filter((m): m is NonNullable<typeof m> => m !== undefined);
   if (mounts.length === 0 || mounts.some((m) => m.expose === undefined && m.filter === undefined)) return undefined;
   const accepts = (m: (typeof mounts)[number], entity: MetaObject): boolean => m.filter === undefined || m.filter(entity);
   return {
@@ -146,7 +144,7 @@ function surfaceExpose(
 }
 
 /**
- * A routes generator ejected before `mountsRoutes` existed still mounts its routes, but the api
+ * A routes generator ejected before it declared `provides.routes` still mounts its routes, but the api
  * reference cannot see its `expose` or `filter` and documents all five verbs for every entity.
  * Warned about when the run writes an api reference, by name for the same reason as
  * {@link warnUnmarkedUiGenerators}; adding the marker silences it.
@@ -155,17 +153,22 @@ export function warnUnmarkedRoutesGenerators(
   generators: readonly Generator[],
   warn: (msg: string) => void,
 ): void {
-  if (!generators.some((g) => g.emitsApiDocs !== undefined)) return;
+  if (!generators.some((g) => providesOf(g).apiDocs !== undefined)) return;
+  // The raw fields, not `providesOf`: a bare `emitsHonoRoutes` marker says the run mounts Hono
+  // routes but carries no `expose` or `filter`, so such a copy is stale here too.
   const stale = generators.filter(
-    (g) => (g.name === "routes-file" || g.name === "routes-file-hono") && g.mountsRoutes === undefined,
+    (g) =>
+      (g.name === "routes-file" || g.name === "routes-file-hono") &&
+      g.provides?.routes === undefined &&
+      g.mountsRoutes === undefined,
   );
   if (stale.length === 0) return;
   const names = stale.map((g) => `'${g.name}'`).join(", ");
   warn(
     `${names} mount${stale.length === 1 ? "s" : ""} routes but carr${stale.length === 1 ? "ies" : "y"} no ` +
-      `'mountsRoutes' marker — an owned copy ejected before the marker existed. The api reference ` +
+      `'provides.routes' declaration — an owned copy ejected before it existed. The api reference ` +
       `lists every verb for every entity whatever its 'expose' or 'filter' says: add ` +
-      `'mountsRoutes: opts?.expose !== undefined ? { expose: opts.expose } : {}' beside 'name:' in your ` +
-      `copy (and 'filter' likewise), or re-eject it with 'meta eject routes --force'.`,
+      `'provides: { routes: { framework: "fastify", expose: opts?.expose, filter: opts?.filter } }' beside ` +
+      `'name:' in your copy ("hono" for the Hono routes), or re-eject it with 'meta eject routes --force'.`,
   );
 }

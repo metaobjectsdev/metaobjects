@@ -15,9 +15,8 @@
  *
  * 2. Discovery could quietly shrink. It keys on a marker line, so a reworded header
  *    or a moved package reduces the set to a subset — and a smaller set still passes.
- *    The second half pins that all four kinds of copy are found (each package's
- *    `src/reference/`, the private test-generators package, and both example
- *    scaffolds), and that discovery over a tree with no templates returns nothing —
+ *    The second half pins that every kind of copy is found (each package's
+ *    `src/reference/` and both example scaffolds), and that discovery over a tree with no templates returns nothing —
  *    which the gate turns into a REFUSAL, not a pass.
  *
  *   bun scripts/test-reference-templates-lint.ts
@@ -52,7 +51,6 @@ const EXPECTED_KINDS = [
   "server/typescript/packages/codegen-ts/src/reference/",
   "server/typescript/packages/codegen-ts-react/src/reference/",
   "server/typescript/packages/codegen-ts-tanstack/src/reference/",
-  "server/typescript/packages/test-generators/src/",
   "examples/showcase/codegen/generators/",
   "examples/advanced-modeling/codegen/generators/",
 ];

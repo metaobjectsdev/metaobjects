@@ -13,7 +13,7 @@
  * tree whose `dist/` predates a codegen change this script regenerates through the OLD
  * emitter, reports every file `unchanged`, and `--check` passes against committed output
  * the current source would no longer produce — a vacuous green. Run
- * `bun run --filter '*' build` first. `ci-local.sh` has `gate_ts_build_typecheck`, but it
+ * `bun run build` first. `ci-local.sh` has `gate_ts_build_typecheck`, but it
  * is in a different lane, so `--only gates` does not imply it.
  *   bun scripts/regen-showcase.ts --bun-only    # only the ports bun alone can drive
  *

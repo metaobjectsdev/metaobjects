@@ -1,0 +1,127 @@
+{
+  "cases": [
+    {
+      "name": "reply-type-outside-the-loaded-sources-does-not-resolve",
+      "note": "The blocker as measured: the reply types live in files this load does not read, so the prompt's @responseRef names nothing and the load is refused.",
+      "tree": {
+        "model/meta.prompts.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportRequest\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"question\",\n                \"@required\": true\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"template.prompt\": {\n          \"name\": \"SupportAnswerPrompt\",\n          \"@payloadRef\": \"acme::support::SupportRequest\",\n          \"@responseRef\": \"acme::support::SupportAnswer\",\n          \"@textRef\": \"support/answer\",\n          \"@format\": \"text\"\n        }\n      }\n    ]\n  }\n}\n",
+        "replies/meta.replies.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportAnswer\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"text\",\n                \"@required\": true\n              }\n            },\n            {\n              \"field.object\": {\n                \"name\": \"source\",\n                \"@objectRef\": \"acme::support::AnswerSource\"\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"object.value\": {\n          \"name\": \"AnswerSource\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"url\"\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }\n}\n"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "model"
+          }
+        ]
+      },
+      "expectLoadError": "ERR_INVALID_TEMPLATE"
+    },
+    {
+      "name": "reply-type-in-a-reference-source-resolves-and-is-not-generated",
+      "note": "The same files with replies/ declared as a reference source: the reference resolves, and the reply type and the value object it nests are reference nodes.",
+      "tree": {
+        "model/meta.prompts.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportRequest\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"question\",\n                \"@required\": true\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"template.prompt\": {\n          \"name\": \"SupportAnswerPrompt\",\n          \"@payloadRef\": \"acme::support::SupportRequest\",\n          \"@responseRef\": \"acme::support::SupportAnswer\",\n          \"@textRef\": \"support/answer\",\n          \"@format\": \"text\"\n        }\n      }\n    ]\n  }\n}\n",
+        "replies/meta.replies.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportAnswer\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"text\",\n                \"@required\": true\n              }\n            },\n            {\n              \"field.object\": {\n                \"name\": \"source\",\n                \"@objectRef\": \"acme::support::AnswerSource\"\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"object.value\": {\n          \"name\": \"AnswerSource\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"url\"\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }\n}\n"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "model"
+          },
+          {
+            "path": "replies",
+            "reference": true
+          }
+        ]
+      },
+      "expectReference": [
+        "acme::support::AnswerSource",
+        "acme::support::SupportAnswer"
+      ]
+    },
+    {
+      "name": "no-reference-source-means-no-reference-nodes",
+      "tree": {
+        "model/meta.prompts.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportRequest\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"question\",\n                \"@required\": true\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"template.prompt\": {\n          \"name\": \"SupportAnswerPrompt\",\n          \"@payloadRef\": \"acme::support::SupportRequest\",\n          \"@responseRef\": \"acme::support::SupportAnswer\",\n          \"@textRef\": \"support/answer\",\n          \"@format\": \"text\"\n        }\n      }\n    ]\n  }\n}\n",
+        "model/meta.replies.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportAnswer\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"text\",\n                \"@required\": true\n              }\n            },\n            {\n              \"field.object\": {\n                \"name\": \"source\",\n                \"@objectRef\": \"acme::support::AnswerSource\"\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"object.value\": {\n          \"name\": \"AnswerSource\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"url\"\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }\n}\n"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "model"
+          }
+        ]
+      },
+      "expectReference": []
+    },
+    {
+      "name": "an-overlay-in-an-own-source-makes-the-node-the-projects-own",
+      "note": "A node is a reference node only when EVERY file declaring it is a reference file. SupportAnswer is overlaid from an own file, so it is the project's own; AnswerSource stays a reference node.",
+      "tree": {
+        "model/meta.prompts.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportRequest\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"question\",\n                \"@required\": true\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"template.prompt\": {\n          \"name\": \"SupportAnswerPrompt\",\n          \"@payloadRef\": \"acme::support::SupportRequest\",\n          \"@responseRef\": \"acme::support::SupportAnswer\",\n          \"@textRef\": \"support/answer\",\n          \"@format\": \"text\"\n        }\n      }\n    ]\n  }\n}\n",
+        "replies/meta.replies.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportAnswer\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"text\",\n                \"@required\": true\n              }\n            },\n            {\n              \"field.object\": {\n                \"name\": \"source\",\n                \"@objectRef\": \"acme::support::AnswerSource\"\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"object.value\": {\n          \"name\": \"AnswerSource\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"url\"\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }\n}\n",
+        "model/meta.answer-overlay.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportAnswer\",\n          \"overlay\": true,\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"note\"\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }\n}\n"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "model"
+          },
+          {
+            "path": "replies",
+            "reference": true
+          }
+        ]
+      },
+      "expectReference": [
+        "acme::support::AnswerSource"
+      ]
+    },
+    {
+      "name": "a-file-an-ordinary-source-also-reaches-is-the-projects-own",
+      "note": "model/ is declared as an ordinary source and one of its files again as a reference source: the ordinary declaration wins.",
+      "tree": {
+        "model/meta.prompts.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportRequest\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"question\",\n                \"@required\": true\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"template.prompt\": {\n          \"name\": \"SupportAnswerPrompt\",\n          \"@payloadRef\": \"acme::support::SupportRequest\",\n          \"@responseRef\": \"acme::support::SupportAnswer\",\n          \"@textRef\": \"support/answer\",\n          \"@format\": \"text\"\n        }\n      }\n    ]\n  }\n}\n",
+        "model/meta.replies.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportAnswer\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"text\",\n                \"@required\": true\n              }\n            },\n            {\n              \"field.object\": {\n                \"name\": \"source\",\n                \"@objectRef\": \"acme::support::AnswerSource\"\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"object.value\": {\n          \"name\": \"AnswerSource\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"url\"\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }\n}\n"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "model"
+          },
+          {
+            "path": "model/meta.replies.json",
+            "reference": true
+          }
+        ]
+      },
+      "expectReference": []
+    },
+    {
+      "name": "a-template-in-a-reference-source-is-refused",
+      "note": "A reference source holds shapes another run generates; a prompt there would have its parser and payload generated by nobody, so it is refused.",
+      "tree": {
+        "model/meta.prompts.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportRequest\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"question\",\n                \"@required\": true\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }\n}\n",
+        "replies/meta.replies.json": "{\n  \"metadata.root\": {\n    \"package\": \"acme::support\",\n    \"children\": [\n      {\n        \"object.value\": {\n          \"name\": \"SupportAnswer\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"text\",\n                \"@required\": true\n              }\n            },\n            {\n              \"field.object\": {\n                \"name\": \"source\",\n                \"@objectRef\": \"acme::support::AnswerSource\"\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"object.value\": {\n          \"name\": \"AnswerSource\",\n          \"children\": [\n            {\n              \"field.string\": {\n                \"name\": \"url\"\n              }\n            }\n          ]\n        }\n      },\n      {\n        \"template.prompt\": {\n          \"name\": \"SupportAnswerPrompt\",\n          \"@payloadRef\": \"acme::support::SupportRequest\",\n          \"@responseRef\": \"acme::support::SupportAnswer\",\n          \"@textRef\": \"support/answer\",\n          \"@format\": \"text\"\n        }\n      }\n    ]\n  }\n}\n"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [
+          {
+            "path": "model"
+          },
+          {
+            "path": "replies",
+            "reference": true
+          }
+        ]
+      },
+      "expectLoadError": "ERR_REFERENCE_SOURCE_TEMPLATE"
+    }
+  ]
+}

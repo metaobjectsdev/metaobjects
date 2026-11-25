@@ -216,7 +216,7 @@ with jinja2 (`pip install "metaobjects[jinja]"`), TypeScript with nunjucks, whic
   body includes Jinja templates. A partial whose file is the other engine's is refused with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, in `verify` and at render time, rather than spliced in
   as text the including engine would misread.
-- **Java, Kotlin and C# do not render Jinja.** Their providers refuse a Jinja-only body with
+- **Java, Kotlin, C# and Rust do not render Jinja.** Their providers refuse a Jinja-only body with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, and their `verify` reports it on that template, so a
   model that needs those ports keeps its bodies in Mustache.
 
@@ -228,7 +228,9 @@ Hi {{ displayName | title }}, you have {{ postCount }} posts.
 ```
 
 Python and TypeScript render the shared Jinja vocabulary identically
-(`fixtures/jinja-render-conformance/`). Outside it the two engines differ: an empty list is
+(`fixtures/jinja-render-conformance/`), and both raise `ERR_VAR_NOT_ON_PAYLOAD` on a printed name
+the payload lacks, while a present null prints empty. Outside it the two engines differ: an empty
+list is
 false in jinja2 and true in nunjucks (write `{% if items | length %}`), a printed list or dict
 is engine-specific text, and Python-only syntax (`{% with %}`, `name.upper()`, `True`) does
 not run in nunjucks. Looping over a null value renders nothing in nunjucks and fails the
@@ -557,6 +559,12 @@ parser, the render function, the output-format fragment, the extractor — is na
 the template. The tolerant tier's all-nullable mirror is named after the value object
 (`<Vo>Extracted`).
 
+**When another run already generates the reply type**, declare its files as a *reference
+source* (`{ "path": "replies", "reference": true }` in `sources`; `<referenceSources>` in
+Maven). The reply type loads, so `@responseRef` resolves, and no value-object generator emits
+it — the parser imports the type the other run generates, by the same name. See
+[metadata-sources.md](metadata-sources.md#reference-sources--loaded-to-resolve-against-never-generated).
+
 `meta verify` walks both subtypes, catching payload ↔ template drift at build time.
 
 **On malformed metadata, generators behave slightly differently** — TS throws
@@ -714,22 +722,36 @@ and checks each one exists on the payload VO. If a template references
 body (Python and TypeScript) is checked the same way; see
 [Jinja templates](#jinja-templates-python-and-typescript).
 
-**The same check runs at render time in every generated render helper** (the `template.output`
-helper and the `template.prompt` handle, in all five ports). The helper carries its payload's
-field tree, so text edited or served after codegen that names a variable the payload lacks
-(`{{nmae}}` for `name`) raises `ERR_VAR_NOT_ON_PAYLOAD` instead of rendering as an empty
-string. Before this, the TypeScript `promptRender()` handle, the Python helper on a Mustache
-body, and the Java and Kotlin helpers rendered it silently. Calling the engine's `render()`
-directly with no declared payload keeps the engine's default, since there is nothing to compare
-against; ask for the check by passing the field tree (`verify` in TypeScript, Java, Kotlin and
-C#; `verify=` in Python). Pinned by
-[`fixtures/template-output-render-conformance/runtime-drift/`](../../fixtures/template-output-render-conformance/runtime-drift/).
+**A variable the payload lacks fails at render time, on every render path.** Text edited or
+served after codegen that names a variable the payload lacks (`{{nmae}}` for `name`) raises
+`ERR_VAR_NOT_ON_PAYLOAD` instead of rendering as an empty string. The engine's `render()` raises
+it for a Mustache body in TypeScript, C#, Java (and so Kotlin), Python and Rust (the
+`metaobjects-render` crate), and for a Jinja body in TypeScript and Python. A present `null` still renders empty, and a section over an absent name
+still renders nothing. The generated render helpers (the `template.output` helper and the
+`template.prompt` handle, in all five ports) carry the payload's field tree, so the same miss is
+caught in text served after codegen. Passing the field tree to the engine (`verify` in TypeScript,
+Java, Kotlin and C#; `verify=` in Python) also checks names against the declared fields. Pinned by
+[`fixtures/template-output-render-conformance/runtime-drift/`](../../fixtures/template-output-render-conformance/runtime-drift/),
+and by the `render-error-missing-variable` and `render-error-missing-dotted-path` render fixtures.
+
+**The reply is checked too.** For every `template.prompt` carrying `@responseRef`, `verify`
+reports `ERR_RESPONSE_UNRESOLVED` (an error) when the reply type has no field a parser could
+read, and, for an `@responseFormat: xml` prompt, `ERR_RESPONSE_TAG_UNDECLARED` (a warning)
+for each `@requiredTags` tag that names neither the reply type nor any field in its tree. The
+body is already held to those tags (`ERR_OUTPUT_TAG_MISSING`); this ties them to the type the
+extractor reads, so renaming a reply field without renaming the tag the prompt asks for is
+caught. Pinned by [`fixtures/response-verify-conformance/`](../../fixtures/response-verify-conformance/)
+in TypeScript, Java (and so Kotlin), C#, Python and Rust.
 
 A bare `verify` also checks generated code and the requirement ledger; name the template
 check to run it alone. Java and Python skip this check with a note when no template root is
 configured; C# does not skip, and a bare run with no `prompts/` or `templates/` directory
 (and no `--templates <root>`) exits 2
 ([cli.md](cli.md#verify-is-one-verb-with-explicit-subverbs-adr-0021-d2)).
+
+Rust's check reads Mustache bodies only: a body resolving to a `.jinja` / `.j2` file is
+reported as `ERR_TEMPLATE_ENGINE_UNSUPPORTED`. Its engine, `verify` in `metaobjects-render`,
+is held to `fixtures/verify-conformance/` with no ledgered case.
 
 | Port | Bare command (runs this check) | This check alone |
 |---|---|---|
@@ -738,6 +760,7 @@ configured; C# does not skip, and a bare run with no `prompts/` or `templates/` 
 | Kotlin | `mvn metaobjects:verify` (same Maven goal) | `-Dmeta.verify.mode=templates` |
 | C# | `dotnet meta verify` (needs a `prompts/` or `templates/` directory, else exits 2) | `dotnet meta verify --templates <root>` |
 | Python | `metaobjects verify` (needs `metaobjects.config.yaml` or `--prompts <dir>`) | `metaobjects verify --templates` |
+| Rust | `cargo meta verify` (bodies under `prompts/`, or `--prompts <dir>`; a project with no `template.*` node prints nothing) | `cargo meta verify --templates` |
 
 ## Determinism contract
 
@@ -779,19 +802,24 @@ for payload typing per #270)
 - [`fixtures/conformance/error-origin-passthrough-array-mismatch/`](../../fixtures/conformance/error-origin-passthrough-array-mismatch/) — a `passthrough` field whose array-ness differs from its `@from` source fails with `ERR_PASSTHROUGH_TYPE_MISMATCH`
 - [`fixtures/conformance/origin-passthrough-convert-optout/`](../../fixtures/conformance/origin-passthrough-convert-optout/) — `@convert: true` acknowledges a deliberate type divergence (no cast generated)
 
-**Render engine output (`fixtures/render-conformance/`)** — byte-identical Mustache output across ports
+**Render engine output (`fixtures/render-conformance/`)** — byte-identical Mustache output across ports, except the two engines' ledgered cases recorded at the end of this section
 
 - [`fixtures/render-conformance/render-example-prompt/`](../../fixtures/render-conformance/render-example-prompt/) — `template.prompt` end-to-end render
 - [`fixtures/render-conformance/render-example-email/`](../../fixtures/render-conformance/render-example-email/) — `template.output @format=html` (transactional email)
 - [`fixtures/render-conformance/render-example-spreadsheet/`](../../fixtures/render-conformance/render-example-spreadsheet/) — `@format=csv` with header row
 - [`fixtures/render-conformance/render-csv-injection/`](../../fixtures/render-conformance/render-csv-injection/) — OWASP CSV-injection escaping (leading `= + - @ \t \r`)
 
-**Render engine semantics** — Mustache-spec behavior pinned cross-port (every port's renderer must emit byte-identical output)
+**Render engine semantics** — Mustache-spec behavior pinned cross-port (byte-identical output, the ledgered engine differences recorded below aside)
 
 - [`fixtures/render-conformance/render-dotted-path-lookup/`](../../fixtures/render-conformance/render-dotted-path-lookup/) — `{{a.b.c}}` traversal across nested objects
+- [`fixtures/render-conformance/render-error-missing-variable/`](../../fixtures/render-conformance/render-error-missing-variable/) — a `{{name}}` the payload lacks raises `ERR_VAR_NOT_ON_PAYLOAD` (`expected-error.txt`, in place of `expected.txt`)
+- [`fixtures/render-conformance/render-error-missing-dotted-path/`](../../fixtures/render-conformance/render-error-missing-dotted-path/) — a dotted path whose leaf the payload lacks raises the same error
 - [`fixtures/render-conformance/render-parent-context-fallthrough/`](../../fixtures/render-conformance/render-parent-context-fallthrough/) — a key missing in the current section falls through to the parent context
 - [`fixtures/render-conformance/render-empty-array-falsiness/`](../../fixtures/render-conformance/render-empty-array-falsiness/) — `{{#xs}}…{{/xs}}` over an empty array renders nothing (vs. iterates)
-- [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, empty string, `0` — which are truthy for `{{#x}}` sections (per Mustache spec, not JS truthiness)
+- [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, an empty string and an empty array are falsy for `{{#x}}` sections; a non-empty object renders its body once
+- [`fixtures/render-conformance/render-zero-falsiness/`](../../fixtures/render-conformance/render-zero-falsiness/) — `0` is falsy for a section too, as JavaScript truthiness reads it (mustache.js, not the Mustache spec text), and still prints as `0`. NaN is falsy the same way in TypeScript, Java, Kotlin and Python; no JSON payload can carry it, and the C# engine reads NaN as truthy
+- [`fixtures/render-conformance/render-shadowed-dotted-prefix/`](../../fixtures/render-conformance/render-shadowed-dotted-prefix/) — a dotted name, printed or as a section, is tried whole against each context from the innermost outward: `{{a.b}}` inside `{{#items}}` falls through to the enclosing context when the item's `a` has no `b`, and a path that reaches a null does not resolve there
+- [`fixtures/render-conformance/render-list-length/`](../../fixtures/render-conformance/render-list-length/) — a list's `length` reads as a number: printed, and as a section and an inverted section
 - [`fixtures/render-conformance/render-inverted-section/`](../../fixtures/render-conformance/render-inverted-section/) — `{{^x}}…{{/x}}` renders when `x` is falsy/absent
 - [`fixtures/render-conformance/render-list-separator/`](../../fixtures/render-conformance/render-list-separator/) — the `-last` positional accessor: `{{^-last}}, {{/-last}}` separators, nested lists, single-element and empty lists, a scalar conditional and a single nested object inside a list, an authored key
 - [`fixtures/render-conformance/render-nested-partials/`](../../fixtures/render-conformance/render-nested-partials/) — `{{>partial}}` resolves through the provider, supports nesting
@@ -802,12 +830,20 @@ for payload typing per #270)
 - [`fixtures/render-conformance/render-unicode-multibyte/`](../../fixtures/render-conformance/render-unicode-multibyte/) — multibyte input handled without truncation or re-encoding
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these
-via their respective conformance runners. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
+via their respective conformance runners (Kotlin on the Java engine), and so does the Rust
+`metaobjects-render` crate. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md)
 for the per-port pass/skip ledger.
+
+Two renderers still drift on a case their engine reads differently, and ledger it rather than
+skip it: C# on `render-shadowed-dotted-prefix` (Stubble stops a dotted name at the first context
+holding its first part), and Rust on that case, `render-list-length` and `render-zero-falsiness`
+(the `mustache-ng` engine's own name lookup, data model and truthiness). A ledgered case must
+still differ from the baseline, so an engine that comes into agreement fails its runner until the
+entry leaves the ledger.
 
 **Jinja bodies (Python and TypeScript, ADR-0061)**
 
-- [`fixtures/jinja-render-conformance/`](../../fixtures/jinja-render-conformance/) — 15 cases: variables, loops, conditionals, `set` and macros, `include` and `import`, filters, html and json escaping (with and without `| escape`), whitespace control, `raw` and comments, plus an include cycle and an unresolved include. Byte-identical output from jinja2 and nunjucks.
+- [`fixtures/jinja-render-conformance/`](../../fixtures/jinja-render-conformance/) — 16 cases: variables, loops, conditionals, `set` and macros, `include` and `import`, filters, html and json escaping (with and without `| escape`), whitespace control, `raw` and comments, plus an include cycle, an unresolved include and a missing variable. Byte-identical output from jinja2 and nunjucks.
 - [`fixtures/jinja-verify-conformance/`](../../fixtures/jinja-verify-conformance/) — 31 cases: the payload check over the parsed template (paths, loop targets, locals, filters, includes, imports, `extends` blocks, `ERR_TEMPLATE_NOT_STATIC`, `ERR_TEMPLATE_SYNTAX`, required slots and tags).
 
 ## See also

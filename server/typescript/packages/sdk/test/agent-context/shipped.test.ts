@@ -7,7 +7,7 @@ import { join, relative, sep } from "node:path";
 import { assemble } from "../../src/agent-context/assemble.js";
 import { makeStack } from "../../src/agent-context/resolve.js";
 import {
-  SHIPPED_CLIENT_SETS, SHIPPED_MANIFEST_FILE, SHIPPED_SERVER_SETS,
+  SHIPPED_CLIENT_SETS, SHIPPED_MANIFEST_FILE, SHIPPED_MIGRATION_CHOICES, SHIPPED_SERVER_SETS,
   buildShippedAgentContext, materializeShippedStack, shippedStackId, shippedTreeFiles,
   type ShippedManifest,
 } from "../../src/agent-context/shipped.js";
@@ -57,11 +57,25 @@ describe("the committed tree is the one the build writes", () => {
 });
 
 describe("the stacks shipped", () => {
-  test("every server language alone and Java with Kotlin, each with every client choice", () => {
+  test("every server language alone and Java with Kotlin, each with every client choice, with and without meta migrate", () => {
     const servers = SHIPPED_SERVER_SETS.map((s) => s.join("+"));
     expect(servers).toEqual([...SERVER_LANGS, "java+kotlin"]);
     expect(SHIPPED_CLIENT_SETS.map((c) => c.join("+"))).toEqual(["", "react", "react+tanstack", "angular"]);
-    expect(built.manifest.stacks.length).toBe(servers.length * SHIPPED_CLIENT_SETS.length);
+    expect(SHIPPED_MIGRATION_CHOICES).toEqual([false, true]);
+    expect(built.manifest.stacks.length).toBe(servers.length * SHIPPED_CLIENT_SETS.length * 2);
+  });
+
+  test("only a stack that chose a meta migrate dialect carries the reference helper's steps", () => {
+    const agentsOf = (migration: boolean): string => {
+      const files = materializeShippedStack(built, makeStack(["python"], [], migration), "main");
+      return files.find((f) => f.path === ".metaobjects/AGENTS.md")!.contents;
+    };
+    expect(shippedStackId({ servers: ["python"], clients: [], migration: true })).toBe("python-migrate");
+    expect(agentsOf(true)).toContain("### Schema, with the reference migration helper");
+    expect(agentsOf(true)).toContain("npx meta verify --db <url>");
+    expect(agentsOf(false)).not.toContain("meta migrate");
+    expect(agentsOf(false)).not.toContain("verify --db");
+    expect(agentsOf(false)).toContain("Commit the metadata, the generated code and `.metaobjects/.gen-state/.hashes/`.");
   });
 
   test("a Rust tree is shipped", () => {
@@ -89,7 +103,7 @@ describe("what a port writes from the tree", () => {
   // stack. A port copying a tree must write the same files as the Node CLI would.
   for (const s of built.manifest.stacks) {
     test(`${s.id}: the assembler's files, pinned to the release's ref`, () => {
-      const stack = makeStack([...s.servers], [...s.clients]);
+      const stack = makeStack([...s.servers], [...s.clients], s.migration);
       const ref = "v1.3.0";
       const viaTree = materializeShippedStack(committed(), stack, ref);
       const direct = assemble({ contentRoot: CONTENT_ROOT, stack, docsRef: ref });
@@ -113,8 +127,9 @@ describe("what a port writes from the tree", () => {
       const spec = JSON.parse(readFileSync(join(CORPUS, name, "stack.json"), "utf8")) as {
         servers: ServerLang[];
         clients: ClientFramework[];
+        migrate?: boolean;
       };
-      const files = materializeShippedStack(committed(), makeStack(spec.servers, spec.clients), "main");
+      const files = materializeShippedStack(committed(), makeStack(spec.servers, spec.clients, spec.migrate === true), "main");
       const expected = tree(join(CORPUS, name, "expected"));
       expect(new Map(files.map((f) => [f.path, f.contents])), name).toEqual(expected);
     }

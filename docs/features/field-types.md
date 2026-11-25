@@ -79,8 +79,8 @@ Five rows need a footnote:
   `java.util.Map<String, V>` (and reaches a map's `@objectRef` value object in the
   value-object emission walk, so the referenced record is actually generated); C# emits the
   `Dictionary<string, V>` property AND the EF jsonb storage mapping — a column type plus an
-  explicit converter/comparer pair, so the property lands on the `jsonb` column the TS-owned
-  migration creates instead of on whatever an unmapped dictionary would resolve to.
+  explicit converter/comparer pair, so the property lands on the `jsonb` column the expected
+  schema declares instead of on whatever an unmapped dictionary would resolve to.
 
   **Nested map values are validated on every write path, on every port.** A posted map value
   that violates the referenced `object.value`'s own constraints is rejected with the cross-port

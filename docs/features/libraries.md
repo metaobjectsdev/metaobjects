@@ -13,6 +13,11 @@ A **library** is that design, declared as metadata and shipped with MetaObjects:
 { "schema_version": 1, "sources": [], "libraries": ["iam"] }
 ```
 
+The neutral `libraries` key is read by the TypeScript, Python, C# and Rust surfaces.
+Java and Kotlin name their libraries in the Maven plugin's `<loader><libraries>`
+element instead of this key ([metadata-sources.md](metadata-sources.md) owns the
+per-port read).
+
 An agent working in your repo can now see that the capability exists, resolve against
 it, and build on it. Nothing else happens — which is the part worth reading twice.
 
@@ -157,7 +162,7 @@ MetaObjects ships four kinds of package. They differ in who owns the result:
 
 | kind | what it is | ownership |
 |---|---|---|
-| **Vocabulary** | metamodel types and attributes | core, not ejectable: the metadata you write with it is already yours |
+| **Vocabulary** | metamodel types and attributes | core or a provider pack, not ejectable: the metadata you write with it is already yours |
 | **Library** | `library/<name>/` with a `library.json`: metadata and requirements (`iam`, `ai`) | `meta eject <library>` (above) |
 | **Catalog generator** | a row in `meta gen --list` | import it as shipped, or eject it, except `template` and the package-only rows ([ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md), Amendment 5). A library may imply one only when it anchors on a library node (above). |
 | **Runtime helper** | an Apache-2.0 per-port package that generated code imports | copied by the route generator's eject, helper runtime included ([ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md), Amendment 3) |
@@ -175,7 +180,8 @@ Anything else stays with the adopter (policy, presentation, branding, scheduling
 separate project.
 
 **Worked example, reporting** ([reporting.md](reporting.md)). The vocabulary (dimensions,
-measures, segments, `object.report`) is core. The planned `reporting` library holds
+measures, segments, `object.report`) is a provider pack, composed by default
+([Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives)). The planned `reporting` library holds
 metadata only, so opting in adds no code. Exporting to another tool and dashboards are
 catalog generators, one per heavy format, so an adopter never takes a dependency they did
 not wire: `cube-model` ships today, a dashboard generator does not exist yet.
