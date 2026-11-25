@@ -164,7 +164,7 @@ export default defineConfig({
 Names, domains, ids and token names are placeholders. The generated files are in
 [`typescript/test/golden/`](typescript/test/golden/).
 
-The three success fixtures are modelled on three adopters' hand-written Cloudflare configuration
+The first three success fixtures are modelled on three adopters' hand-written Cloudflare configuration
 (a `wrangler.jsonc`, a `wrangler.toml` and a Pages deploy script). The bar is coverage, not
 identity: `typescript/test/coverage.test.ts` checks every fact of each, with its values replaced
 by the placeholders, fact by fact. Where the generated files go further:
