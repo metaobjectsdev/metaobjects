@@ -731,9 +731,31 @@ never reach `main`.
 
 ## Isolated patch (one package)
 
-If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm bun.lock && bun
-install`, verify, run `node scripts/eject-release-gate.mjs <version>` (it must exit 0), and
-`bun publish` it. The others stay at their current version. Tag scoped (e.g. `cli-v0.5.1`).
+There is no single-package release on npm. The 13 `@metaobjectsdev/*` packages move atomically:
+the publish set is `scripts/publish-set.mjs`, and a fix to one of them (a `cli` bugfix, say) is a
+patch release of all 13, cut by the procedure above. What a patch can leave out is a
+*registry*: a registry with no changed product file sits the release out, under the
+convergent-publishing rule. A package that needs a release line of its own is an independent
+pack, never a core package published alone.
+
+## Independent packs (`packs/`)
+
+An independent pack ([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)) is not part of
+a core release, and a core release never waits for one. Nothing in this procedure touches
+`packs/`: `scripts/publish-set.mjs`, `check-publish-intent.sh` and
+`check-no-prerelease-versions.sh` do not enumerate it (`scripts/check-pack-boundary.ts` proves
+that in the `gates` lane), a pack's changelog is `packs/<name>/CHANGELOG.md` and not the root
+one, and a red pack canary is not a reason to hold a core cut. Pack work never needs the
+maintenance-branch procedure either, because core can be cut from `main` with pack work in
+flight.
+
+A pack is released on its own, tagged `pack-<name>-v<version>`. Core's tag patterns, the site
+deploy and the metamodel gate's baseline all ignore that tag. Until a pack is published
+(`"publish": false` in `pack.json`, `"private": true` on its npm package), adopter projects use
+it from the private prerelease registry (`docs/features/prerelease.md`). It publishes once an
+estate project runs it with the drift gate enforced. The pack release script, the pack version
+gate and the test against the lowest published core in its range are built before that first
+publish.
 
 # Releasing the C# packages to NuGet
 

@@ -10,6 +10,20 @@ here.**
 
 ## [Unreleased]
 
+- **Independent packs: the `packs/` directory, its gates and its lane (ADR-0069).** A capability
+  that is not core vocabulary can now be built in `packs/<name>/` with its own version, changelog
+  and port list, outside the default bundle and outside `metamodelVersion`. No pack exists yet,
+  and nothing published changes. `scripts/check-pack-boundary.ts` fails a change that makes core
+  depend on a pack, puts a pack in the bundle, or lets core's release tooling see `packs/`.
+  `scripts/check-pack-manifests.ts` holds each `pack.json` to its ports' native manifests.
+  `scripts/pack-vocabulary.ts` pins the rows a pack adds and fails one that changes the bundle's,
+  and `scripts/pack-conformance.ts` runs a pack's load fixtures through the new corpus-root entry
+  point `runCorpus` in `@metaobjectsdev/conformance`. A new `packs` lane in `ci-local.sh` blocks
+  for a pack's own change and reports, without failing, a pack that a core change breaks. The
+  root `build` and `typecheck` scripts now name core's workspace directories instead of
+  `--filter '*'`. The provider contract is now named as covered by core's package version
+  (`docs/compatibility-policy.md`).
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
@@ -519,7 +533,7 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
 ## [1.3.0] — unreleased
 
 
-_npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.3.0` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
 
 **New metamodel vocabulary, experimental: `api.*`, `operation.*`, `binding.*` and `transition.*`
 (ADR-0066).** It is additive: nothing that loaded before stops loading. This vocabulary ships in

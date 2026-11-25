@@ -148,6 +148,18 @@ Cross-port rules still hold. Every port registers the same default composition, 
 `expected-registry.json` is what all five byte-match, so a pack leaves the default bundle only
 by a decision recorded against that manifest, never per port.
 
+**Independent packs.** A provider maintained in this repository does not have to be in the
+default bundle. An *independent pack* ([ADR-0069](../../spec/decisions/ADR-0069-independent-packs.md))
+lives in [`packs/<name>/`](../../packs/README.md) with its own version, changelog and list of
+ports. A project opts in by naming its provider, exactly as it wires any provider of its own
+(below). It is the same contract on the same registry. What differs is the promise: it is outside
+`expected-registry.json` and `metamodelVersion`, a port carries it or does not (and then a model
+that uses it fails there by name), and its own tests pin the rows it adds and check that it
+changes none of the bundle's. Write a provider there when the capability belongs to the project
+but is not yet core vocabulary. The contract the provider is written against (`id`,
+`dependencies`, `registerTypes`, `register`, `extend`, `registerCommonAttrs` and the definition
+file format) is covered by core's package version (`docs/compatibility-policy.md`).
+
 ## Two registration modes
 
 ### `register` — declare a new `(type, subType)`

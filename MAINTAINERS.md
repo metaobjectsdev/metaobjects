@@ -26,6 +26,7 @@ maintainer. Every area is open.
 | Metamodel spec and conformance corpora (core-maintainer approval always applies) | `spec/`, `fixtures/` | Maintainer wanted |
 | Documentation and the docs-site generator | `docs/`, `server/typescript/packages/docs-site/` | Maintainer wanted |
 | Libraries (`ai`, `iam`) | `library/` | Maintainer wanted |
+| Independent packs (each pack its own area once it has a maintainer; [ADR-0069](spec/decisions/ADR-0069-independent-packs.md)) | `packs/` | Maintainer wanted |
 | Agent context (skills, `AGENTS.md` sources, `llms.txt`) | `agent-context/` | Maintainer wanted |
 | CI and release tooling | `scripts/`, `.github/` | Maintainer wanted |
 

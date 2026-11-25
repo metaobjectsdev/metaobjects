@@ -106,10 +106,11 @@ It blocks commits whose added lines match (`git commit --no-verify` bypasses, di
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
-test suite while `bun run --filter '*' typecheck` — the same check `scripts/ci-local.sh`
+test suite while `bun run typecheck` — the same check `scripts/ci-local.sh`
 runs — goes red, and a direct admin push to `main` bypasses branch protection. This hook closes that hole locally: when a push touches
-`server/typescript/` or `client/web/`, it runs that same `bun run --filter '*' build &&
-… typecheck` pair and **blocks the push when it is red** (~6s on a clean tree;
+`server/typescript/` or `client/web/`, it runs that same `bun run build && bun run
+typecheck` pair (the root scripts, which name core's workspace directories so a pack under
+`packs/` is never in them — ADR-0069) and **blocks the push when it is red** (~6s on a clean tree;
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
 or `SKIP_TS_TYPECHECK=1 git push`.
 
@@ -455,8 +456,8 @@ The Bun workspace root is the **repository root** (`/package.json`), which globs
 bun install                                        # once, at the repo root
 cd server/typescript && bun test                   # server suite (per-package; a bare run over the whole server suite now exceeds 5 min — scope it)
 cd client/web/packages/<pkg> && bun test           # a single client package
-bun run --filter '*' typecheck                     # whole workspace, from repo root
-bun run --filter '*' build                         # whole workspace, from repo root
+bun run typecheck                                  # core's workspace (not packs/), from repo root
+bun run build                                      # core's workspace (not packs/), from repo root
 ```
 
 ## How to contribute

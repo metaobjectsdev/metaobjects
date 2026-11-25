@@ -21,12 +21,14 @@ CI_SELECT_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CI_LANE_MAP="${MO_CI_LANE_MAP:-$CI_SELECT_HERE/ci-lane-map.txt}"
 
 # The lanes a change can select, in the order they run. The map's `ALL` means exactly this.
-CI_SELECTABLE_LANES="ts-fast ts-unit java-slow python csharp rust"
+# `packs` is the independent packs under packs/ (ADR-0069): their TypeScript ports build
+# against core's working tree, so the lane belongs to the ts port and runs after it.
+CI_SELECTABLE_LANES="ts-fast ts-unit java-slow python csharp rust packs"
 
 # The port each lane belongs to, for callers that think in ports (the hosted workflows).
 lane_to_port() {
   case "$1" in
-    ts-fast|ts-unit) echo ts ;;
+    ts-fast|ts-unit|packs) echo ts ;;
     java-slow)       echo java ;;
     python)          echo python ;;
     csharp)          echo csharp ;;
