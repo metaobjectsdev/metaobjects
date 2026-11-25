@@ -46,6 +46,18 @@ const ENGINE_PKG = "@metaobjectsdev/codegen-ts";
 const ENGINE: FingerprintEntry[] = [{ kind: "engine", name: "(test)", hash: "fixed" }];
 const SELECTION: GenSelection = { entities: [], generators: undefined, strict: false, baseline: "default" };
 
+/** A package checked out at `<root>/<dir>` and linked into the project's node_modules, as
+ *  a workspace member, a clone or `bun link` is. Returns its entry file. */
+function linkPackage(root: string, dir: string, manifest: { name: string; dependencies?: Record<string, string> }, index: string): string {
+  const source = join(root, dir);
+  mkdirSync(source);
+  writeFileSync(join(source, "package.json"), JSON.stringify({ version: "0.1.0", type: "module", main: "index.ts", ...manifest }) + "\n");
+  writeFileSync(join(source, "index.ts"), index);
+  mkdirSync(join(root, "node_modules", "@metaobjectsdev"), { recursive: true });
+  symlinkSync(source, join(root, "node_modules", manifest.name), "dir");
+  return join(source, "index.ts");
+}
+
 function makeProject(): { root: string; linkedIndex: string } {
   const root = mkdtempSync(join(SCRATCH, "gen-linked-"));
   made.push(root);
@@ -59,20 +71,13 @@ function makeProject(): { root: string; linkedIndex: string } {
 
   // The linked package: its source lives outside any node_modules, as with a workspace
   // member, a clone or `bun link`, and the project's node_modules holds a symlink to it.
-  const source = join(root, "linked-checkout");
-  mkdirSync(source);
-  writeFileSync(join(source, "package.json"), JSON.stringify({
-    name: LINKED, version: "0.1.0", type: "module", main: "index.ts", dependencies: { [ENGINE_PKG]: "*" },
-  }) + "\n");
-  writeFileSync(join(source, "index.ts"), linkedSource("first\n"));
-  mkdirSync(join(root, "node_modules", "@metaobjectsdev"), { recursive: true });
-  symlinkSync(source, join(root, "node_modules", LINKED), "dir");
+  const linkedIndex = linkPackage(root, "linked-checkout", { name: LINKED, dependencies: { [ENGINE_PKG]: "*" } }, linkedSource("first\n"));
 
   writeFileSync(join(root, "metaobjects.config.ts"), `import { defineConfig } from "@metaobjectsdev/codegen-ts";
 import { linked } from "${LINKED}";
 export default defineConfig({ outDir: "generated", generators: [linked()] });
 `);
-  return { root, linkedIndex: join(source, "index.ts") };
+  return { root, linkedIndex };
 }
 
 async function inputsFor(root: string, engine?: FingerprintEntry[]) {
@@ -116,16 +121,12 @@ describe("the skip key covers a linked @metaobjectsdev/* generator package (ADR-
     // the CLI points both at its own copy, which the engine half counts. A linked copy in the
     // project's node_modules never runs, so editing it must leave the key alone.
     const p = makeProject();
-    const fake = join(p.root, "engine-checkout");
-    mkdirSync(fake);
-    writeFileSync(join(fake, "package.json"), JSON.stringify({ name: ENGINE_PKG, version: "0.0.0", main: "index.ts" }) + "\n");
-    writeFileSync(join(fake, "index.ts"), "export const v = 1;\n");
-    symlinkSync(fake, join(p.root, "node_modules", ENGINE_PKG), "dir");
+    const fakeIndex = linkPackage(p.root, "engine-checkout", { name: ENGINE_PKG }, "export const v = 1;\n");
     expect(CLI_ALIASED_PACKAGES.has(ENGINE_PKG)).toBe(true);
 
     const before = await inputsFor(p.root, ENGINE);
     expect(before.entries.filter((e) => e.kind === "generator-package" && e.name.startsWith(`${ENGINE_PKG}/`))).toEqual([]);
-    writeFileSync(join(fake, "index.ts"), "export const v = 2;\n");
+    writeFileSync(fakeIndex, "export const v = 2;\n");
     expect(keyFor(await inputsFor(p.root, ENGINE), [])).toBe(keyFor(before, []));
   });
 });

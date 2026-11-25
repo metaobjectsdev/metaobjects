@@ -13,6 +13,7 @@ import {
   registerColumnNamingStrategy,
   registerTableNamingRule, registerPluralizer,
 } from "@metaobjectsdev/metadata";
+import { packageNameOf } from "./package-name.js";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
@@ -98,7 +99,7 @@ const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
  * `@metaobjectsdev/*` or not, runs from the project and is hashed as a generator package.
  */
 export const CLI_ALIASED_PACKAGES: ReadonlySet<string> = new Set([
-  ...Object.keys(CLI_PKG_PATHS).map((spec) => spec.split("/").slice(0, 2).join("/")),
+  ...Object.keys(CLI_PKG_PATHS).map(packageNameOf),
   TS_POET_PKG,
 ]);
 

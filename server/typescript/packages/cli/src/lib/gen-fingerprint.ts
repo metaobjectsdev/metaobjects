@@ -24,6 +24,7 @@ import type { Collection } from "@metaobjectsdev/sdk/collection";
 import { readManifestState } from "@metaobjectsdev/codegen-ts";
 import { GEN_CONFIG_FILE } from "./gen-collection.js";
 import { CLI_ALIASED_PACKAGES } from "./load-metaobjects-config.js";
+import { packageNameOf } from "./package-name.js";
 
 /** Bumped whenever what goes into the fingerprint changes, so an old stored key never matches. */
 export const FINGERPRINT_FORMAT = 4;
@@ -250,11 +251,6 @@ function resolveRelative(spec: string, fromFile: string): string | undefined {
     try { if (statSync(c).isFile()) return c; } catch { /* next */ }
   }
   return undefined;
-}
-
-function packageNameOf(spec: string): string {
-  const parts = spec.split("/");
-  return spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
 }
 
 /**

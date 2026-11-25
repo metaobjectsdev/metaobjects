@@ -55,4 +55,16 @@ fn main() {
         "cargo:rustc-env=METAOBJECTS_ENGINE_SOURCE_HASH={}",
         sha256::hex(&hasher.finish())
     );
+    // The crate directories that hash covers, so the skip key can leave a path dependency on
+    // one of them out instead of hashing it twice (and only those: matched by directory, not
+    // by name, so another checkout of a crate with the same name is still hashed).
+    let dirs = [manifest.clone(), manifest.join("../metaobjects")]
+        .into_iter()
+        .map(|d| std::fs::canonicalize(&d).unwrap_or(d));
+    println!(
+        "cargo:rustc-env=METAOBJECTS_ENGINE_CRATE_DIRS={}",
+        std::env::join_paths(dirs)
+            .expect("engine crate directories")
+            .to_string_lossy()
+    );
 }

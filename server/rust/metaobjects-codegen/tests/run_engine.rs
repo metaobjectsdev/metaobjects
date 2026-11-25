@@ -486,14 +486,22 @@ fn a_crate_the_owned_crate_reaches_by_path_is_an_input_and_an_engine_crate_is_no
     // source, and their version does not move when their code does. A skip that did not see
     // an edit there would report "nothing changed" over stale output.
     let p = Scratch::project("owned-path-deps", &shop_files());
+    // The real engine checkout, as `eject --engine <checkout>` writes it.
+    let engine = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.write(
         "codegen/Cargo.toml",
-        "[package]\nname = \"codegen\"\n\n[[bin]]\nname = \"codegen\"\npath = \"main.rs\"\n\n\
-         [dependencies]\n\
-         metaobjects = { path = \"../engine/metaobjects\" }\n\
-         linked-generators = { path = '../ws/linked' } # path = \"../commented-out\"\n\n\
-         [dev-dependencies]\nscratch-only = { path = \"../dev-only\" }\n\n\
-         [patch.crates-io]\nforked = { path = \"../fork\" }\n",
+        &format!(
+            "[package]\nname = \"codegen\"\n\n[[bin]]\nname = \"codegen\"\npath = \"main.rs\"\n\n\
+             [dependencies]\n\
+             metaobjects = {{ path = {:?} }}\n\
+             metaobjects-codegen = {{ path = {:?} }}\n\
+             metaobjects-fork = {{ path = \"../fork-of-engine/metaobjects\" }}\n\
+                 linked-generators = {{ path = '../ws/linked' }} # path = \"../commented-out\"\n\n\
+             [dev-dependencies]\nscratch-only = {{ path = \"../dev-only\" }}\n\n\
+             [patch.crates-io]\nforked = {{ path = \"../fork\" }}\n",
+            engine.join("../metaobjects"),
+            engine,
+        ),
     );
     p.write("codegen/main.rs", "fn main() {}\n");
     // The linked crate is a member of a workspace and inherits one dependency from its root.
@@ -519,17 +527,25 @@ fn a_crate_the_owned_crate_reaches_by_path_is_an_input_and_an_engine_crate_is_no
         }
         p.write(&format!("{dir}/src/lib.rs"), "// v1\n");
     }
+    // Another checkout of a crate named like the engine's: not the engine that runs.
     p.write(
-        "engine/metaobjects/Cargo.toml",
+        "fork-of-engine/metaobjects/Cargo.toml",
         "[package]\nname = \"metaobjects\"\n",
     );
-    p.write("engine/metaobjects/src/lib.rs", "// v1\n");
+    p.write("fork-of-engine/metaobjects/src/lib.rs", "// v1\n");
     gen_ok(&p);
     assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
 
     // An edit to the linked crate's source, to a crate it reaches by path in turn, to one it
-    // inherits from its workspace, and to a patched crate.
-    for dir in ["ws/linked", "ws/deeper", "ws/shared", "fork"] {
+    // inherits from its workspace, to a patched crate, and to a crate that only shares an
+    // engine crate's name.
+    for dir in [
+        "ws/linked",
+        "ws/deeper",
+        "ws/shared",
+        "fork",
+        "fork-of-engine/metaobjects",
+    ] {
         p.write(&format!("{dir}/src/lib.rs"), "// v2\n");
         let r = gen_ok(&p);
         assert_eq!(
@@ -541,11 +557,10 @@ fn a_crate_the_owned_crate_reaches_by_path_is_an_input_and_an_engine_crate_is_no
         assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
     }
 
-    // Not inputs: the linked crate's build output, an engine crate (the engine's own source
-    // hash covers it), a dev-dependency, which is not built into the owned binary, and a
-    // path that only a comment names.
+    // Not inputs: the linked crate's build output, a dev-dependency, which is not built into
+    // the owned binary, and a path that only a comment names. (The real engine crates are not
+    // either: the engine's own source hash covers them; `engine.rs` tests that directly.)
     p.write("ws/linked/target/debug/out.rs", "build output");
-    p.write("engine/metaobjects/src/lib.rs", "// v2\n");
     p.write("dev-only/src/lib.rs", "// v2\n");
     p.write("commented-out/src/lib.rs", "// v2\n");
     assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);

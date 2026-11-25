@@ -296,10 +296,10 @@ pub const OWNED_MANIFEST: &str = "codegen/Cargo.toml";
 /// The owned crate's generator list.
 pub const OWNED_MAIN: &str = "codegen/main.rs";
 
-/// The crates whose sources [`ENGINE_SOURCE_HASH`] already covers. A path dependency on one
-/// of them is the engine, counted once as such. The third engine crate, `metaobjects-render`,
-/// is not in that hash, so a path dependency on it is hashed like any other.
-const ENGINE_CRATES: &[&str] = &["metaobjects", "metaobjects-codegen"];
+/// The crate directories [`ENGINE_SOURCE_HASH`] was taken over, as `build.rs` hashed them
+/// (`metaobjects-codegen` and `metaobjects`). A path dependency on one of them is the engine,
+/// counted once as such; any other directory is hashed, `metaobjects-render` included.
+const ENGINE_CRATE_DIRS: &str = env!("METAOBJECTS_ENGINE_CRATE_DIRS");
 
 /// What in a path dependency's directory is not an input: cargo's build output and VCS state.
 const PATH_DEPENDENCY_NOT_INPUTS: &[&str] = &["target", ".git"];
@@ -309,55 +309,55 @@ const PATH_DEPENDENCY_NOT_INPUTS: &[&str] = &["target", ".git"];
 /// one's own manifest and through the workspace a `workspace = true` dependency inherits
 /// from, by the content of its directory. Its version does not move when its code does, and
 /// cargo rebuilds the owned binary from it, so an edit there changes what the owned
-/// generators emit. An engine crate is left out (see [`ENGINE_CRATES`]); a registry or git
+/// generators emit. An engine crate is left out (see [`ENGINE_CRATE_DIRS`]); a registry or git
 /// dependency is named by `codegen/Cargo.toml` itself, which the key already hashes.
 fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
+    let engine: HashSet<PathBuf> = std::env::split_paths(ENGINE_CRATE_DIRS).collect();
     let mut entries = Vec::new();
-    let mut crates: HashSet<PathBuf> = HashSet::new();
-    let mut scanned: HashSet<PathBuf> = HashSet::new();
-    let mut queue = vec![owned_manifest.to_path_buf()];
-    while let Some(manifest) = queue.pop() {
+    // Every manifest queued so far, by canonical path: each is read and scanned once.
+    let mut queued: HashSet<PathBuf> = HashSet::new();
+    let mut queue = Vec::new();
+    let mut enqueue = |manifest: PathBuf, queue: &mut Vec<(PathBuf, String)>| -> Option<String> {
         let manifest = std::fs::canonicalize(&manifest).unwrap_or(manifest);
-        if !scanned.insert(manifest.clone()) {
-            continue;
+        if !queued.insert(manifest.clone()) {
+            return None;
         }
-        let Ok(text) = std::fs::read_to_string(&manifest) else {
-            continue;
-        };
+        let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+        queue.push((manifest, text.clone()));
+        Some(text)
+    };
+    enqueue(owned_manifest.to_path_buf(), &mut queue);
+    while let Some((manifest, text)) = queue.pop() {
         let base = manifest.parent().unwrap_or(Path::new("."));
         let deps = manifest_dependencies(&text);
         if deps.inherits_workspace
             && let Some(root) = workspace_root_manifest(base)
         {
             // The inherited entries' paths live in the root's `[workspace.dependencies]`.
-            queue.push(root);
+            enqueue(root, &mut queue);
         }
         for rel in deps.paths {
             let dir = base.join(&rel);
             let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-            if !crates.insert(dir.clone()) {
+            if engine.contains(&dir) {
                 continue;
             }
-            let dep_manifest = dir.join("Cargo.toml");
-            let Ok(dep_text) = std::fs::read_to_string(&dep_manifest) else {
-                // Cargo will fail on it; until it exists, its absence is the input.
-                entries.push(InputEntry::new(
-                    KIND_GENERATOR,
-                    format!("path-dependency:{rel}"),
-                    ABSENT,
-                ));
+            let Some(dep_text) = enqueue(dir.join("Cargo.toml"), &mut queue) else {
                 continue;
             };
-            let name = manifest_package_name(&dep_text).unwrap_or_else(|| rel.clone());
-            if ENGINE_CRATES.contains(&name.as_str()) {
-                continue;
-            }
+            let name = manifest_package_name(&dep_text).unwrap_or(rel);
+            // A crate with no manifest: cargo will fail on it; until it exists, its absence
+            // is the input.
+            let hash = if dep_text.is_empty() {
+                ABSENT.to_string()
+            } else {
+                hash_tree_except(&dir, PATH_DEPENDENCY_NOT_INPUTS)
+            };
             entries.push(InputEntry::new(
                 KIND_GENERATOR,
                 format!("path-dependency:{name}"),
-                hash_tree_except(&dir, PATH_DEPENDENCY_NOT_INPUTS),
+                hash,
             ));
-            queue.push(dep_manifest);
         }
     }
     entries
@@ -393,16 +393,13 @@ fn manifest_dependencies(text: &str) -> ManifestDependencies {
     let mut in_dependencies = false;
     for line in text.lines().map(|l| strip_toml_comment(l).trim()) {
         if line.starts_with('[') {
-            let header = line
-                .trim_start_matches('[')
-                .split(']')
-                .next()
-                .unwrap_or("")
-                .trim();
-            let mut segments = header.split('.').map(str::trim);
+            let header = line.trim_matches(|c| c == '[' || c == ']').trim();
+            let first = header.split('.').next().map(str::trim);
             in_dependencies = header == "replace"
-                || segments.clone().next() == Some("patch")
-                || segments.any(|s| s == "dependencies" || s == "build-dependencies");
+                || first == Some("patch")
+                || header
+                    .split('.')
+                    .any(|s| matches!(s.trim(), "dependencies" | "build-dependencies"));
             continue;
         }
         if !in_dependencies {
@@ -431,53 +428,43 @@ fn manifest_package_name(text: &str) -> Option<String> {
     None
 }
 
-/// One TOML line without its trailing comment (a `#` outside any string).
-fn strip_toml_comment(line: &str) -> &str {
+/// The characters of one TOML line that sit outside any string, with their byte offsets.
+fn unquoted(line: &str) -> impl Iterator<Item = (usize, char)> + '_ {
     let mut quote: Option<char> = None;
     let mut escaped = false;
-    for (i, c) in line.char_indices() {
+    line.char_indices().filter(move |&(_, c)| {
         match quote {
             Some('"') if escaped => escaped = false,
             Some('"') if c == '\\' => escaped = true,
             Some(q) if c == q => quote = None,
             Some(_) => {}
             None if c == '"' || c == '\'' => quote = Some(c),
-            None if c == '#' => return &line[..i],
-            None => {}
+            None => return true,
         }
+        false
+    })
+}
+
+/// One TOML line without its trailing comment (a `#` outside any string).
+fn strip_toml_comment(line: &str) -> &str {
+    match unquoted(line).find(|&(_, c)| c == '#') {
+        Some((i, _)) => &line[..i],
+        None => line,
     }
-    line
 }
 
 /// The raw text after `key =` on one TOML line, whether the line is `key = v` or an inline
 /// table holding it (`dep = { path = "v", ... }`). Occurrences inside strings are skipped.
 fn toml_key_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let mut quote: Option<char> = None;
-    let mut escaped = false;
-    let mut prev: Option<char> = None;
-    for (i, c) in line.char_indices() {
-        match quote {
-            Some('"') if escaped => escaped = false,
-            Some('"') if c == '\\' => escaped = true,
-            Some(q) if c == q => quote = None,
-            Some(_) => {}
-            None if c == '"' || c == '\'' => quote = Some(c),
-            None => {
-                let bounded = !prev.is_some_and(|p| p.is_alphanumeric() || p == '_' || p == '-');
-                if bounded && line[i..].starts_with(key) {
-                    let after = &line[i + key.len()..];
-                    let next = after.chars().next();
-                    if !next.is_some_and(|n| n.is_alphanumeric() || n == '_' || n == '-')
-                        && let Some(value) = after.trim_start().strip_prefix('=')
-                    {
-                        return Some(value.trim_start());
-                    }
-                }
-            }
+    let ident = |c: char| c.is_alphanumeric() || c == '_' || c == '-';
+    unquoted(line).find_map(|(i, _)| {
+        let bounded = !line[..i].chars().next_back().is_some_and(ident);
+        let after = line[i..].strip_prefix(key)?;
+        if !bounded || after.chars().next().is_some_and(ident) {
+            return None;
         }
-        prev = Some(c);
-    }
-    None
+        after.trim_start().strip_prefix('=').map(str::trim_start)
+    })
 }
 
 /// The string value of `key` on one TOML line: a basic string (`"v"`, with `\\` and `\"`
@@ -1043,5 +1030,46 @@ fn remove_empty_parents(path: &Path, stop: &Path) {
             break;
         }
         cur = dir.parent();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_dependency_on_the_engine_crates_is_left_to_the_engine_hash() {
+        // The directories `build.rs` hashed into ENGINE_SOURCE_HASH: this crate and the loader.
+        let engine = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let scratch =
+            std::env::var_os("DEV_SCRATCH").map_or_else(std::env::temp_dir, PathBuf::from);
+        let dir = scratch.join(format!("mo-engine-path-deps-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let manifest = dir.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            format!(
+                "[dependencies]\nmetaobjects = {{ path = {:?} }}\nmetaobjects-codegen = {{ path = {:?} }}\n",
+                engine.join("../metaobjects"),
+                engine,
+            ),
+        )
+        .unwrap();
+        let entries = path_dependency_entries(&manifest);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(entries, Vec::new());
+    }
+
+    #[test]
+    fn the_line_scan_reads_the_forms_cargo_accepts() {
+        let deps = manifest_dependencies(
+            "[package]\nname = \"x\"\n[[bin]]\npath = \"main.rs\"\n\
+             [dependencies]\na = { path = 'lit' } # path = \"comment\"\nb = { version = \"1\", path = \"b\\\\c\" }\n\
+             c.workspace = true\n[dependencies.d]\npath = \"d\"\n\
+             [target.'cfg(unix)'.build-dependencies]\ne = { path = \"e\" }\n\
+             [dev-dependencies]\nf = { path = \"f\" }\n[patch.crates-io]\ng = { path = \"g\" }\n",
+        );
+        assert_eq!(deps.paths, ["lit", "b\\c", "d", "e", "g"]);
+        assert!(deps.inherits_workspace);
     }
 }
