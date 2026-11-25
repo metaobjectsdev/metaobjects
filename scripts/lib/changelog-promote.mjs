@@ -24,7 +24,7 @@
  */
 export function promoteChangelog(changelog, version, today, subtitle) {
   const head = /## \[Unreleased\]\n([\s\S]*?)^## \[([^\]]+)\]/m.exec(changelog);
-  if (head !== null && head[1].trim() !== "" && head[2] === version) return { text: changelog, action: "split" };
+  if (head !== null && (head[1] ?? "").trim() !== "" && head[2] === version) return { text: changelog, action: "split" };
   const empty = /## \[Unreleased\]\s*\n\s*\n## \[([^\]]+)\] — (\S+)/.exec(changelog);
   if (empty === null) {
     const text = changelog.replace(/## \[Unreleased\]\n/, `## [Unreleased]\n\n## [${version}] — ${today}\n\n${subtitle}\n`);
