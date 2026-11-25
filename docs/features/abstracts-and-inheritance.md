@@ -148,6 +148,9 @@ This means:
 - **Multi-level chains work.** `Author extends BaseEntity extends Auditable`
   flattens to one effective shape. Each level can add children or override
   attrs.
+- **A child replaces an inherited child of the same type and name.** A
+  subclass child whose type and `name` match a child of its base takes that
+  child's place; any other child is added after the inherited ones.
 - **Cross-package references** use fully-qualified names:
   `extends: "shared::auditable"`. Same-package references can use the bare
   name: a bare name binds the declaring file's own package, then the root, and

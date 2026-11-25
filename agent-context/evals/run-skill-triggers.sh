@@ -4,7 +4,8 @@
 #
 # usage: agent-context/evals/run-skill-triggers.sh [OUT_DIR] [extra `claude plugin eval` flags]
 #   OUT_DIR defaults to a fresh temp dir; the scored result is written to OUT_DIR/result.json.
-#   e.g. agent-context/evals/run-skill-triggers.sh /tmp/triggers --case 'metaobjects-codegen/*'
+#   e.g. agent-context/evals/run-skill-triggers.sh /tmp/triggers --eval-dir evals/metaobjects-codegen
+#   (one skill's cases; --case '<glob>' matches a case's directory name, not its path)
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 skills="$here/../skills"

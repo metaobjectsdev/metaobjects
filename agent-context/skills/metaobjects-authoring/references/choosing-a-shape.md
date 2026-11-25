@@ -150,8 +150,9 @@ codegen emit the idiomatic check; don't hand-write a `validator.regex` for it.
 
 ## Extending the metamodel — custom providers, and the downstream lifecycle
 
-The decision procedure at the top of this file governs new vocabulary you register — apply it
-mechanically before registering anything. A would-be subtype that differs from an
+Model the domain semantically first (`semantic-modelling.md`: types, their relationships and
+what stays out of the model). The decision procedure at the top of this file then governs each
+piece of new vocabulary you register — apply it mechanically before registering anything. A would-be subtype that differs from an
 existing one only by a *property* is an **attribute**, not a subtype (a "short
 string" isn't a new field subtype — that is `@maxLength`); a plain string that merely
 needs validating is a **validation attribute**, not a subtype (its native type is

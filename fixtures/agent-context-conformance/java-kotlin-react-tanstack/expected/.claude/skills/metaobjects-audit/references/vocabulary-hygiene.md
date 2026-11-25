@@ -49,7 +49,10 @@ new/custom vocab against the ADR-0037 procedure (advisory) — e.g. *a custom su
 that differs from an existing one only by a property should be an attribute, not a
 subtype*; an email/hostname string-validation is an **attribute** (`@stringFormat`,
 native type unchanged), while a URL or IP is a **native type** (`field.uri` /
-`field.inet`, a subtype). Recommend re-shaping against the ordered test.
+`field.inet`, a subtype). Recommend re-shaping against the ordered test. Also advisory:
+custom vocabulary that names a product, a version or a step, a subtype only one node could
+ever be, or things flattened into list attributes (the `metaobjects-authoring` skill's
+`references/semantic-modelling.md`).
 
 **Hand-rolled reverse-query repository methods (ADR-0038) → recommend the generated reverse
 FK finder.** Reverse navigation — *"find all the rows that reference this one"* — is now

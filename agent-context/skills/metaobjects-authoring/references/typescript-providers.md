@@ -3,6 +3,7 @@
 > Part of the `metaobjects-authoring` skill, "Your own vocabulary". Read it when the project
 > needs a subtype or an attribute the core does not ship, and its TypeScript tools load the
 > metadata.
+> Shape the vocabulary first: `semantic-modelling.md`.
 
 A provider is an object implementing `MetaDataTypeProvider`: an `id`, the provider ids it
 depends on, and a `registerTypes(registry)` body that calls `register` (a new subtype) and

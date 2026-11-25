@@ -18,6 +18,10 @@ This page covers:
 - The cross-port semantic rules (explicit providers bypass ambient discovery)
 - Stable error codes for composition failures
 
+Before you register anything, read [semantic-modelling.md](semantic-modelling.md): how to
+decide what is a type, what is a subtype, and what stays out of the model because a generator
+or its configuration owns it.
+
 For a worked end-to-end walkthrough, see
 [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md).
 For the cross-port API signatures, see each port's quickstart in
@@ -568,7 +572,10 @@ in conformance tests, and in every consumer's mental model.
 > concept at all, converging with core before inventing, and the design rules that
 > make downstream vocabulary age well (protocol/address-free nodes, names-only
 > fail-closed config, the register→extend→promote lifecycle) — see
-> [downstream-metadata-decisions.md](downstream-metadata-decisions.md).
+> [downstream-metadata-decisions.md](downstream-metadata-decisions.md). For a whole
+> domain of your own (several things and how they relate, not one concept on an
+> existing type) start with [semantic-modelling.md](semantic-modelling.md): a thing
+> with facts of its own is a node of its own type there, not an attribute.
 
 ### Default: extend an existing subtype with attrs (`registry.extend`)
 
@@ -757,6 +764,7 @@ root-level), so you do **not** hand-walk the tree in a `validate` hook.
 
 ## See also
 
+- [`semantic-modelling.md`](semantic-modelling.md) — how to shape vocabulary of your own before registering it
 - [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md) — hands-on walkthrough
 - [`../ports/typescript.md`](../ports/typescript.md), [`../ports/csharp.md`](../ports/csharp.md), [`../ports/python.md`](../ports/python.md), [`../ports/java.md`](../ports/java.md), [`../ports/kotlin.md`](../ports/kotlin.md) — per-port quickstarts
 - [`templates-and-payloads.md`](templates-and-payloads.md) — the core
