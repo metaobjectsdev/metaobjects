@@ -20,3 +20,7 @@
   A client that sent a bare `?field=value` and read every row back now gets a 400;
   send `filter[field][eq]=value`. A client that matched the `validation` body of a malformed JSON
   request should match `invalid_json`.
+  The flat-filter path (`FilterParser`, `FilterPredicate`, `FilterParseResult`,
+  `EfCoreFilterDispatch.ApplyFilter` and `Validate<T>(FilterParseResult)`) is now `[Obsolete]` and will be
+  removed in 2.0; a hand-written endpoint moves to `ListQueryParser.Parse`, `EfCoreFilterDispatch.Apply`
+  and `Validate<T>(ListQuery)`.

@@ -20,4 +20,5 @@ namespace MetaObjects.AspNetCore;
 /// <c>in</c>, a <see langword="bool"/> for <c>isNull</c>. The dispatcher is
 /// responsible for any further conversion to the column type.
 /// </param>
+[System.Obsolete("Use the FilterNode tree from ListQueryParser.Parse. Will be removed in 2.0.")]
 public sealed record FilterPredicate(string Field, string Op, object? Value);

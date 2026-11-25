@@ -20,6 +20,7 @@ namespace MetaObjects.AspNetCore;
 /// <c>filter[&lt;field&gt;]=&lt;value&gt;</c> sugar form for <c>eq</c>) against
 /// a per-entity allowlist.
 /// </summary>
+[System.Obsolete("Use ListQueryParser.Parse, which reads the whole REST-standard list query. Will be removed in 2.0.")]
 public static class FilterParser
 {
     /// <summary>Sentinel returned by <see cref="CoerceValue"/> on a parse failure.</summary>

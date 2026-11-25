@@ -343,7 +343,7 @@ public class TphM2mRoutesTests
         // The routes file's `using MetaObjects.AspNetCore;` (FilterParser,
         // EfCoreFilterDispatch) lives in this same assembly — a project reference, so it
         // is not on TRUSTED_PLATFORM_ASSEMBLIES.
-        paths.Add(typeof(MetaObjects.AspNetCore.FilterParser).Assembly.Location);
+        paths.Add(typeof(MetaObjects.AspNetCore.ListQueryParser).Assembly.Location);
         var refs = paths.Where(File.Exists)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
 

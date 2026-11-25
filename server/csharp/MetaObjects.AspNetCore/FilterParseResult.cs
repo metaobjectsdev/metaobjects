@@ -25,6 +25,7 @@ namespace MetaObjects.AspNetCore;
 /// <c>invalid_filter_value</c>) — the caller must not have to guess which of
 /// several filters was rejected.
 /// </param>
+[System.Obsolete("Use ListQueryResult from ListQueryParser.Parse. Will be removed in 2.0.")]
 public sealed record FilterParseResult(
     System.Collections.Generic.IReadOnlyList<FilterPredicate> Predicates,
     string? ErrorEnvelope,

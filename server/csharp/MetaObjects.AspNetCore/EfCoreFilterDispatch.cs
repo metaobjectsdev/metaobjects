@@ -36,17 +36,16 @@ namespace MetaObjects.AspNetCore;
 /// </summary>
 public static class EfCoreFilterDispatch
 {
+    [Obsolete("Use EfCoreFilterDispatch.Apply with the ListQuery from ListQueryParser.Parse. Will be removed in 2.0.")]
     public static IQueryable<T> ApplyFilter<T>(
         IQueryable<T> source,
         IReadOnlyList<FilterPredicate> predicates,
         IReadOnlyDictionary<string, string>? propertyByField = null) where T : class
     {
         if (predicates is null || predicates.Count == 0) return source;
+        var x = Expression.Parameter(typeof(T), "x");
         foreach (var p in predicates)
-        {
-            var lambda = BuildLambda<T>(p, propertyByField);
-            source = source.Where(lambda);
-        }
+            source = source.Where(Expression.Lambda<Func<T, bool>>(LeafBody(x, typeof(T), p.Field, p.Op, p.Value, propertyByField), x));
         return source;
     }
 
@@ -60,6 +59,7 @@ public static class EfCoreFilterDispatch
     /// duration operand with the duration wire grammar (<see cref="DurationWire.TryParse"/>).
     /// A failed parse result is returned unchanged.
     /// </summary>
+    [Obsolete("Use EfCoreFilterDispatch.Validate<T>(ListQuery) with the ListQuery from ListQueryParser.Parse. Will be removed in 2.0.")]
     public static FilterParseResult Validate<T>(FilterParseResult parsed, IReadOnlyDictionary<string, string>? propertyByField = null)
     {
         if (parsed.ErrorEnvelope is not null) return parsed;
@@ -67,7 +67,7 @@ public static class EfCoreFilterDispatch
         {
             if (p.Op is "isNull" or "like") continue;
             var prop = ResolveProperty(typeof(T), p.Field, propertyByField);
-            if (prop is null) continue; // the allowlist gate upstream guarantees a match; BuildLambda reports a miss
+            if (prop is null) continue; // the allowlist gate upstream guarantees a match; LeafBody reports a miss
             var memberType = prop.PropertyType;
             var underlying = Nullable.GetUnderlyingType(memberType) ?? memberType;
             try
@@ -83,16 +83,6 @@ public static class EfCoreFilterDispatch
             }
         }
         return parsed;
-    }
-
-    /// <summary>
-    /// Build an <c>Expression&lt;Func&lt;T, bool&gt;&gt;</c> for a single predicate
-    /// against the resolved CLR property of <typeparamref name="T"/>.
-    /// </summary>
-    private static Expression<Func<T, bool>> BuildLambda<T>(FilterPredicate p, IReadOnlyDictionary<string, string>? propertyByField)
-    {
-        var x = Expression.Parameter(typeof(T), "x");
-        return Expression.Lambda<Func<T, bool>>(LeafBody(x, typeof(T), p.Field, p.Op, p.Value, propertyByField), x);
     }
 
     /// <summary>

@@ -152,8 +152,13 @@ public class DecimalWireTests
 
     public sealed class Row { public decimal Amount { get; set; } public int Count { get; set; } }
 
-    private static FilterParseResult Check(string field, string op, object value) =>
-        EfCoreFilterDispatch.Validate<Row>(FilterParseResult.Ok([new FilterPredicate(field, op, value)]));
+    private static ListQueryError? Check(string field, string op, object value) =>
+        EfCoreFilterDispatch.Validate<Row>(new ListQuery(new FilterLeaf(field, op, value), null, null, null, null));
+
+    private static List<object> Many(params string[] items) => items.Cast<object>().ToList();
+
+    private static string? FieldOf(ListQueryError error) =>
+        (string?)error.Details.Single(d => d.Key == "field").Value;
 
     [Theory]
     [InlineData("amount", "eq", "abc")]
@@ -166,17 +171,18 @@ public class DecimalWireTests
     public void A_malformed_operand_is_invalid_filter_value_naming_the_field(string field, string op, string operand)
     {
         var r = Check(field, op, operand);
-        Assert.Equal("invalid_filter_value", r.ErrorEnvelope);
-        Assert.Equal(field, r.Field);
+        Assert.NotNull(r);
+        Assert.Equal("invalid_filter_value", r!.Error);
+        Assert.Equal(field, FieldOf(r));
     }
 
     [Fact]
     public void A_good_operand_passes_and_an_in_list_is_checked_element_wise()
     {
-        Assert.Null(Check("amount", "eq", "12345678901234567.89").ErrorEnvelope);
-        Assert.Null(Check("amount", "gte", "1e-7").ErrorEnvelope);
-        Assert.Null(Check("amount", "in", new List<string> { "1", "2.50" }).ErrorEnvelope);
-        Assert.Equal("invalid_filter_value", Check("amount", "in", new List<string> { "1", "x" }).ErrorEnvelope);
+        Assert.Null(Check("amount", "eq", "12345678901234567.89"));
+        Assert.Null(Check("amount", "gte", "1e-7"));
+        Assert.Null(Check("amount", "in", Many("1", "2.50")));
+        Assert.Equal("invalid_filter_value", Check("amount", "in", Many("1", "x"))?.Error);
     }
 
     [Fact]
