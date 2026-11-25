@@ -223,7 +223,7 @@ route, not metamodel semantics.
 The **`in`-list size cap** (reject an `in` list longer than 100 → HTTP 400) is a
 safety limit, not a feature, and every port enforces it: TypeScript
 (`DEFAULT_MAX_IN_LIST` in the `runtime-ts` list parser), Python (`MAX_IN_LIST`),
-Java (`FilterParser.MAX_IN_LIST`), C# (`FilterParser.MaxInList`) and Kotlin (a generated
+Java (`FilterParser.MAX_IN_LIST`), C# (`ListQueryParser.DefaultMaxInList`) and Kotlin (a generated
 file-private constant that matches the TypeScript default).
 
 ### Error responses for a bad request or a failed write
