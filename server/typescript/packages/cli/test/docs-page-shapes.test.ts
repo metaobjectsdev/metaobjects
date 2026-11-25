@@ -114,7 +114,7 @@ describe("docs page rows are the docs site's rows", () => {
         skipRedundantChecks: false,
         foreignKeyIndexes: false,
         foreignKeyTargets: "refuse",
-      });
+      }, false); // the migrate choice only words the page; the rows do not depend on it
       expect(schema).toBeDefined();
       const file = JSON.parse(
         serializeSnapshot({ tables: [...(schema?.tables ?? [])], views: [...(schema?.views ?? [])] } as never),

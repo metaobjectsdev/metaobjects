@@ -88,7 +88,7 @@ async function outputsOf(root: MetaRoot, migrate: boolean): Promise<Map<string, 
       // that is all a port without the expected schema has.
       const rowsLayer = schemaRows(schema);
       out.set("rows/schema.json", json(rowsLayer));
-      expect(agentSchemaPageData(root, schemaInputFromRows(rowsLayer), naming, { physical: false })).toEqual(data);
+      expect(agentSchemaPageData(root, schemaInputFromRows(rowsLayer, migrate), naming, { physical: false })).toEqual(data);
     }
   }
   return out;

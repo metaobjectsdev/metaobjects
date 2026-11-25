@@ -53,6 +53,12 @@ def test_embedded_copy_matches_the_repo_root_tree() -> None:
 
 @pytest.mark.parametrize("stack", PYTHON_STACKS, ids=lambda s: s["id"])
 def test_every_python_stack_equals_the_tree_after_link_pinning(stack: dict[str, object], tmp_path: Path) -> None:
+    if stack.get("migration"):
+        # A `-migrate` stack is chosen by the project config, not by a flag.
+        (tmp_path / ".metaobjects").mkdir()
+        (tmp_path / ".metaobjects" / "config.json").write_text(
+            '{"schema_version": 1, "migrate": {"dialect": "postgres"}}\n', encoding="utf-8"
+        )
     run_agent_docs(
         servers=list(stack["servers"]), clients=list(stack["clients"]),  # type: ignore[call-overload]
         out=tmp_path, wire_root=False, version=RELEASE,
@@ -63,7 +69,7 @@ def test_every_python_stack_equals_the_tree_after_link_pinning(stack: dict[str, 
         .replace(f"{prefix}{ref}/", f"{prefix}v{RELEASE}/")
         for f in stack["files"]  # type: ignore[attr-defined]
     }
-    assert _without_manifest(_tree(tmp_path)) == expected
+    assert {k: v for k, v in _without_manifest(_tree(tmp_path)).items() if k != ".metaobjects/config.json"} == expected
 
 
 def test_the_shared_golden_is_reproduced_byte_for_byte(tmp_path: Path) -> None:

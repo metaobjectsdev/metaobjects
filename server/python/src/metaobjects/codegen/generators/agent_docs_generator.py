@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from metaobjects.config.neutral_config import chose_migrate_dialect
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.render.doc_pages import doc_provider, end_with_one_newline, render_doc_page
 from metaobjects.render.verify import Provider
@@ -26,7 +27,11 @@ from ..runtime.docs_requirements import (
     REQUIREMENTS_PAGE_REF,
     agent_requirements_page_data,
 )
-from ..runtime.docs_schema import AGENT_SCHEMA_PAGE_REF, agent_schema_page_data, schema_rows
+from ..runtime.docs_schema import (
+    AGENT_SCHEMA_PAGE_REF,
+    agent_schema_page_data,
+    schema_rows,
+)
 
 DEFAULT_AGENT_DIR = "agent"
 
@@ -52,7 +57,9 @@ class AgentDocsGenerator:
         root = ctx.loaded_root
         files: list[EmittedFile] = []
 
-        schema_data = agent_schema_page_data(root, schema_rows(root))
+        # `.metaobjects/config.json` is already part of the run's skip key (cli `_skip_identity`).
+        has_migrate = chose_migrate_dialect(ctx.config.project_root)
+        schema_data = agent_schema_page_data(root, schema_rows(root), has_migrate)
         if schema_data is not None:
             path = f"{self._dir}/schema.md"
             page = render_doc_page(AGENT_SCHEMA_PAGE_REF, schema_data, self._provider, path)

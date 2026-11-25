@@ -29,6 +29,7 @@ from metaobjects.codegen.runtime.docs_requirements import (
     toon_cell,
 )
 from metaobjects.codegen.runtime.docs_schema import agent_schema_page_data, schema_rows
+from metaobjects.config.neutral_config import chose_migrate_dialect
 from metaobjects.render.doc_pages import doc_provider, render_doc_page
 
 
@@ -63,10 +64,11 @@ def _json(expected: dict[str, str], path: str) -> Any:
     return json.loads(expected[path])
 
 
-def _ctx(root) -> GenContext:
+def _ctx(root, project_root: Path) -> GenContext:
     from metaobjects.codegen.config import GenConfig
 
-    return GenContext(entities=[], loaded_root=root, matches=lambda _e: True, config=GenConfig(out_dir="out"), warn=lambda _m: None)
+    config = GenConfig(out_dir="out", project_root=str(project_root))
+    return GenContext(entities=[], loaded_root=root, matches=lambda _e: True, config=config, warn=lambda _m: None)
 
 
 def test_the_corpus_is_not_empty() -> None:
@@ -101,13 +103,13 @@ def test_rows_data_and_bytes(case: str) -> None:
         assert agent == _json(expected, "data/agent-requirements.md.json"), "agent requirements data"
 
     srows = schema_rows(root)
-    data = agent_schema_page_data(root, srows)
+    data = agent_schema_page_data(root, srows, chose_migrate_dialect(CORPUS / case / "input"))
     if data is not None:
         assert srows == _json(expected, "rows/schema.json"), "schema rows"
         assert data == _json(expected, "data/agent-schema.md.json"), "schema page data"
 
     # The generators write exactly the pinned pages, byte for byte (the set is pinned too).
-    ctx = _ctx(root)
+    ctx = _ctx(root, CORPUS / case / "input")
     written = {f.path: f.content for f in RequirementsGenerator().generate(ctx)}
     written.update({f.path: f.content for f in AgentDocsGenerator().generate(ctx)})
     pages = {k: v for k, v in expected.items() if not k.startswith(("data/", "rows/"))}
@@ -144,6 +146,6 @@ def test_a_project_template_overrides_the_bundled_page(tmp_path: Path) -> None:
     override = tmp_path / "requirements"
     override.mkdir()
     (override / "requirements.toon.mustache").write_text("custom {{{count}}}", encoding="utf-8")
-    files = {f.path: f.content for f in RequirementsGenerator(template_root=str(tmp_path)).generate(_ctx(root))}
+    files = {f.path: f.content for f in RequirementsGenerator(template_root=str(tmp_path)).generate(_ctx(root, CORPUS / "ledger-unclaimed" / "input"))}
     assert files["requirements.toon"] == "custom 1"
     assert files["requirements.md"].startswith("# Requirements")

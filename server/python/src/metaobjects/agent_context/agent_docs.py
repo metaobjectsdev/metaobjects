@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from metaobjects.config.neutral_config import chose_migrate_dialect
+
 from .scaffold import (
     AGENT_CONTEXT_MANIFEST_PATH,
     Manifest,
@@ -109,7 +111,9 @@ def run_agent_docs(
         else:
             servers = [DEFAULT_SERVER]
     tree = load_shipped()
-    assembled = materialize(tree, servers, clients, docs_ref_for_version(version))
+    # Read from the project config on every run, as TypeScript does at init and refresh.
+    migration = chose_migrate_dialect(out)
+    assembled = materialize(tree, servers, clients, docs_ref_for_version(version), migration)
     decision = plan_scaffold(
         assembled=assembled,
         prior=prior,

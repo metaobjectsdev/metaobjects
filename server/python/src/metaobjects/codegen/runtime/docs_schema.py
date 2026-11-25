@@ -18,7 +18,7 @@ from typing import Any
 
 from metaobjects.codegen.instance_artifacts import is_abstract
 from metaobjects.codegen.model_walk import is_required
-from .docs_requirements import GENERATED_MARKER, locale_sorted
+from .docs_requirements import GENERATED_MARKER
 from metaobjects.codegen.type_map import effective_enum_values
 from metaobjects.documentation.doc_constants import DOC_ATTR_DESCRIPTION
 from metaobjects.meta.core.field import field_constants as fc
@@ -412,9 +412,12 @@ def _enum_rows(objects: list[MetaObject]) -> list[dict[str, str]]:
     return rows
 
 
-def agent_schema_page_data(root: MetaData, rows: dict[str, Any]) -> dict[str, Any] | None:
+def agent_schema_page_data(
+    root: MetaData, rows: dict[str, Any], has_migrate: bool = False
+) -> dict[str, Any] | None:
     """The data ``agent/schema.md.mustache`` renders (``physical: false``), built from the rows
-    and the model alone. ``None`` when there is no table and no view: no page."""
+    and the model alone. ``has_migrate``: the project chose a ``meta migrate`` dialect
+    (``metaobjects.config.neutral_config.chose_migrate_dialect``). ``None`` when there is no table and no view: no page."""
     if not rows["tables"] and not rows["views"]:
         return None
     objects = _objects(root)
@@ -460,7 +463,7 @@ def agent_schema_page_data(root: MetaData, rows: dict[str, Any]) -> dict[str, An
     )
 
     tables = []
-    for table in locale_sorted(rows["tables"], lambda t: t["name"]):
+    for table in sorted(rows["tables"], key=lambda t: t["name"]):
         key = row_key(table["name"], table.get("schema"))
         mapping = declared_by.get(key, {})
         described = [c for c in table["columns"] if c.get("description", "") != ""]
@@ -495,7 +498,7 @@ def agent_schema_page_data(root: MetaData, rows: dict[str, Any]) -> dict[str, An
         tables.append(entry)
 
     views = []
-    for view in locale_sorted(rows["views"], lambda v: v["name"]):
+    for view in sorted(rows["views"], key=lambda v: v["name"]):
         key = row_key(view["name"], view.get("schema"))
         lineage = view_lineage.get(key, [])
         entry = {"heading": f"`{key}`"}
@@ -510,6 +513,7 @@ def agent_schema_page_data(root: MetaData, rows: dict[str, Any]) -> dict[str, An
         "physical": False,
         "dialect": "",
         "descriptionNudge": not any_description and len(rows["tables"]) > 0,
+        "hasMigrate": has_migrate,
         "hasTables": len(tables) > 0,
         "tables": tables,
         "hasViews": len(views) > 0,

@@ -25,6 +25,7 @@ import {
   effectiveRequirementPackage,
 } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaRequirement } from "@metaobjectsdev/metadata";
+import { compareCodeUnits } from "./code-unit-order.js";
 
 /** The shape an app's `filter` receives. Never the node itself. */
 export interface RequirementView {
@@ -363,9 +364,6 @@ export function requirementTestIdentity(
   };
 }
 
-// Code units, never localeCompare: a collation differs between machines and between
-// language ports, and these orders are pinned by a corpus all five ports run.
-const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * Every test the generator would emit for the project's ledger, sorted by id. Pass the

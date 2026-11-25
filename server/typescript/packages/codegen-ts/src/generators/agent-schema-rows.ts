@@ -104,11 +104,14 @@ export function schemaRows(input: AgentSchemaInput): SchemaRows {
  * The page builder's input rebuilt from rows alone: what a port without the expected schema
  * hands `agentSchemaPageData` with `physical: false`. It carries no dialect, no index, no
  * check and no constraint name, and asking it for a SQL type throws, so a model-only page that
- * reached for a dialect fact fails loudly instead of printing one.
+ * reached for a dialect fact fails loudly instead of printing one. `migrate` is a project fact,
+ * not a row: whether the project chose a `meta migrate` dialect (`migrate.dialect` in
+ * `.metaobjects/config.json`).
  */
-export function schemaInputFromRows(rows: SchemaRows): AgentSchemaInput {
+export function schemaInputFromRows(rows: SchemaRows, migrate: boolean): AgentSchemaInput {
   return {
     dialect: "",
+    migrate,
     tables: rows.tables.map((t) => ({
       ...t,
       columns: t.columns.map((c) => ({ ...c })),

@@ -16,7 +16,7 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 
 #: The manifest shape this port understands.
-SHIPPED_SCHEMA = 1
+SHIPPED_SCHEMA = 2
 #: Canonical order of server languages and clients inside a stack id.
 SERVER_LANGS = ("typescript", "java", "kotlin", "csharp", "python", "rust")
 CLIENT_FRAMEWORKS = ("react", "tanstack", "angular")
@@ -95,18 +95,24 @@ def canonical_stack(servers: list[str], clients: list[str]) -> tuple[list[str], 
     return out_servers, out_clients
 
 
-def shipped_stack_id(servers: list[str], clients: list[str]) -> str:
-    """Server languages then clients, each in canonical order, joined by ``-``."""
-    return "-".join(
+#: The id suffix of a stack shipped with the reference migration helper's steps.
+MIGRATION_SUFFIX = "-migrate"
+
+
+def shipped_stack_id(servers: list[str], clients: list[str], migration: bool = False) -> str:
+    """Server languages then clients, each in canonical order, joined by ``-``; then
+    ``-migrate`` when the project chose a ``meta migrate`` dialect."""
+    base = "-".join(
         [s for s in SERVER_LANGS if s in servers] + [c for c in CLIENT_FRAMEWORKS if c in clients]
     )
+    return base + MIGRATION_SUFFIX if migration else base
 
 
 def materialize(
-    tree: ShippedTree, servers: list[str], clients: list[str], docs_ref: str
+    tree: ShippedTree, servers: list[str], clients: list[str], docs_ref: str, migration: bool = False
 ) -> dict[str, str]:
     """The stack's files, ``{path: contents}``, with every guide link pinned to ``docs_ref``."""
-    stack_id = shipped_stack_id(servers, clients)
+    stack_id = shipped_stack_id(servers, clients, migration)
     entry = tree.stack_entry(stack_id)
     if entry is None:
         raise ShippedContextError(

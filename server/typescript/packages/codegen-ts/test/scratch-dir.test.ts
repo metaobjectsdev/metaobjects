@@ -41,7 +41,10 @@ describe("scratch-dir", () => {
         const state = (await import("node:fs")).readdirSync(${JSON.stringify(root)}).filter((n) => n.startsWith("meta-gen-state-"));
         if (state.length !== 1) throw new Error("expected the run's gen-state while the process runs, found " + (await import("node:fs")).readdirSync(${JSON.stringify(root)}).join(","));
       `;
-      const child = Bun.spawnSync(["bun", "-e", script], { env: { ...process.env, DEV_SCRATCH: root }, stderr: "pipe" });
+      // `bun -e` resolves bare imports from its cwd: pin it to this package, so the test passes
+      // from the repo root, `server/typescript` or the package alike.
+      const cwd = resolve(import.meta.dir, "..");
+      const child = Bun.spawnSync(["bun", "-e", script], { cwd, env: { ...process.env, DEV_SCRATCH: root }, stderr: "pipe" });
       expect({ exit: child.exitCode, stderr: child.stderr.toString() }).toEqual({ exit: 0, stderr: "" });
       expect(existsSync(join(root, "out", "one.txt"))).toBe(true);
       expect(readdirSync(root).filter((n) => n.startsWith("meta-gen-"))).toEqual([]);
