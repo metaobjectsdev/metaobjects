@@ -55,6 +55,23 @@ function vaultsInScope(ctx: GenContext): Vault[] {
 /** Runs already checked for misplaced setting attributes (a run shares one `entities` array): warn once per run, whichever generators run. */
 const checked = new WeakSet<object>();
 
+/**
+ * The settings and the vaults in one error: each reader stops at its own first problem, so
+ * reading them one after the other would name only the settings when the vault is also wrong.
+ */
+function checkModel(ctx: GenContext): void {
+  const problems: string[] = [];
+  for (const read of [() => readSettings(scopedObjects(ctx)), () => vaultsInScope(ctx)]) {
+    try {
+      read();
+    } catch (e) {
+      if (!(e instanceof ConfigModelError)) throw e;
+      problems.push(...e.problems);
+    }
+  }
+  if (problems.length > 0) throw new ConfigModelError(problems);
+}
+
 function generator(name: string, opts: ConfigGeneratorOptions, generate: (ctx: GenContext) => EmittedFile[]): Generator {
   return {
     name,
@@ -64,6 +81,7 @@ function generator(name: string, opts: ConfigGeneratorOptions, generate: (ctx: G
         checked.add(ctx.entities);
         for (const w of misplacedSettingAttrs(scopedObjects(ctx))) ctx.warn(`${PACKAGE}: ${w}`);
       }
+      checkModel(ctx);
       return generate(ctx);
     },
   };

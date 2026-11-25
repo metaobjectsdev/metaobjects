@@ -111,6 +111,17 @@ describe("config pack generators", () => {
     expect((await render([keysAxiTomlFile({ vault: "b" })], twoVaults)).get(".keys-axi.toml")).toContain('scope = "pb"');
   });
 
+  test("a run with a settings problem and a vault problem fails once, naming both", async () => {
+    const both = { "metadata.root": { package: "acme::app", children: [
+      { "object.settings": { name: "Db", children: [{ "field.string": { name: "url", "@secret": true, "@default": "x" } }] } },
+      { "vault.infisical": { name: "keys", "@defaultScope": "nope", children: [{ "scope.env": { name: "dev", "@project": "p" } }] } },
+    ] } };
+    const error = await render([envExampleFile(), keyManifestFile(), keysAxiTomlFile()], both).then(() => null, (e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("acme::app::Db.url: a @secret setting may not declare @default");
+    expect((error as Error).message).toContain('@defaultScope "nope" names no scope.env');
+  });
+
   test("a model with no settings and no vault writes none of the files", async () => {
     const entityOnly = { "metadata.root": { package: "acme::app", children: [
       { "object.entity": { name: "Customer", children: [{ "field.long": { name: "id" } }, { "identity.primary": { name: "id", "@fields": "id" } }] } },
