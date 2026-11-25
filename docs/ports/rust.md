@@ -6,8 +6,8 @@ same shared conformance corpora as the other five ports. Its command, `cargo met
 codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen`, `verify --templates` and `eject`. Eleven
 generators ship, from the model crate through the store, the rules, the service and its axum routes
 to a typed client and its commands, and a project chooses which of them run in
-`metaobjects.config.json`. A generated service passes the shared API-contract corpus over HTTP
-(see [Conformance](#conformance)); [`examples/rust-service/`](../../examples/rust-service/README.md)
+`metaobjects.config.json`. A generated service passes 77 scenarios of the shared API-contract corpus
+over HTTP (see [Conformance](#conformance)); [`examples/rust-service/`](../../examples/rust-service/README.md)
 is a whole app built that way. The four crates are **ready to publish but not published**: they package and
 build from their packages (a `cargo publish --dry-run` runs in the `rust` lane), and there is no release
 on crates.io yet, so there is nothing to `cargo add` or `cargo install` from a registry. You work from a
@@ -467,7 +467,7 @@ check nothing of the rules themselves. Each entity gets `GET` and `POST` on `/<p
 `method_not_allowed`.
 
 The list query is the REST standard every port serves: `filter[<field>][<op>]=` with the nine
-operators and `or`/`and` groups, `q` searching the search fields, `sort=<field>:asc|desc`,
+operators and `or`/`and` groups, `search=<term>` over the search fields, `sort=<field>:asc|desc`,
 `limit` and `offset` (page size 50 unless `api.pagination` says otherwise; a limit over its `maxLimit`
 is a 400 `limit_too_large`), and `withCount=true` for the total. The allowlist is the model's: a field is filterable
 with `@filterable`, sortable with `@sortable` (or, with no `@sortable`, when it is filterable), and a
@@ -475,7 +475,7 @@ field with a password view is neither. Every refusal is a named 400 (`invalid_fi
 `invalid_sort`, `pagination.invalid_value`, and the rest of `fixtures/list-query-conformance/`). A body is
 checked before the service sees it: `invalid_json`, `unknown_fields` (unless `api.unknownFields`
 is `drop`), `validation` with every issue, and `constraint_violation` for a unique key the store
-refused. A credential field (one with a password view) is written but never returned, on any route.
+refused. A credential field (one with a password view) is never written or returned by a route: a body key naming it is ignored, and no response carries it.
 
 An entity whose source has a read-only view beside its table (`source.rdb @kind: view` in the read
 role) is written to the table and read back through the view, so the fields that view derives
@@ -498,8 +498,9 @@ codegen/
 While that crate exists, `cargo meta gen` and `cargo meta verify` build and run it, so there is still
 one way to generate. A copy is the shipped source byte for byte, and it imports only the engine
 surface (`metaobjects_codegen::{emitted, generator, names, plan, writer}`); the shared text a generator
-writes (the transport, the command helpers) is inside the generator, so an owned `client` owns its
-transport too. Every file in `codegen/` is an input of the skip key, whether `eject` wrote it or you
+writes (the transport, the command helpers, the store, the service and HTTP mechanics) comes from the
+engine's `emitted` module, so an owned copy that wants it different edits the function that writes that
+crate (`transport_crate` in an owned `client`) or overrides that piece. Every file in `codegen/` is an input of the skip key, whether `eject` wrote it or you
 added it (a module beside the generator list, say), so editing any of them regenerates. Only the
 crate's build directory (`codegen/target`) and its `Cargo.lock` are left out. A crate it depends on by
 `path` (a linked checkout of a pack's generators, say), in a build table or a `[patch]`, is an input
@@ -508,9 +509,10 @@ too, followed through that crate's own path dependencies and the workspace it in
 already covers their source; a path dependency on `metaobjects-render` is hashed like any other.
 
 An owned generator need not be a copy. Each shipped generator has a parts trait (`EntityParts`,
-`ClientParts`, `CommandsParts`, `RenderHelperParts`, `OutputParserParts`, `OutputPromptParts`) with
-one default method per piece of its output (a crate's manifest, its `lib.rs`, one entity's file, one
-item), and a generator of your own implements it, overrides the piece it changes and returns
+`ClientParts`, `CommandsParts`, `RenderHelperParts`, `OutputParserParts`, `OutputPromptParts`,
+`RulesNamesParts`, `ContractTypesParts`, `RepositoryParts`, `ServiceParts` and `ServiceRoutesParts`)
+with one default method per piece of its output (a crate's manifest, its `lib.rs`, one entity's file,
+one item). A generator of your own implements it, overrides the piece it changes and returns
 `self.render(ctx)` from `generate`; every other file is the shipped generator's, byte for byte. An
 override can call the shipped piece, a public function of the same module and name. The traits carry
 the same no-stability caveat as the rest of the engine API (ADR-0063 item 7).
@@ -556,7 +558,7 @@ outright.
 | `decimal-wire`, `duration-wire` | every vector, against the code the support crate carries |
 | `writer-conformance` | every `core` and `rust` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)); each `rust` case is a rustfmt fixed point |
 | `template-output-render-conformance` | the welcome page and email, the nested payload and the cross-package payloads, rendered through generated `render-helper` crates that a probe builds; the drift cases fail `gen`, and a body edited after generation fails the render |
-| `verify-conformance` | all 45 cases through `cargo meta verify --templates`'s check. Two (`verify-set-delimiter-clean`, `verify-set-delimiter-drift`) carry a Rust expectation file, as other ports' files do where their engine reads a set-delimiter tag differently. |
+| `verify-conformance` | all 45 cases, through `metaobjects_render::verify`, the check `cargo meta verify --templates` runs, with no ledgered case and no Rust expectation file |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
 | `render-conformance` | every case but the three the ledger holds — `render-shadowed-dotted-prefix`, `render-list-length`, `render-zero-falsiness` (`mustache-ng` has its own name lookup, data model and truthiness); a ledgered case must still differ, the rest render byte-identical through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
 | `response-verify-conformance` | all 7 cases: the reply check the template gate adds — `ERR_RESPONSE_UNRESOLVED`, and, for an xml prompt, `ERR_RESPONSE_TAG_UNDECLARED` |

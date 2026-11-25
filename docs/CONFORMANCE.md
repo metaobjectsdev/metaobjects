@@ -28,7 +28,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 |---|---|---|---|---|---|---|---|
 | [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 584 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ | ✓ (584 / 584, empty ledger) |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 19 | 19 / 19 | 19 / 19 | inherits via Java | 18 / 19 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 19 / 19 | 18 / 19 (1 ledgered: `yaml-ref-root-escape`, the ADR-0059 root-level `::` rules) |
-| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ | ✓ (two set-delimiter cases carry a `.rust.json` expectation) |
+| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 45 | ✓ | ✓ | inherits via Java | ✓ | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ | — |
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 26 | ✓ | ✓ | inherits via Java | 25 / 26 (1 ledgered: `render-shadowed-dotted-prefix`, Stubble stops a dotted name at the first context holding its first segment) | ✓ | 23 / 26 (3 ledgered: `render-shadowed-dotted-prefix`, `render-list-length`, `render-zero-falsiness`, `mustache-ng`'s lookup, data model and truthiness) |
 | [`fixtures/jinja-render-conformance/`](../fixtures/jinja-render-conformance/) (ADR-0061 — Jinja bodies render the same in jinja2 and nunjucks) | 16 | ✓ (nunjucks) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | refuses, via Java | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) | ✓ (jinja2) | refuses Jinja (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`) |
