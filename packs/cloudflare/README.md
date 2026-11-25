@@ -119,8 +119,9 @@ environment, `@main`, `@workersDev`, assets or an inheritable `@extra` key set i
 environments and not others (Wrangler would fill the gap from the top level), an `@extra` that is
 not a JSON object or sets a generated key, two environments deploying one Worker, one app deployed
 both as a Worker and as a Pages site, a Pages deployment that reads a secret when the model does
-not say which branch is the production branch, two Pages deployments that read secrets and serve
-one Pages environment, several apps without `app`, and several environments with no top level.
+not say which branch is the production branch, two Pages deployments that serve one Pages
+environment and read their secrets from different vault scopes, several apps without `app`, and
+several environments with no top level.
 
 ### Wiring
 

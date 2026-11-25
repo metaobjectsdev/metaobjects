@@ -154,7 +154,7 @@ describe("a Worker with a cron, D1, R2 and rate limiters (wrangler.toml)", () =>
     expect(runner).toContain(`VAULT_PROJECT=${d.vaultProject} VAULT_ENV=${d.vaultEnv} TOKEN=${d.token}`);
     expect(runner).toContain("exec env -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_KEY -u CLOUDFLARE_API_TOKEN");
     expect(runner).toContain('--only "$TOKEN" CLOUDFLARE_ACCOUNT_ID');
-    expect(runner).toContain('export CLOUDFLARE_API_TOKEN="${!1:?');
+    expect(runner).toContain('export CLOUDFLARE_API_TOKEN="${!1}"');
     expect(runner).toContain(': "${CLOUDFLARE_ACCOUNT_ID:?');
   });
 });

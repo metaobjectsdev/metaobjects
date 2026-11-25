@@ -309,6 +309,11 @@ function vaultPlace(ref: string, env: string, attr: string, ctx: Context, where:
   return undefined;
 }
 
+/** A vault scope as the model names it: its vault, its name and its place in the store. */
+function describeScope(place: VaultPlace): string {
+  return `vault ${place.key} scope ${place.scope.name} (${place.scope.project}/${place.scope.env})`;
+}
+
 /** The deployment of `app` in `env` among the Cloudflare deployments, if any. */
 function deploymentOf(app: MetaData, env: MetaData, all: readonly MetaData[]): MetaData | undefined {
   return all.find((d) => {
@@ -804,15 +809,17 @@ export function readCloudflare(
         problems.push(`${appKeyOf(app)}: ${what} is set in ${workers.filter((d) => get(d) !== undefined).map((d) => d.environment).join(", ")} and not in ${unset.map((d) => d.environment).join(", ")}; Wrangler would fill the gap from the top level, so set it in every environment or none`);
     }
   } else {
-    const serving = new Map<PagesEnvironment, string>();
+    const serving = new Map<PagesEnvironment, { readonly key: string; readonly vault: VaultPlace }>();
     for (const d of deployments as PagesDeployment[]) {
-      if (d.secrets.length === 0 || d.pagesEnvironment === undefined) continue;
+      if (d.secrets.length === 0 || d.pagesEnvironment === undefined || d.vault === undefined) continue;
       const other = serving.get(d.pagesEnvironment);
-      if (other === undefined) serving.set(d.pagesEnvironment, d.key);
-      else
+      if (other === undefined) {
+        serving.set(d.pagesEnvironment, { key: d.key, vault: d.vault });
+      } else if (other.vault.key !== d.vault.key || other.vault.scope.project !== d.vault.scope.project || other.vault.scope.env !== d.vault.scope.env) {
         problems.push(
-          `deployment.pages ${d.key}: serves the Pages ${d.pagesEnvironment} environment, as ${other} does, and each copies the same secrets there; Pages keeps one value per name in an environment, so model one deployment per Pages environment`,
+          `deployment.pages ${d.key}: serves the Pages ${d.pagesEnvironment} environment, as ${other.key} does, and reads its secrets from ${describeScope(d.vault)}, not from ${describeScope(other.vault)}; Pages keeps one value per name in an environment, so the last deploy overwrites the other's secrets: give both deployments one vault scope`,
         );
+      }
     }
   }
   if (problems.length > 0 || topLevel === undefined) throw new CloudflareModelError(problems);

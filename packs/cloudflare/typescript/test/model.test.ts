@@ -342,16 +342,35 @@ describe("a Pages site's environments", () => {
     expect((await read(noSecrets)).deployments.map((d) => (d as PagesDeployment).pagesEnvironment)).toEqual([undefined]);
   });
 
-  test("two deployments that read secrets and serve one Pages environment", async () => {
-    const sources = editFixture(PAGES_SECRETS, (r) => {
-      r["metadata.root"].children.push(
-        { "environment.standing": { "name": "staging" } },
-        { "deployment.pages": { name: "siteStaging", extends: "siteBase", "@environment": "staging", "@branch": "staging" } },
-      );
-      children(child(r, "vault.infisical", "keys")).push({ "scope.env": { "name": "staging", "@project": "acme-help-staging", "@env": "staging" } });
+  test("two deployments that read secrets and serve one Pages environment: one vault scope generates, differing scopes are refused", async () => {
+    const withStaging = (vault: (keys: Record<string, unknown>, scopes: Node[]) => void): ReturnType<typeof editFixture> =>
+      editFixture(PAGES_SECRETS, (r) => {
+        const keys = child(r, "vault.infisical", "keys");
+        vault(keys, children(keys));
+        r["metadata.root"].children.push(
+          { "environment.standing": { "name": "staging" } },
+          { "deployment.pages": { name: "siteStaging", extends: "siteBase", "@environment": "staging", "@branch": "staging" } },
+        );
+      });
+    const served = (app: Awaited<ReturnType<typeof read>>) =>
+      app.deployments.map((d) => [d.environment, (d as PagesDeployment).pagesEnvironment, d.vault === undefined ? undefined : `${d.vault.scope.project}/${d.vault.scope.env}`]);
+    // One scope for both: the vault has no scope named preview, so that environment falls to the @defaultScope, which is the staging environment's own scope.
+    const oneScope = withStaging((keys, scopes) => {
+      keys["@defaultScope"] = "staging";
+      for (const c of scopes) if (c["scope.env"]?.["@env"] === "preview") c["scope.env"] = { name: "staging", "@project": "acme-help-staging", "@env": "staging" };
     });
-    expect(await problems(sources)).toEqual([
-      "deployment.pages acme::help::siteStaging: serves the Pages preview environment, as acme::help::sitePreview does, and each copies the same secrets there; Pages keeps one value per name in an environment, so model one deployment per Pages environment",
+    expect(served(await read(oneScope))).toEqual([
+      ["production", "production", "acme-help/prod"],
+      ["preview", "preview", "acme-help-staging/staging"],
+      ["staging", "preview", "acme-help-staging/staging"],
+    ]);
+    const sync = (await emit(await loadModels(oneScope))).get("deploy/cloudflare/sync-secrets.sh")!;
+    expect(sync.match(/  staging\)\n    copy (.*)/)?.[1]).toBe("acme-help-staging staging SEARCH_API_KEY help-site preview");
+    const ownPlace = withStaging((_keys, scopes) => {
+      scopes.push({ "scope.env": { "name": "staging", "@project": "acme-help-staging", "@env": "staging" } });
+    });
+    expect(await problems(ownPlace)).toEqual([
+      "deployment.pages acme::help::siteStaging: serves the Pages preview environment, as acme::help::sitePreview does, and reads its secrets from vault acme::help::keys scope staging (acme-help-staging/staging), not from vault acme::help::keys scope preview (acme-help-preview/preview); Pages keeps one value per name in an environment, so the last deploy overwrites the other's secrets: give both deployments one vault scope",
     ]);
   });
 });

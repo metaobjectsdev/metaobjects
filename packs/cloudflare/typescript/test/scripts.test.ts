@@ -186,11 +186,24 @@ describe("deploy/cloudflare/wrangler.sh", () => {
   test("stops before wrangler, naming what the vault scope lacks", async () => {
     const dir = await stage(await emitFixture(TRIPS), [ACCOUNT_ID]);
     const noToken = run(dir, RUNNER, ["production", "deploy"], { STUB_MISSING: TRIPS_TOKEN });
-    expect({ status: noToken.status, npx: noToken.calls("npx") }).toEqual({ status: 1, npx: [] });
-    expect(noToken.stderr).toContain(`the deploy token ${TRIPS_TOKEN} is not in the vault scope`);
+    expect({ status: noToken.status, npx: noToken.calls("npx"), stderr: noToken.stderr }).toEqual({
+      status: 1,
+      npx: [],
+      stderr: `wrangler.sh: the deploy token ${TRIPS_TOKEN} is not in the vault scope\n`,
+    });
     const noAccount = run(dir, RUNNER, ["production", "deploy"], { STUB_MISSING: ACCOUNT_ID });
     expect({ status: noAccount.status, npx: noAccount.calls("npx") }).toEqual({ status: 1, npx: [] });
     expect(noAccount.stderr).toContain(`${ACCOUNT_ID} is not in the vault scope`);
+  });
+
+  test("keeps the vault's token when the vault entry is itself named CLOUDFLARE_API_TOKEN", async () => {
+    const sources = editFixture(TRIPS, (r) => {
+      for (const c of r["metadata.root"].children) if (c["deployment.worker"] !== undefined) c["deployment.worker"]!["@tokenSecret"] = "CLOUDFLARE_API_TOKEN";
+    });
+    const dir = await stage(await emit(await loadModels(sources)), ["CLOUDFLARE_API_TOKEN", ACCOUNT_ID]);
+    const r = run(dir, RUNNER, ["production", "deploy"]);
+    expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: "" });
+    expect(r.npxEnv()["CLOUDFLARE_API_TOKEN"]).toBe("value-of-CLOUDFLARE_API_TOKEN");
   });
 });
 
