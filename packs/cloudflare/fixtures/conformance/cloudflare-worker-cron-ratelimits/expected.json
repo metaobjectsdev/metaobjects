@@ -1,0 +1,274 @@
+{
+  "metadata.root": {
+    "package": "acme::trips",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Trips",
+          "@description": "A trip journal: one Worker in front of its assets, with D1, R2, rate limiters and a daily clean-up.",
+          "children": [
+            {
+              "app.service": {
+                "name": "web",
+                "@needs": [
+                  "db",
+                  "photos"
+                ],
+                "@settings": [
+                  "Access",
+                  "Notify",
+                  "Auth"
+                ],
+                "children": [
+                  {
+                    "build.static": {
+                      "name": "client",
+                      "@command": "pnpm build",
+                      "@directory": "dist/client"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "app.job": {
+                "name": "coverCleanup",
+                "@description": "Deletes cover images no trip references.",
+                "@schedule": "0 4 * * *"
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db"
+              }
+            },
+            {
+              "resource.bucket": {
+                "name": "photos"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Access",
+          "children": [
+            {
+              "field.string": {
+                "name": "teamDomain",
+                "@envName": "ACCESS_TEAM_DOMAIN",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "aud",
+                "@envName": "ACCESS_AUD",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Notify",
+          "children": [
+            {
+              "field.string": {
+                "name": "email",
+                "@envName": "NOTIFY_EMAIL",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Auth",
+          "children": [
+            {
+              "field.string": {
+                "name": "sessionSecret",
+                "@envName": "SESSION_SECRET",
+                "@required": true,
+                "@secret": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "resendApiKey",
+                "@envName": "RESEND_API_KEY",
+                "@required": true,
+                "@secret": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "passphrasePepper",
+                "@envName": "PASSPHRASE_PEPPER",
+                "@required": true,
+                "@secret": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "recoveryEncKey",
+                "@envName": "RECOVERY_ENC_KEY",
+                "@required": true,
+                "@secret": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "recoveryHmacKey",
+                "@envName": "RECOVERY_HMAC_KEY",
+                "@required": true,
+                "@secret": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "vault.infisical": {
+          "name": "keys",
+          "children": [
+            {
+              "scope.env": {
+                "name": "production",
+                "@env": "prod",
+                "@project": "trips"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "vault.infisical": {
+          "name": "deployKeys",
+          "@defaultScope": "dev",
+          "children": [
+            {
+              "scope.env": {
+                "name": "dev",
+                "@project": "deploy"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "deployment.worker": {
+          "name": "webProduction",
+          "@app": "Trips.web",
+          "@assetsBinding": "ASSETS",
+          "@compatibilityDate": "2026-07-01",
+          "@compatibilityFlags": [
+            "nodejs_compat"
+          ],
+          "@domains": [
+            "trips.example.com",
+            "www.trips.example.com"
+          ],
+          "@environment": "production",
+          "@jobs": [
+            "Trips.coverCleanup"
+          ],
+          "@main": "src/worker.ts",
+          "@notFound": "single-page-application",
+          "@script": "trips",
+          "@secrets": "keys",
+          "@tokenSecret": "CLOUDFLARE_WORKERS_TOKEN_TRIPS",
+          "@tokenVault": "deployKeys",
+          "@workerFirst": true,
+          "@workersDev": false,
+          "children": [
+            {
+              "cloudflare.d1": {
+                "name": "db",
+                "@databaseId": "00000000-0000-4000-8000-000000000003",
+                "@databaseName": "trips",
+                "@migrationsDir": ".metaobjects/migrations"
+              }
+            },
+            {
+              "cloudflare.r2": {
+                "name": "photos",
+                "@bucketName": "trips-photos"
+              }
+            },
+            {
+              "cloudflare.ratelimit": {
+                "name": "enterLimiter",
+                "@limit": 10,
+                "@namespaceId": "1001",
+                "@period": 60
+              }
+            },
+            {
+              "cloudflare.ratelimit": {
+                "name": "adminLimiter",
+                "@limit": 200,
+                "@namespaceId": "1002",
+                "@period": 60
+              }
+            },
+            {
+              "cloudflare.ratelimit": {
+                "name": "loginLimiter",
+                "@limit": 10,
+                "@namespaceId": "1003",
+                "@period": 60
+              }
+            },
+            {
+              "cloudflare.ratelimit": {
+                "name": "loginLockoutLimiter",
+                "@limit": 4,
+                "@namespaceId": "1004",
+                "@period": 60
+              }
+            },
+            {
+              "cloudflare.ratelimit": {
+                "name": "recoveryLimiter",
+                "@limit": 3,
+                "@namespaceId": "1005",
+                "@period": 60
+              }
+            },
+            {
+              "value.literal": {
+                "name": "teamDomain",
+                "@literal": "team.example.com",
+                "@setting": "Access.teamDomain"
+              }
+            },
+            {
+              "value.literal": {
+                "name": "aud",
+                "@literal": "0000000000000000000000000000000000000000000000000000000000000000",
+                "@setting": "Access.aud"
+              }
+            },
+            {
+              "value.literal": {
+                "name": "notifyEmail",
+                "@literal": "host@example.com",
+                "@setting": "Notify.email"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
