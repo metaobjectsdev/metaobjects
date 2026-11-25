@@ -5,6 +5,7 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { buildExplorer, serializeExplorer, type ExplorerJson } from "../src/index.js";
+import { CUSTOM_VOCABULARY_MODEL, CUSTOM_VOCABULARY_VERIFY } from "./fixture/custom-vocabulary.js";
 
 const FIXTURE = resolve(import.meta.dir, "../../../../../fixtures/explorer-conformance/shop");
 const text = (name: string): string => readFileSync(join(FIXTURE, name), "utf8");
@@ -102,7 +103,38 @@ describe("buildExplorer", () => {
     expect(nodes.get("acme::shop::AuditEntry.id[identity.primary]")?.type).toBe("identity");
   });
 
-  test("rejects two top-level nodes sharing an id", () => {
+  test("a top-level node of another type sharing an object's name gets a type-qualified id; the object keeps the plain one", () => {
+    // The page is declared first: the object keeps the plain id anyway, since references name objects.
+    const built = buildExplorer({ model: CUSTOM_VOCABULARY_MODEL, verify: CUSTOM_VOCABULARY_VERIFY });
+    const nodes = new Map(built.nodes.map((n) => [n.id, n]));
+    expect(nodes.get("acme::crm::Lead")?.type).toBe("object");
+    expect(nodes.get("acme::crm::Lead.email")?.type).toBe("field");
+    expect(nodes.get("acme::crm::Lead[page.list]")?.type).toBe("page");
+    expect(nodes.get("acme::crm::Lead[page.list].leads")?.parent).toBe("acme::crm::Lead[page.list]");
+    expect(built.edges).toContainEqual({ kind: "implementedBy", from: "acme::tax::Tax", to: "acme::tax::tax" });
+  });
+
+  test("a model with no collision keeps every top-level id plain", () => {
+    for (const n of build().nodes) if (n.parent === undefined) expect(n.id).not.toContain("[");
+  });
+
+  test("a requirement whose id is qualified still takes its ledger row", () => {
+    const model = {
+      "metadata.root": {
+        package: "p",
+        children: [
+          { "object.entity": { name: "Billing" } },
+          { "requirement.functional": { name: "Billing", "@status": "live", children: [{ "requirement.functional": { name: "Invoices", "@status": "live" } }] } },
+        ],
+      },
+    };
+    const row = (path: string): unknown => ({ path, package: "p", qualifiedPath: `p::${path}`, subType: "functional", status: "live", digest: "", implementedBy: [{ ref: "Billing", resolves: true, target: "p::Billing" }], diagnostics: [], verdict: "clean" });
+    const built = buildExplorer({ model, verify: { requirementLedger: [row("Billing"), row("Billing.Invoices")] } });
+    expect(built.ledger?.rows.map((r) => r.node)).toEqual(["p::Billing[requirement.functional]", "p::Billing[requirement.functional].Invoices"]);
+    expect(built.edges).toContainEqual({ kind: "implementedBy", from: "p::Billing[requirement.functional]", to: "p::Billing" });
+  });
+
+  test("rejects two top-level nodes of one type sharing an id", () => {
     const model = {
       "metadata.root": {
         package: "p",

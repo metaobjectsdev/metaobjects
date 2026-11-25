@@ -64,6 +64,19 @@ here.**
   tool. The shared page data gains `hasMigrate`, and the shipped agent tree (manifest schema `2`)
   ships every stack with and without the steps, the second with a `-migrate` id suffix.
 
+- **The model explorer builds on a project with its own top-level vocabulary.** Two top-level
+  nodes of different types sharing a package and a name (an entity `Lead` and a page `Lead`)
+  made `buildExplorer` throw `two nodes share the id`. The object now keeps the plain
+  `<package>::<name>` id and each other node adds its type, `acme::crm::Lead[page.list]`, as a
+  nested sibling already did; a model with no such collision gets the same ids as before. A
+  requirement whose id took a qualifier still takes its ledger row.
+- **Every top-level node gets an explorer page.** The site wrote pages only for objects and
+  templates, so a requirement claiming a node of another type, such as an application's
+  `capability.module`, failed the site's own link check. Every other top-level type now gets a
+  generic page (`explorer-node.html.mustache`, which `meta eject docs-site` copies): its
+  attributes, linked where they name a node, its members, the requirements claiming it, what
+  references it and what was generated from it. Package pages and search list these nodes too.
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
