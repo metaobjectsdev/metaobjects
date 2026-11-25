@@ -1,0 +1,100 @@
+{
+  "metadata.root": {
+    "package": "acme::tables",
+    "children": [
+      { "system.internal": {
+          "name": "Tables",
+          "@description": "Two services from one monorepo: a web arena and a Java backend it calls over Railway's private network, sharing a database and a cache.",
+          "children": [
+            { "app.service": {
+                "name": "arena",
+                "@needs": ["Postgres", "Redis"],
+                "@calls": ["java"],
+                "@settings": ["Database", "Cache", "Router", "Backend", "Session", "Llm", "Commentary"],
+                "children": [
+                  { "build.dockerfile": {
+                      "name": "image",
+                      "@path": "arena/Dockerfile",
+                      "@watchInclude": ["arena/**"],
+                      "@watchExclude": ["arena/tests/**", "metaobjects/**"]
+                  } },
+                  { "runtime.process": { "name": "web" } }
+                ]
+            } },
+            { "app.service": {
+                "name": "java",
+                "@needs": ["Postgres"],
+                "@settings": ["Database"],
+                "children": [
+                  { "build.dockerfile": {
+                      "name": "image",
+                      "@path": "java/Dockerfile",
+                      "@watchInclude": ["java/**", "poker/**", "framework/**"]
+                  } },
+                  { "runtime.process": { "name": "tomcat", "@port": 8080, "@healthPath": "/health" } }
+                ]
+            } },
+            { "resource.database": { "name": "Postgres", "@engine": "postgres", "@version": "18" } },
+            { "resource.cache": { "name": "Redis", "@engine": "redis" } }
+          ]
+      } },
+      { "object.settings": { "name": "Database", "children": [
+        { "field.string": { "name": "url", "@required": true } }
+      ]}},
+      { "object.settings": { "name": "Cache", "children": [
+        { "field.string": { "name": "url", "@required": true, "@envName": "REDIS_URL" } }
+      ]}},
+      { "object.settings": { "name": "Router", "children": [
+        { "field.string": { "name": "host", "@required": true } },
+        { "field.int": { "name": "port", "@required": true } },
+        { "field.string": { "name": "password", "@required": true, "@secret": true } }
+      ]}},
+      { "object.settings": { "name": "Backend", "children": [
+        { "field.string": { "name": "apiUrl", "@required": true, "@envName": "JAVA_API_URL" } }
+      ]}},
+      { "object.settings": { "name": "Session", "children": [
+        { "field.string": { "name": "secret", "@required": true, "@secret": true } }
+      ]}},
+      { "object.settings": { "name": "Llm", "children": [
+        { "field.string": { "name": "anthropicKey", "@secret": true, "@envName": "ANTHROPIC_API_KEY" } },
+        { "field.string": { "name": "openaiKey", "@secret": true, "@envName": "OPENAI_API_KEY" } }
+      ]}},
+      { "object.settings": { "name": "Commentary", "children": [
+        { "field.string": { "name": "baseUrl" } }
+      ]}},
+      { "vault.infisical": { "name": "keys", "children": [
+        { "scope.env": { "name": "production", "@project": "acme-tables", "@env": "prod" } }
+      ]}},
+      { "environment.standing": { "name": "production" } },
+      { "deployment.railway": {
+          "name": "arena-production",
+          "@app": "Tables.arena",
+          "@environment": "production",
+          "@project": "acme-prod",
+          "@repo": "acme/tables",
+          "@branch": "main",
+          "@domains": ["example.com"],
+          "@secrets": "keys",
+          "children": [
+            { "value.ref": { "name": "db", "@setting": "Database.url", "@producedBy": "Tables.Postgres", "@output": "url" } },
+            { "value.ref": { "name": "cache", "@setting": "Cache.url", "@producedBy": "Tables.Redis", "@output": "url" } },
+            { "value.ref": { "name": "routerHost", "@setting": "Router.host", "@producedBy": "Tables.java", "@output": "host" } },
+            { "value.literal": { "name": "routerPort", "@setting": "Router.port", "@literal": "8891" } },
+            { "value.ref": { "name": "api", "@setting": "Backend.apiUrl", "@producedBy": "Tables.java", "@output": "privateUrl", "@path": "/api" } }
+          ]
+      } },
+      { "deployment.railway": {
+          "name": "java-production",
+          "@app": "Tables.java",
+          "@environment": "production",
+          "@project": "acme-prod",
+          "@repo": "acme/tables",
+          "@branch": "main",
+          "@domains": ["admin.example.com"],
+          "children": [
+            { "value.ref": { "name": "db", "@setting": "Database.url", "@producedBy": "Tables.Postgres", "@output": "url" } }
+          ]
+      } }
+    ]
+  }
+}

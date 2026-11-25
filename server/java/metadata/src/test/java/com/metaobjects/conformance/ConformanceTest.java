@@ -124,11 +124,11 @@ public class ConformanceTest {
      * in {@code META-INF/services/com.metaobjects.registry.MetaDataTypeProvider}.</p>
      */
     private static final java.util.Map<String, List<String>> PROVIDER_ALIASES =
-        java.util.Map.of(
+        java.util.Map.ofEntries(
             // TS/C# expose one "metaobjects-core-types" provider; Java splits it
             // into per-concern providers (core, fields, attrs, objects, validators,
             // identity, relationships, sources).
-            "metaobjects-core-types", List.of(
+            java.util.Map.entry("metaobjects-core-types", List.of(
                 "core-types",
                 "field-types",
                 "attribute-types",
@@ -145,34 +145,40 @@ public class ConformanceTest {
                 // full SPI superset rather than the fixture's declared set. Incomplete
                 // AND unexercised. ProviderAliasCompletenessTest now gates it.
                 "index-types",
-                "origin-types",
-                "requirement-types",
-                // FR-044 reporting vocabulary (dimension / measure / segment).
+                "origin-types"
+            )),
+            // The reporting vocabulary (FR-044: dimension / measure / segment / object.report)
+            // and the requirements ledger are their own packs, in the default bundle, left out
+            // of a fixture that does not name them.
+            java.util.Map.entry("metaobjects-reporting", List.of(
                 "reporting-types"
-            ),
+            )),
+            java.util.Map.entry("metaobjects-requirements", List.of(
+                "requirement-types"
+            )),
             // ADR-0066 business-rules pack (api / operation / binding / transition) and the
             // rc.21 view-expressions pack (origin.function, @union / @grain on a projection):
             // their own providers, in the default bundle, left out of a fixture that does not
             // name them.
-            "metaobjects-rules", List.of(
+            java.util.Map.entry("metaobjects-rules", List.of(
                 "rules-types"
-            ),
-            "metaobjects-view-expressions", List.of(
+            )),
+            java.util.Map.entry("metaobjects-view-expressions", List.of(
                 "view-expressions-types"
-            ),
+            )),
             // The corpus's "metaobjects-db" provider maps to Java's
             // CoreDBMetaDataProvider (id "database-extensions"), which registers the
             // physical RDB attributes (@column / @dbType / @dbColumnType / ...).
-            "metaobjects-db", List.of(
+            java.util.Map.entry("metaobjects-db", List.of(
                 "database-extensions"
-            ),
+            )),
             // Java registers the documentation provider under the canonical name, so this
             // is an identity mapping -- present so the map is COMPLETE, which is what
             // ProviderAliasCompletenessTest gates. Its absence meant a fixture naming this
             // logical id would not have composed on Java.
-            "metaobjects-documentation", List.of(
+            java.util.Map.entry("metaobjects-documentation", List.of(
                 "metaobjects-documentation"
-            ),
+            )),
             // The corpus's "metaobjects-template" provider (TS/C#/Python expose it
             // under this canonical name — template.* / @responseRef / @xmlText, the
             // AI prompt-construction vocab) maps to Java's TemplateTypesMetaDataProvider
@@ -185,25 +191,24 @@ public class ConformanceTest {
             // and may ride along with a "metaobjects-template" fixture. Java folds
             // template-types into "metaobjects-core-types"; the checks are independent
             // set memberships, so a fixture listing both resolves.
-            "metaobjects-template", List.of(
+            java.util.Map.entry("metaobjects-template", List.of(
                 "template-types",
                 "metaobjects-prompt"
-            ),
+            )),
             // FR-033 — the cross-port "metaobjects-ui" / "metaobjects-prompt" concern
             // providers. Java registers them under their own (already-canonical) ids
             // via the ServiceLoader SPI, so these are identity aliases documenting the
             // backing provider — kept explicit so the availability check is honest if
             // a provider id is ever renamed.
-            "metaobjects-ui", List.of(
+            java.util.Map.entry("metaobjects-ui", List.of(
                 com.metaobjects.presentation.ui.UiTypesMetaDataProvider.PROVIDER_ID
-            ),
-            "metaobjects-ui-web", List.of(
+            )),
+            java.util.Map.entry("metaobjects-ui-web", List.of(
                 com.metaobjects.presentation.ui.UiWebTypesMetaDataProvider.PROVIDER_ID
-            ),
-            "metaobjects-prompt", List.of(
+            )),
+            java.util.Map.entry("metaobjects-prompt", List.of(
                 com.metaobjects.template.PromptTypesMetaDataProvider.PROVIDER_ID
-            )
-        );
+            )));
 
     /** Provider IDs available to the Java harness (via ServiceLoader auto-discovery). */
     /**
@@ -387,6 +392,12 @@ public class ConformanceTest {
         if (fix.hasProvidersJson) {
             if (!fix.requiredProviders.contains("metaobjects-rules")) {
                 packsLeftOut.add("rules-types");
+            }
+            if (!fix.requiredProviders.contains("metaobjects-reporting")) {
+                packsLeftOut.add("reporting-types");
+            }
+            if (!fix.requiredProviders.contains("metaobjects-requirements")) {
+                packsLeftOut.add("requirement-types");
             }
             if (!fix.requiredProviders.contains("metaobjects-view-expressions")) {
                 packsLeftOut.add("view-expressions-types");

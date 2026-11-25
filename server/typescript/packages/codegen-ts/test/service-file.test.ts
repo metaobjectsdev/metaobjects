@@ -6,9 +6,9 @@ import { describe, expect, test } from "bun:test";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { InMemoryStringSource, loadUris, MetaDataLoader, type MetaRoot } from "@metaobjectsdev/metadata";
-import { contractTypes, entityFile, queriesFile, serviceFile, serviceRoutesFile } from "../src/generators/index.js";
+import { contractTypes, entityFile, queriesFile, serviceFile, serviceRoutesFile, serviceRoutesHonoFile } from "../src/generators/index.js";
 import { defineConfig, runGen, type OutputLayout } from "../src/index.js";
-import { serviceModelOf, serviceRoutesName, serviceTypeName } from "../src/service-walk.js";
+import { serviceHonoRoutesName, serviceModelOf, serviceRoutesName, serviceTypeName } from "../src/service-walk.js";
 import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 import type { Generator } from "../src/generator.js";
 
@@ -102,6 +102,7 @@ describe("service generators — what they write", () => {
     expect(serviceTypeName("acme::purchase_orders")).toBe("PurchaseOrdersService");
     expect(serviceTypeName("")).toBe("ModelService");
     expect(serviceRoutesName("acme::purchasing")).toBe("purchasingServiceRoutes");
+    expect(serviceHonoRoutesName("acme::purchasing")).toBe("purchasingServiceHonoRoutes");
   });
 
   test("a model with no store-backed entity gets no file, and a project that lists none sees no change", async () => {
@@ -137,18 +138,55 @@ describe("service generators — what they write", () => {
   });
 });
 
+describe("service-routes-hono — the service's Hono transport", () => {
+  const hono = (): Generator[] => [entityFile(), contractTypes(), serviceFile(), serviceRoutesHonoFile()];
+
+  test("writes transport/hono.ts beside the service, in each layout, and no Fastify transport", async () => {
+    const root = await load("acme::shop", [entity("Order")]);
+    for (const layout of ["package", "flat"] as const) {
+      const paths = servicePaths(await gen(root, hono(), layout)).filter((p) => p.includes("/transport/"));
+      expect(paths).toEqual(["acme/shop/transport/hono.ts"]);
+    }
+  });
+
+  test("mounts the package's service on a Hono app through the runtime's service/hono helpers", async () => {
+    const root = await load("acme::shop", [entity("Order")]);
+    const file = (await gen(root, hono()))["acme/shop/transport/hono.ts"]!;
+    expect(file).toContain("export function shopServiceHonoRoutes");
+    expect(file).toContain('from "@metaobjectsdev/runtime-ts/service/hono";');
+  });
+
+  test("both transports can be written for one service", async () => {
+    const root = await load("acme::shop", [entity("Order")]);
+    const paths = servicePaths(await gen(root, [...tier(), serviceRoutesHonoFile()])).filter((p) => p.includes("/transport/"));
+    expect(paths).toEqual(["acme/shop/transport/fastify.ts", "acme/shop/transport/hono.ts"]);
+  });
+});
+
 describe("service walk — which entities get the derived operations", () => {
-  test("over the fitness corpus: concrete, store-backed, single-key entities only", async () => {
+  test("over the fitness corpus: every object the flat routes serve, single-key where keyed", async () => {
     const result = await loadUris([pathToFileURL(FITNESS).href]);
     expect(result.errors).toEqual([]);
-    const covered = serviceModelOf(result.root).flatMap((p) => p.entities.map((e) => e.obj.name));
-    expect(covered).toContain("Program");
+    const entities = serviceModelOf(result.root).flatMap((p) => p.entities);
+    const byName = new Map(entities.map((e) => [e.obj.name, e]));
+    expect(byName.has("Program")).toBe(true);
     // A concrete entity that inherits its fields from an abstract one.
-    expect(covered).toContain("Gadget");
+    expect(byName.has("Gadget")).toBe(true);
     // The abstract level has no table of its own.
-    expect(covered).not.toContain("Labeled");
-    // A single-table hierarchy, its base and its subtypes, is later service work.
-    for (const tph of ["Auth", "BridgeAuth", "CouponAuth", "PermitAuth", "ReferralAuth"]) expect(covered).not.toContain(tph);
+    expect(byName.has("Labeled")).toBe(false);
+    // A single-table hierarchy: the base is polymorphic and read-only (the union has no single
+    // writable shape), each concrete subtype has the five operations on the base table, scoped to
+    // its discriminator value, at the base path plus its segment (FR-017).
+    expect(byName.get("Auth")?.verbs).toEqual(["list", "get"]);
+    const bridge = byName.get("BridgeAuth")!;
+    expect(bridge.verbs).toEqual(["list", "get", "create", "update", "delete"]);
+    expect(bridge.storage.name).toBe("Auth");
+    expect(bridge.path).toBe("/auths/bridge");
+    expect(bridge.discriminator).toEqual({ field: "type", value: "Bridge" });
+    // A served report has a list and no key.
+    const report = byName.get("FitnessTotals")!;
+    expect(report.kind).toBe("report");
+    expect(report.verbs).toEqual(["list"]);
   });
 });
 
@@ -247,6 +285,54 @@ describe("service generators — lifecycles and declared operations (ADR-0066)",
     const unkeyed = { "operation.command": { name: "settle", "@objectRef": "Order", "@transitions": ["pay"], "@permission": "shop.settle" } };
     const root = await load("acme::shop", [order([pay]), api(unkeyed)]);
     await expect(gen(root, tier())).rejects.toThrow(/command settle lists @transitions but addresses no row by key/);
+  });
+});
+
+describe("service generators — commands and keyed operations address the object's own storage", () => {
+  const ticket = {
+    "object.entity": {
+      name: "Ticket",
+      "@discriminator": "type",
+      children: [
+        { "source.rdb": { "@table": "tickets" } },
+        { "field.long": { name: "id" } },
+        { "field.enum": { name: "type", "@values": ["Bug", "Task"] } },
+        { "identity.primary": { name: "pk", "@fields": ["id"] } },
+      ],
+    },
+  };
+  const bug = {
+    "object.entity": {
+      name: "BugTicket",
+      extends: "Ticket",
+      "@discriminatorValue": "Bug",
+      children: [
+        {
+          "field.enum": {
+            name: "status",
+            "@values": ["open", "closed"],
+            "@default": "open",
+            children: [{ "transition.action": { name: "close", "@from": ["open"], "@to": "closed", "@public": true } }],
+          },
+        },
+      ],
+    },
+  };
+  test("a single-table subtype's transition command writes the base's table, scoped to its discriminator value", async () => {
+    const files = await gen(await load("acme::desk", [ticket, bug]), tier());
+    const close = files["acme/desk/service/closeBugTicket.ts"]!;
+    expect(close).toBeDefined();
+    // The subtype's module exports no table: the rows live in the base's.
+    expect(close).toMatch(/import \{ tickets \} from "\.\.\/Ticket(\.js)?";/);
+    expect(close).toContain('const cond = scoped(keyCondition(tickets, "id", id), scopeCondition(tickets, "type", "Bug"));');
+  });
+
+  test("a keyed declared operation on a single-table subtype reads only rows of its discriminator value", async () => {
+    const peek = { "operation.query": { name: "peek", "@objectRef": "BugTicket", "@outputRef": "BugTicket", "@public": true } };
+    const files = await gen(await load("acme::desk", [ticket, bug, api(peek)]), tier());
+    const op = files["acme/desk/service/peek.ts"]!;
+    expect(op).toMatch(/import \{ tickets \} from "\.\.\/Ticket(\.js)?";/);
+    expect(op).toContain('const cond = scoped(keyCondition(tickets, "id", id), scopeCondition(tickets, "type", "Bug"));');
   });
 });
 

@@ -20,9 +20,11 @@ setDefaultTimeout(COMPILE_TEST_TIMEOUT_MS);
  * out of the package source. Measured 2026-09-07, two of the sixteen symbols that body
  * imported — `routesHandlerName` and `TPH_POLYMORPHIC_VERBS` — were not exported, so the
  * documented escape ended in `TS2305: has no exported member`. Since ADR-0034 Amendment 3's
- * 2026-09-24 ruling the composition IS in the template (`renderRoutes` / `renderRoutesHono`),
- * so the question moved from "is the body copyable" to "does the copied body import only
- * public names" — the same defect, asked of the file the adopter now actually has.
+ * 2026-09-24 ruling the composition is owned, so the question moved from "is the body
+ * copyable" to "does the copied body import only public names" — the same defect, asked of
+ * the file the adopter now actually has. Since 1.3.0 (ADR-0063) the composition lives in the
+ * template module the generator imports (`templates/routes-file.ts`, `writeRoutesFile`), which
+ * `meta eject` copies beside it (Amendment 8), so the adopter still owns every line it emits.
  *
  * The required set is DERIVED from each template's own import statement rather than listed
  * here: a hand-kept list is the same defect one level up.
@@ -70,11 +72,18 @@ function publicSurface(): Set<string> {
 describe("a composition an adopter owns imports only public API", () => {
   const surface = publicSurface();
 
-  test("the routes templates carry the composition, not a call into the engine", () => {
+  test("the routes templates take their composition from a copied template, not the engine", () => {
     // The premise of the 2026-09-24 ruling: owning `routes` means owning what it emits. A
-    // template that went back to delegating would pass the import check below vacuously.
-    expect(readFileSync(join(PKG, "src/reference/routes.ts"), "utf8")).not.toMatch(/\brenderRoutesFile\(/);
-    expect(readFileSync(join(PKG, "src/reference/routes-hono.ts"), "utf8")).not.toMatch(/\brenderRoutesFileHono\(/);
+    // template that went back to delegating to the package would pass the import check below
+    // vacuously; its composer must come from the template module `meta eject` copies with it.
+    for (const [file, fn, module] of [
+      ["src/reference/routes.ts", "renderRoutesFile", "../templates/routes-file.js"],
+      ["src/reference/routes-hono.ts", "renderRoutesFileHono", "../templates/routes-file-hono.js"],
+    ] as const) {
+      const source = readFileSync(join(PKG, file), "utf8");
+      expect(source).toContain(`import { ${fn} } from "${module}";`);
+      expect(engineNamedImports(source)).not.toContain(fn);
+    }
   });
 
   for (const template of OWNED_COMPOSITIONS) {

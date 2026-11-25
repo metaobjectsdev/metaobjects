@@ -7,6 +7,7 @@
 // per scenario.
 
 import { describe, expect, test } from "bun:test";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -36,14 +37,14 @@ const META_PATH = join(API_CONTRACT_SECRET_FIELDS_DIR, "meta.json");
 
 const contractCheck: ContractCheck = openApiCheck("secret-fields");
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields (#484) — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields (#484) — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_SECRET_FIELDS_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedSecretFieldsServerHandle | null = null;
       try {
-        server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH, layout);
+        server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH, layout, lane);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
         if (scenario.name === "write-ignores-excluded") await expectDeniedColumnsUntouched(server);
@@ -61,7 +62,7 @@ for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields (#484)
     const pg = await startDb();
     let server: GeneratedSecretFieldsServerHandle | null = null;
     try {
-      server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH, layout);
+      server = await startGeneratedSecretFieldsServer(pg.connectionUri, META_PATH, layout, lane);
       await server.applySeed(SEED);
 
       const list = await getJson(server, "/api/account_views");
@@ -86,14 +87,14 @@ const TPH_META_PATH = join(API_CONTRACT_SECRET_FIELDS_TPH_DIR, "meta.json");
 
 // A TPH hierarchy shares one table, so a column any subtype marks as a credential is one for the
 // whole table: the base and both subtypes refuse a filter or sort on it.
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields — TPH sibling credential — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract secret fields — TPH sibling credential — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_SECRET_FIELDS_TPH_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedTphServerHandle | null = null;
       try {
-        server = await startGeneratedTphServer(pg.connectionUri, TPH_META_PATH, layout);
+        server = await startGeneratedTphServer(pg.connectionUri, TPH_META_PATH, layout, lane);
         await server.applySeed(TPH_SEED);
         for (const req of scenario.requests) {
           const res = await fetch(server.baseUrl + req.path, { method: req.method });

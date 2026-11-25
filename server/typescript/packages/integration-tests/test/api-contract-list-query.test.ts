@@ -21,6 +21,7 @@ import {
   type GeneratedListQueryServerHandle,
   type ListQuerySeed,
 } from "../src/api-contract-list-query-generated-server.ts";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_LIST_QUERY_DIR, "seed.json"), "utf8")) as ListQuerySeed;
 const META_PATH = join(API_CONTRACT_LIST_QUERY_DIR, "meta.json");
@@ -30,13 +31,13 @@ const META_PATH = join(API_CONTRACT_LIST_QUERY_DIR, "meta.json");
 // document rightly does not state it.
 const contractCheck = openApiCheck("list-query", { ignoredQuery: ["cb"] });
 
-describe("api contract list-query — GENERATED routes lane", () => {
+for (const lane of API_LANES) describe(`api contract list-query — ${laneLabel(lane)}`, () => {
   let pg: Awaited<ReturnType<typeof startPostgres>> | null = null;
   let server: GeneratedListQueryServerHandle | null = null;
 
   beforeAll(async () => {
     pg = await startPostgres();
-    server = await startGeneratedListQueryServer(pg.connectionUri, META_PATH);
+    server = await startGeneratedListQueryServer(pg.connectionUri, META_PATH, lane);
   }, 120_000);
 
   afterAll(async () => {

@@ -87,6 +87,9 @@ export class ExplorerIndex {
   readonly objects: ExplorerNode[] = [];
   /** Top-level template nodes (prompt, output, …), by id. */
   readonly templates: ExplorerNode[] = [];
+  /** Top-level nodes of every other type but requirement: vocabulary an application or a
+   *  provider pack registered (a `capability.module`, a `page.list`), each on a generic page. */
+  readonly others: ExplorerNode[] = [];
   /** Every requirement, in document order (the ledger's order when there is one). */
   readonly requirements: ReqEntry[] = [];
   readonly reqById = new Map<string, ReqEntry>();
@@ -111,6 +114,7 @@ export class ExplorerIndex {
       if (n.parent !== undefined) continue;
       if (n.type === TYPE_OBJECT) this.objects.push(n);
       else if (n.type === TYPE_TEMPLATE) this.templates.push(n);
+      else if (n.type !== TYPE_REQUIREMENT) this.others.push(n);
     }
     this.packages = [...new Set(doc.nodes.filter((n) => n.parent === undefined).map((n) => n.package))].sort(byCodeUnit);
     this.indexRequirements();
@@ -209,8 +213,9 @@ export class ExplorerIndex {
   }
 
   /** The kind a page and the map name a top-level node by. */
-  kindOf(n: ExplorerNode): "entity" | "value" | "projection" | "report" | "prompt" | "template" | "object" {
+  kindOf(n: ExplorerNode): "entity" | "value" | "projection" | "report" | "prompt" | "template" | "object" | "other" {
     if (n.type === TYPE_TEMPLATE) return n.subType === TEMPLATE_SUBTYPE_PROMPT ? "prompt" : "template";
+    if (n.type !== TYPE_OBJECT) return "other";
     if (n.subType === OBJECT_SUBTYPE_ENTITY) return "entity";
     if (n.subType === OBJECT_SUBTYPE_VALUE) return "value";
     if (n.subType === OBJECT_SUBTYPE_PROJECTION) return "projection";

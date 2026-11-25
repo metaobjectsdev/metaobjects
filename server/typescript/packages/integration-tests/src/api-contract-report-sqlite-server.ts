@@ -11,7 +11,7 @@
 // spelling, create each view from buildReportViews (the real lowering), import the
 // EMITTED <Report>.routes.ts files unmodified and mount them.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,7 +19,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
-import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, reportExport, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
 import { REPORT_CORPUS_MAX_ROWS, seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { startLocalD1 } from "./query-scenario-d1.ts";
@@ -30,6 +31,8 @@ export type SqliteReportEngine = "sqlite" | "d1";
 /** What the server needs of an engine: run one statement, and close. */
 interface EngineClient {
   run(sql: string, params?: unknown[]): Promise<void>;
+  /** Run several statements in order as one unit: on D1, one `batch()` round trip instead of one per statement. */
+  runAll(statements: ReadonlyArray<{ sql: string; params: unknown[] }>): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -113,6 +116,7 @@ export async function startSqliteReportServer(
   metaPath: string,
   engine: SqliteReportEngine = "sqlite",
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<SqliteReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -125,18 +129,23 @@ export async function startSqliteReportServer(
   // read, so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "sqlite", // codegen has no d1 dialect: D1 is SQLite to Drizzle (only the db module differs)
       apiPrefix: "/api",
-      generators: [
-        entityFile(),
-        routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS }),
-        reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
-      ],
+      generators: apiGenerators(
+        lane,
+        [
+          entityFile(),
+          reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
+        ],
+        () => [routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
+        // D1 holds no transaction across application code (ADR-0067 §4).
+        { reportMaxRows: REPORT_CORPUS_MAX_ROWS, ...(engine === "d1" ? { interactiveTransactions: false } : {}) },
+      ),
     }),
     metadata: root,
   });
@@ -159,34 +168,38 @@ export async function startSqliteReportServer(
     await client.run(`CREATE VIEW "${v.name}" AS ${v.sql}`);
   }
 
-  const fastify = Fastify();
-  for (const r of SERVED_REPORTS) {
-    const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
-      string,
-      (f: FastifyInstance) => Promise<void>
-    >;
-    const registrar = mod[r.registrar];
-    if (registrar === undefined) throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
-    await fastify.register(registrar);
-  }
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { db: unknown };
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    for (const r of SERVED_REPORTS) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
+        string,
+        (f: FastifyInstance) => Promise<void>
+      >;
+      const registrar = mod[r.registrar];
+      if (registrar === undefined) throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
+      await fastify.register(registrar);
+    }
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
     applySeed: async (seed: ReportSeed) => {
       // Children before parents on the way out; the seed's file order (parents first) on the way in.
-      for (const t of [...BASE_TABLES].reverse()) await client.run(`DELETE FROM "${t.name}"`);
-      for (const r of seedInserts(root, seed)) {
-        await client.run(
-          `INSERT INTO "${r.table}" (${r.columns.map((c) => `"${c}"`).join(",")}) ` +
+      // One batch: a test reseeds before it runs, and on D1 each statement sent alone is a round
+      // trip into Miniflare, which made the reseed most of the file's run time.
+      await client.runAll([
+        ...[...BASE_TABLES].reverse().map((t) => ({ sql: `DELETE FROM "${t.name}"`, params: [] })),
+        ...seedInserts(root, seed).map((r) => ({
+          sql:
+            `INSERT INTO "${r.table}" (${r.columns.map((c) => `"${c}"`).join(",")}) ` +
             `VALUES (${r.columns.map(() => "?").join(",")})`,
-          r.values,
-        );
-      }
+          params: r.values,
+        })),
+      ]);
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await client.close();
       rmSync(tmp, { recursive: true, force: true });
     },
@@ -213,6 +226,10 @@ export const db = drizzle((globalThis as Record<string, never>)[${JSON.stringify
       run: async (sql, params = []) => {
         await local.d1.prepare(sql).bind(...params).all();
       },
+      runAll: async (statements) => {
+        if (statements.length === 0) return;
+        await local.d1.batch(statements.map((st) => local.d1.prepare(st.sql).bind(...st.params)));
+      },
       close: async () => {
         delete (globalThis as Record<string, unknown>)[key];
         await local.dispose();
@@ -228,6 +245,11 @@ export const db = drizzle(client);
   const mod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { client: import("bun:sqlite").Database };
   return {
     run: async (sql, params = []) => { mod.client.run(sql, params as never); },
+    runAll: async (statements) => {
+      mod.client.transaction(() => {
+        for (const st of statements) mod.client.run(st.sql, st.params as never);
+      })();
+    },
     close: async () => { mod.client.close(); },
   };
 }

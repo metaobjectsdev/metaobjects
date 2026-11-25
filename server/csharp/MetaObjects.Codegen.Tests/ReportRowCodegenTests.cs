@@ -259,10 +259,11 @@ public class ReportRowCodegenTests
         Assert.DoesNotContain("projection", routes);
         // It reads the report's own DbSet and names the report's own allowlist.
         Assert.Contains("IQueryable<StoreTotals> q = db.StoreTotals.AsNoTracking();", routes);
-        Assert.Contains("EfCoreFilterDispatch.Validate<StoreTotals>(FilterParser.Parse(qs, StoreTotalsFilterAllowlist.Fields, StoreTotalsFilterAllowlist.OpsByField));", routes);
+        Assert.Contains("ListQueryParser.Parse(http.Request.QueryString.Value, StoreTotalsFilterAllowlist.Rules, SortRules, StoreTotalsFilterAllowlist.FieldNames);", routes);
+        Assert.Contains("EfCoreFilterDispatch.Validate<StoreTotals>(listQuery)", routes);
         // Every derived scalar is sortable.
         foreach (var field in new[] { "Purchases", "Buyers", "Revenue" })
-            Assert.Contains($"        \"{field}\",", routes);
+            Assert.Contains($"        [\"{field}\"] = new SortFieldRule(property: \"{field}\"),", routes);
     }
 
     [Fact]
@@ -351,14 +352,14 @@ public class ReportRowCodegenTests
         // only, which leaves an enum out; a report's enum dimension is in.
         var routes = Emit(RunnerContext(Cube()), new RoutesGenerator())["SalesCubeRoutes.g.cs"];
         string allowlist = routes[
-            routes.IndexOf("SortAllowlist =", StringComparison.Ordinal)..routes.IndexOf("SortDefaultDesc =", StringComparison.Ordinal)];
-        Assert.Contains("        \"Status\",\n", allowlist.ReplaceLineEndings("\n"));
+            routes.IndexOf("SortRules =", StringComparison.Ordinal)..routes.IndexOf("public static IEndpointRouteBuilder", StringComparison.Ordinal)];
+        Assert.Contains("        [\"Status\"] = new SortFieldRule(property: \"Status\"),\n", allowlist.ReplaceLineEndings("\n"));
         Assert.Contains(
             "            \"Status\" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, \"Status\") == null).ThenByDescending(x => EF.Property<object>(x!, \"Status\")) : q.OrderBy(x => EF.Property<object>(x!, \"Status\") == null).ThenBy(x => EF.Property<object>(x!, \"Status\")),",
             routes);
         // Every derived field of the cube is in the sort allowlist, in Table B order.
-        var sortable = allowlist.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith('"'))
-            .Select(l => l.Trim('"', ',')).ToList();
+        var sortable = allowlist.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("[\"", StringComparison.Ordinal))
+            .Select(l => l[2..l.IndexOf('"', 2)]).ToList();
         Assert.Equal(
             [
                 "Store", "Channel", "Status", "StoreRegion", "SoldAtHour", "SoldAtDay", "SoldAtMonth",

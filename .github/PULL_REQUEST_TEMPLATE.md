@@ -11,6 +11,7 @@
 - [ ] Named constants used for metamodel strings; no `any` (TS)
 - [ ] **Public-repo hygiene:** no private/other-project names, personal info, or absolute local paths — in code, docs, fixtures, **or commit messages**
 - [ ] Docs updated if behavior/CLI changed
+- [ ] User-visible change: a changelog fragment added under `changelog.d/` (not an edit to `CHANGELOG.md`; see `changelog.d/README.md`)
 
 ## Notes for reviewers
 

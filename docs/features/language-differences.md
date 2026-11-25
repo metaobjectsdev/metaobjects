@@ -9,16 +9,19 @@ them here rather than discover them in production.
 This is the one place the list is kept. When a release changes a row, it changes it here, and
 the port pages link to this page rather than repeating it. The table describes `main`.
 
-## You need Node for the schema, whatever your language
+## Where Node comes in
 
-**Schema migrations and database checks run in the Node `meta` tool, for every port**
+**Migrate with your language's own tool, or with the reference migration helper.** The expected
+schema is the contract: `meta schema` prints it as DDL or as a neutral JSON document, and any
+migration tool can apply it (EF Core Migrations, Flyway, Liquibase, Alembic, sqlx). The Node
+`meta migrate` is the reference migration helper, one option
 ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md)). A .NET, Java, Kotlin or Python
 team generates code with its own build tool (`dotnet meta`, `mvn metaobjects:*`,
-`metaobjects`), but `meta migrate`, `meta migrate apply-pending`, `meta verify --db` and
+`metaobjects`), but `meta schema`, `meta migrate`, `meta migrate apply-pending`, `meta verify --db` and
 `meta verify --replay` exist only in the Node CLI. So does `meta deps sync`, and so does
 `meta agent-docs`, which writes the agent instructions. Install it per project with
 `npm i -D @metaobjectsdev/cli` and run it as `npx meta`. Node is needed on the machine that
-writes or applies migrations (a developer machine, CI, the deploy step), not in your running
+runs those commands (a developer machine, CI, the deploy step), not in your running
 service. `npx meta init --config-only` writes just `.metaobjects/config.json`, so a Maven- or
 pip-rooted project can point the Node CLI at its metadata without gaining a TypeScript
 project.
@@ -29,18 +32,18 @@ project.
 |---|---|---|---|---|---|
 | **Generate code** | `npx meta gen` | `dotnet meta gen` | `mvn metaobjects:generate` | `mvn metaobjects:generate` | `metaobjects gen` |
 | **Codegen drift check** | `npx meta verify --codegen` | `dotnet meta verify` | `mvn metaobjects:verify` | `mvn metaobjects:verify` | `metaobjects verify` |
-| **Schema migrations** | `npx meta migrate` | `npx meta migrate` (Node), or `dotnet ef migrations add` over the generated `AppDbContext` ([C# port](../ports/csharp.md)) | `npx meta migrate` (Node); `--migration-format flyway` writes Flyway-named files | `npx meta migrate` (Node); `--migration-format flyway` as for Java | `npx meta migrate` (Node) |
+| **Schema migrations** | `npx meta migrate` (the reference helper), or your own tool | `dotnet ef migrations add` over the generated `AppDbContext` ([C# port](../ports/csharp.md)), or the reference helper `npx meta migrate` (Node) | Your tool (Flyway, Liquibase) fed by `npx meta schema`, or the reference helper `npx meta migrate` (Node; `--migration-format flyway` writes Flyway-named files) | Your tool (Exposed, Flyway) fed by `npx meta schema`, or the reference helper as for Java | Your tool (Alembic) fed by `npx meta schema`, or the reference helper `npx meta migrate` (Node) |
 | **Database drift check** | `npx meta verify --db` | `npx meta verify --db` (Node) | `npx meta verify --db` (Node) | `npx meta verify --db` (Node) | `npx meta verify --db` (Node) |
 | **Generated data access** | Drizzle tables and row types (`entityFile()`), CRUD queries (`queriesFile()`) | EF Core entities and `AppDbContext` | Spring DTOs and a repository interface | Exposed tables and a repository base | None: the generated router calls a repository `Protocol` you implement |
 | **Runtime metadata access** | `ObjectManager` on Kysely (`@metaobjectsdev/runtime-ts`) | None yet (roadmap) | OMDB (JDBC, Spring transactions) | Through Java's OMDB | `ObjectManager` on DB-API 2; not wired to the generated router |
 | **Generated REST routes** | Fastify (`routesFile()`; Hono and Drizzle mounts in `runtime-ts`) | ASP.NET minimal API | Spring `@RestController` | Spring `@RestController` | FastAPI `APIRouter` |
-| **List with no `limit` and no `api.pagination`** | The first 50 (every matching row before 1.3.0) | Every matching row | The first 50 | The first 50 | The first 50 |
+| **List with no `limit` and no `api.pagination`** | The first 50 (every matching row before 1.3.0) | The first 50 (every matching row before 1.3.0) | The first 50 | The first 50 | The first 50 |
 | **Largest report page** | 10,000 rows, then 400 `report_too_large` | Same | Same | Same | Same |
 | **`api.pagination`, `api.unknownFields`, the validation `issues` list** | The same in every port; defined once in [api-contract.md](api-contract.md) ([page size](api-contract.md#sort--pagination), [unknown fields](api-contract.md#unknown-request-fields-apiunknownfields), [validation issues](api-contract.md#a-validation-error-lists-every-issue)) | | | | |
 | **Filter and sort errors** | 400 with `field`, plus `op`, `expected` and the allowed fields | 400 with `field` | 400 with `field` | 400 with `field` | 400 with `field` |
-| **`?status=active` (a bare field, not `filter[status][eq]`)** | 400 `filter.bare_field`, naming the form that works | Ignored: every row comes back | Ignored | Ignored | Ignored |
-| **Filter extras beyond the nine operators** | `?search=`, `filter[or]` / `filter[and]`, leading-`%` refusal, filter-value format check | None | None | None | None |
-| **Malformed JSON, a malformed id, a bad page bound, a database constraint, a server error** | Pinned bodies: `invalid_json`, `invalid_id`, `pagination.invalid_value`, `constraint_violation`, 500 `internal` | As the framework answers (a report's bad page bound is pinned in every port) | Same as C# | Same as C# | Same as C# |
+| **`?status=active` (a bare field, not `filter[status][eq]`)** | 400 `filter.bare_field`, naming the form that works | 400 `filter.bare_field`, naming the form that works | Ignored: every row comes back | Ignored | Ignored |
+| **Filter extras beyond the nine operators** | `?search=`, `filter[or]` / `filter[and]`, leading-`%` refusal, filter-value format check | Same as TypeScript | None | None | None |
+| **Malformed JSON, a malformed id, a bad page bound, a database constraint, a server error** | Pinned bodies: `invalid_json`, `invalid_id`, `pagination.invalid_value`, `constraint_violation`, 500 `internal` | The same pinned bodies as TypeScript | As the framework answers | As the framework answers | As the framework answers |
 | **Field names in code** | The model's names (`createdAt`) | PascalCase properties (`CreatedAt`) | The model's names | The model's names | The model's names, not snake_case (`createdAt`) |
 | **Field names on the wire** | The model's names, in every port | | | | |
 | **Decimals and null members on the wire** | Each port writes its serializer's default; a `wire` setting makes them identical. The per-port table is under [The wire setting](api-contract.md#the-wire-setting) | | | | |

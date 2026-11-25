@@ -1,0 +1,19 @@
+{
+  "provider": "metaobjects-railway",
+  "types": [
+    {
+      "type": "deployment",
+      "subType": "railway",
+      "extendsBase": true,
+      "description": "An app deployed as one Railway service in one Railway environment. Takes every deployment.base attribute (@app, @environment, @domains, @replicas, @region, @branch, @secrets, and value.* children) and adds where it lives on Railway.",
+      "whenToUse": "Each (app, environment) pair that runs on Railway.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "project", "min": 1, "max": 1, "description": "The Railway project's name." },
+        { "type": "attr", "subType": "string", "name": "service", "min": 0, "max": 1, "description": "The Railway service's name. Absent means the app's name." },
+        { "type": "attr", "subType": "string", "name": "repo", "min": 0, "max": 1, "description": "The GitHub repository Railway builds the service from, as `owner/name`. A deployment names a @repo or an @image: the generated file must declare the source, because a plan of a service with none disconnects it." },
+        { "type": "attr", "subType": "string", "name": "image", "min": 0, "max": 1, "description": "The container image Railway runs instead of building from a repository (`ghcr.io/acme/worker:1.2.3`)." },
+        { "type": "attr", "subType": "boolean", "name": "checkSuites", "min": 0, "max": 1, "description": "Whether a push waits for the repository's GitHub check suites to pass before Railway deploys it. Absent means Railway's own setting is left as it is." }
+      ]
+    }
+  ]
+}

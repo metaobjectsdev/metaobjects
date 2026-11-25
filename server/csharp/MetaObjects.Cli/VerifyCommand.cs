@@ -57,14 +57,6 @@ public static class VerifyCommand
     // ADR-0021 D2 — explicit verify subverbs (--templates / --codegen / --db).
     // ------------------------------------------------------------------------
 
-    /// <summary>The name the generated-routes generator reports (<c>RoutesGenerator.Name</c>).</summary>
-    private const string RoutesGeneratorName = "routes-generator";
-
-    /// <summary>Advisory rule <c>unbounded-list-pages</c>: routes are generated and no <c>api.pagination</c> is set.</summary>
-    public const string UNBOUNDED_LIST_PAGES_ADVISORY =
-        "dotnet meta verify --codegen: advisory unbounded-list-pages: list routes return every row when `limit` is omitted; " +
-        "set `api.pagination` in .metaobjects/config.json (for example { \"defaultLimit\": 50, \"maxLimit\": 1000 }).";
-
     /// <summary>The message printed when <c>--db</c> is requested in the C# port.</summary>
     public const string DB_NOT_SUPPORTED =
         "verify --db: schema drift is not supported in the C# port; schema verify is the " +
@@ -113,6 +105,8 @@ public static class VerifyCommand
         /// was imported so the <c>--codegen</c> gate regenerates exactly what <c>gen</c> wrote. Null: none.
         /// </summary>
         public MetaObjects.Config.ImportScope? Imports { get; init; }
+        /// <summary>The reference files among <see cref="MetadataFiles"/> (<c>{ "path": ..., "reference": true }</c> sources); the load records the nodes only they declare so the <c>--codegen</c> gate skips them as <c>gen</c> does.</summary>
+        public IReadOnlySet<string>? ReferenceFiles { get; init; }
         /// <summary><c>csharp.providers</c>, instantiated; composed with the core providers on every load. Null: core only.</summary>
         public IReadOnlyList<IMetaDataTypeProvider>? Providers { get; init; }
         /// <summary>
@@ -286,7 +280,7 @@ public static class VerifyCommand
         // The same load `gen` runs (ResolvedMetadata.Load): libraries, then the dependency snapshots, then the
         // project's own files; ADR-0058 naming and the wire format set on the root; the imports recorded on it.
         return new MetaObjects.Config.ResolvedMetadata(
-            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports, null, opts.Providers) { Api = opts.Api }
+            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports, null, opts.Providers) { Api = opts.Api, ReferenceFiles = opts.ReferenceFiles }
             .Load(opts.Strict);
     }
 
@@ -490,15 +484,6 @@ public static class VerifyCommand
                 ],
             };
 
-        // unbounded-list-pages (advisory, never fails): the run generates list routes and the project sets no
-        // page size, so a list route returns every row when `limit` is omitted. The routes generator is matched by
-        // type or by its exact name (an owned copy keeps the name), never by a substring: a generator that merely
-        // has "routes" in its name writes no list route.
-        if (load.Root.Api.Pagination is null
-            && generators.Any(g => g is Codegen.Generators.RoutesGenerator || g.Name == RoutesGeneratorName)
-            && load.Root.Objects().Any(o => Codegen.Generators.RoutesGenerator.AppliesTo(o, load.Root)))
-            advisories.Add(UNBOUNDED_LIST_PAGES_ADVISORY);
-
         // C1 — same presence gate `gen` computes (GeneratorRegistry.IncludesNames over
         // the SAME resolved `names` list above), or a regen under a `--generators`
         // selection that excludes `names` would reference `<Entity>Names.*` while `gen`
@@ -524,6 +509,9 @@ public static class VerifyCommand
             ForeignKeyIndexes = neutralConfig?.MigrateForeignKeyIndexes ?? false,
             SchemaConventions = neutralConfig?.MigrateConventions,
         }.WithCSharpLayout(neutralConfig);
+        // The committed output imports the helper runtime package its project may not reference (1.3.0).
+        advisories.AddRange(HelperRuntimeReference.ForRun(config, generators, config.ProjectRoot)
+            .Select(w => $"warning: {w}"));
         return Codegen.CodegenDrift.Compute(config, load.Root, generators);
     }
 
@@ -563,6 +551,14 @@ public static class VerifyCommand
 
         foreach (var tmpl in load.Root.OwnChildren().Where(c => c.Type == TYPE_TEMPLATE))
         {
+            // The reply (`@responseRef`): its field tree, and an xml prompt's tag contract against it.
+            // Independent of the payload check below, so it runs first.
+            foreach (var f in ResponseVerify.Findings(tmpl))
+            {
+                var finding = new Drift(tmpl.Name, KIND_PROMPT, f.Code, f.Path);
+                if (f.IsError) errors.Add(finding); else warnings.Add(finding);
+            }
+
             // ADR-0039: @payloadRef may be inherited via an abstract template (templates
             // CAN extend) → resolving Attr, not OwnAttr. Missing is a load error already.
             if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)

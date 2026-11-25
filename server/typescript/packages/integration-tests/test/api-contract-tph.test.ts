@@ -12,6 +12,7 @@
 // + assertion runner, so a contract drift in either surfaces here.
 
 import { describe, test } from "bun:test";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_CONTRACT_TPH_DIR, API_CONTRACT_TPH_SCENARIOS_DIR } from "../src/paths.ts";
@@ -54,14 +55,14 @@ describe("api contract TPH — hand-rolled reference lane", () => {
   }
 });
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract TPH — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract TPH — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_TPH_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedTphServerHandle | null = null;
       try {
-        server = await startGeneratedTphServer(pg.connectionUri, META_PATH, layout);
+        server = await startGeneratedTphServer(pg.connectionUri, META_PATH, layout, lane);
         await server.applySeed(SEED);
         await runScenario(scenario, server, openApiCheck("tph"));
       } finally {

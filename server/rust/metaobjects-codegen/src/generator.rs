@@ -4,6 +4,7 @@
 //! disk and writes nothing itself. The run engine owns reading and writing, so a file whose
 //! bytes did not change is never rewritten and the manifest is saved once per run.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
 use metaobjects::collection::Collection;
@@ -36,6 +37,8 @@ pub struct GenContext<'a> {
     pub entities: &'a [String],
     /// The resolved project: its naming and wire settings (`.metaobjects/config.json`).
     pub collection: &'a Collection,
+    /// Resolution keys of the nodes only reference sources declare (computed once at load).
+    pub reference_nodes: &'a BTreeSet<String>,
 }
 
 /// A generator failed: a shared-style error code and a message for people.

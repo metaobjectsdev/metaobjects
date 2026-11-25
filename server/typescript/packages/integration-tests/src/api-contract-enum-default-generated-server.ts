@@ -4,13 +4,14 @@
 // Same shape as api-contract-secret-fields-generated-server.ts: runGen over the corpus meta into
 // a temp dir, provision the table the emitted Drizzle binding reads, mount the EMITTED routes.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import type pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -30,6 +31,7 @@ export async function startGeneratedEnumDefaultServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<GeneratedEnumDefaultServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -46,7 +48,7 @@ export async function startGeneratedEnumDefaultServer(
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()]),
     }),
     metadata: root,
   });
@@ -79,16 +81,16 @@ export const db = drizzle(pool);
      );`,
   );
 
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
 
-  const fastify = Fastify();
-  const mod = (await import(pathToFileURL(emitted.locate("Ticket.routes.ts")).href)) as Record<
-    string,
-    (f: FastifyInstance) => Promise<void>
-  >;
-  await fastify.register(mod["ticketRoutes"]!);
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    const mod = (await import(pathToFileURL(emitted.locate("Ticket.routes.ts")).href)) as Record<
+      string,
+      (f: FastifyInstance) => Promise<void>
+    >;
+    await fastify.register(mod["ticketRoutes"]!);
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -102,7 +104,7 @@ export const db = drizzle(pool);
       await executeSql(connectionUri, `SELECT setval(pg_get_serial_sequence('tickets','id'), (SELECT MAX("id") FROM "tickets"));`);
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

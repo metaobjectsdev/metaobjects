@@ -10,6 +10,8 @@ The model never says *how* an operation works. That is code. The model says wher
 is needed, which moves are legal, and what a command may return, so all three can be checked.
 
 **What 1.3.0 ships.** The vocabulary, checked when it loads and by `verify`, in all five ports.
+It is a provider pack, composed by default: see
+[Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives).
 The Rust port loads the vocabulary and runs the same loader rules, and its `verify` runs the
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. The flat generators generate nothing from
@@ -24,16 +26,16 @@ the Rust generators write only for a package that declares rules. The TypeScript
 guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
 persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
 each package's derived list, get, create, update and delete, every write in one transaction with the
-declared write rules, behind a thin Fastify transport (`service-routes`) that answers the shared API
-tests as the flat routes do (see [The service layer](#the-service-layer-typescript)). The Rust
-`service` generator writes the same operations and checks over its generated store, with no HTTP
-transport yet ([Rust port](../ports/rust.md)). It also writes
-a command per transition and a shell per declared command and query, and enforces at run time what
-this page declares: the permission point, the state check, the guarded update, `state_managed` and
-the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
-later 1.3.0 work. A lifecycle in a project that wires no service generator will be advised by
-`verify` once that check lands; until then the flat routes enforce nothing and `verify` says
-nothing about it. Every flat generator writes byte-identical code for
+declared write rules, behind a thin Fastify transport (`service-routes`) or Hono transport
+(`service-routes-hono`) that answers the shared API tests as the flat routes do (see
+[The service layer](#the-service-layer-typescript)). The Rust `service` generator writes the same
+operations and checks over its generated store, with no HTTP transport yet
+([Rust port](../ports/rust.md)). It also writes a command per transition and a
+shell per declared command and query, and enforces at run time what this page declares: the
+permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
+later 1.3.0 work. A lifecycle in a project that wires no service generator covering it is
+named by Node `meta verify` as an advisory (rule `unenforced-lifecycle`, never an exit code); the
+flat routes enforce nothing. Every flat generator writes byte-identical code for
 a model with this vocabulary and the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
@@ -200,11 +202,13 @@ setting `rules.permissions.names` makes `verify` warn about derived names, or fa
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `transitions` name is not a transition of the target. |
 | O5 | `ERR_BAD_ATTR_VALUE` | An `errors` code is not lower snake case, is listed twice, or is one the route answers itself: `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`, `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation`, `internal`. |
 | O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one package share a name, compared without case, in one API or across the package's APIs. One operation declared in two files merges and is not refused. Neither is one operation declared identically in two APIs (a `v1` beside a `v2`): same name, subtype and every operation attribute; only the bindings may differ. |
+| P3 | `ERR_TRANSITION_NAME_COLLISION` | Two permission points ask about one permission name and at least one name is derived: an operation named `Order.open`, or one declaring `permission: p.Order.open`, beside the `open` transition of `Order` in `p`. Names are compared exactly as the policy receives them: `::` and `.` are different things in the metadata, so an `open` operation in package `p::Order` (`p::Order.open`) does not collide with that transition (`p.Order.open`). Two declared `permission` values may be equal. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest` `path` has the wrong placeholders. |
 | B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same method (declared or derived) and the same path, ignoring placeholder names. |
 
-Names are compared without case because each one becomes a command, a permission constant and a
-file, and those collide on a case-folding target.
+Names are compared without case (L5 and O0, L6, O6) because each one becomes a command, a permission
+constant and a file, and those collide on a case-folding target. P3 compares permission names
+exactly, as the policy receives them.
 
 Some refusals come from the registry:
 
@@ -388,7 +392,9 @@ package, the command and the option; queries are generated as usual.
 `serviceRoutesFile()` (stable name `service-routes`, layer `api`, Fastify) writes the thin
 transport (layer 5) beside it, `<pkg path>/transport/fastify.ts`: one plugin per package,
 registered with the service it calls. Each route parses the request, calls one operation and
-sends what it answered; it holds no rules and no database handle.
+sends what it answered; it holds no rules and no database handle. `serviceRoutesHonoFile()`
+(stable name `service-routes-hono`) writes the same routes for Hono, `<pkg path>/transport/hono.ts`,
+as one function per package that adds them to your app: `shopServiceHonoRoutes(app, { service })`.
 
 ```ts
 import { createShopService } from "./generated/acme/shop/service/index.js";
@@ -405,11 +411,21 @@ await withWriteTransaction(db, async (tx) => {
 });
 ```
 
+A new project gets the recommended list with `meta init --with-services`: `entityFile()`,
+`rulesNamesFile()`, `contractTypes()`, `serviceFile()` and `serviceRoutesFile()` (on `--d1`, the
+service is `serviceFile({ interactiveTransactions: false })`), and init prints what their output
+needs installed. It is a list, not a mode: swap `serviceRoutesFile()` for `serviceRoutesHonoFile()`,
+or narrow `serviceFile()` with its `filter`, as with any generator. In a project that declares a
+lifecycle and wires no service generator covering it, `meta verify` advises that nothing generated
+enforces it (rule `unenforced-lifecycle`); the flat routes write the lifecycle field like any other.
+
 Both import the entity module (`entity`, for the table and the allowlists) and the contract types
 (`contract-types`), written to the same target, and `@metaobjectsdev/runtime-ts`'s `service` and
-`service/fastify` entries; `meta eject service` and `meta eject service-routes` copy that source into
-`codegen/runtime/` as they do for the routes. The service lane of the shared API tests runs the
-corpus the flat routes pass against the service behind this transport, in both layouts.
+`service/fastify` (or `service/hono`) entries; `meta eject service`, `meta eject service-routes` and
+`meta eject service-routes-hono` copy that source into `codegen/runtime/` as they do for the routes.
+The shared API tests run the service behind each transport over a subset of the corpora the flat
+routes pass; the subset and its engines are listed in the
+[API contract README](../../fixtures/api-contract-conformance/README.md#ts-lanes-illustrative-detail).
 
 ### Transitions, declared operations and what you write by hand
 
@@ -446,7 +462,8 @@ API contract reserves (`not_found`, `forbidden`, `validation`, ...) is not accep
 
 The actor is a type you define, `A`. A caller passes it per call as `opts.actor`, and the service
 hands it to the policy, the bodies, the hooks and the event hook without looking inside it. The
-Fastify transport takes a `getActor(request)` resolver of yours:
+Fastify transport takes a `getActor(request)` resolver of yours, and the Hono transport a
+`getActor(c)`:
 
 ```ts
 const service = createPurchasingService<Actor>({
@@ -459,6 +476,8 @@ const service = createPurchasingService<Actor>({
   events: { onWrite: (event, ctx) => writeAudit(ctx.tx, event) },
 });
 await app.register(purchasingServiceRoutes, { service, getActor: (req) => actorFromSession(req) });
+// or, on Hono:
+purchasingServiceHonoRoutes(app, { service, getActor: (c) => actorFromSession(c) });
 ```
 
 The shared API tests' `fixtures/api-contract-conformance/rules/` corpus runs a model with a
@@ -467,8 +486,22 @@ generated service, under the default settings and under `rules.lifecycle.create:
 `rules.lifecycle.commands: all` and `none`. Its README specifies the hand-written pieces, so every
 port's lane implements the same ones.
 
-Not covered yet, and still served by the flat generators: write-through entities, single-table (TPH)
-hierarchies, many-to-many traversal, projections and reports.
+The service covers every object the flat routes serve, with the same answers:
+
+- A projection and a served report get a list (and a get, when the projection is keyed). Their
+  transports answer every write `405 method_not_allowed`. A report keeps its row cap
+  (`serviceFile({ reportMaxRows })`, as `routesFile` takes it) and, with `report-export` wired,
+  its `?format=` export.
+- A write-through entity reads through its replica view and answers a write by reading the row
+  back through that view.
+- A single-table (TPH) hierarchy's base gets the polymorphic list and get. Each concrete subtype
+  gets the five operations at its own path, on the base table, scoped to its discriminator value.
+- A many-to-many relationship gets a query, `<relation>Of<Entity>(id)`, served at
+  `GET <path>/{id}/<relation>`.
+
+The `projection/`, `report/`, `write-through/`, `tph/`, `m2m/`, `decimal/` and `secret-fields/`
+corpora run on the service lanes as well as the routes lane. An entity with a composite key has no
+derived operations.
 
 ## Requirements can claim operations and transitions
 

@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { resolve } from "node:path";
-import { captureTranscript, normalizeTranscript, HOME_PATH } from "./transcript.js";
+import { captureTranscript, captureFailure, normalizeTranscript, HOME_PATH, type Capture } from "./transcript.js";
 
 const REPO = resolve(import.meta.dirname, "../..");
 
@@ -65,5 +65,32 @@ describe("captureTranscript", () => {
       ["verify", "--templates", "--prompts", "templates"],
       resolve(REPO, "examples/showcase/drift"));
     expect(() => normalizeTranscript(r.text, REPO)).not.toThrow();
+  });
+});
+
+// A CLI that never ran must not be reported as "the diagnostic changed". Injected
+// spawn results, so the cases do not depend on actually starving the machine.
+describe("captureFailure", () => {
+  const ran: Capture = { text: "ERR_X", exitCode: 1, signal: null, error: undefined };
+
+  test("a capture that ran and failed with output is not a capture failure", () => {
+    expect(captureFailure(ran)).toBeNull();
+    expect(captureFailure({ ...ran, exitCode: 0, text: "" })).toBeNull();
+  });
+
+  test("names the signal when the CLI was killed", () => {
+    expect(captureFailure({ ...ran, text: "", signal: "SIGTRAP" }))
+      .toBe("the CLI was killed by SIGTRAP; the capture did not run");
+  });
+
+  test("names the errno when the CLI failed to spawn", () => {
+    const error = Object.assign(new Error("spawn bun EAGAIN"), { code: "EAGAIN" });
+    expect(captureFailure({ ...ran, text: "", error }))
+      .toBe("the CLI failed to spawn (EAGAIN); the capture did not run");
+  });
+
+  test("names the exit status when the CLI exited non-zero with no output", () => {
+    expect(captureFailure({ ...ran, text: "", exitCode: 132 }))
+      .toBe("the CLI exited 132 with no output; the capture did not run");
   });
 });

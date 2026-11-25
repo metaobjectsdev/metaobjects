@@ -795,7 +795,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         LoaderParam lp = getLoader();
         in.add(config("loader", String.join("|", String.valueOf(lp.getClassname()), String.valueOf(lp.getName()),
                 String.valueOf(lp.getSourceDir()), String.valueOf(lp.getSources()),
-                String.valueOf(lp.getLibraries()), String.valueOf(lp.getFilters()))));
+                String.valueOf(lp.getLibraries()), String.valueOf(lp.getFilters()),
+                String.valueOf(lp.getReferenceSources()))));
         in.add(config("strict", String.valueOf(!lax)));
         in.add(config("globals", new java.util.TreeMap<>(globals == null ? Map.of() : globals).toString()));
         if ( getGenerators() != null ) {
@@ -1078,6 +1079,14 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // <sources>, fall back to the port-neutral .metaobjects/config.json (else the
         // built-in default directory) instead of silently loading nothing.
         List<String> sources = loaderConfig.getSources();
+        // Reference sources: the pom's <referenceSources> when it names any, else (when the pom
+        // names no location) the `reference: true` entries of the neutral config. They load into
+        // the same model but no generator emits a node only they declare. A pom naming only
+        // <referenceSources> still takes its ordinary sources from the ladder below.
+        List<String> pomReferenceSources = loaderConfig.getReferenceSources();
+        List<String> referenceSources = pomReferenceSources != null && !pomReferenceSources.isEmpty()
+                ? pomReferenceSources
+                : resolveNeutralReferenceSourcesIfPomIsSilent(loaderConfig);
         List<String> neutralSources = resolveNeutralSourcesIfPomIsSilent(loaderConfig);
         if (!neutralSources.isEmpty()) {
             sources = neutralSources;
@@ -1136,7 +1145,7 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                 resolveProjectConfigDir(srcDir).orElse(getProjectBaseDir().toPath().toAbsolutePath().normalize()));
 
         MavenLoaderConfiguration.configure(configurable, sourceDir, projectClassLoader,
-                                         sources, libraries, dependencies, loaderArgs(strict));
+                                         sources, referenceSources, libraries, dependencies, loaderArgs(strict));
 
         MetaDataLoader loader = configurable.getLoader();
 
@@ -1498,6 +1507,22 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     protected List<String> resolveNeutralSourcesIfPomIsSilent(LoaderParam loaderConfig) {
+        return neutralSourcesIfPomIsSilent(loaderConfig, false);
+    }
+
+    /**
+     * The files of the neutral config's {@code reference: true} sources, in the same
+     * {@code model:file:} form as {@link #resolveNeutralSourcesIfPomIsSilent}; empty when the pom
+     * names a location (it then owns the whole concern) or the config declares none.
+     */
+    protected List<String> resolveNeutralReferenceSourcesIfPomIsSilent(LoaderParam loaderConfig) {
+        return neutralSourcesIfPomIsSilent(loaderConfig, true);
+    }
+
+    /** The resolved neutral collection, once per mojo run (both source lists read it). */
+    private com.metaobjects.config.SourceResolver.ResolvedFiles neutralFiles;
+
+    private List<String> neutralSourcesIfPomIsSilent(LoaderParam loaderConfig, boolean reference) {
         boolean pomNamesLocation =
                 (loaderConfig.getSourceDir() != null && !loaderConfig.getSourceDir().isBlank())
                 || (loaderConfig.getSources() != null && !loaderConfig.getSources().isEmpty());
@@ -1512,9 +1537,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         // paths (SourceResolver.resolveCollection), so there is nothing to sniff:
         // say "file" outright, the same shape processSources itself already builds
         // for its own `new File(s).exists()` branch.
-        return com.metaobjects.config.SourceResolver
-                .resolveCollection(getProjectBaseDir().toPath())
-                .stream()
+        if (neutralFiles == null) {
+            neutralFiles = com.metaobjects.config.SourceResolver.resolveCollectionFiles(getProjectBaseDir().toPath());
+        }
+        com.metaobjects.config.SourceResolver.ResolvedFiles resolved = neutralFiles;
+        return resolved.files().stream()
+                .filter(p -> resolved.reference().contains(p) == reference)
                 .map(p -> "model:file:" + p.toString().replace(java.io.File.separatorChar, '/'))
                 .toList();
     }

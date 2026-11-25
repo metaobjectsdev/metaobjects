@@ -1,0 +1,9 @@
+{
+  "findings": [
+    {
+      "code": "WARN_OVERLAY_IMPLICIT",
+      "path": "",
+      "message": "acme::garage::Garage is redeclared in meta.garage.ui.json without overlay: true — add the flag so a removed or renamed target fails loudly (ERR_OVERLAY_NO_TARGET) instead of silently becoming a new object"
+    }
+  ]
+}

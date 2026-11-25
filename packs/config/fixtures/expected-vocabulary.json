@@ -1,0 +1,717 @@
+{
+  "pack": "metaobjects-config",
+  "types": [
+    {
+      "type": "object",
+      "subType": "settings",
+      "description": "A settings group: one thing an application must be told to run (a database connection, an LLM provider, a payment account). Each field is one setting, named in the environment as <GROUP>_<FIELD> in upper snake case (Database.url is DATABASE_URL) unless the field's @envName says otherwise. A field marked @secret has its value in a vault and never in the model, the repository or generated output. A settings group has no source, so it generates no table, query or route (core's entity generator types it as it does a value object); the configuration generators read it (.env.example, the key manifest, .keys-axi.toml).",
+      "whenToUse": "Every environment variable, secret or build argument an application reads. Group the ones that change together; a setting is a field, so it carries its type, @required, @default and validators the same way an entity field does.",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "field",
+          "childSubType": [
+            "string",
+            "int",
+            "long",
+            "double",
+            "float",
+            "decimal",
+            "boolean",
+            "date",
+            "time",
+            "timestamp",
+            "enum",
+            "uuid",
+            "uri",
+            "inet",
+            "duration"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "validator",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "scope",
+      "subType": "env",
+      "description": "Where a vault keeps one environment's secrets. Its name is the environment's name in the model (the same name a deployment's environment uses), so a deployment finds its scope by name.",
+      "whenToUse": "One per environment that reads secrets from the vault: dev, staging, production.",
+      "attrs": [
+        {
+          "name": "env",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The store's environment slug (Infisical's dev, staging, prod). Absent, the scope's own name."
+        },
+        {
+          "name": "project",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The store's own name for the place: for Infisical, the project slug or id."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "vault",
+      "subType": "infisical",
+      "description": "An Infisical secret store. It names where the values of @secret settings live, per environment, through its scope.env children; the values never appear in the model. The reference to an entry is derived: a secret setting is read under its environment name, in the scope the vault maps to the environment being deployed.",
+      "whenToUse": "A project whose secrets live in Infisical. The .keys-axi.toml generator writes its scopes for keys-axi, so `keys-axi run` needs no project flag.",
+      "attrs": [
+        {
+          "name": "defaultScope",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The name of the scope.env child used when no environment is given: written to .keys-axi.toml as its top-level scope and default_environment."
+        }
+      ],
+      "children": [
+        {
+          "childType": "scope",
+          "childSubType": "env",
+          "childName": "*",
+          "min": 1,
+          "max": null
+        }
+      ]
+    }
+  ],
+  "extends": [
+    {
+      "type": "field",
+      "subType": "base",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "boolean",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "currency",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "date",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "decimal",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "double",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "duration",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "enum",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "float",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "inet",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "int",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "long",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "map",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "object",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "string",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "time",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "timestamp",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "uri",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "field",
+      "subType": "uuid",
+      "attrs": [
+        {
+          "name": "envName",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting: its environment variable name, when the derived <GROUP>_<FIELD> is wrong (DB_POOL_SIZE rather than DATABASE_POOL_SIZE). Upper case letters, digits and underscores, not starting with a digit. Read only on settings."
+        },
+        {
+          "name": "phase",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "runtime",
+            "build"
+          ],
+          "description": "On a setting: when the application reads it. runtime (the meaning when absent) is read by the running process; build is a build-time variable, such as a Docker build argument. Read only on settings."
+        },
+        {
+          "name": "secret",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "On a setting (a field of an object.settings): the value is a secret. It lives in a vault, is never printed, and generated files carry its name only. A secret setting may not declare @default. Read only on settings."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "metadata",
+      "subType": "root",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "vault",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    }
+  ],
+  "commonAttrs": [],
+  "defaultSubTypes": {}
+}

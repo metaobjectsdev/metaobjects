@@ -184,7 +184,7 @@ public sealed class PackageNamespaceTests
         paths.Add(typeof(Microsoft.EntityFrameworkCore.DbContext).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions).Assembly.Location);
         paths.Add(typeof(Uri).Assembly.Location);
-        paths.Add(typeof(MetaObjects.Codegen.Runtime.FilterParser).Assembly.Location);
+        paths.Add(typeof(MetaObjects.AspNetCore.ListQueryParser).Assembly.Location);
         paths.Add(typeof(MetaObjects.Render.Extract.ExtractSchema).Assembly.Location);
         paths.Add(typeof(MetaObject).Assembly.Location);
         var comp = CSharpCompilation.Create("pkgns_" + Guid.NewGuid().ToString("N"),

@@ -26,7 +26,9 @@ use metaobjects_codegen::engine::{
 };
 use metaobjects_codegen::generator_list::{self, GENERATOR_LIST_FILE};
 use metaobjects_codegen::project::load_project;
-use metaobjects_codegen::{Generator, check_templates, run, shipped_generators, verify};
+use metaobjects_codegen::{Generator, run, shipped_generators, verify};
+
+pub mod templates;
 
 /// The tool's name in messages.
 const TOOL: &str = "cargo meta";
@@ -37,8 +39,7 @@ cargo meta: MetaObjects for Rust
 USAGE:
     cargo meta init   [--project <dir>]
     cargo meta gen    [OPTIONS] [ENTITY...]
-    cargo meta verify [--codegen] [--full] [OPTIONS]
-    cargo meta verify --templates [--project <dir>] [--strict]
+    cargo meta verify [--codegen] [--templates] [--full] [OPTIONS]
     cargo meta eject  <generator>... [--force] [--engine <source>]
     cargo meta eject  --undo [<generator>...] [--force]
     cargo meta eject  --list
@@ -52,7 +53,8 @@ COMMANDS:
                whose bytes changed; removes a generated file nothing emits any more; refuses
                to overwrite or delete a generated file that was edited by hand.
     verify     Check that the generated crates are what `gen` would write, in memory and
-               without writing anything. Exits 1 on drift.
+               without writing anything, that every template body matches the payload it
+               renders over, and the business rules. Exits 1 on drift.
     eject      Copy a shipped generator into codegen/generators/ to own and change.
                --undo takes back copies that are still identical to the shipped generator.
                The owned crate builds against this release of the engine from crates.io;
@@ -65,7 +67,9 @@ OPTIONS (gen and verify):
                          a sub-directory of it. Default: generated
     --generators <a,b>   Run only these generators, from the project's list
                          (`cargo meta gen --list` shows both).
-    --strict             Load strictly: an attribute no provider declares is an error.
+    --strict             Load strictly: an attribute no provider declares is an error
+                         Off by default here, unlike the other ports' `verify`: the Rust
+                         generated-code skip key records the load mode `gen` used.
     --timings            Print the time spent in each stage.
 
 OPTIONS (gen):
@@ -74,11 +78,13 @@ OPTIONS (gen):
                          owned copy compares.
 
 OPTIONS (verify):
-    --codegen            The generated-code gate only: no business-rules gate. A bare
-                         `verify` runs both.
-    --templates          The template gate only: every template body (read from the
-                         project's prompts/, else templates/) against its payload's
-                         fields. Exits 1 on drift, naming the template, the file and the tag.
+    --codegen            The generated-code gate only: no business-rules gate.
+    --templates          The template gate only: each template.* body against its payload
+                         value object (unknown variables, unresolved partials, missing
+                         required tags and slots) and each prompt's reply (@responseRef).
+                         A bare `verify` runs every gate; naming one or both runs only those.
+    --prompts <dir>      Where template bodies live, relative to the project root.
+                         Default: prompts
     --full               Render and compare even when a local run could answer from the
                          stored key. Always on when CI is set.
 
@@ -134,6 +140,7 @@ const VERIFY_FLAGS: &[Flag] = &[
     valued("--generators"),
     valued("--out"),
     valued("--project"),
+    valued("--prompts"),
     switch("--strict"),
     switch("--templates"),
     switch("--timings"),
@@ -579,12 +586,61 @@ fn cmd_verify(
             "`{TOOL} verify --deps` does not exist: metadata dependencies are resolved and checked by the Node `meta` command (`meta deps check`)."
         )));
     }
-    if s.has("--templates") {
-        return Ok(verify_templates(&s, cwd, out, err));
-    }
     let mut options = run_options(&s, cwd, generators)?;
     options.force = s.has("--full") || ci_forces_render(std::env::var_os("CI"));
-    match verify(&options, generators) {
+    // Naming a gate runs only the named ones; a bare `verify` runs them all.
+    let named = s.has("--codegen") || s.has("--templates");
+    let mut code = 0;
+    if s.has("--codegen") || !named {
+        code = verify_codegen(&s, &options, generators, out, err);
+    }
+    if s.has("--templates") || !named {
+        let prompts = s.value("--prompts").map(PathBuf::from);
+        code = code.max(verify_templates(
+            &options,
+            prompts.as_deref(),
+            s.has("--templates"),
+            out,
+            err,
+        ));
+    }
+    Ok(code)
+}
+
+/// The template gate: load the project and check every template body and reply.
+fn verify_templates(
+    options: &RunOptions,
+    prompts: Option<&Path>,
+    announce_empty: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    let project = match load_project(
+        &options.start_dir,
+        options.project_dir.as_deref(),
+        options.strict,
+    ) {
+        Ok(p) => p,
+        Err(errors) => {
+            let lines: Vec<String> = errors.iter().map(ToString::to_string).collect();
+            let _ = writeln!(err, "{TOOL} verify failed:\n{}", lines.join("\n"));
+            return 1;
+        }
+    };
+    let root = &project.collection.config_dir;
+    let dir = root.join(prompts.unwrap_or_else(|| Path::new(templates::DEFAULT_PROMPTS_DIR)));
+    templates::run(&project, &dir, TOOL, announce_empty, out, err)
+}
+
+/// The generated-code gate, and (on a bare `verify`) the rules gate.
+fn verify_codegen(
+    s: &Split,
+    options: &RunOptions,
+    generators: &[Box<dyn Generator>],
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> i32 {
+    match verify(options, generators) {
         Ok(report) => {
             print_warnings(err, &report.warnings);
             let (to_out, to_err) = verify_lines(&report);
@@ -594,7 +650,7 @@ fn cmd_verify(
             for line in to_err {
                 let _ = writeln!(err, "{line}");
             }
-            let rules = !s.has("--codegen");
+            let rules = !s.has("--codegen") && !s.has("--templates");
             if rules {
                 for line in rules_lines(&report) {
                     let _ = writeln!(err, "{line}");
@@ -603,53 +659,16 @@ fn cmd_verify(
             if s.has("--timings") {
                 print_timings(out, &report.timings);
             }
-            Ok(if report.in_sync() && !(rules && report.rules_failed()) {
+            if report.in_sync() && !(rules && report.rules_failed()) {
                 0
             } else {
                 1
-            })
+            }
         }
         Err(e) => {
             let _ = writeln!(err, "{TOOL} verify failed:\n{e}");
-            Ok(1)
+            1
         }
-    }
-}
-
-/// `verify --templates`: every template body against its payload, read from the project's
-/// `prompts/` (or `templates/`) directory, the check `gen` makes before it writes a render
-/// helper. 0 clean, 1 drift or a model that does not load.
-fn verify_templates(s: &Split, cwd: &Path, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
-    let explicit = s.value("--project").map(|d| cwd.join(d));
-    let loaded = match load_project(cwd, explicit.as_deref(), s.has("--strict")) {
-        Ok(l) => l,
-        Err(errors) => {
-            let _ = writeln!(err, "{TOOL} verify --templates: the model did not load:");
-            for e in errors {
-                let _ = writeln!(err, "  {e}");
-            }
-            return 1;
-        }
-    };
-    let r = &loaded.result;
-    let check = check_templates(&r.tree, r.root, &loaded.collection.config_dir);
-    for e in &check.errors {
-        let _ = writeln!(err, "error: {e}");
-    }
-    if check.errors.is_empty() {
-        let _ = writeln!(
-            out,
-            "{TOOL} verify --templates: {} template ref(s) clean.",
-            check.checked
-        );
-        0
-    } else {
-        let _ = writeln!(
-            err,
-            "{TOOL} verify --templates: {} drift error(s).",
-            check.errors.len()
-        );
-        1
     }
 }
 

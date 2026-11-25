@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_DELIVERY_DUPLICATE_SETTING",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['deployment.railway'].children[1]['value.literal']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -50,9 +50,11 @@ public class FilterAllowlistGeneratorTests
         // Field set is the empty initializer block.
         Assert.Contains("public static readonly HashSet<string> Fields = new(System.StringComparer.Ordinal)", src);
         Assert.Contains("public static readonly Dictionary<string, HashSet<string>> OpsByField", src);
-        // No field strings of any kind in the emitted source.
-        Assert.DoesNotContain("\"name\"", src);
-        Assert.DoesNotContain("\"id\"", src);
+        // No filter or sort entry; the two fields appear only in FieldNames (a bare ?name= is
+        // refused as a field that is not filterable).
+        Assert.DoesNotContain("[\"name\"]", src);
+        Assert.DoesNotContain("[\"id\"]", src);
+        Assert.Contains("FieldNames = new HashSet<string>(System.StringComparer.Ordinal)\n    {\n        \"id\",\n        \"name\",\n    };", src.ReplaceLineEndings("\n"));
     }
 
     [Fact]

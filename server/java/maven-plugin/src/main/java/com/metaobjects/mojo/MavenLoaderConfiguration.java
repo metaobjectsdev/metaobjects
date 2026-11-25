@@ -78,6 +78,24 @@ public class MavenLoaderConfiguration {
                                List<String> libraries,
                                com.metaobjects.config.DependencySet dependencies,
                                Map<String, String> globals) {
+        configure(configurable, sourceDir, classLoader, sources, null, libraries, dependencies, globals);
+    }
+
+    /**
+     * {@link #configure(LoaderConfigurable, String, ClassLoader, List, List, com.metaobjects.config.DependencySet, Map)}
+     * with reference sources: files that load into the same model but whose nodes only they declare
+     * no generator emits.
+     *
+     * @param referenceSources reference source paths, resolved like {@code sources}; may be null
+     */
+    public static void configure(LoaderConfigurable configurable,
+                               String sourceDir,
+                               ClassLoader classLoader,
+                               List<String> sources,
+                               List<String> referenceSources,
+                               List<String> libraries,
+                               com.metaobjects.config.DependencySet dependencies,
+                               Map<String, String> globals) {
         
         
         // Trigger lazy initialization of ServiceLoader type discovery
@@ -91,6 +109,7 @@ public class MavenLoaderConfiguration {
                 .sourceDir(sourceDir)
                 .classLoader(classLoader)
                 .sources(sources)
+                .referenceSources(referenceSources)
                 .libraries(libraries)
                 .dependencies(dependencies)
                 .arguments(globals)

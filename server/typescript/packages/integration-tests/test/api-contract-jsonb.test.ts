@@ -25,6 +25,7 @@ import {
   startGeneratedJsonbServer,
   type GeneratedJsonbServerHandle,
 } from "../src/api-contract-jsonb-generated-server.ts";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_JSONB_DIR, "seed.json"), "utf8")) as { rows: DocumentRow[] };
 const META_PATH = join(API_CONTRACT_JSONB_DIR, "meta.json");
@@ -49,14 +50,14 @@ describe("api contract jsonb open-bag — hand-rolled reference lane", () => {
   }
 });
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract jsonb open-bag — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract jsonb open-bag — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_JSONB_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedJsonbServerHandle | null = null;
       try {
-        server = await startGeneratedJsonbServer(pg.connectionUri, META_PATH, layout);
+        server = await startGeneratedJsonbServer(pg.connectionUri, META_PATH, layout, lane);
         await server.applySeed(SEED.rows);
         await runScenario(scenario, server, openApiCheck("jsonb"));
       } finally {

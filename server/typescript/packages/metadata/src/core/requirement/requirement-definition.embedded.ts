@@ -7,7 +7,7 @@
 import type { ProviderDefinition } from "../../provider-data.js";
 
 export const REQUIREMENT_DEFINITION: ProviderDefinition = {
-  "provider": "metaobjects-core-types",
+  "provider": "metaobjects-requirements",
   "types": [
     {
       "type": "requirement",
@@ -190,6 +190,21 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": null,
           "description": "Nested child requirements. Present so a non-functional tree can be organised by a quality taxonomy the same way a functional tree is organised by capability — the absence of this rule, while requirement.functional had it, is what previously made an architectural node nestable UNDER a functional one but never under another architectural one."
+        }
+      ]
+    }
+  ],
+  "extends": [
+    {
+      "type": "metadata",
+      "subType": "root",
+      "children": [
+        {
+          "type": "requirement",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null
         }
       ]
     }

@@ -121,17 +121,18 @@ lives in an extension pack. This page does not restate it. Which mechanism to us
 vocabulary is [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md).
 
 **Current state.** Business rules (`api`, `operation`, `binding`, `transition`, provider
-`metaobjects-rules`) and the view expressions that arrived in 1.3.0 (`origin.function`, `@union`,
-`@unionAll`, `@grain`, `@grainOrdinal`, provider `metaobjects-view-expressions`) are packs: each
-is its own provider, in the default bundle of every port that carries it, and an embedder can
-leave it out. A model that uses a left-out pack's types gets a loader error naming the unknown
-type, subtype or attribute. Reporting (`dimension`, `measure`, `segment`, `object.report`) and
-requirements (`requirement.*`) are still registered by `metaobjects-core-types`: they are woven
-into `object.json` and read by the `verify` gate in every port, so they were not a small
-mechanical move. They are the next candidates for a pack, and they are where they landed, not
-where they belong. No new vocabulary should follow their example: a gate
+`metaobjects-rules`), the view expressions that arrived in 1.3.0 (`origin.function`, `@union`,
+`@unionAll`, `@grain`, `@grainOrdinal`, provider `metaobjects-view-expressions`), reporting
+(`object.report`, `dimension.*`, `measure.*`, `segment.filter` and `@segment` on
+`origin.aggregate` and `origin.first`, provider `metaobjects-reporting`) and requirements
+(`requirement.*`, provider `metaobjects-requirements`) are packs: each is its own provider, in
+the default bundle of every port, and an embedder can leave it out. A model that uses a left-out
+pack's types gets a loader error naming the unknown type, subtype or attribute. With the
+requirements pack left out, a model with no `requirement.*` node gets an empty `verify` ledger. `object.report` shows the one thing a pack subtype may borrow from core:
+declared with `extendsBase`, it folds in `object.base`, which core registers, and those folded
+attributes stay owned by core. New vocabulary follows the same path: a gate
 (`scripts/check-core-vocabulary-pin.ts`) pins the core provider's types and attributes, so adding
-one fails with a pointer to GOVERNANCE.md and this mechanism.
+one to core fails with a pointer to GOVERNANCE.md and this mechanism.
 
 You opt a concern in by **declaring**, not by configuring, and a concern your model does not
 declare costs nothing, generates nothing and diagnoses nothing:
@@ -146,6 +147,26 @@ declare costs nothing, generates nothing and diagnoses nothing:
 Cross-port rules still hold. Every port registers the same default composition, and
 `expected-registry.json` is what all five byte-match, so a pack leaves the default bundle only
 by a decision recorded against that manifest, never per port.
+
+**Independent packs.** A provider maintained in this repository does not have to be in the
+default bundle. An *independent pack* ([ADR-0069](../../spec/decisions/ADR-0069-independent-packs.md))
+lives in [`packs/<name>/`](../../packs/README.md) with its own version, changelog and list of
+ports. A project opts in by naming its provider, exactly as it wires any provider of its own
+(below). It is the same contract on the same registry. What differs is the promise: it is outside
+`expected-registry.json` and `metamodelVersion`, a port carries it or does not (and then a model
+that uses it fails there by name), and its own tests pin the rows it adds and check that it
+changes none of the bundle's. Write a provider there when the capability belongs to the project
+but is not yet core vocabulary. The contract the provider is written against (`id`,
+`dependencies`, `registerTypes`, `register`, `extend`, `registerCommonAttrs` and the definition
+file format) is covered by core's package version (`docs/compatibility-policy.md`).
+
+**From a definition file.** A provider can keep its vocabulary as data, in the
+`spec/metamodel/*.json` format, and register it with `applyProviderDefinition(registry, definition,
+factories, validators?)` from `@metaobjectsdev/metadata`. `factories` maps each
+`"<type>.<subType>"` to the function that constructs its node; the optional `validators` map gives
+a type a `NodeValidator`, for a rule the data cannot state (a reference to a nested node, say).
+The bundled packs register this way, and so do the independent packs: `packs/systems/` is a
+worked example.
 
 ## Two registration modes
 

@@ -1,4 +1,4 @@
-import { code, imp, joinCode, Import, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { call, str, TsWriter } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts/engine";
 
@@ -18,6 +18,10 @@ import {
   tphPlan,
 } from "@metaobjectsdev/codegen-ts/templates/tph-discriminator";
 
+const TANSTACK_QUERY = "@tanstack/react-query";
+const METAOBJECTS_TANSTACK = "@metaobjectsdev/tanstack";
+const RUNTIME_WEB = "@metaobjectsdev/runtime-web";
+
 /** The DB-free `<Entity>.meta` descriptor. The UI generator writes it into ITS OWN target,
  *  beside this file, so it is always a sibling import — never the entity module's path,
  *  which on a multi-target project is another package's importBase. The UI files take the
@@ -26,6 +30,11 @@ import {
 function metaModuleOf(entity: MetaObject, ctx: RenderContext): string {
   return siblingSpecifier(ctx.selfTarget, effectivePackage(entity), `${entity.name}.meta`, ctx.extStyle);
 }
+
+/** A template literal: `` `text` ``. */
+const template = (text: string): string => `\`${text}\``;
+/** A substitution inside a template literal: `${expr}`. */
+const sub = (expr: string): string => `\${${expr}}`;
 
 /**
  * Render <Entity>.hooks.ts — query-key factory + 2 query hooks + (for non-projections) 3 mutation hooks.
@@ -45,6 +54,13 @@ function metaModuleOf(entity: MetaObject, ctx: RenderContext): string {
  * the underlying HTTP. Mutations aggressively invalidate <entity>Keys.all().
  */
 export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string {
+  const w = new TsWriter();
+  writeHooksFile(w, entity, ctx);
+  return w.toString();
+}
+
+/** Write <Entity>.hooks.ts (header, imports and every hook) into `w`. */
+export function writeHooksFile(w: TsWriter, entity: MetaObject, ctx: RenderContext): void {
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
   const entityModule = entityModuleSpecifier(
@@ -57,12 +73,157 @@ export function renderHooksFile(entity: MetaObject, ctx: RenderContext): string 
   // FR-017 Tier 3: a TPH discriminator base gets a polymorphic + per-subtype
   // hooks file (the subtype entities are filtered out of this generator).
   if (isTphDiscriminatorBase(entity, ctx.loadedRoot)) {
-    return renderTphHooksFile(entity, ctx, entityModule);
+    writeTphHooksFile(w, entity, ctx, entityModule);
+  } else if (isProjection(entity)) {
+    writeReadOnlyHooksFile(w, entity, entityModule, ctx);
+  } else {
+    writeFullHooksFile(w, entity, entityModule, ctx);
   }
-  if (isProjection(entity)) {
-    return renderReadOnlyHooksFile(entity, entityModule, ctx);
-  }
-  return renderFullHooksFile(entity, entityModule, ctx);
+}
+
+// ---------------------------------------------------------------------------
+// The two hook shapes every path below is built from.
+// ---------------------------------------------------------------------------
+
+/** `export function <name>(<params>): <returns> {`, the body, `}`, after a blank line. */
+function writeHookFn(w: TsWriter, name: string, params: readonly string[], returns: string, body: () => void): void {
+  w.blank();
+  w.block([call(`export function ${name}`, params), `: ${returns} {`], body);
+}
+
+interface QueryHook {
+  name: string;
+  /** The leading parameter: `id: number`, `filter?: XFilter`, `sourceId: string | undefined`. */
+  param: string;
+  /** The type the query resolves to. */
+  data: string;
+  queryKey: string;
+  /** The fetched URL, a template literal. */
+  url: string;
+  /** Whether `filter` is serialized into a `qs` query string first. */
+  filterQs?: boolean;
+  enabled?: string;
+}
+
+/** A useQuery hook over one GET. */
+function writeQueryHook(w: TsWriter, h: QueryHook): void {
+  const options = w.useType("UseQueryOptions", TANSTACK_QUERY);
+  const result = w.useType("UseQueryResult", TANSTACK_QUERY);
+  const opts = `opts?: Omit<${options}<${h.data}>, "queryKey" | "queryFn">`;
+  writeHookFn(w, h.name, [h.param, opts], `${result}<${h.data}>`, () => {
+    w.line(`const fetcher = ${w.use("useEntityPathFetcher", METAOBJECTS_TANSTACK)}();`);
+    if (h.filterQs) {
+      w.line(`const qs = filter ? "?" + ${w.use("buildFilterQs", RUNTIME_WEB)}(filter as Record<string, unknown>) : "";`);
+    }
+    w.block(`return ${w.use("useQuery", TANSTACK_QUERY)}<${h.data}>({`, () => {
+      w.line(`queryKey: ${h.queryKey},`);
+      w.line(`queryFn: () => fetcher<${h.data}>(${h.url}),`);
+      if (h.enabled !== undefined) w.line(`enabled: ${h.enabled},`);
+      w.line("...opts,");
+    }, "});");
+  });
+}
+
+interface MutationHook {
+  name: string;
+  data: string;
+  /** The mutation's variables type. */
+  vars: string;
+  /** Whether `useMutation` is called with its type arguments spelled out. */
+  typed: boolean;
+  /** The mutationFn's parameter list: `(input)`, `({ id, input })`, `(id)`. */
+  params: string;
+  url: string;
+  /** `POST`/`PATCH` send the variables' `input` as a JSON body; `DELETE` sends none. */
+  method: "POST" | "PATCH" | "DELETE";
+  keysVar: string;
+}
+
+/** A useMutation hook over one write, invalidating every query of the entity on success. */
+function writeMutationHook(w: TsWriter, h: MutationHook): void {
+  const typeArgs = `${h.data}, Error, ${h.vars}`;
+  const options = w.useType("UseMutationOptions", TANSTACK_QUERY);
+  const result = w.useType("UseMutationResult", TANSTACK_QUERY);
+  writeHookFn(w, h.name, [`opts?: Omit<${options}<${typeArgs}>, "mutationFn">`], `${result}<${typeArgs}>`, () => {
+    w.line(`const fetcher = ${w.use("useEntityPathFetcher", METAOBJECTS_TANSTACK)}();`);
+    w.line(`const qc = ${w.use("useQueryClient", TANSTACK_QUERY)}();`);
+    const mutation = w.use("useMutation", TANSTACK_QUERY);
+    w.block(`return ${mutation}${h.typed ? `<${typeArgs}>` : ""}({`, () => {
+      if (h.method === "DELETE") {
+        w.line(`mutationFn: ${h.params} => fetcher<${h.data}>(${h.url}, { method: "DELETE" }),`);
+      } else {
+        w.block(`mutationFn: ${h.params} => fetcher<${h.data}>(${h.url}, {`, () => {
+          w.line(`method: ${str(h.method)},`);
+          w.line(`headers: { "Content-Type": "application/json" },`);
+          w.line("body: JSON.stringify(input),");
+        }, "}),");
+      }
+      w.line("...opts,");
+      w.block("onSuccess: (...args) => {", () => {
+        w.line(`qc.invalidateQueries({ queryKey: ${h.keysVar}.all() });`);
+        w.line("opts?.onSuccess?.(...args);");
+      }, "},");
+    }, "});");
+  });
+}
+
+/** useCreate / useUpdate / useDelete for one writable REST collection. */
+function writeCrudMutations(
+  w: TsWriter,
+  m: { name: string; row: string; createInput: string; updateInput: string; pkType: string; path: string; keysVar: string },
+): void {
+  writeMutationHook(w, {
+    name: `useCreate${m.name}`,
+    data: m.row,
+    vars: m.createInput,
+    typed: true,
+    params: "(input)",
+    url: template(m.path),
+    method: "POST",
+    keysVar: m.keysVar,
+  });
+  writeMutationHook(w, {
+    name: `useUpdate${m.name}`,
+    data: m.row,
+    vars: `{ id: ${m.pkType}; input: ${m.updateInput} }`,
+    typed: false,
+    params: "({ id, input })",
+    url: template(`${m.path}/${sub("id")}`),
+    method: "PATCH",
+    keysVar: m.keysVar,
+  });
+  writeMutationHook(w, {
+    name: `useDelete${m.name}`,
+    data: "void",
+    vars: m.pkType,
+    typed: false,
+    params: "(id)",
+    url: template(`${m.path}/${sub("id")}`),
+    method: "DELETE",
+    keysVar: m.keysVar,
+  });
+}
+
+/** The detail and list hooks of one REST collection. */
+function writeDetailHook(w: TsWriter, name: string, row: string, pkType: string, path: string, queryKey: string): void {
+  writeQueryHook(w, {
+    name,
+    param: `id: ${pkType}`,
+    data: row,
+    queryKey,
+    url: template(`${path}/${sub("id")}`),
+  });
+}
+
+function writeListHook(w: TsWriter, name: string, row: string, filterType: string, path: string, queryKey: string): void {
+  writeQueryHook(w, {
+    name,
+    param: `filter?: ${filterType}`,
+    data: `${row}[]`,
+    queryKey,
+    url: template(`${path}${sub("qs")}`),
+    filterQs: true,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -84,44 +245,19 @@ function m2mEntriesFor(entity: MetaObject, ctx: RenderContext): RelationEntry[] 
   );
 }
 
-/** The `relation: (relation, sourceId) => ...` query-key factory line, included
- *  in the keys factory ONLY when the entity has M:N relationships. */
-function m2mKeyLine(keysVar: string, pkType: string): string {
-  return (
-    `  relation: (relation: string, sourceId: ${pkType} | undefined) =>\n` +
-    `    [...${keysVar}.all(), "relation", relation, sourceId ?? null] as const,`
-  );
+/** The `relation: (relation, sourceId) => ...` query-key factory member, written into the keys
+ *  factory ONLY when the entity has M:N relationships. */
+function writeM2mKey(w: TsWriter, keysVar: string, pkType: string): void {
+  w.line(`relation: (relation: string, sourceId: ${pkType} | undefined) => [...${keysVar}.all(), "relation", relation, sourceId ?? null] as const,`);
 }
 
-/**
- * Render `use<Source><Relation>(sourceId, opts?)` per M:N relationship. Returns
- * null when the entity has no M:N relationships (no extra hooks emitted).
- */
-function renderM2mHooks(
-  entity: MetaObject,
-  ctx: RenderContext,
-  keysVar: string,
-  entries: RelationEntry[],
-): Code | null {
-  if (entries.length === 0) return null;
-
+/** `use<Source><Relation>(sourceId, opts?)` per M:N relationship; nothing when there are none. */
+function writeM2mHooks(w: TsWriter, entity: MetaObject, ctx: RenderContext, keysVar: string, entries: RelationEntry[]): void {
   // sourceId IS this entity's PK — it is interpolated straight into
   // `GET /<source-plural>/{sourceId}/<relation>`, so it must carry the declared PK type.
   const pkType = getPkInfo(entity, ctx).tsType;
-  const useQuerySym = imp("useQuery@@tanstack/react-query");
-  const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
-  const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
-  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
-
   const source = entity.name;
-
-  // Distinct target row types, imported (aliased) from each target's entity
-  // module. ts-poet's imp() tracks + hoists these into the import block. The
-  // <Target>RelRow alias avoids colliding with the source file's own
-  // `type <Source> as <Source>Row` import on a self-join (source === target).
-  const targetTypeSym = new Map<string, Import>();
   for (const e of entries) {
-    if (targetTypeSym.has(e.targetEntity)) continue;
     const mod = entityModuleSpecifier(
       ctx.selfTarget,
       ctx.entityModuleTarget,
@@ -132,269 +268,115 @@ function renderM2mHooks(
     // `import { type <Target> as <Target>RelRow } from "<mod>"` — the RelRow
     // alias avoids colliding with the source file's own `type <Source> as
     // <Source>Row` import on a self-join (source === target).
-    targetTypeSym.set(
-      e.targetEntity,
-      Import.importsName(`${e.targetEntity}RelRow`, mod, true, e.targetEntity),
-    );
+    const target = w.useType(e.targetEntity, mod, `${e.targetEntity}RelRow`);
+    writeQueryHook(w, {
+      name: `use${source}${capitalize(e.name)}`,
+      param: `sourceId: ${pkType} | undefined`,
+      data: `${target}[]`,
+      queryKey: `${keysVar}.relation(${str(e.name)}, sourceId)`,
+      url: template(`${sub(`${source}.$path`)}/${sub("sourceId")}/${e.name}`),
+      enabled: "sourceId != null && (opts?.enabled ?? true)",
+    });
   }
-
-  const hooks = entries.map((e) => {
-    const targetSym = targetTypeSym.get(e.targetEntity)!;
-    const hookName = `use${source}${capitalize(e.name)}`;
-    const relLit = JSON.stringify(e.name);
-    return code`
-export function ${hookName}(
-  sourceId: ${pkType} | undefined,
-  opts?: Omit<${useQueryOptionsSym}<${targetSym}[]>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${targetSym}[]> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  return ${useQuerySym}<${targetSym}[]>({
-    queryKey: ${keysVar}.relation(${relLit}, sourceId),
-    queryFn: () => fetcher<${targetSym}[]>(\`\${${source}.$path}/\${sourceId}/${e.name}\`),
-    enabled: sourceId != null && (opts?.enabled ?? true),
-    ...opts,
-  });
-}
-`;
-  });
-
-  return joinCode(hooks, { on: "\n" });
 }
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function writeHeader(w: TsWriter, entity: MetaObject, note?: string): void {
+  w.header(
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entity.name} (${entity.fqn()})${note === undefined ? "" : ` — ${note}`}`,
+  );
+}
+
+/** The `all`, `lists` and `list` members every keys factory starts with. */
+function writeListKeys(w: TsWriter, keysVar: string, lcEntity: string, filterType: string): void {
+  w.line(`all: () => [${str(lcEntity)}] as const,`);
+  w.line(`lists: () => [...${keysVar}.all(), "list"] as const,`);
+  w.line(`list: (filter?: ${filterType}) => [...${keysVar}.lists(), filter ?? {}] as const,`);
+}
+
+function writeDetailKeys(w: TsWriter, keysVar: string, pkType: string): void {
+  w.line(`details: () => [...${keysVar}.all(), "detail"] as const,`);
+  w.line(`detail: (id: ${pkType}) => [...${keysVar}.details(), id] as const,`);
+}
+
 // ---------------------------------------------------------------------------
 // Read-only path (projections)
 // ---------------------------------------------------------------------------
 
-function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string, ctx: RenderContext): string {
+function writeReadOnlyHooksFile(w: TsWriter, entity: MetaObject, entityModule: string, ctx: RenderContext): void {
   const entityName = entity.name;
   // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
   // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
   const pkType = getPkInfo(entity, ctx).tsType;
-  const entityNamePlural = hookListNameSegment(entity);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
   const m2mEntries = m2mEntriesFor(entity, ctx);
-  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar, pkType)}` : "";
 
-  const useQuerySym = imp("useQuery@@tanstack/react-query");
-  const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
-  const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
-  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
-  const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
-
-  const entityImports: Code = code`
-import { ${entityName} } from ${JSON.stringify(metaModuleOf(entity, ctx))};
-import {
-  type ${entityName} as ${entityName}Row,
-  type ${entityName}Filter,
-} from ${JSON.stringify(entityModule)};
-`;
+  writeHeader(w, entity);
+  const meta = w.use(entityName, metaModuleOf(entity, ctx));
+  const row = w.useType(entityName, entityModule, `${entityName}Row`);
+  const filter = w.useType(`${entityName}Filter`, entityModule);
+  const path = sub(`${meta}.$path`);
 
   // A keyless projection (no identity and no `id` column) is served GET list only: the route
   // generator mounts no `/:id`, so a detail hook would fetch an address nothing answers.
   // It gets the list hook and no `details`/`detail` keys. A keyed projection is unchanged.
   const keyed = hasItemRoute(entity);
-  const detailKeyLines = keyed
-    ? `\n  details: () => [...${keysVar}.all(), "detail"] as const,` +
-      `\n  detail:  (id: ${pkType}) => [...${keysVar}.details(), id] as const,`
-    : "";
+  w.blank();
+  w.block(`export const ${keysVar} = {`, () => {
+    writeListKeys(w, keysVar, lcEntity, filter);
+    if (keyed) writeDetailKeys(w, keysVar, pkType);
+    if (m2mEntries.length > 0) writeM2mKey(w, keysVar, pkType);
+  }, "};");
 
-  const queryKeys: Code = code`
-export const ${keysVar} = {
-  all:     () => [${JSON.stringify(lcEntity)}] as const,
-  lists:   () => [...${keysVar}.all(), "list"] as const,
-  list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,${detailKeyLines}${relationKeyLine}
-};
-`;
-
-  // Spliced into the one template below so a keyed projection's bytes do not move.
-  const detailQuery: Code | string = !keyed ? "" : code`export function use${entityName}(
-  id: ${pkType},
-  opts?: Omit<${useQueryOptionsSym}<${entityName}Row>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${entityName}Row> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  return ${useQuerySym}<${entityName}Row>({
-    queryKey: ${keysVar}.detail(id),
-    queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`),
-    ...opts,
-  });
-}
-
-`;
-
-  const queries: Code = code`
-${detailQuery}export function use${entityNamePlural}(
-  filter?: ${entityName}Filter,
-  opts?: Omit<${useQueryOptionsSym}<${entityName}Row[]>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${entityName}Row[]> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
-  return ${useQuerySym}<${entityName}Row[]>({
-    queryKey: ${keysVar}.list(filter),
-    queryFn: () => fetcher<${entityName}Row[]>(\`\${${entityName}.$path}\${qs}\`),
-    ...opts,
-  });
-}
-`;
-
-  const m2mHooks = renderM2mHooks(entity, ctx, keysVar, m2mEntries);
-  const body: Code = joinCode(m2mHooks ? [queryKeys, queries, m2mHooks] : [queryKeys, queries], { on: "\n" });
-
-  const header =
-    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n`;
-  return header + entityImports.toString() + body.toString();
+  if (keyed) writeDetailHook(w, `use${entityName}`, row, pkType, path, `${keysVar}.detail(id)`);
+  writeListHook(w, `use${hookListNameSegment(entity)}`, row, filter, path, `${keysVar}.list(filter)`);
+  writeM2mHooks(w, entity, ctx, keysVar, m2mEntries);
 }
 
 // ---------------------------------------------------------------------------
 // Full path (writable entities — table-backed or write-through)
 // ---------------------------------------------------------------------------
 
-function renderFullHooksFile(entity: MetaObject, entityModule: string, ctx: RenderContext): string {
+function writeFullHooksFile(w: TsWriter, entity: MetaObject, entityModule: string, ctx: RenderContext): void {
   const entityName = entity.name;
   // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
   // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
   const pkType = getPkInfo(entity, ctx).tsType;
-  const entityNamePlural = hookListNameSegment(entity);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
   const m2mEntries = m2mEntriesFor(entity, ctx);
-  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar, pkType)}` : "";
 
-  const useMutationSym = imp("useMutation@@tanstack/react-query");
-  const useQuerySym = imp("useQuery@@tanstack/react-query");
-  const useQueryClientSym = imp("useQueryClient@@tanstack/react-query");
-  const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
-  const useMutationOptionsSym = imp("t:UseMutationOptions@@tanstack/react-query");
-  const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
-  const useMutationResultSym = imp("t:UseMutationResult@@tanstack/react-query");
-  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
-  const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
+  writeHeader(w, entity);
+  const meta = w.use(entityName, metaModuleOf(entity, ctx));
+  const row = w.useType(entityName, entityModule, `${entityName}Row`);
+  const insert = w.useType(`${entityName}Insert`, entityModule);
+  const update = w.useType(`${entityName}Update`, entityModule);
+  const filter = w.useType(`${entityName}Filter`, entityModule);
+  const path = sub(`${meta}.$path`);
 
-  const entityImports: Code = code`
-import { ${entityName} } from ${JSON.stringify(metaModuleOf(entity, ctx))};
-import {
-  type ${entityName} as ${entityName}Row,
-  type ${entityName}Insert,
-  type ${entityName}Update,
-  type ${entityName}Filter,
-} from ${JSON.stringify(entityModule)};
-`;
+  w.blank();
+  w.block(`export const ${keysVar} = {`, () => {
+    writeListKeys(w, keysVar, lcEntity, filter);
+    writeDetailKeys(w, keysVar, pkType);
+    if (m2mEntries.length > 0) writeM2mKey(w, keysVar, pkType);
+  }, "};");
 
-  const queryKeys: Code = code`
-export const ${keysVar} = {
-  all:     () => [${JSON.stringify(lcEntity)}] as const,
-  lists:   () => [...${keysVar}.all(), "list"] as const,
-  list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
-  details: () => [...${keysVar}.all(), "detail"] as const,
-  detail:  (id: ${pkType}) => [...${keysVar}.details(), id] as const,${relationKeyLine}
-};
-`;
-
-  const queries: Code = code`
-export function use${entityName}(
-  id: ${pkType},
-  opts?: Omit<${useQueryOptionsSym}<${entityName}Row>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${entityName}Row> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  return ${useQuerySym}<${entityName}Row>({
-    queryKey: ${keysVar}.detail(id),
-    queryFn: () => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`),
-    ...opts,
-  });
-}
-
-export function use${entityNamePlural}(
-  filter?: ${entityName}Filter,
-  opts?: Omit<${useQueryOptionsSym}<${entityName}Row[]>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${entityName}Row[]> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
-  return ${useQuerySym}<${entityName}Row[]>({
-    queryKey: ${keysVar}.list(filter),
-    queryFn: () => fetcher<${entityName}Row[]>(\`\${${entityName}.$path}\${qs}\`),
-    ...opts,
-  });
-}
-`;
-
-  const m2mHooks = renderM2mHooks(entity, ctx, keysVar, m2mEntries);
-
-  const mutations: Code = code`
-export function useCreate${entityName}(
-  opts?: Omit<${useMutationOptionsSym}<${entityName}Row, Error, ${entityName}Insert>, "mutationFn">,
-): ${useMutationResultSym}<${entityName}Row, Error, ${entityName}Insert> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qc = ${useQueryClientSym}();
-  return ${useMutationSym}<${entityName}Row, Error, ${entityName}Insert>({
-    mutationFn: (input) => fetcher<${entityName}Row>(\`\${${entityName}.$path}\`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-    ...opts,
-    onSuccess: (...args) => {
-      qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(...args);
-    },
-  });
-}
-
-export function useUpdate${entityName}(
-  opts?: Omit<${useMutationOptionsSym}<${entityName}Row, Error, { id: ${pkType}; input: ${entityName}Update }>, "mutationFn">,
-): ${useMutationResultSym}<${entityName}Row, Error, { id: ${pkType}; input: ${entityName}Update }> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qc = ${useQueryClientSym}();
-  return ${useMutationSym}({
-    mutationFn: ({ id, input }) => fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-    ...opts,
-    onSuccess: (...args) => {
-      qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(...args);
-    },
-  });
-}
-
-export function useDelete${entityName}(
-  opts?: Omit<${useMutationOptionsSym}<void, Error, ${pkType}>, "mutationFn">,
-): ${useMutationResultSym}<void, Error, ${pkType}> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qc = ${useQueryClientSym}();
-  return ${useMutationSym}({
-    mutationFn: (id) => fetcher<void>(\`\${${entityName}.$path}/\${id}\`, { method: "DELETE" }),
-    ...opts,
-    onSuccess: (...args) => {
-      qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(...args);
-    },
-  });
-}
-`;
-
-  const body: Code = joinCode(
-    m2mHooks ? [queryKeys, queries, m2mHooks, mutations] : [queryKeys, queries, mutations],
-    { on: "\n" },
-  );
-
-  const header =
-    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n`;
-  return header + entityImports.toString() + body.toString();
+  writeDetailHook(w, `use${entityName}`, row, pkType, path, `${keysVar}.detail(id)`);
+  writeListHook(w, `use${hookListNameSegment(entity)}`, row, filter, path, `${keysVar}.list(filter)`);
+  writeM2mHooks(w, entity, ctx, keysVar, m2mEntries);
+  writeCrudMutations(w, { name: entityName, row, createInput: insert, updateInput: update, pkType, path, keysVar });
 }
 
 // ---------------------------------------------------------------------------
 // FR-017 Tier 3 — TPH discriminator base: polymorphic + per-subtype hooks.
 // ---------------------------------------------------------------------------
 
-function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: string): string {
+function writeTphHooksFile(w: TsWriter, base: MetaObject, ctx: RenderContext, baseModule: string): void {
   const baseName = base.name;
   // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
   // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
@@ -405,169 +387,50 @@ function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: st
   const plan = tphPlan(base, ctx.loadedRoot)!;
   const discField = plan.discriminatorField;
 
-  const useQuerySym = imp("useQuery@@tanstack/react-query");
-  const useMutationSym = imp("useMutation@@tanstack/react-query");
-  const useQueryClientSym = imp("useQueryClient@@tanstack/react-query");
-  const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
-  const useMutationOptionsSym = imp("t:UseMutationOptions@@tanstack/react-query");
-  const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
-  const useMutationResultSym = imp("t:UseMutationResult@@tanstack/react-query");
-  const useEntityPathFetcherSym = imp("useEntityPathFetcher@@metaobjectsdev/tanstack");
-  const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
-
-  const subtypes = plan.subtypes;
-
+  writeHeader(w, base, "TPH discriminator base");
   // `${baseName}` imports BOTH the constants value (for $path) and the
   // discriminated-union type (declaration merge). Each subtype contributes its
   // interface type AND its own filter type (discriminator-excluded — the route
   // pins it), so per-subtype hooks filter on the fields the per-subtype
   // allowlist actually permits.
-  const subImportLines = subtypes
-    .map((s) => {
-      const m = entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(s.entity), s.entity.name, ctx.extStyle);
-      return `import { type ${s.entity.name}, type ${s.entity.name}Filter } from ${JSON.stringify(m)};`;
-    })
-    .join("\n");
-  const entityImports: Code = code`
-import { ${baseName}, type ${baseName}Filter } from ${JSON.stringify(baseModule)};
-${subImportLines}
-`;
+  const baseRef = w.use(baseName, baseModule);
+  const baseFilter = w.useType(`${baseName}Filter`, baseModule);
+  const path = sub(`${baseRef}.$path`);
 
-  const queryKeys: Code = code`
-export const ${keysVar} = {
-  all:           () => [${JSON.stringify(lcBase)}] as const,
-  lists:         () => [...${keysVar}.all(), "list"] as const,
-  list:          (filter?: ${baseName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
-  details:       () => [...${keysVar}.all(), "detail"] as const,
-  detail:        (id: ${pkType}) => [...${keysVar}.details(), id] as const,
-  subtypeLists:  (sub: string) => [...${keysVar}.all(), sub, "list"] as const,
-  // filter is loosely typed here (cache-key identity only); the per-subtype
-  // hooks below type it precisely as <Sub>Filter.
-  subtypeList:   (sub: string, filter?: unknown) => [...${keysVar}.subtypeLists(sub), filter ?? {}] as const,
-  subtypeDetails:(sub: string) => [...${keysVar}.all(), sub, "detail"] as const,
-  subtypeDetail: (sub: string, id: ${pkType}) => [...${keysVar}.subtypeDetails(sub), id] as const,
-};
-`;
+  w.blank();
+  w.block(`export const ${keysVar} = {`, () => {
+    writeListKeys(w, keysVar, lcBase, baseFilter);
+    writeDetailKeys(w, keysVar, pkType);
+    w.line(`subtypeLists: (sub: string) => [...${keysVar}.all(), sub, "list"] as const,`);
+    w.line("// filter is loosely typed here (cache-key identity only); the per-subtype");
+    w.line("// hooks below type it precisely as <Sub>Filter.");
+    w.line(`subtypeList: (sub: string, filter?: unknown) => [...${keysVar}.subtypeLists(sub), filter ?? {}] as const,`);
+    w.line(`subtypeDetails: (sub: string) => [...${keysVar}.all(), sub, "detail"] as const,`);
+    w.line(`subtypeDetail: (sub: string, id: ${pkType}) => [...${keysVar}.subtypeDetails(sub), id] as const,`);
+  }, "};");
 
   // Polymorphic reads — return the discriminated union.
-  const polymorphic: Code = code`
-export function use${baseName}(
-  id: ${pkType},
-  opts?: Omit<${useQueryOptionsSym}<${baseName}>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${baseName}> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  return ${useQuerySym}<${baseName}>({
-    queryKey: ${keysVar}.detail(id),
-    queryFn: () => fetcher<${baseName}>(\`\${${baseName}.$path}/\${id}\`),
-    ...opts,
-  });
-}
-
-export function use${hookListNameSegment(base)}(
-  filter?: ${baseName}Filter,
-  opts?: Omit<${useQueryOptionsSym}<${baseName}[]>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${baseName}[]> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
-  return ${useQuerySym}<${baseName}[]>({
-    queryKey: ${keysVar}.list(filter),
-    queryFn: () => fetcher<${baseName}[]>(\`\${${baseName}.$path}\${qs}\`),
-    ...opts,
-  });
-}
-`;
+  writeDetailHook(w, `use${baseName}`, baseRef, pkType, path, `${keysVar}.detail(id)`);
+  writeListHook(w, `use${hookListNameSegment(base)}`, baseRef, baseFilter, path, `${keysVar}.list(filter)`);
 
   // Per-subtype hooks — scoped to each discriminator value's REST sub-path.
-  const subtypeSections: Code[] = subtypes.map(({ entity: subEntity, value, routeSegment: seg }) => {
-    const subName = subEntity.name;
-    const valueLit = JSON.stringify(value);
-    const createInput = `Omit<${subName}, ${JSON.stringify(discField)}>`;
-    const updateInput = `Partial<${createInput}>`;
-    const subPath = `\`\${${baseName}.$path}/${seg}\``;
-    return code`
-export function use${hookListNameSegment(subEntity)}(
-  filter?: ${subName}Filter,
-  opts?: Omit<${useQueryOptionsSym}<${subName}[]>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${subName}[]> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qs = filter ? "?" + ${buildFilterQsSym}(filter as Record<string, unknown>) : "";
-  return ${useQuerySym}<${subName}[]>({
-    queryKey: ${keysVar}.subtypeList(${valueLit}, filter),
-    queryFn: () => fetcher<${subName}[]>(\`\${${baseName}.$path}/${seg}\${qs}\`),
-    ...opts,
-  });
-}
-
-export function use${subName}(
-  id: ${pkType},
-  opts?: Omit<${useQueryOptionsSym}<${subName}>, "queryKey" | "queryFn">,
-): ${useQueryResultSym}<${subName}> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  return ${useQuerySym}<${subName}>({
-    queryKey: ${keysVar}.subtypeDetail(${valueLit}, id),
-    queryFn: () => fetcher<${subName}>(\`\${${baseName}.$path}/${seg}/\${id}\`),
-    ...opts,
-  });
-}
-
-export function useCreate${subName}(
-  opts?: Omit<${useMutationOptionsSym}<${subName}, Error, ${createInput}>, "mutationFn">,
-): ${useMutationResultSym}<${subName}, Error, ${createInput}> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qc = ${useQueryClientSym}();
-  return ${useMutationSym}<${subName}, Error, ${createInput}>({
-    mutationFn: (input) => fetcher<${subName}>(${subPath}, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-    ...opts,
-    onSuccess: (...args) => {
-      qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(...args);
-    },
-  });
-}
-
-export function useUpdate${subName}(
-  opts?: Omit<${useMutationOptionsSym}<${subName}, Error, { id: ${pkType}; input: ${updateInput} }>, "mutationFn">,
-): ${useMutationResultSym}<${subName}, Error, { id: ${pkType}; input: ${updateInput} }> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qc = ${useQueryClientSym}();
-  return ${useMutationSym}({
-    mutationFn: ({ id, input }) => fetcher<${subName}>(\`\${${baseName}.$path}/${seg}/\${id}\`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-    ...opts,
-    onSuccess: (...args) => {
-      qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(...args);
-    },
-  });
-}
-
-export function useDelete${subName}(
-  opts?: Omit<${useMutationOptionsSym}<void, Error, ${pkType}>, "mutationFn">,
-): ${useMutationResultSym}<void, Error, ${pkType}> {
-  const fetcher = ${useEntityPathFetcherSym}();
-  const qc = ${useQueryClientSym}();
-  return ${useMutationSym}({
-    mutationFn: (id) => fetcher<void>(\`\${${baseName}.$path}/${seg}/\${id}\`, { method: "DELETE" }),
-    ...opts,
-    onSuccess: (...args) => {
-      qc.invalidateQueries({ queryKey: ${keysVar}.all() });
-      opts?.onSuccess?.(...args);
-    },
-  });
-}
-`;
-  });
-
-  const body: Code = joinCode([queryKeys, polymorphic, ...subtypeSections], { on: "\n" });
-  const header =
-    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${baseName} (${base.fqn()}) — TPH discriminator base\n`;
-  return header + entityImports.toString() + body.toString();
+  for (const { entity: subEntity, value, routeSegment: seg } of plan.subtypes) {
+    const m = entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(subEntity), subEntity.name, ctx.extStyle);
+    const subName = w.useType(subEntity.name, m);
+    const subFilter = w.useType(`${subEntity.name}Filter`, m);
+    const valueLit = str(value);
+    const createInput = `Omit<${subName}, ${str(discField)}>`;
+    const subPath = `${path}/${seg}`;
+    writeListHook(w, `use${hookListNameSegment(subEntity)}`, subName, subFilter, subPath, `${keysVar}.subtypeList(${valueLit}, filter)`);
+    writeDetailHook(w, `use${subName}`, subName, pkType, subPath, `${keysVar}.subtypeDetail(${valueLit}, id)`);
+    writeCrudMutations(w, {
+      name: subName,
+      row: subName,
+      createInput,
+      updateInput: `Partial<${createInput}>`,
+      pkType,
+      path: subPath,
+      keysVar,
+    });
+  }
 }

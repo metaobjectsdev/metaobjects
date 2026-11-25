@@ -21,6 +21,7 @@ use serde_json::Value;
 
 use crate::accessors::with_derived_accessors;
 use crate::escapers::{self, FORMAT_TEXT};
+use crate::presence::{ERR_VAR_NOT_ON_PAYLOAD, first_missing};
 use crate::tags::{self, TagKind};
 use crate::verify::{self, PayloadField, VerifyOptions};
 
@@ -56,6 +57,13 @@ fn err<T>(message: impl Into<String>) -> Result<T, RenderError> {
 pub trait Provider {
     /// The text `reference` names, or `None` when there is none.
     fn resolve(&self, reference: &str) -> Option<String>;
+
+    /// Whether `reference` is a file written for the Jinja engine (ADR-0061), when the
+    /// provider knows. `None` (the default) means it does not, and the text is Mustache.
+    /// The template drift check refuses a Jinja partial rather than read it as Mustache.
+    fn is_jinja(&self, _reference: &str) -> Option<bool> {
+        None
+    }
 }
 
 /// A provider over a fixed map of references to bodies.
@@ -146,7 +154,8 @@ impl<'a> RenderRequest<'a> {
 /// # Errors
 /// An unknown format, an unresolved body or partial, a partial cycle or one nested deeper
 /// than [`MAX_DEPTH`], a Jinja partial, a template syntax error, a set-delimiter tag, a
-/// marker character in the template or payload, or output over the `maxChars` budget.
+/// marker character in the template or payload, an interpolated name the payload does
+/// not carry (`ERR_VAR_NOT_ON_PAYLOAD`), or output over the `maxChars` budget.
 pub fn render(request: &RenderRequest<'_>) -> Result<String, RenderError> {
     if !escapers::is_format(request.format) {
         return err(format!("unknown render format \"{}\"", request.format));
@@ -165,8 +174,14 @@ pub fn render(request: &RenderRequest<'_>) -> Result<String, RenderError> {
         check_payload(&body, fields, request.provider)?;
     }
     let expanded = pre_expand_partials(&body, request.provider, &mut Vec::new())?;
-    let source = mark_escaped_tags(&expanded, request.format)?;
     let payload = with_derived_accessors(request.payload);
+    let found = tags::scan(&expanded).map_err(|e| syntax(&e))?;
+    if let Some(name) = first_missing(&found, &payload) {
+        return err(format!(
+            "render verify failed: {ERR_VAR_NOT_ON_PAYLOAD} ({name})"
+        ));
+    }
+    let source = mark_escaped_tags(&expanded, request.format)?;
     let data = to_data(&payload)?;
     let template = mustache::compile_str(&source)
         .map_err(|e| RenderError(format!("template syntax error: {e}")))?;

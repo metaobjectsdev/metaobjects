@@ -9,9 +9,10 @@ Two models that differ ONLY by the business-rules vocabulary:
   (one carrying a `binding.rest`) take those objects as input and output. It is derived from the
   positive conformance fixture `fixtures/conformance/rules-purchase-request/`.
 
-1.3.0 registers the vocabulary, validates it at load and checks it in `verify`. The
-generated services and enforcing shells that act on it are later work, so until they land
-the two models produce the same output everywhere:
+1.3.0 registers the vocabulary, validates it at load and checks it in `verify`. Apart from the
+generators named below that read it (the rules names, the contract types and the TypeScript
+service generators `service`, `service-routes` and `service-routes-hono`), the two models
+produce the same output everywhere:
 
 - Every code generator in every port writes the same files, byte for byte.
 - TypeScript `meta migrate` proposes the same schema.
@@ -34,8 +35,8 @@ its end.
 The service generators (ADR-0067 layers 4 and 5) are the enforcing shells, so they also CHANGE
 files they write for `without/`: TypeScript's `service` adds a file per derived transition command
 and per declared operation and changes the package index (its policy, bodies and interfaces) and
-the lifecycle entity's create and update (which check its state), and `service-routes` changes the
-transport (the new routes). The test pins both lists, and every other file stays byte-identical.
+the lifecycle entity's create and update (which check its state), and `service-routes` and `service-routes-hono` change their
+transports (the new routes). The test pins both lists, and every other file stays byte-identical.
 The Rust `service` adds the declared operations' file and changes the service crate's manifest
 (the rules and contract crates it names), its library (the policy, the bodies and the move types)
 and the lifecycle entity's file (its commands and state checks); every other file it writes changes

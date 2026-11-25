@@ -278,6 +278,15 @@ export type AnyMeta =
 export { TypeId, TypeRegistry, childRuleMatches } from "./registry.js";
 export type { AttrSchema, ChildRule, TypeDefinition } from "./registry.js";
 export { registerCoreTypes, coreTypesProvider, coreProviders } from "./core-types.js";
+// The vocabulary packs in the default bundle, by id, so an embedder can leave one out:
+// `composeRegistry(coreProviders.filter((p) => p.id !== REPORTING_PROVIDER_ID))`.
+export { rulesProvider, RULES_PROVIDER_ID } from "./core/rules/rules-provider.js";
+export {
+  viewExpressionsProvider,
+  VIEW_EXPRESSIONS_PROVIDER_ID,
+} from "./persistence/view-expressions/view-expressions-provider.js";
+export { reportingProvider, REPORTING_PROVIDER_ID } from "./core/reporting/reporting-provider.js";
+export { requirementsProvider, REQUIREMENTS_PROVIDER_ID } from "./core/requirement/requirements-provider.js";
 
 // FR-033 — the constraint engine: additive merge + the contradiction validator.
 export { mergeConstraints } from "./constraint-merge.js";
@@ -321,6 +330,13 @@ export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";
 // Type provider model
 export { composeRegistry } from "./provider.js";
 export type { MetaDataTypeProvider } from "./provider.js";
+// FR-033 — register vocabulary from a provider definition file (the spec/metamodel/
+// format). The bundled packs use it; so may a provider outside core (ADR-0069 §5:
+// the definition file format is part of the covered provider contract).
+export { applyProviderDefinition } from "./provider-data.js";
+export type { ProviderDefinition, TypeDef, ChildDef, ExtendDef, FactoryMap, ValidatorMap } from "./provider-data.js";
+// The validation hook a provider's TypeDefinition may carry (`validate`).
+export type { NodeValidator, ValidationContext, SymbolTable, LoaderCode } from "./validation-types.js";
 
 // DataType classification
 export {
@@ -360,6 +376,7 @@ export {
   refMatchesObject,
   resolveObjectRef,
   resolveRef,
+  referrerPackageFor,
   lookupCanonical,
   refTarget,
   spellRef,

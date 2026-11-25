@@ -1,8 +1,11 @@
 """Port-neutral `.metaobjects/config.json` reading and source resolution.
 
-Reads only the NEUTRAL SUBSET (`schema_version`, `sources`). The file also
-carries TypeScript-owned keys; those are ignored rather than modeled, so a new
-TS-only key never becomes a four-port change. See
+Reads the neutral subset this port consumes: `schema_version`, `sources`,
+`dependencies`, `scope.include` (explicit-include rule only), `migrate.scope`,
+`libraries`, `naming`, `wire`, `rules`/`verify`, `requirements.inherit`, `api`
+and `enums` (shape checked; nothing consumed), plus `migrate.dialect` via
+`chose_migrate_dialect`. TypeScript-owned keys are ignored rather than modeled,
+so a new TS-only key never becomes a four-port change. See
 `docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md` §4.
 """
 from .dependencies import (

@@ -17,6 +17,7 @@ pub mod naming;
 pub mod node;
 pub mod parser;
 pub mod providers;
+pub mod reference;
 pub mod registry;
 pub mod report_shape;
 pub mod rules_check;

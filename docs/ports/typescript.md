@@ -440,7 +440,7 @@ source, or an abstract one, generates nothing. The contract is in
 
 Wire `reportExport()` and a served report's list route also answers `?format=csv|json|xml`
 (the contract is "Report export" in [api-contract](../features/api-contract.md)). The
-wiring is the generator's presence: it carries the `emitsReportExport` marker, the runner turns
+wiring is the generator's presence: it declares `provides: { reportExport: true }`, the runner turns
 that into `includeReportExport` for the routes generators, and only then does a report's routes
 file import `<R>.export` and pass `export: <R>Export` to the mount. Without `reportExport()` the
 routes are byte-identical to before and `?format=` is ignored like any unknown parameter.
@@ -749,20 +749,25 @@ imports `zod` only. It is not scaffolded; add it to `generators` or `meta eject 
 and give it its own `target` to put the layer in a package the transport and clients share. See
 [Business rules](../features/business-rules.md#the-contract-types-layer-typescript).
 
-### `service/` and `transport/` — the service layer and its Fastify transport
+### `service/` and `transport/` — the service layer and its Fastify or Hono transport
 
 `serviceFile()` (stable name `service`, layer `service`) is layer 4 of ADR-0067. It writes one
 module per metadata package, under the package's directory in either layout: a file per operation
 in `<pkg path>/service/` (each entity's derived list, get, create, update and delete, every write in
-one transaction by default, with the declared write rules) and `service/index.ts` with the `<Pkg>Service`
+one transaction by default, with the declared write rules; the reads of a projection or a served
+report; a single-table subtype's operations, scoped to its discriminator; a query per many-to-many
+relationship) and `service/index.ts` with the `<Pkg>Service`
 interface and `create<Pkg>Service(deps)`. A model with ADR-0066 rules also gets a file per
 derived transition command and per declared command and query, each running the rules' checks
 around a hand-written body; the policy, bodies, hooks and event hook are passed in `deps`.
 `serviceRoutesFile()` (stable name `service-routes`) writes `<pkg path>/transport/fastify.ts`, the
-routes that call it, with a `getActor(request)` option for the app's actor. Both need `entity` and
-`contract-types` in the same target. Neither is scaffolded; add them to `generators` or `meta eject`
-them. On SQLite the service takes a sync or an async Drizzle driver. A store that holds no
-transaction across application code (Cloudflare D1) takes `serviceFile({ interactiveTransactions: false })`.
+routes that call it, with a `getActor(request)` option for the app's actor.
+`serviceRoutesHonoFile()` (stable name `service-routes-hono`) writes the same routes for Hono,
+`<pkg path>/transport/hono.ts`, with `getActor(c)`. Each needs `entity` and `contract-types` in the
+same target. None is scaffolded; add them to `generators` or `meta eject` them. On SQLite the
+service takes a sync or an async Drizzle driver. A store that holds no transaction across
+application code (Cloudflare D1) takes `serviceFile({ interactiveTransactions: false })`, and a
+report's row cap is `serviceFile({ reportMaxRows })`, as `routesFile` takes it.
 See [Business rules](../features/business-rules.md#the-service-layer-typescript).
 
 ### Prove it works

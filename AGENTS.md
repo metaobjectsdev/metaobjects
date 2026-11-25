@@ -68,14 +68,14 @@ PyPI has had no product change since `0.25.0` — nothing is broken.
 **All five ports ship loader + canonical serializer + conformance + codegen + render + payload-VO + `verify`:**
 
 - **TypeScript** — `codegen-ts` (Vite-style plugins; Drizzle, Zod, Fastify) + `runtime-ts` + `migrate-ts` + the universal web client packages (`runtime-web`, `react`, `tanstack`).
-- **C#** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext` + CRUD minimal-API routes). Schema migrations are TS-owned (ADR-0015): the C# migrate engine and the `migrate`/`--from-db` CLI surface were removed; the C# CLI is codegen (`init`/`gen`/`eject`), `verify` and `fmt` only, packaged as a .NET tool invoked **`dotnet meta`** (not a bare `meta` — that name belongs to the Node schema CLI). EF Core runtime data-access stays per-port.
-- **Java** — `metadata` + `omdb` + `om` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring controllers + DTOs + repositories + filter allowlists + payload records + output parsers) + `codegen-mustache` + `codegen-plantuml` + `render` + `maven-plugin` (`metaobjects:generate`/`metaobjects:editor` + a `metaobjects:verify` **codegen-drift** goal — distinct from the removed live-DB `metaobjects:verify`; Kotlin generators run through `metaobjects:generate` via the shared SPI). FR-003 (OMDB runtime persistence + binding registry + typed jsonb + Spring-tx + source/origin metamodel) fully shipped, including Plan 4 (engine-debt remediation: atomic mapping cache, JDBC codec registry, `inTransaction` template). **Schema migrations are owned by the TypeScript toolchain** (`@metaobjectsdev/cli migrate`); the Java port's diff-and-converge migration engine and its `metaobjects:migrate` / live-DB-drift `metaobjects:verify` Maven goals were removed, and per ADR-0015 Decision 2 the dev/test runtime auto-create path (`MetaClassDBValidatorService` + the drivers' `createTable`/`createIndex`/`createForeignKey`/`createSequence` DDL) is **also** removed — **OMDB is pure data-access** (CRUD/query/codec/transactions only).
-- **Python** — `metaobjects` (loader + canonical serializer + conformance + render + verify + codegen) + an `ObjectManager` runtime layer. The `migrate` module was removed (schema is TS-owned, ADR-0015); Python is pure data-access (codegen + ObjectManager runtime), with a **`metaobjects` console-script** (`gen`/`verify` codegen — no `migrate`). All five conformance corpora green.
+- **C#** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext` + CRUD minimal-API routes). Schema migrations run in EF Core Migrations or the Node `meta migrate` reference helper (ADR-0015): the C# migrate engine and the `migrate`/`--from-db` CLI surface were removed; the C# CLI is codegen (`init`/`gen`/`eject`), `verify` and `fmt` only, packaged as a .NET tool invoked **`dotnet meta`** (not a bare `meta` — that name belongs to the Node schema CLI). EF Core runtime data-access stays per-port.
+- **Java** — `metadata` + `omdb` + `om` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring controllers + DTOs + repositories + filter allowlists + payload records + output parsers) + `codegen-mustache` + `codegen-plantuml` + `render` + `maven-plugin` (`metaobjects:generate`/`metaobjects:editor` + a `metaobjects:verify` **codegen-drift** goal — distinct from the removed live-DB `metaobjects:verify`; Kotlin generators run through `metaobjects:generate` via the shared SPI). FR-003 (OMDB runtime persistence + binding registry + typed jsonb + Spring-tx + source/origin metamodel) fully shipped, including Plan 4 (engine-debt remediation: atomic mapping cache, JDBC codec registry, `inTransaction` template). **Schema migrations run in the project's own tool or the reference migration helper** (`@metaobjectsdev/cli migrate`); the Java port's diff-and-converge migration engine and its `metaobjects:migrate` / live-DB-drift `metaobjects:verify` Maven goals were removed, and per ADR-0015 Decision 2 the dev/test runtime auto-create path (`MetaClassDBValidatorService` + the drivers' `createTable`/`createIndex`/`createForeignKey`/`createSequence` DDL) is **also** removed — **OMDB is pure data-access** (CRUD/query/codec/transactions only).
+- **Python** — `metaobjects` (loader + canonical serializer + conformance + render + verify + codegen) + an `ObjectManager` runtime layer. The `migrate` module was removed (migrations run in the project's own tool or the Node `meta migrate` reference helper, ADR-0015); Python is pure data-access (codegen + ObjectManager runtime), with a **`metaobjects` console-script** (`gen`/`verify` codegen — no `migrate`). All five conformance corpora green.
 - **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + payload + relations + filter allowlist + validator + stored-proc + output-parser generators. `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 
 **Cross-port conformance corpora** (every port runs the shared corpus):
-- Metamodel: `fixtures/conformance/` (578 fixtures; 45 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
-- Render: `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
+- Metamodel: `fixtures/conformance/` (584 fixtures; 48 shared corpora in total — per-corpus counts + the corpus x port matrix live in `docs/CONFORMANCE.md`). TS / C# / Java / Python all green.
+- Render: `fixtures/render-conformance/`. TS / Java / Kotlin / Python byte-identical; C# and Rust each carry a `KnownDrift` render ledger, recorded in `docs/CONFORMANCE.md`.
 - Persistence: `fixtures/persistence-conformance/`. **Query** scenarios run on every port (TS / C# / Java / Kotlin / Python; `op: guardedUpdate` is TS-only until each port's 1.3.0 guarded update lands), each provisioning its test DB by executing the committed, TS-produced `canonical/schema.postgres.sql` (Postgres only — Derby dropped for the cross-port query corpus, ADR-0015; the FR-044 `report-*` scenarios also run on SQLite, MySQL and D1 where a port has the engine, see [docs/CONFORMANCE.md](docs/CONFORMANCE.md)). The **migration** scenarios are exercised by **TS only** (TS owns schema migrations). **The corpus now gates WRITES, not just reads (SP-H):** an `op: roundtrip` scenario type INSERTs through each port's runtime/ORM write codec (NOT raw SQL), reads the row back, and asserts the wire-normalized value. The `AllTypes` entity (`roundtrip-all-types.yaml`) carries one field of **every** persistable `field.*` subtype — string/int/long/double/float/decimal/boolean/date/time/timestamp(+tz)/currency/enum/uuid/object — plus an **array-of-VO** `field.object @isArray @storage:jsonb` column (`labels`, written as 2-element / empty-`[]` / single-element arrays across the three rows) — so every subtype write+read (incl. the array-of-value-object jsonb codec) round-trips through every port against Testcontainers PG. (`field.byte`/`field.short`/`field.class` were cut as non-functional registration-only stubs — the matrix tracks only genuinely-supported subtypes; see `fixtures/registry-conformance/README.md` → "Per-subtype write-round-trip matrix".)
 - API-contract: `fixtures/api-contract-conformance/`. TS / C# / Java / Kotlin / Python all green — each port runs **two lanes**: a hand-rolled reference server AND its **generated** API artifact booted over HTTP (the deployed controller/routes; TS+C# full-stack vs Testcontainers PG, Java/Kotlin/Python generated controller + in-memory repo behind the consumer seam). The generated fan-out found 10 real deployment bugs golden snapshots missed. Three sub-corpora run the **generated lane only, on all five ports** — `write-through/`, `projection/` (F22: a view-only `object.projection` serves GET list + GET by id and answers every write verb with `405 {"error": "method_not_allowed"}`) and `report/` (FR-044: a view-backed `object.report` serves GET list, answers `POST` with that same `405`, and mounts no `/{id}` route). That is deliberate, not a gap: what is under test is whether a port's GENERATOR emits those routes, and a hand-rolled reference server would answer every scenario by construction. The `m2m/` sub-corpus also gates **TPH x M:N together** (base-declared, subtype-declared, abstract-mid-declared, a non-subtype source onto a subtype TARGET, and the cross-subtype source id answering `200 []`) — the two corpora were originally built disjoint (`tph/` had no relationships, `m2m/` no discriminators), which is precisely how that defect class survived.
 - YAML / verify corpora green across the ports that ship those layers.
@@ -106,10 +106,11 @@ It blocks commits whose added lines match (`git commit --no-verify` bypasses, di
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
-test suite while `bun run --filter '*' typecheck` — the same check `scripts/ci-local.sh`
+test suite while `bun run typecheck` — the same check `scripts/ci-local.sh`
 runs — goes red, and a direct admin push to `main` bypasses branch protection. This hook closes that hole locally: when a push touches
-`server/typescript/` or `client/web/`, it runs that same `bun run --filter '*' build &&
-… typecheck` pair and **blocks the push when it is red** (~6s on a clean tree;
+`server/typescript/` or `client/web/`, it runs that same `bun run build && bun run
+typecheck` pair (the root scripts, which name core's workspace directories so a pack under
+`packs/` is never in them — ADR-0069) and **blocks the push when it is red** (~6s on a clean tree;
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
 or `SKIP_TS_TYPECHECK=1 git push`.
 
@@ -128,8 +129,8 @@ for a TYPED boolean, since `-f` sends the string `"true"` and 422s.)
 hosted checks — every check workflow in `.github/workflows/` is a thin wrapper that calls it.
 `--quick` covers `hygiene.yml` in full plus the TypeScript half of `conformance.yml`, and the
 flagless full run
-adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integration-tests.yml`'s
-Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
+adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor, the `packs` lane (ADR-0069) and
+`integration-tests.yml`'s Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
 `MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
 running it. The no-mistakes validation gate runs the script for you — see `.no-mistakes.yaml`,
 whose `test` command runs `--affected` (only the lanes the change touches, per
@@ -264,7 +265,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 - **TS runtime**: Bun-first for development (zero-config TS, native test runner). Node-compatible for distribution; users install via npm/pnpm/bun without lock-in to Bun's runtime.
 - **Module system**: ESM only. No CommonJS, no transpile step required.
 - **Storage format**: JSON files in `metaobjects/meta.<concept>.json` at project root. `.metaobjects/.gen-state/` holds the codegen merge base: the snapshot **bodies are gitignored** (a second full copy of all generated output), but **`.hashes/` (one file per model package) is COMMITTED** — one hash per generated path, and the only thing that lets `meta gen` tell "this file is exactly what I wrote" from "somebody edited this" on a machine that did not generate it. Ignore it and a fresh clone or CI runner silently overwrites hand edits; commit it and an edited file is refused by name instead.
-- **Codegen substrate**: the vendored ts-poet printer (`codegen-ts/src/poet.ts`) for greenfield emit, ts-morph for in-place edits, no formatter in generation (the generator's writer lays out the text, ADR-0063), `git merge-file --diff3` for hand-edit-preserving regen.
+- **Codegen substrate**: the code writer (`codegen-ts/src/writer/`, ADR-0063) for greenfield emit, ts-morph for in-place edits, no formatter in generation (the generator's writer lays out the text, ADR-0063), `git merge-file --diff3` for hand-edit-preserving regen.
 - **Runtime substrate**: Kysely for TS (user-provided connection, async-only).
 - **Migration substrate**: Postgres + SQLite for TS v0.3.
 - **Metadata location**: resolved via `resolveCollection()` (`@metaobjectsdev/sdk`) — the single authority. `metaobjects/` is the **default value of `sources`** and nothing else: no other module, command or user-facing message may assert that a directory of that name exists or is where metadata lives. Exactly five sites may name it — `sdk/src/metadata-files.ts` (`DEFAULT_METADATA_DIR`, its single definition), `sdk/src/sources.ts` (`DEFAULT_SOURCES`, **the** default), `sdk/src/collection.ts` (inside `resolveCollection`, *applying* that default), `sdk/src/index.ts` (the barrel re-export of the constant, no use), and `cli/src/commands/init.ts` (the scaffolder **writing** the layout). Enforced by `sdk/test/no-hardcoded-metadata-dir.test.ts`, whose allowlist demands a written reason per entry. See [docs/features/metadata-sources.md](docs/features/metadata-sources.md).
@@ -437,11 +438,12 @@ meta types [<type>] --format json|toon # what vocabulary this build actually reg
 meta fmt [<file>...] [--check]        # rewrite metadata into canonical form; --check lists drift (#304, every port)
 ```
 
-The above is the **Node `meta`** (schema + TS codegen). Each non-TS port runs
+The above is the **Node `meta`** (schema commands + TS codegen). Each non-TS port runs
 codegen through its own build tool — `dotnet meta gen`/`verify` (C#),
 `mvn metaobjects:generate`/`:verify` (Java/Kotlin), `metaobjects gen`/`verify`
-(Python). Schema (`migrate`, `verify --db`) is Node-`meta`-only. `fmt` is the
-one exception to "codegen is per-port, schema is Node-only" — every port ships
+(Python). The schema commands (`schema`, `migrate`, `verify --db`) are Node-`meta`-only;
+`meta migrate` is the reference migration helper, one option beside each language's own
+tool. `fmt` is the one exception to "codegen is per-port, schema commands are Node-only" — every port ships
 its own canonical serializer already, so `fmt` runs locally everywhere:
 `dotnet meta fmt` (C#), `mvn metaobjects:fmt` (Java/Kotlin), `metaobjects fmt`
 (Python). Full matrix + rationale: [docs/features/cli.md](docs/features/cli.md)
@@ -449,14 +451,14 @@ its own canonical serializer already, so `fmt` runs locally everywhere:
 
 ## Running tests
 
-The Bun workspace root is the **repository root** (`/package.json`), which globs `server/typescript/packages/*`, `client/web/packages/*` and the `examples/dynamic-grid` example. Java/Python/C# live outside the JS workspace (not globbed). Run `bun install` **once at the repo root**. Run `bun test` **scoped** — `cd server/typescript && bun test` for the server suite (this also picks up `server/typescript/bunfig.toml`'s test preload), and per-package for `client/web`. **Never run a bare `bun test` at the repo root**: it walks `java/`, `python/`, `csharp/`, and `fixtures/` looking for test files, turning a fast per-package run into many minutes.
+The Bun workspace root is the **repository root** (`/package.json`), which globs `server/typescript/packages/*`, `client/web/packages/*`, the `examples/dynamic-grid` example and `packs/*/typescript` (the independent packs, ADR-0069). Java/Python/C# live outside the JS workspace (not globbed). Run `bun install` **once at the repo root**. Run `bun test` **scoped** — `cd server/typescript && bun test` for the server suite (this also picks up `server/typescript/bunfig.toml`'s test preload), and per-package for `client/web`. **Never run a bare `bun test` at the repo root**: it walks `java/`, `python/`, `csharp/`, `packs/`, and `fixtures/` looking for test files, turning a fast per-package run into many minutes.
 
 ```
 bun install                                        # once, at the repo root
 cd server/typescript && bun test                   # server suite (per-package; a bare run over the whole server suite now exceeds 5 min — scope it)
 cd client/web/packages/<pkg> && bun test           # a single client package
-bun run --filter '*' typecheck                     # whole workspace, from repo root
-bun run --filter '*' build                         # whole workspace, from repo root
+bun run typecheck                                  # core's workspace (not packs/), from repo root
+bun run build                                      # core's workspace (not packs/), from repo root
 ```
 
 ## How to contribute

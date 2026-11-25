@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Legacy",
+          "abstract": true,
+          "@deprecated": "use Modern",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Middle",
+          "abstract": true,
+          "extends": "Legacy"
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Widget",
+          "extends": "Middle"
+        }
+      }
+    ]
+  }
+}

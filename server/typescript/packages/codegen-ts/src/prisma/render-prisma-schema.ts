@@ -2,6 +2,7 @@
 // writes (columns aligned per model, block attributes after a blank line), so formatting the
 // generated file is a no-op and `meta verify --codegen` does not see a formatted file as edited.
 
+import { CodeWriter } from "../writer/code-writer.js";
 import {
   prismaString,
   type PrismaCheckSpec,
@@ -10,41 +11,77 @@ import {
   type PrismaSchemaSpec,
 } from "./build-prisma-schema.js";
 
-/** The generator block a schema gets when the options name none. */
-export const DEFAULT_PRISMA_CLIENT_GENERATOR = 'generator client {\n  provider = "prisma-client"\n  output   = "./generated"\n}';
+/** A writer laid out as `prisma format` lays a schema out. */
+const prismaWriter = (): CodeWriter => new CodeWriter({ trailingComma: false });
 
 /** `key = value` lines with the `=` aligned, as `prisma format` writes a block. */
-function keyValueBlock(header: string, entries: ReadonlyArray<readonly [string, string]>): string {
+function writeKeyValueBlock(w: CodeWriter, header: string, entries: ReadonlyArray<readonly [string, string]>): void {
   const width = Math.max(...entries.map(([k]) => k.length));
-  return [`${header} {`, ...entries.map(([k, v]) => `  ${k.padEnd(width)} = ${v}`), "}"].join("\n");
+  w.block(`${header} {`, () => {
+    for (const [k, v] of entries) w.line(`${k.padEnd(width)} = ${v}`);
+  });
+}
+
+/** One block, written on its own, without the final newline. */
+function blockText(write: (w: CodeWriter) => void): string {
+  const w = prismaWriter();
+  write(w);
+  return w.toString().trimEnd();
+}
+
+/** The generator block a schema gets when the options name none. */
+export const DEFAULT_PRISMA_CLIENT_GENERATOR = blockText(writeDefaultGenerator);
+
+function writeDefaultGenerator(w: CodeWriter): void {
+  writeKeyValueBlock(w, "generator client", [
+    ["provider", prismaString("prisma-client")],
+    ["output", prismaString("./generated")],
+  ]);
 }
 
 /** The datasource block: the provider, and the schemas of a multi-schema Postgres model. */
 export function renderDatasource(spec: PrismaSchemaSpec): string {
+  return blockText((w) => writeDatasource(w, spec));
+}
+
+/** Write the datasource block into `w`. */
+export function writeDatasource(w: CodeWriter, spec: PrismaSchemaSpec): void {
   const entries: Array<readonly [string, string]> = [["provider", prismaString(spec.provider)]];
   if (spec.schemas.length > 0) entries.push(["schemas", `[${spec.schemas.map(prismaString).join(", ")}]`]);
-  return keyValueBlock("datasource db", entries);
+  writeKeyValueBlock(w, "datasource db", entries);
 }
 
 function fieldType(f: PrismaFieldSpec): string {
   return `${f.type}${f.list ? "[]" : ""}${f.optional ? "?" : ""}`;
 }
 
-function renderModel(model: PrismaModelSpec): string {
+function writeModel(w: CodeWriter, model: PrismaModelSpec): void {
   const nameWidth = Math.max(...model.fields.map((f) => f.name.length));
   const typeWidth = Math.max(...model.fields.map((f) => fieldType(f).length));
-  const lines = model.fields.map((f) => {
-    const type = fieldType(f);
-    if (f.attributes.length === 0) return `  ${f.name.padEnd(nameWidth)} ${type}`;
-    return `  ${f.name.padEnd(nameWidth)} ${type.padEnd(typeWidth)} ${f.attributes.join(" ")}`;
+  w.block(`model ${model.name} {`, () => {
+    for (const f of model.fields) {
+      const type = fieldType(f);
+      if (f.attributes.length === 0) w.line(`${f.name.padEnd(nameWidth)} ${type}`);
+      else w.line(`${f.name.padEnd(nameWidth)} ${type.padEnd(typeWidth)} ${f.attributes.join(" ")}`);
+    }
+    if (model.blockAttributes.length > 0) {
+      w.blank();
+      for (const a of model.blockAttributes) w.line(a);
+    }
   });
-  const block = model.blockAttributes.length === 0 ? [] : ["", ...model.blockAttributes.map((a) => `  ${a}`)];
-  return [`model ${model.name} {`, ...lines, ...block, "}"].join("\n");
 }
 
 /** The models, one block each, in table order. */
 export function renderModels(spec: PrismaSchemaSpec): string {
-  return spec.models.map(renderModel).join("\n\n");
+  return blockText((w) => writeModels(w, spec));
+}
+
+/** Write the models into `w`, one block each, a blank line between. */
+export function writeModels(w: CodeWriter, spec: PrismaSchemaSpec): void {
+  for (const model of spec.models) {
+    w.blank();
+    writeModel(w, model);
+  }
 }
 
 export interface RenderPrismaSchemaOptions {
@@ -59,12 +96,20 @@ export interface RenderPrismaSchemaOptions {
 }
 
 export function renderPrismaSchema(spec: PrismaSchemaSpec, options: RenderPrismaSchemaOptions): string {
-  const parts: string[] = [];
-  if (options.banner.length > 0) parts.push(options.banner.map((l) => (l === "" ? "//" : `// ${l}`)).join("\n"));
-  if (options.header === undefined) parts.push(DEFAULT_PRISMA_CLIENT_GENERATOR, renderDatasource(spec));
-  else if (options.header !== false && options.header.trim() !== "") parts.push(options.header.trim());
-  if (spec.models.length > 0) parts.push(renderModels(spec));
-  return `${parts.join("\n\n")}\n`;
+  const w = prismaWriter();
+  for (const l of options.banner) w.line(l === "" ? "//" : `// ${l}`);
+  if (options.header === undefined) {
+    w.blank();
+    writeDefaultGenerator(w);
+    w.blank();
+    writeDatasource(w, spec);
+  } else if (options.header !== false && options.header.trim() !== "") {
+    // The project's own blocks, as written (the writer only re-indents them to the margin).
+    w.blank();
+    w.text(options.header);
+  }
+  writeModels(w, spec);
+  return w.toString();
 }
 
 function pgTable(check: PrismaCheckSpec): string {
@@ -78,16 +123,17 @@ function pgTable(check: PrismaCheckSpec): string {
  * `DROP CONSTRAINT IF EXISTS`, so its file adds each once, after the table is created.
  */
 export function renderChecksSql(spec: PrismaSchemaSpec, banner: readonly string[]): string {
-  const lines: string[] = banner.map((l) => (l === "" ? "--" : `-- ${l}`));
+  const w = new CodeWriter();
+  for (const l of banner) w.line(l === "" ? "--" : `-- ${l}`);
   for (const check of spec.checks) {
     if (spec.provider === "postgresql") {
       const table = pgTable(check);
       const name = `"${check.name.replace(/"/g, '""')}"`;
-      lines.push(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name};`);
-      lines.push(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${check.expression});`);
+      w.line(`ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS ${name};`);
+      w.line(`ALTER TABLE ${table} ADD CONSTRAINT ${name} CHECK (${check.expression});`);
     } else {
-      lines.push(`ALTER TABLE \`${check.table}\` ADD CONSTRAINT \`${check.name}\` CHECK (${check.expression});`);
+      w.line(`ALTER TABLE \`${check.table}\` ADD CONSTRAINT \`${check.name}\` CHECK (${check.expression});`);
     }
   }
-  return `${lines.join("\n")}\n`;
+  return w.toString();
 }

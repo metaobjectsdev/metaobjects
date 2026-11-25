@@ -23,8 +23,8 @@ use crate::rules_check::{
 };
 use crate::validate::Env;
 use crate::validate::rules::{
-    RESERVED_ERROR_CODES, borrowed_key_field, derive_operation_target, entity_transitions,
-    is_true, operation_is_keyed, str_attr, string_list,
+    RESERVED_ERROR_CODES, borrowed_key_field, derive_operation_target, entity_transitions, is_true,
+    operation_is_keyed, str_attr, string_list,
 };
 use crate::validate::util::ObjectIndex;
 
@@ -292,7 +292,8 @@ pub fn rules_names_of(
             OperationKind::Query
         };
         let command = kind == OperationKind::Command;
-        let keyed = target.is_some() && operation_is_keyed(&env, op, derive_operation_target(&env, op));
+        let keyed =
+            target.is_some() && operation_is_keyed(&env, op, derive_operation_target(&env, op));
         let input_key_field = match target {
             Some(t) if keyed => borrowed_key_field(&env, op, t),
             _ => None,

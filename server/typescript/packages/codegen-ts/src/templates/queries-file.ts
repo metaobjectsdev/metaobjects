@@ -1,40 +1,43 @@
-// Queries file composer — composes all CRUD function renderers (from queries.ts) into
-// a complete <Entity>.queries.ts file with @generated header and correct imports.
+// Queries file composer — composes all CRUD function writers (from queries.ts) into
+// a complete <Entity>.queries.ts file with @generated header and correct imports, laid out
+// by the code writer (ADR-0063).
 
-import { code, joinCode, imp, type Code } from "../poet.js";
 import {
   MetaObject,
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
-import { dbTypeBlock, supportsReturning } from "../dialect-module.js";
+import { writeDbType, supportsReturning } from "../dialect-module.js";
 import { entityModuleSpecifier } from "../import-path.js";
 import {
-  renderFindByIdFn,
-  renderListFn,
-  renderCreateFn,
-  renderInsertPreservingFn,
-  renderUpdateFn,
-  renderDeleteByIdFn,
-  renderReverseFinderFns,
+  writeFindByIdFn,
+  writeListFn,
+  writeCreateFn,
+  writeInsertPreservingFn,
+  writeUpdateFn,
+  writeDeleteByIdFn,
+  writeReverseFinderFns,
+  writePagedSelect,
+  writeIf,
   reverseFksFor,
-  schemaInputType,
+  useSchemaInputType,
 } from "./queries.js";
 import { getPkInfo, getPkFields } from "../pk-resolver.js";
 import { findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName, singleRowVarName } from "../naming.js";
-import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarLine } from "../constants.js";
+import { GENERATED_HEADER, GENERATED_EDIT_NOTE, sidecarComment } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { isReport } from "../source-detect.js";
 import { hasItemRoute } from "../api-surface.js";
 import { hasAutoSetFields, hasInsertRefinements } from "./zod-validators.js";
 import { effectivePackage } from "../docs-paths.js";
+import { str, TsWriter } from "../writer/ts-writer.js";
 
 /**
- * The dialect-correct Drizzle `Db` type alias + its import — parameter-passed into every
- * generated CRUD helper (ADR-0008), so the signatures `find…(db: Db, …)` typecheck without
- * the consumer importing anything to construct one. Shared by every queries-file renderer.
+ * The `<Entity>.queries.ts` module. The `Db` type alias it opens with is the dialect-correct
+ * Drizzle database type, parameter-passed into every generated CRUD helper (ADR-0008), so the
+ * signatures `find…(db: Db, …)` typecheck without the consumer importing anything to construct one.
  *   - Postgres: `PgDatabase<…>` is the base every PG driver extends (node-postgres,
  *     postgres.js, Neon, Vercel, pglite) — accepts whichever driver the consumer chose.
  *   - SQLite: `BaseSQLiteDatabase<"sync" | "async", …>` accepts BOTH sync (better-sqlite3)
@@ -56,12 +59,20 @@ import { effectivePackage } from "../docs-paths.js";
  *     and a schema-less db without reaching for `any`.
  */
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
+  const w = new TsWriter();
+  writeQueriesFile(w, obj, ctx);
+  return w.toString();
+}
+
+/** Write {@link renderQueriesFile}'s module into `w`. */
+export function writeQueriesFile(w: TsWriter, obj: MetaObject, ctx: RenderContext): void {
   // FR-017 Tier 2 — a TPH discriminator base gets a polymorphic queries file:
   // base reads dispatch through parse<Base>, and per-subtype CRUD targets the
   // single base table scoped to the discriminator value. (Subtype entities are
   // filtered out of the queries generator entirely — their CRUD lives here.)
   if (isTphDiscriminatorBase(obj, ctx.loadedRoot)) {
-    return renderTphQueriesFile(obj, ctx);
+    writeTphQueriesFile(w, obj, ctx);
+    return;
   }
 
   // A projection is view-backed and read-only: its entity file emits NO
@@ -70,78 +81,72 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // references exports that don't exist → TS2724. Mirror routes-file's projection
   // guard: read-only queries (findById + list) selecting from the view.
   if (isProjection(obj)) {
-    return renderProjectionQueriesFile(obj, ctx);
+    writeProjectionQueriesFile(w, obj, ctx);
+    return;
   }
 
   // #214 — a write-through entity read-view (FR-024 §7): READS route to the replica
   // view (returning the derived fields), WRITES target the table. A hybrid of the
   // projection read path + the vanilla write path.
   if (isWriteThrough(obj)) {
-    return renderWriteThroughQueriesFile(obj, ctx);
+    writeWriteThroughQueriesFile(w, obj, ctx);
+    return;
   }
 
   const entityName = obj.name;
-  // Import the entity's own file. Same target → relative "./Entity"; cross
-  // target → importBase-qualified package path.
-  const entityFileName = entityModuleSpecifier(
-    ctx.selfTarget,
-    ctx.entityModuleTarget,
-    effectivePackage(obj),
-    entityName,
-    ctx.extStyle,
-  );
-  const varName = ctx.collectionName(entityName);
-
-  // The persistence-context `db` is parameter-passed into every generated CRUD
-  // helper (ADR-0008). Emit the dialect-correct Drizzle type alias so the
-  // signatures `findXxx(db: Db, ...)` typecheck without the consumer importing
-  // anything to construct one. Consumers pass any compatible Drizzle instance.
-  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
-
-  // #203 — an @autoSet entity additionally imports its preserving-shape schema
-  // and emits the `insertPreserving<Entity>` escape hatch after `create<Entity>`.
+  writeHeader(w, obj);
+  writeDbType(w, ctx.dialect);
+  // The typed create inputs are spelled through the schemas (useSchemaInputType), so nothing
+  // here names the `<Entity>Create` aliases — an owned copy of this import predating them still works.
+  // #203 — an @autoSet entity additionally imports its preserving-shape schema and emits the
+  // `insertPreserving<Entity>` escape hatch after `create<Entity>`.
   const autoSet = hasAutoSetFields(obj);
-  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
+  const spec = entitySpecifier(obj, ctx);
+  w.use(ctx.collectionName(entityName), spec);
+  w.useType(entityName, spec);
+  w.useType(`${entityName}Patch`, spec);
+  w.use(`${entityName}InsertSchema`, spec);
+  if (autoSet) w.use(`${entityName}InsertPreservingSchema`, spec);
+  w.use(`${entityName}UpdateSchema`, spec);
 
-  // Literal imports (Db type + entity types) live in a code block so they sort
-  // alongside ts-poet's hoisted imp() imports at the top of the body. The typed create
-  // inputs are spelled through the schemas (schemaInputType), so nothing here names the
-  // `<Entity>Create` aliases — an owned copy of this import line predating them still works.
-  const literalImports = code`
-${dbTypeImport}
-${dbTypeAlias}
-
-import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
-`;
-
-  const sections: Code[] = [
-    literalImports,
-    renderFindByIdFn(obj, ctx),
-    renderListFn(obj, ctx),
-    renderCreateFn(obj, ctx),
-    ...(autoSet ? [renderInsertPreservingFn(obj, ctx)] : []),
-    renderUpdateFn(obj, ctx),
-    renderDeleteByIdFn(obj, ctx),
+  const sections: Array<() => void> = [
+    () => writeFindByIdFn(w, obj, ctx),
+    () => writeListFn(w, obj, ctx),
+    () => writeCreateFn(w, obj, ctx),
+    ...(autoSet ? [() => writeInsertPreservingFn(w, obj, ctx)] : []),
+    () => writeUpdateFn(w, obj, ctx),
+    () => writeDeleteByIdFn(w, obj, ctx),
   ];
-
   // ADR-0038 — reverse-relationship navigation via explicit FK finders. Each FK
   // this entity holds (`identity.reference`) gets `find<Plural>By<FkField>` +
   // its batched `…In` sibling, so the referenced entity can navigate back to its
   // referencing rows with a plain, single-query, framework-free read. FK field
   // names are unique within the entity, so the finder names never collide — the
   // same-pair case (3 FKs to one target) yields 3 distinct finders.
-  for (const fk of reverseFksFor(obj)) {
-    sections.push(renderReverseFinderFns(obj, fk, ctx));
-  }
+  for (const fk of reverseFksFor(obj)) sections.push(() => writeReverseFinderFns(w, obj, fk, ctx));
+  writeSections(w, sections);
+}
 
-  // Render ts-poet body first, then prepend the @generated header so it lands
-  // at line 1 ahead of any imports.
-  const body = joinCode(sections, { on: "\n" }).toString();
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${obj.fqn()})\n` +
-    sidecarLine(`${entityName}.extra.ts`);
-  return header + body;
+/** The header every queries module opens with; `note` follows the source line after ` — `. */
+function writeHeader(w: TsWriter, obj: MetaObject, note?: string): void {
+  w.header(
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${obj.name} (${obj.fqn()})${note === undefined ? "" : ` — ${note}`}`,
+    sidecarComment(`${obj.name}.extra.ts`),
+  );
+}
+
+/** The entity module's specifier from this target: relative on the same target, the package path across. */
+function entitySpecifier(obj: MetaObject, ctx: RenderContext): string {
+  return entityModuleSpecifier(ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(obj), obj.name, ctx.extStyle);
+}
+
+/** Each section after a blank line (the first one follows the `Db` alias). */
+function writeSections(w: TsWriter, sections: ReadonlyArray<() => void>): void {
+  for (const section of sections) {
+    w.blank();
+    section();
+  }
 }
 
 /**
@@ -155,52 +160,33 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
  * compile. Deliberately NO create/update/delete and NO `<Name>InsertSchema` import — a
  * read-only object's entity file never exports an insert schema.
  */
-function renderProjectionQueriesFile(obj: MetaObject, ctx: RenderContext): string {
+function writeProjectionQueriesFile(w: TsWriter, obj: MetaObject, ctx: RenderContext): void {
   const entityName = obj.name;
-  const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const viewVar = `${camelName}View`;
-  const entityFileName = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(obj), entityName, ctx.extStyle,
-  );
+  const viewVar = `${entityName.charAt(0).toLowerCase() + entityName.slice(1)}View`;
+  writeHeader(w, obj, `${isReport(obj) ? "report" : "projection"} (read-only)`);
+  writeDbType(w, ctx.dialect);
+  const spec = entitySpecifier(obj, ctx);
+  w.use(viewVar, spec);
+  w.useType(entityName, spec);
 
-  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
-
-  const literalImports = code`
-${dbTypeImport}
-${dbTypeAlias}
-
-import { ${viewVar}, type ${entityName} } from ${JSON.stringify(entityFileName)};
-`;
-
-  // Spliced into the one template below so a keyed projection's bytes do not move.
-  let findById: Code | string = "";
+  const sections: Array<() => void> = [];
   if (hasItemRoute(obj)) {
-    const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
-    const eqSym = imp("eq@drizzle-orm");
-    findById = code`export async function ${findByIdFnName(entityName)}(db: Db, ${pkField}: ${pkType}): Promise<${entityName} | null> {
-  const [row] = await db.select().from(${viewVar}).where(${eqSym}(${viewVar}.${pkField}, ${pkField})).limit(1);
-  return row ?? null;
-}
-
-`;
+    sections.push(() => {
+      const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
+      const eq = w.use("eq", "drizzle-orm");
+      w.block(`export async function ${findByIdFnName(entityName)}(db: Db, ${pkField}: ${pkType}): Promise<${entityName} | null> {`, () => {
+        w.line(`const [row] = await db.select().from(${viewVar}).where(${eq}(${viewVar}.${pkField}, ${pkField})).limit(1);`);
+        w.line("return row ?? null;");
+      });
+    });
   }
-
-  const reads = code`
-${findById}export async function ${listFnName(obj)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {
-  let q = db.select().from(${viewVar}).$dynamic();
-  if (opts?.limit !== undefined) q = q.limit(opts.limit);
-  if (opts?.offset !== undefined) q = q.offset(opts.offset);
-  return q;
-}
-`;
-
-  const body = joinCode([literalImports, reads], { on: "\n" }).toString();
-  const noun = isReport(obj) ? "report" : "projection";
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${obj.fqn()}) — ${noun} (read-only)\n` +
-    sidecarLine(`${entityName}.extra.ts`);
-  return header + body;
+  sections.push(() => {
+    w.block(`export async function ${listFnName(obj)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${entityName}[]> {`, () => {
+      writePagedSelect(w, `db.select().from(${viewVar}).$dynamic()`);
+      w.line("return q;");
+    });
+  });
+  writeSections(w, sections);
 }
 
 /**
@@ -212,39 +198,36 @@ ${findById}export async function ${listFnName(obj)}(db: Db, opts?: { limit?: num
  * the view by PK — a derived field is only computable via the view's join, so the
  * returned `<Entity>` (view shape) is read-your-writes correct.
  */
-function renderWriteThroughQueriesFile(obj: MetaObject, ctx: RenderContext): string {
+function writeWriteThroughQueriesFile(w: TsWriter, obj: MetaObject, ctx: RenderContext): void {
   const entityName = obj.name;
-  const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
-  const viewVar = `${camelName}View`;
+  const viewVar = `${entityName.charAt(0).toLowerCase() + entityName.slice(1)}View`;
   const tableVar = ctx.collectionName(entityName);
   const singularVar = singleRowVarName(entityName, tableVar);
-  const entityFileName = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(obj), entityName, ctx.extStyle,
-  );
   const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
   const pkFields = getPkFields(obj);
-  const eqSym = imp("eq@drizzle-orm");
-  const andSym = imp("and@drizzle-orm");
   const autoSet = hasAutoSetFields(obj);
 
-  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
-
-  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
-  const literalImports = code`
-${dbTypeImport}
-${dbTypeAlias}
-
-import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
-`;
+  writeHeader(w, obj, "write-through entity read-view (reads → view, writes → table)");
+  writeDbType(w, ctx.dialect);
+  const spec = entitySpecifier(obj, ctx);
+  w.use(viewVar, spec);
+  w.use(tableVar, spec);
+  w.useType(entityName, spec);
+  w.useType(`${entityName}Patch`, spec);
+  w.use(`${entityName}InsertSchema`, spec);
+  if (autoSet) w.use(`${entityName}InsertPreservingSchema`, spec);
+  w.use(`${entityName}UpdateSchema`, spec);
 
   // The view re-read predicate keyed on ALL primary-key columns of `source` (the
   // insert's returning() row), so a composite PK re-reads the EXACT written row rather
-  // than any view row sharing the first key component. `andSym`/`pkFields[i]` are only
-  // referenced when the PK is composite, so a single-PK entity emits a bare `eq(...)`.
-  const viewByAllPk = (source: string): Code =>
-    pkFields.length > 1
-      ? code`${andSym}(${joinCode(pkFields.map((f) => code`${eqSym}(${viewVar}.${f}, ${source}.${f})`), { on: ", " })})`
-      : code`${eqSym}(${viewVar}.${pkField}, ${source}.${pkField})`;
+  // than any view row sharing the first key component. `and` is only imported when the
+  // PK is composite, so a single-PK entity emits a bare `eq(...)`.
+  const viewByAllPk = (source: string): string => {
+    const eq = w.use("eq", "drizzle-orm");
+    if (pkFields.length <= 1) return `${eq}(${viewVar}.${pkField}, ${source}.${pkField})`;
+    const and = w.use("and", "drizzle-orm");
+    return `${and}(${pkFields.map((f) => `${eq}(${viewVar}.${f}, ${source}.${f})`).join(", ")})`;
+  };
 
   // A create/insertPreserving writes the table, then reads the persisted row back
   // through the view so the returned <Entity> carries the derived fields.
@@ -252,61 +235,52 @@ import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Patch, $
   // Without RETURNING (MySQL) the written key is the validated row's assigned key columns
   // plus whatever `$returningId()` reports (AUTO_INCREMENT / `$defaultFn`).
   const returning = supportsReturning(ctx.dialect);
-  const insertReturningView = (fnName: string, schemaName: string): Code => returning ? code`
-export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
-  const validated = ${schemaName}.parse(data);
-  const [${singularVar}] = await db.insert(${tableVar}).values(validated).returning();
-  const [row] = await db.select().from(${viewVar}).where(${viewByAllPk(`${singularVar}!`)}).limit(1);
-  return row!;
-}
-` : code`
-export async function ${fnName}(db: Db, data: ${schemaInputType(schemaName)}): Promise<${entityName}> {
-  const validated = ${schemaName}.parse(data);
-  const [inserted] = await db.insert(${tableVar}).values(validated).$returningId();
-  const written = { ...validated, ...inserted } as Record<string, unknown>;
-  const [row] = await db.select().from(${viewVar}).where(${viewByAllPk("written")}).limit(1);
-  return row!;
-}
-`;
+  const insertReturningView = (fnName: string, schemaName: string) => () => {
+    w.block(`export async function ${fnName}(db: Db, data: ${useSchemaInputType(w, schemaName)}): Promise<${entityName}> {`, () => {
+      w.line(`const validated = ${schemaName}.parse(data);`);
+      if (returning) {
+        w.line(`const [${singularVar}] = await db.insert(${tableVar}).values(validated).returning();`);
+        w.line(`const [row] = await db.select().from(${viewVar}).where(${viewByAllPk(`${singularVar}!`)}).limit(1);`);
+      } else {
+        w.line(`const [inserted] = await db.insert(${tableVar}).values(validated).$returningId();`);
+        w.line("const written = { ...validated, ...inserted } as Record<string, unknown>;");
+        w.line(`const [row] = await db.select().from(${viewVar}).where(${viewByAllPk("written")}).limit(1);`);
+      }
+      w.line("return row!;");
+    });
+  };
 
-  const updateFn = code`
-export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType}, patch: ${entityName}Patch): Promise<${entityName} | null> {
-  const validated = ${entityName}UpdateSchema.parse(patch);
-  // PATCH-5: an empty patch is a no-op — return the current (view) row.
-  if (Object.keys(validated).length === 0) return ${findByIdFnName(entityName)}(db, ${pkField});
-  ${returning
-    ? code`const updated = await db.update(${tableVar}).set(validated).where(${eqSym}(${tableVar}.${pkField}, ${pkField})).returning();
-  if (updated.length === 0) return null;`
-    : code`await db.update(${tableVar}).set(validated).where(${eqSym}(${tableVar}.${pkField}, ${pkField}));`}
-  const [row] = await db.select().from(${viewVar}).where(${eqSym}(${viewVar}.${pkField}, ${pkField})).limit(1);
-  return row ?? null;
-}
-`;
+  const updateFn = () => {
+    const eq = w.use("eq", "drizzle-orm");
+    w.block(`export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType}, patch: ${entityName}Patch): Promise<${entityName} | null> {`, () => {
+      w.line(`const validated = ${entityName}UpdateSchema.parse(patch);`);
+      w.line("// PATCH-5: an empty patch is a no-op — return the current (view) row.");
+      writeIf(w, "Object.keys(validated).length === 0", `return ${findByIdFnName(entityName)}(db, ${pkField});`);
+      const where = `.where(${eq}(${tableVar}.${pkField}, ${pkField}))`;
+      if (returning) {
+        w.line(`const updated = await db.update(${tableVar}).set(validated)${where}.returning();`);
+        writeIf(w, "updated.length === 0", "return null;");
+      } else {
+        w.line(`await db.update(${tableVar}).set(validated)${where};`);
+      }
+      w.line(`const [row] = await db.select().from(${viewVar}).where(${eq}(${viewVar}.${pkField}, ${pkField})).limit(1);`);
+      w.line("return row ?? null;");
+    });
+  };
 
-  const sections: Code[] = [
-    literalImports,
+  const sections: Array<() => void> = [
     // Reads route to the replica view.
-    renderFindByIdFn(obj, ctx, viewVar),
-    renderListFn(obj, ctx, viewVar),
+    () => writeFindByIdFn(w, obj, ctx, viewVar),
+    () => writeListFn(w, obj, ctx, viewVar),
     // Writes target the table (create/update re-read through the view; delete is boolean).
     insertReturningView(createFnName(entityName), `${entityName}InsertSchema`),
-    ...(autoSet
-      ? [insertReturningView(insertPreservingFnName(entityName), `${entityName}InsertPreservingSchema`)]
-      : []),
+    ...(autoSet ? [insertReturningView(insertPreservingFnName(entityName), `${entityName}InsertPreservingSchema`)] : []),
     updateFn,
-    renderDeleteByIdFn(obj, ctx),
+    () => writeDeleteByIdFn(w, obj, ctx),
   ];
   // Reverse finders are reads → route to the view.
-  for (const fk of reverseFksFor(obj)) {
-    sections.push(renderReverseFinderFns(obj, fk, ctx, viewVar));
-  }
-
-  const body = joinCode(sections, { on: "\n" }).toString();
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${obj.fqn()}) — write-through entity read-view (reads → view, writes → table)\n` +
-    sidecarLine(`${entityName}.extra.ts`);
-  return header + body;
+  for (const fk of reverseFksFor(obj)) sections.push(() => writeReverseFinderFns(w, obj, fk, ctx, viewVar));
+  writeSections(w, sections);
 }
 
 /**
@@ -321,133 +295,118 @@ export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType},
  * against the single base table. Creates inject the discriminator value;
  * updates strip it (a row's subtype is immutable).
  */
-function renderTphQueriesFile(base: MetaObject, ctx: RenderContext): string {
+function writeTphQueriesFile(w: TsWriter, base: MetaObject, ctx: RenderContext): void {
   const baseName = base.name;
-  const tableVar = ctx.collectionName(baseName);
   // ADR-0039: own — TPH discriminator, read own to identify the base level.
   const discField = base.ownAttr(OBJECT_ATTR_DISCRIMINATOR) as string;
   const { fieldName: pkField, tsType: pkType } = getPkInfo(base, ctx);
 
-  const baseFileSpec = entityModuleSpecifier(
-    ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(base), baseName, ctx.extStyle,
-  );
-  const tableSym = imp(`${tableVar}@${baseFileSpec}`);
-  const baseTypeSym = imp(`t:${baseName}@${baseFileSpec}`);
-  const parseSym = imp(`parse${baseName}@${baseFileSpec}`);
-  const eqSym = imp("eq@drizzle-orm");
-  const andSym = imp("and@drizzle-orm");
-
-  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
+  writeHeader(w, base, "TPH discriminator base");
+  writeDbType(w, ctx.dialect);
+  const baseSpec = entitySpecifier(base, ctx);
+  const table = w.use(ctx.collectionName(baseName), baseSpec);
+  const baseType = w.useType(baseName, baseSpec);
+  const parse = w.use(`parse${baseName}`, baseSpec);
+  const eq = w.use("eq", "drizzle-orm");
+  const byPk = `${eq}(${table}.${pkField}, ${pkField})`;
 
   // --- Polymorphic base reads ---
-  const polymorphic = code`
-export async function find${baseName}ById(db: Db, ${pkField}: ${pkType}): Promise<${baseTypeSym} | null> {
-  const [row] = await db.select().from(${tableSym}).where(${eqSym}(${tableSym}.${pkField}, ${pkField})).limit(1);
-  return row ? ${parseSym}(row) : null;
-}
-
-export async function ${listFnName(base)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${baseTypeSym}[]> {
-  let q = db.select().from(${tableSym}).$dynamic();
-  if (opts?.limit !== undefined) q = q.limit(opts.limit);
-  if (opts?.offset !== undefined) q = q.offset(opts.offset);
-  const rows = await q;
-  return rows.map((r) => ${parseSym}(r));
-}
-`;
+  const sections: Array<() => void> = [
+    () => w.block(`export async function find${baseName}ById(db: Db, ${pkField}: ${pkType}): Promise<${baseType} | null> {`, () => {
+      w.line(`const [row] = await db.select().from(${table}).where(${byPk}).limit(1);`);
+      w.line(`return row ? ${parse}(row) : null;`);
+    }),
+    () => w.block(`export async function ${listFnName(base)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${baseType}[]> {`, () => {
+      writePagedSelect(w, `db.select().from(${table}).$dynamic()`);
+      w.line("const rows = await q;");
+      w.line(`return rows.map((r) => ${parse}(r));`);
+    }),
+  ];
 
   // --- Per-subtype CRUD against the single base table ---
-  const subtypeSections: Code[] = [];
   for (const sub of tphConcreteSubtypes(base, ctx.loadedRoot)) {
-    // ADR-0039: own — each concrete subtype declares its OWN @discriminatorValue.
-    const value = sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) as string;
-    const valueLit = JSON.stringify(value);
-    const subFileSpec = entityModuleSpecifier(
-      ctx.selfTarget, ctx.entityModuleTarget, effectivePackage(sub), sub.name, ctx.extStyle,
-    );
-    const subTypeSym = imp(`t:${sub.name}@${subFileSpec}`);
-    const subSchemaSym = imp(`${sub.name}Schema@${subFileSpec}`);
-    const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
-    // Typed write inputs (the subtype's insert-schema INPUT type): a misspelt field is a
-    // compile error at the call site; the schema still parses at runtime. Spelled through
-    // the schema (schemaInputType), so a subtype module from an owned entity generator
-    // that predates the `<Sub>Create` alias still satisfies it.
-    const subCreateSym = schemaInputType(subInsertSym);
-    // A refined (cross-field) InsertSchema has no `.partial()`; the partial update reads
-    // the unrefined shape, as an unrefined subtype's does.
-    const subPartialSym = hasInsertRefinements(sub) ? imp(`${sub.name}InsertBaseSchema@${subFileSpec}`) : subInsertSym;
-
-    subtypeSections.push(code`
-export async function ${listFnName(sub)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${subTypeSym}[]> {
-  let q = db.select().from(${tableSym}).where(${eqSym}(${tableSym}.${discField}, ${valueLit})).$dynamic();
-  if (opts?.limit !== undefined) q = q.limit(opts.limit);
-  if (opts?.offset !== undefined) q = q.offset(opts.offset);
-  const rows = await q;
-  return rows.map((r) => ${subSchemaSym}.parse(r));
-}
-
-export async function find${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promise<${subTypeSym} | null> {
-  const [row] = await db.select().from(${tableSym})
-    .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit}))).limit(1);
-  return row ? ${subSchemaSym}.parse(row) : null;
-}
-
-${supportsReturning(ctx.dialect) ? code`export async function create${sub.name}(db: Db, data: ${subCreateSym}): Promise<${subTypeSym}> {
-  const validated = ${subInsertSym}.parse(data);
-  const [row] = await db.insert(${tableSym}).values({ ...validated, ${discField}: ${valueLit} }).returning();
-  return ${subSchemaSym}.parse(row!);
-}
-
-export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: Partial<${subCreateSym}>): Promise<${subTypeSym} | null> {
-  const validated = ${subPartialSym}.partial().parse(data) as Record<string, unknown>;
-  // The discriminator is immutable — a ${sub.name} can never become another subtype.
-  const { [${JSON.stringify(discField)}]: _disc, ...safe } = validated;
-  const [row] = await db.update(${tableSym}).set(safe)
-    .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit}))).returning();
-  return row ? ${subSchemaSym}.parse(row) : null;
-}
-
-export async function delete${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promise<boolean> {
-  const deleted = await db.delete(${tableSym})
-    .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit}))).returning();
-  return deleted.length > 0;
-}` : code`// No RETURNING on this dialect: each write reads the row back by key.
-export async function create${sub.name}(db: Db, data: ${subCreateSym}): Promise<${subTypeSym}> {
-  const validated = ${subInsertSym}.parse(data);
-  const [inserted] = await db.insert(${tableSym}).values({ ...validated, ${discField}: ${valueLit} }).$returningId();
-  const key = (validated as { ${pkField}?: ${pkType} }).${pkField} ?? (inserted as { ${pkField}?: ${pkType} } | undefined)?.${pkField};
-  if (key === undefined) throw new Error("${sub.name}: the insert produced no ${pkField}");
-  return (await find${sub.name}ById(db, key))!;
-}
-
-export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: Partial<${subCreateSym}>): Promise<${subTypeSym} | null> {
-  const validated = ${subPartialSym}.partial().parse(data) as Record<string, unknown>;
-  // The discriminator is immutable — a ${sub.name} can never become another subtype.
-  const { [${JSON.stringify(discField)}]: _disc, ...safe } = validated;
-  if (Object.keys(safe).length > 0) {
-    await db.update(${tableSym}).set(safe)
-      .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit})));
+    sections.push(() => writeTphSubtypeFns(w, sub, ctx, { table, discField, pkField, pkType, byPk }));
   }
-  return find${sub.name}ById(db, ${pkField});
+  writeSections(w, sections);
 }
 
-export async function delete${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promise<boolean> {
-  if ((await find${sub.name}ById(db, ${pkField})) === null) return false;
-  await db.delete(${tableSym})
-    .where(${andSym}(${eqSym}(${tableSym}.${pkField}, ${pkField}), ${eqSym}(${tableSym}.${discField}, ${valueLit})));
-  return true;
-}`}
-`);
-  }
+/** One concrete TPH subtype's list / findById / create / update / delete against the base table. */
+function writeTphSubtypeFns(
+  w: TsWriter,
+  sub: MetaObject,
+  ctx: RenderContext,
+  t: { table: string; discField: string; pkField: string; pkType: string; byPk: string },
+): void {
+  const { table, discField, pkField, pkType, byPk } = t;
+  // ADR-0039: own — each concrete subtype declares its OWN @discriminatorValue.
+  const valueLit = str(sub.ownAttr(OBJECT_ATTR_DISCRIMINATOR_VALUE) as string);
+  const subSpec = entitySpecifier(sub, ctx);
+  const subType = w.useType(sub.name, subSpec);
+  const subSchema = w.use(`${sub.name}Schema`, subSpec);
+  const subInsert = w.use(`${sub.name}InsertSchema`, subSpec);
+  // Typed write inputs (the subtype's insert-schema INPUT type): a misspelt field is a
+  // compile error at the call site; the schema still parses at runtime. Spelled through
+  // the schema (useSchemaInputType), so a subtype module from an owned entity generator
+  // that predates the `<Sub>Create` alias still satisfies it.
+  const subCreate = useSchemaInputType(w, subInsert);
+  // A refined (cross-field) InsertSchema has no `.partial()`; the partial update reads
+  // the unrefined shape, as an unrefined subtype's does.
+  const subPartial = hasInsertRefinements(sub) ? w.use(`${sub.name}InsertBaseSchema`, subSpec) : subInsert;
+  const eq = w.use("eq", "drizzle-orm");
+  const and = w.use("and", "drizzle-orm");
+  const byDisc = `${eq}(${table}.${discField}, ${valueLit})`;
+  const scoped = `.where(${and}(${byPk}, ${byDisc}))`;
+  const returning = supportsReturning(ctx.dialect);
 
-  const literalImports = code`
-${dbTypeImport}
-${dbTypeAlias}
-`;
-
-  const body = joinCode([literalImports, polymorphic, ...subtypeSections], { on: "\n" }).toString();
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${baseName} (${base.fqn()}) — TPH discriminator base\n` +
-    sidecarLine(`${baseName}.extra.ts`);
-  return header + body;
+  w.block(`export async function ${listFnName(sub)}(db: Db, opts?: { limit?: number; offset?: number }): Promise<${subType}[]> {`, () => {
+    writePagedSelect(w, `db.select().from(${table}).where(${byDisc}).$dynamic()`);
+    w.line("const rows = await q;");
+    w.line(`return rows.map((r) => ${subSchema}.parse(r));`);
+  });
+  w.blank();
+  w.block(`export async function find${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promise<${subType} | null> {`, () => {
+    w.line(`const [row] = await db.select().from(${table})${scoped}.limit(1);`);
+    w.line(`return row ? ${subSchema}.parse(row) : null;`);
+  });
+  w.blank();
+  if (!returning) w.line("// No RETURNING on this dialect: each write reads the row back by key.");
+  w.block(`export async function create${sub.name}(db: Db, data: ${subCreate}): Promise<${subType}> {`, () => {
+    w.line(`const validated = ${subInsert}.parse(data);`);
+    const insert = `await db.insert(${table}).values({ ...validated, ${discField}: ${valueLit} })`;
+    if (returning) {
+      w.line(`const [row] = ${insert}.returning();`);
+      w.line(`return ${subSchema}.parse(row!);`);
+      return;
+    }
+    w.line(`const [inserted] = ${insert}.$returningId();`);
+    w.line(`const key = (validated as { ${pkField}?: ${pkType} }).${pkField} ?? (inserted as { ${pkField}?: ${pkType} } | undefined)?.${pkField};`);
+    writeIf(w, "key === undefined", `throw new Error("${sub.name}: the insert produced no ${pkField}");`);
+    w.line(`return (await find${sub.name}ById(db, key))!;`);
+  });
+  w.blank();
+  w.block(`export async function update${sub.name}ById(db: Db, ${pkField}: ${pkType}, data: Partial<${subCreate}>): Promise<${subType} | null> {`, () => {
+    w.line(`const validated = ${subPartial}.partial().parse(data) as Record<string, unknown>;`);
+    w.line(`// The discriminator is immutable — a ${sub.name} can never become another subtype.`);
+    w.line(`const { [${str(discField)}]: _disc, ...safe } = validated;`);
+    if (returning) {
+      w.line(`const [row] = await db.update(${table}).set(safe)${scoped}.returning();`);
+      w.line(`return row ? ${subSchema}.parse(row) : null;`);
+      return;
+    }
+    w.block("if (Object.keys(safe).length > 0) {", () => {
+      w.line(`await db.update(${table}).set(safe)${scoped};`);
+    });
+    w.line(`return find${sub.name}ById(db, ${pkField});`);
+  });
+  w.blank();
+  w.block(`export async function delete${sub.name}ById(db: Db, ${pkField}: ${pkType}): Promise<boolean> {`, () => {
+    if (returning) {
+      w.line(`const deleted = await db.delete(${table})${scoped}.returning();`);
+      w.line("return deleted.length > 0;");
+      return;
+    }
+    writeIf(w, `(await find${sub.name}ById(db, ${pkField})) === null`, "return false;");
+    w.line(`await db.delete(${table})${scoped};`);
+    w.line("return true;");
+  });
 }

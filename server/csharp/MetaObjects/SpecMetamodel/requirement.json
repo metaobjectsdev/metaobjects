@@ -1,5 +1,5 @@
 {
-  "provider": "metaobjects-core-types",
+  "provider": "metaobjects-requirements",
   "types": [
     {
       "type": "requirement",
@@ -185,5 +185,10 @@
         }
       ]
     }
+  ],
+  "extends": [
+    { "type": "metadata", "subType": "root", "children": [
+        { "type": "requirement", "subType": "*", "name": "*", "min": 0, "max": null }
+      ] }
   ]
 }

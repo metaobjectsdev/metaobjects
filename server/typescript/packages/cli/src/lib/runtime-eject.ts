@@ -29,6 +29,7 @@ import {
 } from "@metaobjectsdev/codegen-ts";
 import { compareOwnedCopy, type OwnedComparison } from "./owned-copy.js";
 import { cliVersion } from "./version.js";
+import { packageNameOf } from "./package-name.js";
 
 /**
  * The ejectable generators whose OUTPUT imports the adapter tier, and the adapter modules
@@ -41,6 +42,7 @@ export const RUNTIME_ENTRIES: Readonly<Record<string, readonly HttpRuntimeModule
   // The service layer's store mechanics (ADR-0067 layer 4), and its transport's request and reply helpers.
   service: ["service"],
   "service-routes": ["service-fastify"],
+  "service-routes-hono": ["service-hono"],
 };
 
 /** True iff ejecting `name` also copies adapter source. */
@@ -102,12 +104,6 @@ function specifiersOf(source: string): string[] {
     if (m[1] !== undefined) out.push(m[1]);
   }
   return out;
-}
-
-/** `@scope/name/sub` → `@scope/name`; `name/sub` → `name`. */
-function packageNameOf(spec: string): string {
-  const parts = spec.split("/");
-  return spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
 }
 
 function toPosix(p: string): string {

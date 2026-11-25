@@ -217,13 +217,17 @@ export class TypeRegistry {
 
   private stampAttrOwner(type: string, subType: string, name: string): void {
     if (this._currentProviderId === undefined) return;
+    this.setAttrOwner(type, subType, name, this._currentProviderId);
+  }
+
+  private setAttrOwner(type: string, subType: string, name: string, owner: string): void {
     const key = `${type}.${subType}`;
     let owners = this._attrOwners.get(key);
     if (owners === undefined) {
       owners = new Map();
       this._attrOwners.set(key, owners);
     }
-    owners.set(name, this._currentProviderId);
+    owners.set(name, owner);
   }
 
   /**
@@ -316,7 +320,15 @@ export class TypeRegistry {
     // ADR-0062: refuse a name another provider already put on a related slot, BEFORE
     // the definition becomes visible, so a refused registration leaves no trace.
     const list = this._subTypes.get(def.typeId.type);
-    for (const attr of def.attributes) {
+    // An attribute folded in unchanged from the registered `<type>.base` (a pack's
+    // subtype with `extendsBase`, e.g. object.report) is the base owner's, not a new
+    // claim: it is not checked against the registering provider, and is stamped with
+    // the owner the base attribute already has.
+    const baseAttrs = new Set(
+      def.typeId.subType === SUBTYPE_BASE ? [] : (this.find(def.typeId.type, SUBTYPE_BASE)?.attributes ?? []),
+    );
+    const claimed = def.attributes.filter((attr) => !baseAttrs.has(attr));
+    for (const attr of claimed) {
       this.checkAttrOwnership(def.typeId.type, def.typeId.subType, attr.name);
     }
     this._defs.set(key, def);
@@ -325,8 +337,13 @@ export class TypeRegistry {
     } else {
       this._subTypes.set(def.typeId.type, [def.typeId.subType]);
     }
-    for (const attr of def.attributes) {
+    for (const attr of claimed) {
       this.stampAttrOwner(def.typeId.type, def.typeId.subType, attr.name);
+    }
+    for (const attr of def.attributes) {
+      if (!baseAttrs.has(attr)) continue;
+      const baseOwner = this.attrOwner(def.typeId.type, SUBTYPE_BASE, attr.name);
+      if (baseOwner !== undefined) this.setAttrOwner(def.typeId.type, def.typeId.subType, attr.name, baseOwner);
     }
   }
 

@@ -10,11 +10,11 @@
 // @provided enums are NEVER materialized here (they live in hand-written code,
 // imported from the configured providedEnumModule).
 
-import { code, imp, joinCode, type Code } from "../poet.js";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { materializedSharedEnums, type SharedEnum } from "../enum-shared.js";
 import { enumUnionString } from "./inferred-types.js";
+import { TsWriter } from "../writer/ts-writer.js";
 
 /** Basename (no extension) of the shared-enums module emitted at the entity-module target root. */
 export const SHARED_ENUMS_BASENAME = "enums";
@@ -25,13 +25,11 @@ export function sharedEnumZodConstName(enumName: string): string {
 }
 
 /** One enum's two declarations (type alias + shared z.enum const). */
-function renderOneSharedEnum(e: SharedEnum): Code {
-  const z = imp("z@zod");
+export function writeOneSharedEnum(w: TsWriter, e: SharedEnum): void {
+  const z = w.use("z", "zod");
   const members = e.values.map((v) => JSON.stringify(v)).join(", ");
-  return code`
-export type ${e.name} = ${enumUnionString(e.values)};
-export const ${sharedEnumZodConstName(e.name)} = ${z}.enum([${members}]);
-`;
+  w.line(`export type ${e.name} = ${enumUnionString(e.values)};`);
+  w.line(`export const ${sharedEnumZodConstName(e.name)} = ${z}.enum([${members}]);`);
 }
 
 /**
@@ -53,9 +51,14 @@ export function renderSharedEnumsFile(
   const enums = materializedSharedEnums(root, opts?.select);
   if (enums.length === 0) return null;
 
-  const body = joinCode(enums.map(renderOneSharedEnum), { on: "\n" }).toString();
-  const header =
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}\n` +
-    `// Shared enum types (FR-019): one declaration per reused package-level enum.\n`;
-  return header + body;
+  const w = new TsWriter();
+  w.header(
+    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
+    "// Shared enum types (FR-019): one declaration per reused package-level enum.",
+  );
+  for (const e of enums) {
+    w.blank();
+    writeOneSharedEnum(w, e);
+  }
+  return w.toString();
 }

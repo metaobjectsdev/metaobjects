@@ -98,7 +98,7 @@ export interface ContractFactories {
 }
 
 /** What marks `report-export` for the runner. The generator's own files are not this corpus's subject. */
-const REPORT_EXPORT_MARKER: Generator = { name: "report-export", emitsReportExport: true, generate: () => [] };
+const REPORT_EXPORT_MARKER: Generator = { name: "report-export", provides: { reportExport: true }, generate: () => [] };
 
 function caseGenerators(c: ContractCase, factories: ContractFactories): Generator[] {
   const inStrict = (obj: MetaObject): boolean => !c.strictExclude.includes(obj.name);

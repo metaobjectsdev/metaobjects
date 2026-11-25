@@ -11,3 +11,4 @@ export * from "./fixture-lint.js";
 export * from "./manifest.js";
 export * from "./aggregator.js";
 export * from "./generator.js";
+export * from "./corpus.js";

@@ -56,6 +56,14 @@ export class MetaRoot extends MetaData {
    */
   rulesSettings: RulesSettings = DEFAULT_RULES_SETTINGS;
 
+  /**
+   * The resolution keys of the top-level nodes only REFERENCE sources declare
+   * (`{ "path": …, "reference": true }` in `.metaobjects/config.json`). They load and
+   * resolve like any other node; no generator emits them, because another run owns them.
+   * Set by the project-aware load; empty for a tree loaded with no reference source.
+   */
+  referenceNodes: ReadonlySet<string> = new Set<string>();
+
   /** Object entities defined at this root level. */
   objects(): MetaObject[] {
     return this.cached("objects", () =>

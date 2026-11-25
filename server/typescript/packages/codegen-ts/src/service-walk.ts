@@ -5,12 +5,16 @@
 // operations are named and where their files go stays packaged while the files' shape is the
 // adopter's.
 //
-// Covered: every concrete `object.entity` whose primary source is a writable `source.rdb`, keyed
-// by a single-field primary identity. It gets the five derived operations (list, get, create,
-// update and delete), a command per transition that derives one (ADR-0066 §2, under
-// `rules.lifecycle.commands`), and the package's declared operations that act on a covered entity
-// or on none. Not covered yet: a write-through entity (reads through a replica view), a
-// single-table (TPH) hierarchy, many-to-many traversal, projections and reports.
+// Covered: every object the flat routes serve, keyed by a single-field primary identity where it
+// has a key. A concrete `object.entity` whose primary source is a writable `source.rdb` gets the
+// five derived operations (list, get, create, update and delete); a write-through entity reads
+// through its replica view and writes its table. A single-table (TPH) hierarchy's discriminator
+// base gets a polymorphic list and get, and each concrete subtype the five operations, scoped to its
+// discriminator value. A projection gets a list, and a get when it has a key; a served report a
+// list (with its row cap, and its export when `report-export` is wired). Every many-to-many
+// relationship of a covered entity gets a traversal query. An entity also gets a command per
+// transition that derives one (ADR-0066 §2, under `rules.lifecycle.commands`), and the package's
+// declared operations that act on a covered entity or on none.
 
 import {
   BINDING_ATTR_METHOD,
@@ -44,6 +48,7 @@ import {
   transitionFrom,
   transitionTo,
   type MetaData,
+  type MetaRoot,
   type MetaObject,
   type RulesSettings,
 } from "@metaobjectsdev/metadata";
@@ -55,10 +60,14 @@ import { HTTP_RUNTIME_MODULES, HTTP_RUNTIME_PACKAGE, type HttpRuntimeModule } fr
 import type { ExtStyle, RenderContext } from "./render-context.js";
 import type { GenContext } from "./generator.js";
 import { effectivePackage } from "./docs-paths.js";
-import { hasWritableRdbSource } from "./source-detect.js";
+import { generatableObjects, hasWritableRdbSource } from "./source-detect.js";
 import { isAbstract } from "./instance-artifacts.js";
-import { isWriteThrough } from "./projection/projection-detector.js";
-import { declaresTphDiscriminator, isTphSubtype } from "./tph.js";
+import { isProjection, isWriteThrough } from "./projection/projection-detector.js";
+import { declaresTphDiscriminator, isTphSubtype, tphDiscriminatorBase, tphDiscriminatorPin, tphStorageObject } from "./tph.js";
+import { isReport } from "./source-detect.js";
+import { itemRouteField, servesReadApi } from "./api-surface.js";
+import { tphPlan } from "./templates/tph-discriminator.js";
+import { buildRelationMap, type RelationMap } from "./relation-resolver.js";
 import { pkInfoOf } from "./pk-resolver.js";
 import { listFnName, toCamelCase, toPascalCase } from "./naming.js";
 
@@ -98,6 +107,35 @@ export interface ServiceTransitionCommand {
   readonly permission: string | undefined;
 }
 
+/** What kind of object a service entity is: a writable entity, or a read-only projection or report. */
+export type ServiceObjectKind = "entity" | "projection" | "report";
+
+/** A single-table subtype's scope: its rows are the base table's rows whose `field` holds `value`. */
+export interface ServiceDiscriminator {
+  readonly field: string;
+  readonly value: string;
+}
+
+/** A many-to-many traversal of a covered entity (FR-018): `GET <path>/:id/<name>`. */
+export interface ServiceRelation {
+  /** The service function: `<relation>Of<Entity>` (`tagsOfPost`). */
+  readonly fn: string;
+  /** The relationship's name: the path segment. */
+  readonly name: string;
+  readonly junction: MetaObject;
+  /** The junction's field holding the source key, and the one holding the target key. */
+  readonly sourceJoinField: string;
+  readonly targetJoinField: string;
+  /** The object whose table holds the target rows (a single-table subtype's base). */
+  readonly target: MetaObject;
+  /** The objects whose fields the target rows carry: the target, and a TPH base's subtypes. */
+  readonly targetObjects: readonly MetaObject[];
+  /** The target is a single-table subtype: only rows of its discriminator value. */
+  readonly targetDiscriminator: ServiceDiscriminator | undefined;
+  /** Undirected self-join: both junction columns are read. */
+  readonly symmetric: boolean;
+}
+
 /** One entity's service operations. */
 export interface ServiceEntity {
   readonly obj: MetaObject;
@@ -105,6 +143,24 @@ export interface ServiceEntity {
   readonly keyField: string;
   /** The function name of each derived operation (`listAuthors`, `getAuthor`, ...). */
   readonly operations: Readonly<Record<DerivedOperation, string>>;
+  /** The derived operations it has, in `DERIVED_OPERATIONS` order. */
+  readonly verbs: readonly DerivedOperation[];
+  readonly kind: ServiceObjectKind;
+  /**
+   * The object whose entity module exports the table the operations read and write: the object
+   * itself, or a single-table subtype's discriminator base. A projection or report reads its view.
+   */
+  readonly storage: MetaObject;
+  /** A write-through entity: reads go through its replica view, and a write is read back through it. */
+  readonly readView: boolean;
+  /** The REST path, before the API prefix (`/auths/bridge` for a single-table subtype). */
+  readonly path: string;
+  /** A single-table subtype's scope. */
+  readonly discriminator: ServiceDiscriminator | undefined;
+  /** The objects of its single-table hierarchy (the base and every concrete subtype), else just itself. */
+  readonly hierarchy: readonly MetaObject[];
+  /** Its many-to-many traversals. */
+  readonly relations: readonly ServiceRelation[];
   /** The entity's lifecycles: the generic write path may not move them (409 `state_managed`). */
   readonly lifecycles: readonly ServiceLifecycle[];
   /** The commands its transitions derive, in lifecycle order. */
@@ -154,6 +210,8 @@ export interface ServicePackage {
    * service generator's `interactiveTransactions` option, not the model's. Absent: true.
    */
   readonly interactiveTransactions?: boolean;
+  /** A served report's row cap: the service generator's `reportMaxRows` option. Absent: 10000, the same in every port. */
+  readonly reportMaxRows?: number;
 }
 
 export interface ServiceWalkOpts {
@@ -161,12 +219,57 @@ export interface ServiceWalkOpts {
   matches?: (obj: MetaObject) => boolean;
 }
 
-/** Whether `obj` gets the derived service operations. */
+/** Whether `obj` gets service operations: every object the flat routes serve, with a single key where it has one. */
 export function hasServiceOperations(obj: MetaObject): boolean {
-  if (obj.subType !== OBJECT_SUBTYPE_ENTITY || isAbstract(obj)) return false;
-  if (!hasWritableRdbSource(obj) || isWriteThrough(obj)) return false;
-  if (declaresTphDiscriminator(obj) || isTphSubtype(obj)) return false;
+  if (!servesReadApi(obj)) return false;
+  if (isProjection(obj)) return true;
+  if (obj.subType !== OBJECT_SUBTYPE_ENTITY || !hasWritableRdbSource(obj)) return false;
   return serviceKeyField(obj) !== undefined;
+}
+
+/** The verbs, storage, path and scope of a covered object. */
+function shapeOf(obj: MetaObject, root: MetaRoot): Pick<ServiceEntity, "kind" | "verbs" | "storage" | "readView" | "path" | "discriminator" | "hierarchy"> {
+  const path = restPath(obj);
+  if (isProjection(obj)) {
+    const keyed = itemRouteField(obj) !== undefined;
+    return { kind: isReport(obj) ? "report" : "projection", verbs: keyed ? ["list", "get"] : ["list"], storage: obj, readView: false, path, discriminator: undefined, hierarchy: [obj] };
+  }
+  const pin = tphDiscriminatorPin(obj);
+  const base = tphDiscriminatorBase(obj);
+  if (pin !== undefined && base !== undefined) {
+    const plan = tphPlan(base, root);
+    const hierarchy = plan === null ? [base, obj] : [base, ...plan.subtypes.map((st) => st.entity)];
+    return { kind: "entity", verbs: DERIVED_OPERATIONS, storage: base, readView: false, path, discriminator: { field: pin.fieldName, value: pin.value }, hierarchy };
+  }
+  const plan = declaresTphDiscriminator(obj) ? tphPlan(obj, root) : null;
+  if (plan !== null) {
+    // The polymorphic base is read-only by construction: the union has no single writable shape.
+    return { kind: "entity", verbs: ["list", "get"], storage: obj, readView: false, path, discriminator: undefined, hierarchy: [obj, ...plan.subtypes.map((st) => st.entity)] };
+  }
+  return { kind: "entity", verbs: DERIVED_OPERATIONS, storage: obj, readView: isWriteThrough(obj), path, discriminator: undefined, hierarchy: [obj] };
+}
+
+/** The many-to-many traversals `obj` resolves (the relation map's rule, the flat routes' too). */
+function relationsOf(obj: MetaObject, relationMap: RelationMap, root: MetaRoot): ServiceRelation[] {
+  const out: ServiceRelation[] = [];
+  for (const e of relationMap.get(obj.name) ?? []) {
+    if (e.junction === undefined || e.sourceJoinField === undefined || e.targetJoinField === undefined) continue;
+    const target = tphStorageObject(e.target);
+    const plan = declaresTphDiscriminator(e.target) ? tphPlan(e.target, root) : null;
+    const pin = tphDiscriminatorPin(e.target);
+    out.push({
+      fn: `${toCamelCase(e.name)}Of${obj.name}`,
+      name: e.name,
+      junction: e.junction,
+      sourceJoinField: e.sourceJoinField,
+      targetJoinField: e.targetJoinField,
+      target,
+      targetObjects: plan === null ? [e.target] : [e.target, ...plan.subtypes.map((st) => st.entity)],
+      targetDiscriminator: pin === undefined ? undefined : { field: pin.fieldName, value: pin.value },
+      symmetric: e.symmetric === true,
+    });
+  }
+  return out;
 }
 
 /** The single field a service operation addresses a row by, or undefined for a composite or absent key. */
@@ -274,7 +377,7 @@ function operationOf(op: MetaData, target: ServiceEntity | undefined, settings: 
  * The service modules of `root`, one per package that has a covered entity or a declared
  * operation the service covers, sorted by package.
  */
-export function serviceModelOf(root: MetaData, opts: ServiceWalkOpts = {}): ServicePackage[] {
+export function serviceModelOf(root: MetaRoot, opts: ServiceWalkOpts = {}): ServicePackage[] {
   const matches = opts.matches ?? (() => true);
   const settings = rulesSettingsOfModel(root);
   const claimed = claimedTransitions(root);
@@ -285,15 +388,20 @@ export function serviceModelOf(root: MetaData, opts: ServiceWalkOpts = {}): Serv
     return b;
   };
   const covered = new Map<MetaData, ServiceEntity>();
-  for (const obj of root.children().filter(isMetaObject)) {
+  const relationMap = buildRelationMap(root);
+  // A served report is read through its read model (its derived fields as real fields), the
+  // object every other generator is handed; a report that is not served has no API.
+  for (const obj of generatableObjects(root.children().filter(isMetaObject), root)) {
     if (!hasServiceOperations(obj) || !matches(obj)) continue;
-    const e: ServiceEntity = { obj, keyField: serviceKeyField(obj)!, operations: serviceOperationNames(obj), ...entityRules(obj, claimed, settings) };
+    const shape = shapeOf(obj, root);
+    const rules = shape.kind === "entity" ? entityRules(obj, claimed, settings) : { lifecycles: [], commands: [] };
+    const keyField = shape.kind === "entity" ? serviceKeyField(obj)! : (itemRouteField(obj) ?? "id");
+    const e: ServiceEntity = { obj, keyField, operations: serviceOperationNames(obj), ...shape, relations: relationsOf(obj, relationMap, root), ...rules };
     covered.set(obj, e);
     bucket(effectivePackage(obj) ?? "").entities.push(e);
   }
   // One operation declared identically by two APIs (a versioned API) is one operation (O6). An
-  // operation whose target the service does not cover (a single-table hierarchy, say) is left to
-  // later service work, as its entity is.
+  // operation whose target has no derived operations (a composite key) has none either.
   const seen = new Set<string>();
   for (const op of modelOperations(root)) {
     const targetNode = operationTarget(op);
@@ -351,6 +459,21 @@ export const FASTIFY_TRANSPORT_FILE = "fastify.ts";
 export function fastifyTransportPath(pkg: string): string {
   const dir = packageToPath(pkg);
   return dir === "" ? `${TRANSPORT_DIR}/${FASTIFY_TRANSPORT_FILE}` : `${dir}/${TRANSPORT_DIR}/${FASTIFY_TRANSPORT_FILE}`;
+}
+
+/** The function that mounts package `pkg`'s service routes on a Hono app: `<type, first letter lowered>HonoRoutes`. */
+export function serviceHonoRoutesName(pkg: string): string {
+  const type = serviceTypeName(pkg);
+  return `${type.charAt(0).toLowerCase()}${type.slice(1)}HonoRoutes`;
+}
+
+/** The Hono transport's file in {@link TRANSPORT_DIR}. */
+export const HONO_TRANSPORT_FILE = "hono.ts";
+
+/** Where package `pkg`'s Hono transport goes, relative to the target's outDir. */
+export function honoTransportPath(pkg: string): string {
+  const dir = packageToPath(pkg);
+  return dir === "" ? `${TRANSPORT_DIR}/${HONO_TRANSPORT_FILE}` : `${dir}/${TRANSPORT_DIR}/${HONO_TRANSPORT_FILE}`;
 }
 
 /**

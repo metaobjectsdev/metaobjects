@@ -1,6 +1,6 @@
 // api-contract-rules-generated-server.ts — boots the GENERATED service of the rules corpus
 // (ADR-0066 lifecycles, declared operations and permission points; ADR-0067 layers 4 and 5)
-// behind its emitted Fastify transport, and drives it against `fixtures/api-contract-conformance/rules/`.
+// behind its emitted Fastify or Hono transport, and drives it against `fixtures/api-contract-conformance/rules/`.
 //
 // The shells are generated; what an app writes by hand is supplied here, exactly as the corpus
 // README specifies it so every port's lane implements the same behaviour: the actor resolver,
@@ -8,12 +8,12 @@
 // rule the shell owns: the check order, the guarded update, `state_managed` and the rollback are
 // all the emitted code's.
 
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
-import { contractTypes, entityFile, serviceFile, serviceRoutesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { sql, type SQL } from "drizzle-orm";
 import type pg from "pg";
@@ -74,6 +74,8 @@ export async function startGeneratedRulesServer(
   metaPath: string,
   configDir: string,
   outputLayout: OutputLayout = "flat",
+  /** The rules corpus is served by the service only: on Fastify, or on Hono. */
+  lane: Exclude<ApiLane, "routes"> = "service",
 ): Promise<GeneratedRulesServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -90,7 +92,7 @@ export async function startGeneratedRulesServer(
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), contractTypes(), serviceFile(), serviceRoutesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => []),
     }),
     metadata: root,
   });
@@ -128,15 +130,8 @@ export const db = drizzle(pool);
   );
 
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
-  const service = (await import(pathToFileURL(join(tmp, "acme/purchasing/service/index.ts")).href)) as {
-    createPurchasingService: (deps: unknown) => unknown;
-  };
-  const transport = (await import(pathToFileURL(join(tmp, "acme/purchasing/transport/fastify.ts")).href)) as {
-    purchasingServiceRoutes: (f: FastifyInstance, opts: unknown) => Promise<void>;
-  };
-
+  // What the app writes by hand; the database is passed beside it.
   const deps = {
-    db: dbMod.db,
     // Allowed exactly when the actor holds the permission by name.
     policy: { allows: (permission: string, actor: Actor | undefined) => actor?.grants.includes(permission) ?? false },
     bodies: {
@@ -172,17 +167,19 @@ export const db = drizzle(pool);
     },
   };
 
-  const getActor = (req: FastifyRequest): Actor | undefined => {
-    const name = req.headers["x-actor"];
-    if (typeof name !== "string" || name === "") return undefined;
-    const grants = req.headers["x-grants"];
-    return { name, grants: typeof grants === "string" && grants !== "" ? grants.split(",").map((g) => g.trim()) : [] };
+  // The README's actor resolver, read from the request's headers through each framework's own
+  // request object (the transport's `getActor`).
+  const actor = (header: (name: string) => string | undefined): Actor | undefined => {
+    const name = header("x-actor");
+    if (name === undefined || name === "") return undefined;
+    const grants = header("x-grants");
+    return { name, grants: grants !== undefined && grants !== "" ? grants.split(",").map((g) => g.trim()) : [] };
   };
 
-  const fastify = Fastify();
-  await fastify.register(transport.purchasingServiceRoutes, { service: service.createPurchasingService(deps), getActor });
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const served = await serveApi(lane, tmp, dbMod.db, async () => {
+    throw new Error("the rules corpus runs on the service lanes only");
+  }, { deps, actor });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -199,7 +196,7 @@ export const db = drizzle(pool);
       await executeSql(connectionUri, `SELECT setval(pg_get_serial_sequence('purchase_requests','id'), (SELECT MAX("id") FROM "purchase_requests"));`);
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

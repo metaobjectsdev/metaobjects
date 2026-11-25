@@ -123,6 +123,7 @@ const SERVICE_LAYER: Record<string, { added: string[]; changed: string[] }> = {
     ],
   },
   "service-routes": { added: [], changed: ["src/generated/acme/purchasing/transport/fastify.ts"] },
+  "service-routes-hono": { added: [], changed: ["src/generated/acme/purchasing/transport/hono.ts"] },
 };
 
 let withRules: MetaRoot;
@@ -173,26 +174,55 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     });
   }
 
-  test("docs-site differs by exactly the new nodes in its data payload", async () => {
+  test("docs-site differs by exactly the new nodes: the data payload and the API's own page", async () => {
     const expected = await emit(withoutRules, [catalog[DOCS_SITE]!.factory()]);
     const actual = await emit(withRules, [catalog[DOCS_SITE]!.factory()]);
     expect(expected["<threw>"]).toBeUndefined();
-    expect(Object.keys(actual).sort()).toEqual(Object.keys(expected).sort());
-    const moved = Object.keys(expected).filter((p) => actual[p] !== expected[p]);
-    for (const path of moved) {
-      // Every line the page had is still there, in order; every added line belongs to a new node.
-      const before = expected[path]!.split("\n");
-      const after = actual[path]!.split("\n");
-      let kept = 0;
-      for (const line of after) if (line === before[kept]) kept++;
-      expect({ path, kept }).toEqual({ path, kept: before.length });
-    }
-    const added = moved.flatMap((p) => actual[p]!.split("\n").filter((l) => !expected[p]!.split("\n").includes(l)));
-    expect(added.length).toBeGreaterThan(0);
-    const ids = added.filter((l) => l.includes(`"type": `)).map((l) => l.trim());
+    // Every top-level node gets an explorer page, so the declared API (`Purchasing`) adds its
+    // own; no page the model already had goes away.
+    const site = "src/generated/site/";
+    expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
+    expect(Object.keys(actual).filter((p) => !(p in expected))).toEqual([`${site}model/acme/purchasing/Purchasing.html`]);
+    const moved = Object.keys(expected).filter((p) => actual[p] !== expected[p]).sort();
+    expect(moved).toEqual([
+      `${site}assets/explorer-data.js`,
+      `${site}explorer.json`,
+      `${site}index.html`,
+      `${site}model/acme/purchasing/index.html`,
+      `${site}model/index.html`,
+    ]);
+
+    // The data payload: every line it had is still there, in order; every added line belongs to
+    // a new node.
+    const data = `${site}explorer.json`;
+    const before = expected[data]!.split("\n");
+    const after = actual[data]!.split("\n");
+    let kept = 0;
+    for (const line of after) if (line === before[kept]) kept++;
+    expect(kept).toBe(before.length);
+    const beforeLines = new Set(before);
+    const ids = after.filter((l) => !beforeLines.has(l) && l.includes(`"type": `)).map((l) => l.trim());
     expect([...new Set(ids)].sort()).toEqual(
       [`"type": "api",`, `"type": "binding",`, `"type": "operation",`, `"type": "transition",`],
     );
+
+    // The search index gains the API's page and nothing else moves in the scripts' data.
+    const graph = (text: string): Record<string, unknown> => JSON.parse(text.slice(text.indexOf("=") + 1).trim().replace(/;$/, ""));
+    const g0 = graph(expected[`${site}assets/explorer-data.js`]!);
+    const g1 = graph(actual[`${site}assets/explorer-data.js`]!);
+    const seen = new Set((g0.search as unknown[]).map((e) => JSON.stringify(e)));
+    expect((g1.search as Array<{ h: string }>).filter((e) => !seen.has(JSON.stringify(e))).map((e) => e.h)).toEqual([
+      "model/acme/purchasing/Purchasing.html",
+    ]);
+    expect({ ...g1, search: undefined }).toEqual({ ...g0, search: undefined });
+
+    // The HTML pages that list the package's members name the API, and change nowhere else.
+    for (const page of [`${site}index.html`, `${site}model/index.html`, `${site}model/acme/purchasing/index.html`]) {
+      const b = new Set(expected[page]!.split("\n"));
+      const changed = actual[page]!.split("\n").filter((l) => !b.has(l));
+      // The page and the offending lines, so a failure names what moved.
+      expect({ page, stray: changed.filter((l) => !l.includes("acme/purchasing/")) }).toEqual({ page, stray: [] });
+    }
   });
 
   test("every generator in one run emits the same files, byte for byte (docs-site aside)", async () => {

@@ -1,0 +1,6 @@
+{ "metadata.root": { "package": "acme::app", "children": [
+  { "object.value": { "name": "Endpoint", "children": [ { "field.string": { "name": "host" } } ]}},
+  { "object.settings": { "name": "Api", "children": [
+    { "field.object": { "name": "endpoint", "@objectRef": "Endpoint" } }
+  ]}}
+]}}

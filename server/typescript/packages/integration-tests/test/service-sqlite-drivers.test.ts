@@ -147,7 +147,7 @@ describe("the generated service on Cloudflare D1 (Miniflare)", () => {
   let local: LocalD1;
   let service: NotesService;
   const titles = async (): Promise<string[]> =>
-    ((await local.d1.prepare("SELECT title FROM notes ORDER BY id").all()) as { results: { title: string }[] }).results.map((r) => r.title);
+    ((await local.d1.prepare("SELECT title FROM notes ORDER BY id").bind().all()) as { results: { title: string }[] }).results.map((r) => r.title);
 
   beforeAll(async () => {
     local = await startLocalD1();

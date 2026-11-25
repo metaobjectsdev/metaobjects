@@ -5,6 +5,7 @@
 // (src/poet.ts, the vendored ts-poet printer), harvesting their `imp()` imports, so a generator
 // can move to the writer one function at a time while the rest of it still returns `Code`.
 
+import { compareCodeUnits } from "../code-unit-order.js";
 import { Code, Import, ImportsAll, ImportsDefault, ImportsName, Node, SideEffect } from "../poet.js";
 import { CodeWriter, type CodeWriterOptions, flat, Group, type Piece, WRITER_ERRORS, WriterError } from "./code-writer.js";
 
@@ -17,10 +18,45 @@ export const arr = (items: readonly unknown[]): Group => new Group("[", items as
 /** A call: `fn(a, b)`. */
 export const call = (fn: string, args: readonly unknown[]): Group => new Group(`${fn}(`, args as Piece[], ")");
 
+/**
+ * A JSON value as a TypeScript literal: an array or object is a breakable list (an object padded,
+ * `{ "k": v }`), and object keys stay quoted, as JSON writes them. Scalars print as JSON does.
+ */
+export function json(value: unknown): Piece {
+  if (Array.isArray(value)) return arr(value.map(json));
+  if (value !== null && typeof value === "object") {
+    return new Group("{", Object.entries(value).map(([k, v]): Piece => [str(k), ": ", json(v)]), "}", true);
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 /** An object key: bare when it is an identifier, quoted otherwise. */
 export const key = (name: string): string => (IDENTIFIER.test(name) ? name : str(name));
+
+/**
+ * The 1.2 string form of a list of members: each one on its own line at `indent`, with the line
+ * break BEFORE it rather than after, so the string splices onto the end of an opening line. Kept
+ * for the `*Line` helpers an owned 1.2 routes generator still calls; new code writes members.
+ */
+export function legacyMemberLines(members: readonly string[], indent: string): string {
+  if (members.length === 0) return "";
+  const w = new CodeWriter({ indent });
+  w.block("", () => {
+    for (const m of members) w.line(m);
+  }, "");
+  // The writer ends every line with its break; move the last one to the front.
+  const text = w.toString();
+  return text.slice(-1) + text.slice(0, -1);
+}
+
+/**
+ * A code sample for a doc comment (`TsWriter.doc`): the sample's lines, each set in by two indents,
+ * the margin JSDoc gives a code block. Lay the sample out with its own writer.
+ */
+export const docSample = (sample: CodeWriter): string[] =>
+  sample.toString().trimEnd().split("\n").map((l) => (l === "" ? "" : `    ${l}`));
 
 /** An object literal under construction; members print in the order they are set. */
 export class Props extends Group {
@@ -76,14 +112,14 @@ export class TsWriter extends CodeWriter {
     super({ indent: "  ", width: 120, trailingComma: true, ...options });
   }
 
-  /** Reference a value import; returns the name to write. */
-  use(name: string, from: string): string {
-    return this.addNamed(name, name, from, false);
+  /** Reference a value import, bound locally as `as` when given (`import { name as as }`); returns the name to write. */
+  use(name: string, from: string, as: string = name): string {
+    return this.addNamed(name, as, from, false);
   }
 
-  /** Reference a type-only import; returns the name to write. */
-  useType(name: string, from: string): string {
-    return this.addNamed(name, name, from, true);
+  /** Reference a type-only import, bound locally as `as` when given; returns the name to write. */
+  useType(name: string, from: string, as: string = name): string {
+    return this.addNamed(name, as, from, true);
   }
 
   /** Reference a module's default export under `name`; returns the name to write. */
@@ -104,9 +140,28 @@ export class TsWriter extends CodeWriter {
     return name;
   }
 
+  /** Reference a ts-poet `imp()` symbol: its import is collected; returns the name to write. */
+  useImport(symbol: Import): string {
+    this.record(symbol);
+    return symbol.toCodeString();
+  }
+
   /** Import a module for its side effects only: `import "from";`. */
   useSideEffect(from: string): void {
     this.module(from).sideEffect = true;
+  }
+
+  /**
+   * Close the open block and open the next one on the same line: dedent, write the line, indent
+   * again. For a line that ends one block and starts another, such as
+   * `}).superRefine((row, ctx) => {` or `} else {`.
+   */
+  reopen(...parts: readonly unknown[]): this {
+    const p = this.piece(parts);
+    this.closePiece(p);
+    this.openers.push(flat(p).trim());
+    this.atBlockStart = true;
+    return this;
   }
 
   /** Lines printed at the very top, before the imports: a banner comment or a `"use client";` directive. */
@@ -129,6 +184,26 @@ export class TsWriter extends CodeWriter {
   /** A ts-poet `Code` fragment, possibly many lines: its imports are collected, its text re-indented. */
   code(fragment: Code): this {
     return this.text(fragment instanceof Code ? this.harvest(fragment) : flat(this.piece(fragment)));
+  }
+
+  /**
+   * The body written so far (no header, no imports) as a ts-poet `Code` fragment that carries the
+   * collected imports, for a caller still composing `Code`: the `render*` functions of a converted
+   * template return this, so an owned copy or an unconverted template that joins `Code` sections
+   * keeps working while the generators move to the writer one at a time.
+   */
+  toCode(): Code {
+    const imports: Import[] = [];
+    for (const [from, m] of this.modules) {
+      for (const ns of m.namespaces) imports.push(new ImportsAll(ns, from));
+      if (m.defaultName !== undefined) imports.push(new ImportsDefault(m.defaultName, from));
+      for (const [local, n] of m.named) {
+        imports.push(new ImportsName(local, from, n.exported === local ? undefined : n.exported, n.typeOnly));
+      }
+      if (m.sideEffect) imports.push(new SideEffect(from, from));
+    }
+    // No final newline: a fragment is spliced into a larger `Code`, often mid-line.
+    return new Code([super.toString().trimEnd(), ""], [new ImportCarrier(imports)]);
   }
 
   override toString(): string {
@@ -161,7 +236,7 @@ export class TsWriter extends CodeWriter {
   /** Package imports first, then relative ones; each group in code-unit order. */
   protected orderModules(modules: readonly string[]): string[] {
     const relative = (m: string) => m.startsWith(".");
-    return [...modules.filter((m) => !relative(m)).sort(byCodeUnit), ...modules.filter(relative).sort(byCodeUnit)];
+    return [...modules.filter((m) => !relative(m)).sort(compareCodeUnits), ...modules.filter(relative).sort(compareCodeUnits)];
   }
 
   protected override piece(p: unknown): Piece {
@@ -231,8 +306,8 @@ export class TsWriter extends CodeWriter {
 
   protected writeImport(w: CodeWriter, from: string, m: ModuleImports): void {
     const tail = ` from ${str(from)};`;
-    for (const ns of [...m.namespaces].sort(byCodeUnit)) w.line(`import * as ${ns}${tail}`);
-    const names = [...m.named].sort(([a], [b]) => byCodeUnit(a, b));
+    for (const ns of [...m.namespaces].sort(compareCodeUnits)) w.line(`import * as ${ns}${tail}`);
+    const names = [...m.named].sort(([a], [b]) => compareCodeUnits(a, b));
     const typeOnly = m.defaultName === undefined && names.length > 0 && names.every(([, n]) => n.typeOnly);
     const items = names.map(([local, n]) => {
       const spec = n.exported === local ? local : `${n.exported} as ${local}`;
@@ -251,8 +326,20 @@ export class TsWriter extends CodeWriter {
   }
 }
 
+/** Imports with no text of their own: what `toCode()` attaches its collected imports with. */
+class ImportCarrier extends Node {
+  constructor(readonly imports: readonly Import[]) {
+    super();
+  }
+  toCodeString(): string {
+    return "";
+  }
+  get childNodes(): unknown[] {
+    return [...this.imports];
+  }
+}
+
 function looksLikeForeignPoet(p: unknown): boolean {
   return typeof p === "object" && p !== null && "toCodeString" in p && "childNodes" in p;
 }
 
-const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

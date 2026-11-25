@@ -1,0 +1,2 @@
+zero: [zero] printed: 0
+one: [yes] printed: 1

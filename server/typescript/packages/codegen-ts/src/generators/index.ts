@@ -33,6 +33,7 @@ export { rulesNamesFile, type RulesNamesFileOpts } from "./rules-names-file.js";
 export { contractTypes, type ContractTypesFileOpts } from "./contract-types-file.js";
 export { serviceFile, type ServiceFileOpts } from "./service-file.js";
 export { serviceRoutesFile, type ServiceRoutesFileOpts } from "./service-routes-file.js";
+export { serviceRoutesHonoFile, type ServiceRoutesHonoFileOpts } from "./service-routes-hono-file.js";
 export { reportExport, type ReportExportOpts } from "./report-export-file.js";
 export { promptRender, type PromptRenderOpts } from "./prompt-render-file.js";
 export { outputParser, type OutputParserOpts } from "./output-parser-file.js";

@@ -6,8 +6,8 @@ persistence with no per-entity ORM boilerplate. It is the DB-API implementation 
 abstract `ObjectManager` contract and the cross-port analog of Java's `ObjectManagerDB`
 (OMDB): a method-based API (`find_by_id` / `find_many` / `count` / `create` / `update` /
 `delete` / `relate`) that compiles a Filter dict to parameterized SQL and runs it via a
-pluggable driver. It is **pure data-access** (CRUD / query / codec); schema is owned by
-the Node `meta` migration tool, not the runtime.
+pluggable driver. It is **pure data-access** (CRUD / query / codec); schema migrations run
+in your own tool or the Node `meta migrate` reference helper, not the runtime.
 
 ## Contents
 - Construct an `ObjectManagerDb`

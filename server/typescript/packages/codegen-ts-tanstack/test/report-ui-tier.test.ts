@@ -102,7 +102,7 @@ describe("a served report gets a list hook and no other UI-tier file", () => {
         // `Totals` is already plural, so the list hook does not double it (hookListNameSegment).
         expect(out).toContain("export function useStoreTotalsList(");
         expect(out).toContain("filter?: StoreTotalsFilter");
-        expect(out).toContain("type StoreTotals as StoreTotalsRow");
+        expect(out).toContain("StoreTotals as StoreTotalsRow } from");
         expect(out).toContain("lists:");
         expect(out).not.toContain("details:");
         expect(out).not.toContain("detail:");

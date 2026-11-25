@@ -220,7 +220,7 @@ public class ServerOwnedCreateInputTests
         paths.Add(typeof(Microsoft.EntityFrameworkCore.ModelBuilder).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.PrimaryKeyAttribute).Assembly.Location);
-        paths.Add(typeof(MetaObjects.Codegen.Runtime.FilterParser).Assembly.Location);
+        paths.Add(typeof(MetaObjects.AspNetCore.ListQueryParser).Assembly.Location);
         var refs = paths.Where(File.Exists)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create(

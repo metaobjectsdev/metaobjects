@@ -3,7 +3,8 @@
 //! A `template.*` body is plain Mustache. [`render`] renders it over a JSON payload the
 //! same way every MetaObjects port does: partials expanded ahead of time, every
 //! `{{value}}` escaped for the template's format, derived `has<Field>` and `-last`
-//! accessors on the payload, and a fail-closed `maxChars` budget. The engine underneath is
+//! accessors on the payload, a fail-closed `maxChars` budget, and a variable missing from
+//! the payload refused rather than rendered empty (`ERR_VAR_NOT_ON_PAYLOAD`). The engine underneath is
 //! the `mustache-ng` crate; what is specific to MetaObjects sits here, on top of it. The
 //! shared `fixtures/render-conformance/` corpus holds this crate to the other ports.
 //!
@@ -11,9 +12,10 @@
 //! answer back out of a model's reply, held to `fixtures/extract-conformance/`;
 //! [`extract::extract_into`] reads it on into a generated type.
 //! [`prompt`] writes the output-format fragment that asks for that answer.
-//! [`verify`] checks a template against its payload's field tree: the build-time drift gate
-//! of a generated render helper, and the same check again when the helper renders
-//! ([`render_part`]). [`FilesystemProvider`] reads templates from a directory.
+//! [`verify`] is the build-time half: it checks a template's variables, partials and
+//! contracted output tags against the payload's declared field tree, held to
+//! `fixtures/verify-conformance/` (the drift gate of a generated render helper, and the same
+//! check again when the helper renders, [`render_part`]). [`FilesystemProvider`] reads templates from a directory.
 
 /// How a generated crate names this one in its `Cargo.toml`: this release's major and minor
 /// version, so it resolves to this release or a later compatible one and never to an older
@@ -28,6 +30,7 @@ pub mod accessors;
 pub mod escapers;
 pub mod extract;
 pub mod filesystem;
+pub mod presence;
 pub mod prompt;
 pub mod render;
 pub mod tags;

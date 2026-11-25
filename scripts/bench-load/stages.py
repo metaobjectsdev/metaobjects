@@ -188,7 +188,7 @@ class TypeScript(Port):
     def load(self, model, runs):
         dist = REPO / "server/typescript/packages/metadata/dist"
         if not (dist / "index.js").exists():
-            raise NotAvailable("the metadata package is not built (bun run --filter '*' build)")
+            raise NotAvailable("the metadata package is not built (bun run build)")
         return drive(["node", str(HERE / "ts-load.mjs"), str(model), str(runs)], {**os.environ, "MO_TS_DIST": str(dist)})
 
     def prepare(self, work, model):

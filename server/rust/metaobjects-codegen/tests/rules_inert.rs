@@ -78,6 +78,7 @@ fn emit(variant: &str, pick: Pick) -> BTreeMap<String, String> {
         root: loaded.result.root,
         entities: &[],
         collection: &loaded.collection,
+        reference_nodes: &loaded.reference_nodes,
     };
     let mut files = BTreeMap::new();
     for g in shipped_generators() {

@@ -157,7 +157,9 @@ export function assemble(opts: { contentRoot: string; stack: Stack; docsRef?: st
       verifySteps: verifySteps(contentRoot, stack),
       skillsDir,
     },
-    {},
+    // The reference migration helper's steps only for a project that chose a `meta migrate`
+    // dialect; any other project migrates with its own tool.
+    { migration: stack.migration },
   );
   out.push({ path: ".metaobjects/AGENTS.md", contents: alwaysOn });
 

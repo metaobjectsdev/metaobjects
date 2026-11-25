@@ -12,6 +12,8 @@ import {
 import {
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
+  str,
+  TsWriter,
 } from "@metaobjectsdev/codegen-ts";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 
@@ -45,26 +47,29 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
         throw new Error("angular-barrel: renderContext is required (provided by runGen)");
       }
       const layout = ctx.renderContext.outputLayout;
-      const lines: string[] = [];
+      const w = new TsWriter();
+      w.header(`// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}`);
+      const reExport = (stem: string, pkg: string | undefined): void => {
+        w.line(`export * from ${str(specifierFor(layout, pkg, stem))};`);
+      };
       const eligible = [...entities].sort((a, b) => a.name.localeCompare(b.name));
       for (const e of eligible) {
         const pkg = effectivePackage(e);
         // Each line mirrors its generator's filter exactly — a re-export of a file
         // that was never emitted is a hard build break in the consumer app.
         if (servesClientTier(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.service`))};`);
+          reExport(`${e.name}.service`, pkg);
         }
         if (servesWriteApi(e) && !isProjection(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.form.component`))};`);
+          reExport(`${e.name}.form.component`, pkg);
         }
         if (servesClientTier(e) && hasDataGridLayout(e)) {
-          lines.push(`export * from ${JSON.stringify(specifierFor(layout, pkg, `${e.name}.grid.component`))};`);
+          reExport(`${e.name}.grid.component`, pkg);
         }
       }
-      const content = `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n${lines.join("\n")}\n`;
       return {
         path: "index.ts",
-        content: content,
+        content: w.toString(),
       };
     }),
   };

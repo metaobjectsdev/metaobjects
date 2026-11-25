@@ -30,6 +30,8 @@ internal static class CliProcess
         // The child inherits the runner's environment, so a variable that changes the CLI's behaviour
         // is removed unless the test sets it: an exported META_REQUIRE_IMPLEMENTERS must not flip a test.
         psi.Environment.Remove("META_REQUIRE_IMPLEMENTERS");
+        foreach (var optOut in new[] { FieldLint.EnvOptOut, OverlayLint.EnvOptOut, NameLint.EnvOptOut, DeprecationLint.EnvOptOut })
+            psi.Environment.Remove(optOut);
         foreach (var (key, value) in environment) psi.Environment[key] = value;
         psi.ArgumentList.Add(ResolveCliDll());
         foreach (var a in args) psi.ArgumentList.Add(a);

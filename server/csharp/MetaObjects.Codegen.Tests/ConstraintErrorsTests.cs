@@ -11,7 +11,7 @@
 // EF wrapper text is likewise real: DbUpdateException's own message says nothing about
 // the constraint, which is exactly why the chain walk is load-bearing.
 
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using Xunit;
 
 namespace MetaObjects.Codegen.Tests;

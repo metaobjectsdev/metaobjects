@@ -47,6 +47,7 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/import-path.ts",
   "codegen-ts/src/instance-artifacts.ts",
   "codegen-ts/src/metaobjects-config.ts",
+  "codegen-ts/src/model-walk.ts",
   "codegen-ts/src/names.ts",
   "codegen-ts/src/naming.ts",
   "codegen-ts/src/naming/name-claims.ts",
@@ -78,3 +79,17 @@ export const ENGINE_MODULES: readonly string[] = [
   "codegen-ts/src/writer/code-writer.ts",
   "codegen-ts/src/writer/ts-writer.ts",
 ];
+
+// ADR-0034 Amendment 12 — the generator-AUTHORING surface: the part of the engine above that a
+// team writes its own generator against, and the only part the compatibility policy promises.
+// Four roles, spelled like `ENGINE_MODULES` and held to `surface.typescript` in the shared
+// manifest. Every other engine module is internal: an owned copy may import it, and it may change
+// in any release. The names each module exports through the engine entry are pinned by
+// test/authoring-surface.test.ts against a committed snapshot, so a change to the promise is a
+// reviewed diff.
+export const AUTHORING_SURFACE = {
+  generator: ["codegen-ts/src/generator.ts"],
+  modelWalk: ["codegen-ts/src/model-walk.ts"],
+  writer: ["codegen-ts/src/writer/code-writer.ts", "codegen-ts/src/writer/ts-writer.ts", "codegen-ts/src/poet.ts"],
+  naming: ["codegen-ts/src/naming.ts", "codegen-ts/src/names.ts"],
+} as const satisfies Readonly<Record<string, readonly string[]>>;

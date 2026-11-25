@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_CHILD_NOT_ALLOWED",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -22,13 +22,14 @@
 // This proves the GENERATED M:N traversal route — not a stand-in — implements
 // the cross-port contract over HTTP, including the TPH source/target narrowing.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -61,6 +62,7 @@ export async function startGeneratedM2mServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<GeneratedM2mServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -74,14 +76,14 @@ export async function startGeneratedM2mServer(
   // so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()]),
     }),
     metadata: root,
   });
@@ -120,32 +122,19 @@ export const db = drizzle(pool);
     CREATE TABLE IF NOT EXISTS "blog_categories" ("id" bigserial PRIMARY KEY, "name" varchar(80) NOT NULL);
   `);
 
-  // 4. Import the EMITTED route files unmodified and mount them.
-  const postRoutes = (await import(pathToFileURL(emitted.locate("Post.routes.ts")).href)) as {
-    postRoutes: (f: FastifyInstance) => Promise<void>;
-  };
-  const personRoutes = (await import(pathToFileURL(emitted.locate("Person.routes.ts")).href)) as {
-    personRoutes: (f: FastifyInstance) => Promise<void>;
-  };
-  // FW-8: the TPH discriminator base's routes file carries the polymorphic base
-  // path AND every per-subtype path (incl. subtype-scoped M:N mounts) in one module.
-  const accountRoutes = (await import(pathToFileURL(emitted.locate("Account.routes.ts")).href)) as {
-    accountRoutes: (f: FastifyInstance) => Promise<void>;
-  };
-  // PostCategory takes part in no relationship; it is mounted so the corpus can
-  // gate the COLLECTION-URL spelling of a multi-word, y-ending entity name.
-  const postCategoryRoutes = (await import(pathToFileURL(emitted.locate("PostCategory.routes.ts")).href)) as {
-    postCategoryRoutes: (f: FastifyInstance) => Promise<void>;
-  };
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
-
-  const fastify = Fastify();
-  await fastify.register(postRoutes.postRoutes);
-  await fastify.register(personRoutes.personRoutes);
-  await fastify.register(accountRoutes.accountRoutes);
-  await fastify.register(postCategoryRoutes.postCategoryRoutes);
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  // 4. Import the EMITTED API unmodified and mount it, or the service behind its transport.
+  //    FW-8: the TPH discriminator base's routes file carries the polymorphic base path AND every
+  //    per-subtype path (incl. subtype-scoped M:N mounts) in one module. PostCategory takes part
+  //    in no relationship; it is mounted so the corpus can gate the COLLECTION-URL spelling of a
+  //    multi-word, y-ending entity name.
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    for (const name of ["Post", "Person", "Account", "PostCategory"]) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${name}.routes.ts`)).href)) as Record<string, (f: FastifyInstance) => Promise<void>>;
+      await fastify.register(mod[`${name[0]!.toLowerCase()}${name.slice(1)}Routes`]!);
+    }
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -153,7 +142,7 @@ export const db = drizzle(pool);
       await seedM2m(connectionUri, seed);
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

@@ -76,8 +76,8 @@ workflows (the step after checkout) refuse a version with no prerelease suffix w
 holds an entry. A release candidate (`1.1.0-rc.3`, or `1.1.0rc3` on PyPI) is allowed.
 
 A publish you type by hand passes through none of those, so run the gate yourself as the
-command before it. This document has it before each of the four: the npm promote in step 3,
-the isolated one-package `bun publish`, the PyPI fallback `uv publish`, and the local
+command before it. This document has it before each of the three: the npm promote in step 3,
+the PyPI fallback `uv publish`, and the local
 `mvn -Prelease deploy`. It exits non-zero on a refusal:
 
 ```
@@ -105,8 +105,9 @@ each one cost a broken/burned release to learn.
 
 ## What gets published
 
-The publish-candidate packages (versioned in lockstep unless a package gets an
-isolated patch). **Enumerate the set each release — do not trust this count** (it
+The publish-candidate packages, versioned in lockstep — there is no single-package
+release (see [Isolated patch (one package)](#isolated-patch-one-package) below).
+**Enumerate the set each release — do not trust this count** (it
 was **13** at 0.11.5); the lockstep set is "every non-`private` package at the
 previous version":
 
@@ -440,11 +441,21 @@ unexplained `meta gen` diff after `npm update`; the changelog flag + the planned
 gen-state engine-version stamp (see the tracking issue) are how you keep every such
 diff explained.
 
+**Entries arrive as fragments.** A pull request does not edit `CHANGELOG.md`. It adds one file
+per change under `changelog.d/`, in the format given in
+[`changelog.d/README.md`](../changelog.d/README.md), so that parallel PRs never edit the same
+lines. The conventions above apply to a fragment as they do to a CHANGELOG entry.
+`scripts/release.mjs` places every fragment at the top of `## [Unreleased]` and deletes the
+files before it promotes that section. To write a release section by hand ahead of the cut, run
+`node scripts/changelog-fragments.mjs --assemble` first, so the entries you are arranging are in
+`CHANGELOG.md`. The release then still ships one changelog.
+
 ## Prerequisites
 
 - The JS/TS **workspace root is the repo root** (`/package.json`), globbing
   `server/typescript/packages/*` + `client/web/packages/*` (and the private `examples/dynamic-grid`,
-  which publishes nothing). This is what makes `workspace:*`
+  plus the private pack workspaces under `packs/*/typescript` (ADR-0069) — no core release
+  publishes anything from either). This is what makes `workspace:*`
   resolve uniformly at publish time — don't move it.
 - npm auth as an owner of the `metaobjectsdev` org. The account has 2FA **auth-and-writes**, so for
   an unattended publish use a **Granular/Automation token with the bypass-2FA option**, scoped
@@ -734,9 +745,32 @@ never reach `main`.
 
 ## Isolated patch (one package)
 
-If only one package changed (e.g. a `cli` bugfix), bump just that package, `rm bun.lock && bun
-install`, verify, run `node scripts/eject-release-gate.mjs <version>` (it must exit 0), and
-`bun publish` it. The others stay at their current version. Tag scoped (e.g. `cli-v0.5.1`).
+There is no single-package release on npm. The 13 `@metaobjectsdev/*` packages move atomically:
+the publish set is `scripts/publish-set.mjs`, and a fix to one of them (a `cli` bugfix, say) is a
+patch release of all 13, cut by the procedure above. What a patch can leave out is a
+*registry*: a registry with no changed product file sits the release out, under the
+convergent-publishing rule. A package that needs a release line of its own is an independent
+pack, never a core package published alone.
+
+## Independent packs (`packs/`)
+
+An independent pack ([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)) is not part of
+a core release, and a core release never waits for one. Nothing in this procedure touches
+`packs/`: `scripts/publish-set.mjs`, `check-publish-intent.sh` and
+`check-no-prerelease-versions.sh` do not enumerate it (`scripts/check-pack-boundary.ts` proves
+that in the `gates` lane), a pack's changelog is `packs/<name>/CHANGELOG.md` and not the root
+one, and a red pack canary is not a reason to hold a core cut. Pack work never needs the
+maintenance-branch procedure either, because core can be cut from `main` with pack work in
+flight.
+
+A pack is released on its own, tagged `pack-<name>-v<version>`. Core's tag patterns, the site
+deploy and the metamodel gate's baseline all ignore that tag. A pack stays unpublished
+(`"publish": false` in `pack.json`, `"private": true` on its npm package) until an estate
+project runs it with the drift gate enforced. A pack's prerelease path — publishing it to the
+private registry for that adopter run — does not exist yet (`docs/features/prerelease.md`
+covers the core lockstep set only) and is built in a follow-up before the first adopter run.
+The pack release script, the pack version gate and the test against the lowest published core
+in its range are built before that first publish.
 
 # Releasing the C# packages to NuGet
 
@@ -746,14 +780,15 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (the `<Version>` in
+Five packages, version-locked at the C# port version (the `<Version>` in
 [`server/csharp/Directory.Build.props`](../server/csharp/Directory.Build.props)):
 
 | Package | Contents |
 |---|---|
 | `MetaObjects` | Loader + canonical serializer |
 | `MetaObjects.Render` | Mustache render + payload-VO + `verify` |
-| `MetaObjects.Codegen` | EF Core + ASP.NET codegen + the runtime filter/dispatch helpers generated code references |
+| `MetaObjects.Codegen` | EF Core + ASP.NET codegen (writes EF and ASP.NET code as text; depends on neither) |
+| `MetaObjects.AspNetCore` | The helper runtime generated routes call (filter parser, EF Core filter dispatch, validation, wire forms); the APP references it, the tool does not |
 | `MetaObjects.Cli` | The `dotnet meta` .NET tool (`gen` / `verify`; `agent-docs` is a redirect stub to the Node `meta` CLI) |
 
 Shared package metadata lives in [`server/csharp/Directory.Build.props`](../server/csharp/Directory.Build.props);
@@ -821,11 +856,12 @@ lock the repo/owner IDs against resurrection attacks.)
 2. **Validate locally** (catches immutable-version mistakes before they're permanent):
    ```bash
    cd server/csharp
-   # NOTE: pack ONE project per invocation. Passing all four to a single `dotnet pack`
+   # NOTE: pack ONE project per invocation. Passing all five to a single `dotnet pack`
    # fails on modern SDKs (verified on 8.0.129) with `MSBUILD : error MSB1008: Only one
    # project can be specified` — MSBuild treats the extra paths as switches.
    for p in MetaObjects/MetaObjects.csproj MetaObjects.Render/MetaObjects.Render.csproj \
-            MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.Cli/MetaObjects.Cli.csproj; do
+            MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.AspNetCore/MetaObjects.AspNetCore.csproj \
+            MetaObjects.Cli/MetaObjects.Cli.csproj; do
      dotnet pack "$p" -c Release -o /tmp/mo-nupkg || echo "PACK FAILED: $p"
    done
    # inspect a nuspec — version, license, readme, deps:
@@ -836,7 +872,7 @@ lock the repo/owner IDs against resurrection attacks.)
 3. **Run persistence conformance** if the runtime/codegen changed: `scripts/integration-test.sh csharp`.
 4. **Publish:** GitHub → **Actions → publish-csharp → Run workflow** (or push a `csharp-v<version>` tag).
    This is the one registry that CANNOT be published locally — see "How we publish" above.
-5. **Verify** on nuget.org: all four packages listed and **owned by the `metaobjects` org**
+5. **Verify** on nuget.org: all five packages listed (`MetaObjects.AspNetCore` is a new package id from 1.3.0: check its first push landed) and **owned by the `metaobjects` org**
    (indexing/validation takes a few minutes).
 
 # Releasing the Python package to PyPI
@@ -884,9 +920,10 @@ Project `metaobjects` → **Settings → Publishing → Add a new GitHub publish
 2. **Bump the version in `pyproject.toml`** (`[project].version`).
 3. **The wheel is pure-Python/universal** (`py3-none-any`) — one wheel serves every platform.
 
-   (No agent-context content is vendored into the wheel anymore — scaffolding moved to the
-   Node `meta agent-docs` CLI, so `hatch_build.py` is a no-op. Don't re-add a
-   `force-include` of `../../agent-context`.)
+   (The wheel carries the shipped agent files as a committed copy of `agent-context-shipped/`
+   under `src/metaobjects/agent_context/shipped/`, so `metaobjects agent-docs` needs no Node.
+   Refresh it with `scripts/sync-python-agent-context.sh`; the `gates` lane and a Python test
+   fail when it is stale. There is no build hook and no `force-include` of `../../agent-context`.)
 
 ## Procedure
 
@@ -1060,8 +1097,8 @@ shipped agent-context tree (and the docs ref its links are pinned to) into the m
 TypeScript check compares that hash: a context whose content differs from what this CLI ships
 nudges even at an equal version, and one whose content is identical is silent at any version. A
 manifest written before 1.1.0 has no hash and falls back to the version rule above. The C#,
-Python and JVM checks keep the version rule, because they ship no agent-context content to hash:
-`meta agent-docs` (npm) is the one scaffolder. A context stamped at that port's own version is
+Python and JVM checks keep the version rule: each stamps its own release into the manifest it
+writes, and no port but TypeScript hashes the tree. A context stamped at that port's own version is
 the context that release documents, so the version rule is the right answer there.
 
 ## Public-repo hygiene

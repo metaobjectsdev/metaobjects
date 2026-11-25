@@ -5,8 +5,9 @@ render engine, and Maven plugin are all Java; `metaobjects-codegen-kotlin` emits
 idiomatic Kotlin (KotlinPoet: `data class` (no `@Serializable` — entities are
 Jackson-compatible, not kotlinx-serialized), Exposed `Table` objects,
 Spring `@RestController`). Codegen runs as the same Maven plugin goal the Java port
-uses (`mvn metaobjects:generate`). Schema migration and live-DB drift are
-**Node-`meta`-only** (ADR-0015). The runtime persistence tier is **JetBrains Exposed**
+uses (`mvn metaobjects:generate`). Schema migration is the project's own tool or the
+Node `meta migrate` reference helper, and live-DB drift is the Node `meta verify --db`
+(ADR-0015). The runtime persistence tier is **JetBrains Exposed**
 (hand-written transaction bodies around the generated table objects), or optionally
 **OMDB** (the Java `ObjectManagerDB`, callable from Kotlin).
 
@@ -166,7 +167,7 @@ cross-port versioning — **do not flag it** (only intra-port skew matters).
   operators `eq/ne/gt/gte/lt/lte/in/like/isNull`) validated against the generated filter allowlist
   (api-contract corpus, both lanes). **Flag a hand-rolled filter parser as a finding.** Only the
   richer list surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard
-  gating; ADR-0068) passes in TypeScript and is pending in Kotlin until the Kotlin port's 1.3.0
+  gating; ADR-0068) passes in TypeScript and C#, and is pending in Kotlin until the Kotlin port's 1.3.0
   REST-standard work lands — do NOT flag its absence in Kotlin until then.
 - **No JVM migrate goal.** Schema migration is Node-`meta`-owned for every port
   (ADR-0015). The Maven plugin has no migrate goal; `meta migrate` is correct.

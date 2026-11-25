@@ -1,0 +1,54 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.service": {
+                "name": "api"
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db",
+                "@engine": "postgres"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "api-production",
+          "@app": "Shop.api",
+          "@environment": "production",
+          "@project": "shop",
+          "children": [
+            {
+              "value.literal": {
+                "name": "profile",
+                "@setting": "Spring.profile",
+                "@literal": "prod"
+              }
+            },
+            {
+              "value.literal": {
+                "name": "activeProfile",
+                "@setting": "Spring.profile",
+                "@literal": "live"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -96,7 +96,9 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
 ## TypeScript dialect (`TsWriter`)
 
 - **Imports are collected while the body is written.** `use(name, from)` records a value
-  import and returns the name to write. `useType` records a type-only import. `useDefault`,
+  import and returns the name to write; `use(name, from, as)` binds it locally as `as`
+  (`import { name as as }`) and returns `as`. `useType` records a type-only import and takes
+  the same optional `as`. `useDefault`,
   `useNamespace` and `useSideEffect` record the other forms. Imports print before the body,
   after any `header(...)` lines, with one blank line between each of the three sections.
 - **Order.** Package modules come first, then relative ones (those starting with `.`). Each
@@ -111,6 +113,9 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
   breaks.
 - One local name imported from two modules, or naming two different exports, is
   **`ERR_WRITER_IMPORT_CONFLICT`**.
+- **`reopen(parts...)`** closes the open block and opens the next on one line: it dedents,
+  writes the line, and indents again, as in `}).superRefine((row, ctx) => {` or `} else {`. With
+  no block open it is **`ERR_WRITER_UNBALANCED_CLOSE`**.
 - **`doc(lines...)`** writes `/** text */` when there is one entry and it fits. Otherwise it
   writes a block of ` * ` lines, with a bare ` *` line for an empty entry. A `*/` inside the
   text is written as `*\/`.
@@ -122,6 +127,28 @@ units. The comparison includes the indent, and a line exactly `width` long fits.
 - Helpers: `str` (a quoted string literal), `arr`, `call`, `props()` (an object literal built
   with `.set(name, value)` and `.add(member)`) and `key` (an object key, quoted only when it is
   not an identifier).
+- `json(value)` writes a JSON value as a literal. Arrays and objects are breakable lists (an
+  object is padded, `{ "k": v }`), and object keys stay quoted, as JSON writes them.
+- `docSample(writer)` turns a code sample laid out by another writer into doc-comment lines,
+  each indented four spaces, for a worked example inside a `doc(...)` comment.
+- `legacyMemberLines(members, indent)` is the 1.2 string form of a member list (a line break
+  before each member, at `indent`). It exists only for the deprecated `*Line` helpers an owned
+  1.2 generator still calls; new code spreads the members into the writer.
+- **`indented(body)`** writes nothing itself and writes the body one level in. It is a block
+  delimited by indentation alone, as C#'s `Hanging()` and Python's suites are, and is used
+  where no line closes the block: the clauses of a SQL view body, or a YAML mapping. The
+  TypeScript port's `CodeWriter` has it, so every TypeScript writer inherits it.
+
+### YAML (`YamlWriter`, TypeScript port only)
+
+The TypeScript port also writes YAML (the Cube data model). It has no conformance cases, since
+no other port writes YAML. Defaults: two-space indent, no width limit (a flow list is written as
+the generator gives it), and no trailing comma.
+
+- **`key(name, body)`** writes `name:` and the body under it, one level in, with no closing
+  line.
+- **`item(body)`** writes one block-list entry. The first line the body writes carries `- `, and
+  the entry's other lines align under that line's text.
 
 ## Java dialect (`JavaWriter`)
 

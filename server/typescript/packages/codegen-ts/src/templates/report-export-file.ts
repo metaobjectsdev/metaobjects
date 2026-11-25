@@ -1,6 +1,6 @@
 // Report export emit (api-contract.md, "Report export"): the shared writer module (one per
-// project) and the per-report `<Report>.export.ts` module. Plain string emission, no ts-poet:
-// the shared module imports nothing, and the per-report module imports only the shared one.
+// project) and the per-report `<Report>.export.ts` module, laid out by the code writer (ADR-0063).
+// The shared module imports nothing, and the per-report module imports only the shared one.
 //
 // The writers consume the list route's wire-form rows (what `JSON.stringify` of the list answer
 // holds), so a value's wire form (currency minor units, `YYYY-MM-DD`, decimals per the project
@@ -11,6 +11,8 @@ import { isCredentialField } from "../api-surface.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { relativeModuleSpecifier, type ResolvedTarget } from "../import-path.js";
 import type { ExtStyle } from "../render-context.js";
+import { CodeWriter } from "../writer/code-writer.js";
+import { str, TsWriter } from "../writer/ts-writer.js";
 
 /** Default export cap (rows), the same in every port. */
 export const DEFAULT_EXPORT_MAX_ROWS = 100_000;
@@ -33,7 +35,14 @@ export interface ReportExportEmitOpts {
 
 /** The shared module: CSV quoting and BOM, the formula-injection guard, XML escaping and the root/row writer. */
 export function renderExportWriters(opts: ReportExportEmitOpts): string {
-  return `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
+  const w = new CodeWriter();
+  writeExportWriters(w, opts);
+  return w.toString();
+}
+
+/** Write {@link renderExportWriters}'s module into `w`. */
+export function writeExportWriters(w: CodeWriter, opts: ReportExportEmitOpts): void {
+  w.text(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
 // Shared writers for the report-export generator: one module per project, used by every
 // <Report>.export module. It imports nothing.
 
@@ -121,8 +130,7 @@ export function writeXml(root: string, columns: readonly ExportColumn[], rows: r
     out += "</row>";
   }
   return out + "</" + root + ">";
-}
-`;
+}`);
 }
 
 /**
@@ -142,26 +150,29 @@ export function renderReportExportModule(
   const shared = relativeModuleSpecifier(
     site.selfTarget.outputLayout, site.pkg, `./${EXPORT_WRITERS_BASENAME}`, site.extStyle,
   );
-  const columns = exportColumns(report)
-    .map((c) => `  { name: ${JSON.stringify(c.name)}, guard: ${c.guard} },`)
-    .join("\n");
+  const w = new TsWriter();
+  writeReportExportModule(w, report, shared, opts);
+  return w.toString();
+}
+
+/** Write {@link renderReportExportModule}'s module into `w`; `shared` is the writers module's specifier. */
+export function writeReportExportModule(w: TsWriter, report: MetaObject, shared: string, opts: ReportExportEmitOpts): void {
+  w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`, `// Source metadata: ${report.name} (${report.fqn()})`);
+  const writeCsv = w.use("writeCsv", shared);
+  const writeXml = w.use("writeXml", shared);
+  const column = w.useType("ExportColumn", shared);
+  const row = w.useType("ExportRow", shared);
   const id = exportConstName(report.name);
-  return `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}
-// Source metadata: ${report.name} (${report.fqn()})
-import { writeCsv, writeXml, type ExportColumn, type ExportRow } from ${JSON.stringify(shared)};
-
-/** ${report.name}'s fields in derived-field order (dimensions, then measures). */
-export const ${id}Columns: readonly ExportColumn[] = [
-${columns}
-];
-
-/** What the report's list route mounts to answer \`?format=csv|json|xml\`. */
-export const ${id} = {
-  maxRows: ${opts.maxRows},
-  csv: (rows: readonly ExportRow[]): string => writeCsv(${id}Columns, rows),
-  xml: (rows: readonly ExportRow[]): string => writeXml(${JSON.stringify(report.name)}, ${id}Columns, rows),
-};
-`;
+  w.doc(`${report.name}'s fields in derived-field order (dimensions, then measures).`);
+  w.block(`export const ${id}Columns: readonly ${column}[] = [`, () => {
+    for (const c of exportColumns(report)) w.line(`{ name: ${str(c.name)}, guard: ${c.guard} },`);
+  }, "];");
+  w.blank().doc("What the report's list route mounts to answer `?format=csv|json|xml`.");
+  w.block(`export const ${id} = {`, () => {
+    w.line(`maxRows: ${opts.maxRows},`);
+    w.line(`csv: (rows: readonly ${row}[]): string => ${writeCsv}(${id}Columns, rows),`);
+    w.line(`xml: (rows: readonly ${row}[]): string => ${writeXml}(${str(report.name)}, ${id}Columns, rows),`);
+  }, "};");
 }
 
 /** The exported spec's identifier for a report, `<Report>Export`. */

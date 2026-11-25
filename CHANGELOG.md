@@ -10,6 +10,44 @@ here.**
 
 ## [Unreleased]
 
+- **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
+
+- **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
+  (`WARN_OVERLAY_IMPLICIT`), the node-name lint (`WARN_NAME_SURROUNDING_WHITESPACE`,
+  `WARN_NAME_INTERNAL_WHITESPACE`) and the deprecated-reference lint (`WARN_DEPRECATED_REFERENCE`)
+  now print on every `dotnet meta verify`, as they do in Node `meta verify`, before the field lint.
+  They are advisory, never change the exit code, and are muted by `--no-overlay-lint`,
+  `--no-name-lint` and `--no-deprecation-lint`, or by `META_NO_OVERLAY_LINT=1`,
+  `META_NO_NAME_LINT=1` and `META_NO_DEPRECATION_LINT=1`. C# runs the shared
+  `fixtures/model-lint-conformance/` corpus.
+
+- **codegen-ts: `service-routes-hono`, the service's Hono transport (ADR-0067 layer 5).**
+  `serviceRoutesHonoFile()` writes `<pkg path>/transport/hono.ts`, the same routes as the Fastify
+  transport, as `<pkg>ServiceHonoRoutes(app, { service, getActor })`, with the actor read by
+  `getActor(c)`. It imports the new `@metaobjectsdev/runtime-ts/service/hono` entry, and `meta eject
+  service-routes-hono` copies that source. A fixed path segment is added before a parameter wherever
+  two routes could match one request, so `GET <collection>/<query>` is not taken for
+  `GET <collection>/{id}`, as Fastify's router already decides.
+- **The service is held to more of the shared API tests.** Its lanes, on Fastify and on Hono, now
+  run the `list-query/`, `api-settings/`, `enum-default/`, `jsonb/` and `duration/` corpora beside the
+  root and `rules/` corpora, on every engine the routes lane runs, D1 included through
+  `interactiveTransactions: false`. The service compile gate compiles both transports.
+- **The service covers every object the flat routes serve.** Projections and served reports get
+  their reads, and their transports answer writes `405`. A report keeps its row cap, through the
+  new `serviceFile({ reportMaxRows })` option, and its `?format=` export. Write-through entities
+  read through their view and read a write back through it. A single-table hierarchy gets the
+  polymorphic base reads and per-subtype operations scoped to the discriminator. Each
+  many-to-many relationship gets a query and a `GET <path>/{id}/<relation>` route. The
+  `projection/`, `report/` (Postgres, MySQL, SQLite and D1), `write-through/`, `tph/`, `m2m/`,
+  `decimal/` and `secret-fields/` corpora now run on both service lanes. runtime-ts: the read-only
+  and many-to-many reads (`readOnlyList`, `readOnlyGet`, `m2mRelated`) are framework-neutral
+  functions, which the flat Fastify mounts and the service both call.
+- **codegen-ts: a `runGen` with no project no longer leaves its gen-state in the scratch root.**
+  The state of such a run is kept for that process's later runs only, and is removed when the
+  process exits normally (a process killed by a signal still leaves it). Before this fix, each such process left `meta-gen-state-<pid>` behind
+  permanently. The test harnesses that generate with no project had left hundreds of those
+  directories, about 3 GB, in a RAM-backed `$DEV_SCRATCH`.
+
 - **runtime-ts: the generated service keeps its rollback guarantee on a sync SQLite driver.** On
   bun:sqlite and better-sqlite3, Drizzle's `transaction()` commits when its callback returns, so a
   service write that awaited inside it committed at its first `await`: a hook's or a body's refusal
@@ -357,6 +395,37 @@ here.**
   included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
   column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
   includes `like`.
+- **Reporting and requirements are vocabulary packs, out of core.** The reporting vocabulary
+  (`object.report`, `dimension.*`, `measure.*` including `measure.derived` and its `@expr`,
+  `segment.filter`, the entity's dimension, measure and segment children and `@segment` on
+  `origin.aggregate` and `origin.first`) is now registered by its own provider,
+  `metaobjects-reporting`. The requirements vocabulary (`requirement.functional`,
+  `requirement.architectural` and the root's `requirement.*` child) is registered by
+  `metaobjects-requirements`. Both are in the default bundle of every port, so a model that loads
+  today loads and generates the same. An embedder can leave either out, and a model that then uses
+  its types gets a loader error naming the unknown type or subtype (new fixtures
+  `error-packs-left-out-*-used`). The `verify` requirements gate reads the nodes the pack
+  registered: with the pack left out, a model with no requirements gets a silent ledger. The core
+  vocabulary pin loses these types and attributes, and the registry manifest changes in one row:
+  the root's `requirement` child rule now states `min: 0, max: null`, as `api` did when the rules
+  pack moved out. A subtype a pack declares with `extendsBase` may now fold a base another provider
+  registered (`object.report` folds `object.base`); those folded attributes stay owned by the base's
+  provider. GOVERNANCE.md now says an attribute promoted from a pack into core keeps its name and
+  meaning.
+- **A template that names a variable the payload lacks fails to render, in every render path.**
+  Mustache and Jinja raise `render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)` for a missing
+  variable or dotted path, where they used to render it empty. A variable that is present and null
+  still renders empty. The Rust `metaobjects-render` crate raises it too, so all six renderers
+  agree. Render fixtures may now carry `expected-error.txt` in place of `expected.txt`.
+- **Business rules: two operations or transitions whose permission names come out equal are
+  refused (rule P3).** A permission name is the declared `@permission`, or else the derived
+  `<package>.<path>`, compared exactly as the policy receives it, so `p::Order.open` and
+  `p.Order.open` are two names. When two permission points resolve to
+  the same name and at least one of the two names is derived, the loader reports
+  `ERR_TRANSITION_NAME_COLLISION` on the later one. Two equal declared names stay legal: that is a
+  shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared}` and
+  `rules-permission-name-package-separator-distinct`. Java now accepts dotted operation names
+  (`Order.open`), as TypeScript, C# and Python already did.
 - **Python: a primitive array persists on SQLite and MySQL.** The `ObjectManagerDb`'s SQLite and
   MySQL dialects bound no list, so an `isArray` string, number, date, uuid or enum field could not be
   written there. The column the TypeScript-owned schema gives it (`TEXT` on SQLite, `JSON` on MySQL)
@@ -450,7 +519,7 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
 ## [1.3.0] — unreleased
 
 
-_npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.3.0` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
 
 **New metamodel vocabulary, experimental: `api.*`, `operation.*`, `binding.*` and `transition.*`
 (ADR-0066).** It is additive: nothing that loaded before stops loading. This vocabulary ships in
@@ -900,97 +969,6 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   to build and test it, and the scope of `cargo meta`; the crates.io name `cargo-meta` is
   held by an unrelated crate, so the CLI crate will publish under another name that installs a
   `cargo-meta` binary (a plan, not a promise). Nothing is published.
-- **Rust port's prompt tier: `render-helper`, `output-parser` and `output-prompt`.** A new
-  `metaobjects-render` crate renders a declared prompt, reads a reply (the strict JSON parse and the
-  tolerant `extract`) and writes the output-format fragment, held to the render, template-output
-  and extract corpora. The three generators write a crate each beside the model crate:
-  `<package>_prompts` (a typed render function per prompt), `<package>_parsers` (`parse_<prompt>`
-  for a JSON reply, `extract_<prompt>` for any, and the extract schema) and `<package>_formats`
-  (the fragment and its descriptor), for every prompt with a `@responseRef` (ADR-0052). `cargo meta
-  verify --templates` checks prompt bodies against their payloads, and `eject` copies all three.
-  The generated crates depend on `metaobjects-render` at this release's major and minor.
-- **Rust port's rules layers 0 and 1: `rules-names` and `contract-types` (ADR-0067).** Two
-  generators read the business-rules vocabulary, and each writes nothing for a model without it.
-  `rules-names` writes a `<package>_rules` crate for a package with a lifecycle or a declared
-  operation: per entity, each lifecycle's state type (the model's own enum), its states, initial
-  and terminal states and its transitions, and the commands derived from unclaimed transitions;
-  then the package's operations (kind, permission, claimed transitions, business errors), every
-  permission asked about (declared or derived per ADR-0066) and every business error, each as a
-  closed enum, plus the five codes the enforcing shell answers with. `contract-types` writes a
-  `<package>_contract` crate for a package with a declared operation: each operation's input and
-  output types, its business-error enum and its error body (a fixed wire code or one of its own),
-  the read shape of a projection it returns, and a shared `meta_contract` crate with the wire
-  error codes, their statuses and the validation and constraint-violation bodies. An entity's
-  read, create and patch shapes stay in the model crate, which carries no persistence mapping.
-  Both are listed in the shared generator registry (Rust only for now) and `eject` copies them.
-- **Rust port's data access: the `repository` generator (ADR-0067 layer 3).** It writes a
-  `<package>_store` crate per package with a stored entity, on sqlx, for Postgres and SQLite: per
-  entity the table mapping and typed `list` (the nine filter operators, sort, paging), `count`,
-  `get`, `create`, `update` and `delete`, and per lifecycle the guarded update
-  `transition_<field>(id, from, to)`, one conditional `UPDATE` that answers `false` when another
-  writer moved the row first (ADR-0066 §6). The shared `meta_store` crate holds the statements and
-  the decode of each column into the model's own types. A single-table subtype writes its
-  discriminator and reads only its own rows. A Rust runner for the shared persistence corpus runs
-  it on a throwaway Postgres: every list, get, count, create, update, delete, roundtrip and
-  single-table scenario passes; the many-to-many, projection and report scenarios are on its
-  shrink-only ledger, because projections, reports, many-to-many traversal and flattened storage
-  are not stored yet.
-- **Rust port: reports and projections are read (FR-044, ADR-0028).** The core crate derives a
-  report's fields (`metaobjects::report_shape`, FR-044 Table B and C) byte for byte with
-  `report-shapes.json`. A served read (a concrete projection or report whose read source is a view)
-  gets a read-only struct in its model crate and a read-only module in its store crate: `list`,
-  `count`, and `get` for a projection with a key. A view's numbers are read through a cast to their
-  field's type, since the view's SQL picks the column type. The persistence runner now runs the 24
-  report and 3 projection scenarios, and its ledger holds only the three many-to-many ones. A
-  view-backed projection that an operation returns is now the model crate's type, not a copy in
-  the contract crate. Clients and commands for read models wait for a Rust transport that serves
-  them.
-- **Rust port: many-to-many relationships are traversed (FR-018).** A many-to-many relationship
-  of a keyed entity gets `<relation>_of` in its store module, the related rows read through the
-  junction in one statement (hetero, directed self-join and `@symmetric` self-join, which keeps a
-  row relating a record to itself). The junction's keys come from the same derivation the loader's
-  pairing rule runs, now a public function of the core crate (`derive_m2m_fields`). The persistence
-  runner runs all 56 scenarios on Postgres, `guarded-update` among them (`meta_store::transition`
-  takes a transition's `@condition` and ANDs it into the same statement), and its ledger is empty.
-- **Rust port: the `service` generator (ADR-0067 layer 4, ADR-0066 §6).** It writes a
-  `<package>_service` crate per package with a stored entity: `<Pkg>Service`, generic over the
-  database pool (Postgres or SQLite) and the actor type, with each derived list (page size 50 unless
-  `api.pagination` says otherwise, `withCount` for the total), get, many-to-many traversal, create,
-  update and delete, a command per transition that derives one, and a shell per declared command
-  and query. Every write runs in one sqlx transaction, or inside a caller's through its `_in` twin,
-  and runs ADR-0066's checks in order: the row (404), the permission point (403 `forbidden`), the
-  state (409 `invalid_transition`), the hand-written body, the guarded update (409
-  `invalid_transition` or `transition_condition_failed`) and the event hook. The generic update
-  answers a changed lifecycle field 409 `state_managed`, a create starts in the initial state, and
-  `@autoSet` timestamps are stamped by the service (ADR-0045 Amendment 1). What an app writes are
-  traits: `<Pkg>Policy`, `<Pkg>Bodies` (a command answers the move to make or none, and
-  `BodyError::Business` a declared error), `<Pkg>Hooks` (one `before` and one `after`, told of
-  the write by the `<Pkg>Before` and `<Pkg>After` enums) and `<Pkg>Events`, the last two with
-  defaults. The shared `meta_service` crate holds the error codes and statuses. A probe runs the
-  rules corpus's scenarios through the service on SQLite, with the settings variants checked in
-  the generated text; the HTTP transport, and the shared API tests over it, come next. The walks
-  the layer generators share moved into a new engine module, `metaobjects_codegen::layers`, so an
-  ejected `service` or `repository` calls the same walk the shipped one does.
-- **The Rust crates join the release path (ADR-0065 Amendment 3).** The workspace version moves to
-  the shared line (1.3.0), and `scripts/release.mjs` publishes the four crates to crates.io after
-  npm, behind the same confirm, in dependency order, when a file they ship changed since the last
-  `rust-v*` tag (or they never shipped, or `expected-registry.json` moved); `--crates=publish|skip`
-  overrides. Its preflight checks the crates.io token and that the version is free before anything
-  is bumped. `docs/RELEASING.md` names crates.io as the fifth registry. Nothing is published.
-- **Rust generators own their layout, take options and expose their parts (ADR-0063).** A
-  layout ratchet (`tests/layout_ratchet.rs`) parses every generator source with `syn` and fails
-  on a hand-typed line break or indentation run; its allowlist can only shrink, and it starts
-  empty but for six files whose strings are not generated code. Nine `rust` writer-conformance
-  cases pin the dialect (`use_list`, `doc`, `prose`, `doc_break`, `assign`), each a rustfmt fixed
-  point under the generated crates' `rustfmt.toml`. An entry in `metaobjects.config.json`'s
-  `generators` may now be `{"name": ..., "options": {...}}`: `Generator::configure` receives the
-  options, and the shipped generators take none and refuse any key with
-  `ERR_UNKNOWN_GENERATOR_OPTION`, also on a run `--generators` narrows. Each shipped generator
-  has a `*Parts` trait (`EntityParts`, `ClientParts`, `CommandsParts`, `RenderHelperParts`,
-  `OutputParserParts`, `OutputPromptParts`) with one default method per output piece, so an owned
-  generator overrides one piece and keeps the rest. Generated output is byte-identical but for
-  one fix: `assign` now moves an array right-hand side to the next line when that is where
-  rustfmt puts it under those settings.
 - **Example and write-up: metadata-driven grids, forms and routes in TypeScript.**
   `examples/dynamic-grid/` serves and renders every entity of a model from the loaded
   metadata: one grid component and one form component that take an entity name and read the

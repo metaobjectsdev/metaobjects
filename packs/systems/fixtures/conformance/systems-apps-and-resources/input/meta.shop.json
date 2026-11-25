@@ -1,0 +1,123 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "@description": "An online shop: a storefront, its API and a nightly job.",
+          "children": [
+            {
+              "app.client": {
+                "name": "storefront",
+                "@calls": [
+                  "api"
+                ],
+                "@shell": "Storefront",
+                "@settings": [
+                  "Web"
+                ]
+              }
+            },
+            {
+              "app.service": {
+                "name": "api",
+                "@needs": [
+                  "db",
+                  "sessions",
+                  "uploads",
+                  "jobs"
+                ],
+                "@calls": [
+                  "Payments",
+                  "Mail",
+                  "Billing.ledger"
+                ],
+                "@settings": [
+                  "Database",
+                  "Payments"
+                ]
+              }
+            },
+            {
+              "app.job": {
+                "name": "nightlyExport",
+                "@schedule": "0 3 * * *",
+                "@needs": [
+                  "db",
+                  "Shop.exports"
+                ]
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db",
+                "@engine": "postgres",
+                "@version": "18"
+              }
+            },
+            {
+              "resource.cache": {
+                "name": "sessions",
+                "@engine": "redis"
+              }
+            },
+            {
+              "resource.bucket": {
+                "name": "uploads",
+                "@managedBy": "external"
+              }
+            },
+            {
+              "resource.keyvalue": {
+                "name": "flags"
+              }
+            },
+            {
+              "resource.queue": {
+                "name": "jobs"
+              }
+            },
+            {
+              "resource.volume": {
+                "name": "exports"
+              }
+            },
+            {
+              "system.external": {
+                "name": "Payments"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "system.internal": {
+          "name": "Billing",
+          "children": [
+            {
+              "app.service": {
+                "name": "ledger",
+                "@needs": [
+                  "ledgerDb"
+                ]
+              }
+            },
+            {
+              "resource.database": {
+                "name": "ledgerDb",
+                "@engine": "postgres"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "system.external": {
+          "name": "Mail",
+          "@description": "An outside mail provider several systems share."
+        }
+      }
+    ]
+  }
+}

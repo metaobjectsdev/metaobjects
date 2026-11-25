@@ -23,7 +23,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import mysql from "mysql2/promise";
 import { defineConfig, runGen } from "@metaobjectsdev/codegen-ts";
-import { entityFile, queriesFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, queriesFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
 import { loadMetadataFile } from "../src/load-metadata.ts";
 import { OUTPUT_LAYOUTS, indexEmitted } from "../src/output-layout.ts";
 import { startMysql, type MysqlContainerHandle } from "../src/mysql-container.ts";

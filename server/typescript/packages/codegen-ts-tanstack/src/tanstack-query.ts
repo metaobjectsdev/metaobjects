@@ -28,7 +28,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
     // Marks this generator as part of the CLIENT UI tier — the runner aggregates it
     // into ctx.config.includeUiTier so `agent/ui.md` describes a tier that this run
     // actually emits, rather than one the metadata merely permits.
-    emitsUiTier: true,
+    provides: { uiTier: true },
     // AND-composes the framework instance-artifact guard (skips abstract types —
     // they contribute shape via inheritance only and have no instance to query)
     // with the optional user filter. Projections still pass here and get read-only

@@ -60,6 +60,7 @@ import {
   prismaSchemaFile,
   serviceFile,
   serviceRoutesFile,
+  serviceRoutesHonoFile,
 } from "./generators/index.js";
 
 export type GeneratorTier = "native" | "neutral";
@@ -377,6 +378,22 @@ export const generatorRegistry: Record<string, GeneratorRegistryEntry> = {
     runtimePeers: ["fastify"],
     configKeys: ["apiPrefix", "extStyle", "outputLayout"],
     ejectable: ejectable("service-routes"),
+  },
+  "service-routes-hono": {
+    name: "service-routes-hono",
+    kind: "generator",
+    layer: "api",
+    description: "A thin Hono transport per package over the service layer: the service-routes routes on a Hono app.",
+    tier: "native",
+    factory: () => serviceRoutesHonoFile(),
+    factoryExport: "serviceRoutesHonoFile",
+    options: "filter?, runtimeImport?, target?",
+    framework: "hono",
+    requires: ["service", "contract-types"],
+    runtimePackages: ["@metaobjectsdev/runtime-ts"],
+    runtimePeers: ["hono"],
+    configKeys: ["apiPrefix", "extStyle", "outputLayout"],
+    ejectable: ejectable("service-routes-hono"),
   },
   "routes-hono": {
     name: "routes-hono",

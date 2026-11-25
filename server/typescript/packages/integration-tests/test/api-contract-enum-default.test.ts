@@ -15,18 +15,19 @@ import {
   type GeneratedEnumDefaultServerHandle,
   type EnumDefaultSeed,
 } from "../src/api-contract-enum-default-generated-server.ts";
+import { API_LANES, laneLabel } from "../src/api-lane.ts";
 
 const SEED = JSON.parse(readFileSync(join(API_CONTRACT_ENUM_DEFAULT_DIR, "seed.json"), "utf8")) as EnumDefaultSeed;
 const META_PATH = join(API_CONTRACT_ENUM_DEFAULT_DIR, "meta.json");
 
-for (const layout of OUTPUT_LAYOUTS) describe(`api contract enum default — GENERATED routes lane [${layout}]`, () => {
+for (const lane of API_LANES) for (const layout of OUTPUT_LAYOUTS) describe(`api contract enum default — ${laneLabel(lane)} [${layout}]`, () => {
   const startDb = postgresFor(layout);
   for (const scenario of loadScenarios(API_CONTRACT_ENUM_DEFAULT_SCENARIOS_DIR)) {
     test(scenario.name, async () => {
       const pg = await startDb();
       let server: GeneratedEnumDefaultServerHandle | null = null;
       try {
-        server = await startGeneratedEnumDefaultServer(pg.connectionUri, META_PATH, layout);
+        server = await startGeneratedEnumDefaultServer(pg.connectionUri, META_PATH, layout, lane);
         await server.applySeed(SEED);
         await runScenario(scenario, server);
       } finally {

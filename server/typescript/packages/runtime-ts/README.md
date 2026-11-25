@@ -100,9 +100,10 @@ This package has two tiers, and only the first is a MetaObjects guarantee
 |---|---|---|
 | `.` and `./drivers` | **Core** | The metadata-driven runtime: `ObjectManager`, the query builder, the validator runner, the relation / M:N / TPH resolvers, type coercion, the constraint-error mapping, `extractObject`. Conformance-gated; a defect here is a MetaObjects bug. |
 | `./drizzle-fastify`, `./hono`, `./fastify` | **Helper** | The HTTP adapters that mount CRUD on a web framework: the mount helpers, the filter/sort parser, the error envelopes, pagination. Reference code, not a promise. |
+| `./service`, `./service/fastify`, `./service/hono` | **Helper** | The service layer's store mechanics (transaction, write-rule stamping), and the request and reply helpers of its Fastify and Hono transports. Reference code, not a promise. |
 
-Generated route files are the only callers of the helper tier, and they are yours once
-you run `meta eject routes` (or `routes-hono`, or `entity` for the allowlist types). Eject
+Generated route and transport files are the only callers of the helper tier, and they are yours once
+you run `meta eject routes` (or `routes-hono`, `entity` for the allowlist types, or a service generator). Eject
 copies the adapter **source** the generated code calls — verbatim, from this package's
 `src/` — into your repo at `codegen/runtime/`, and the ejected generators point their
 output there. After that your generated and copied code import nothing from this package;

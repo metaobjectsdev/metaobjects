@@ -104,7 +104,7 @@ describe("eject release gate — the command and its wiring", () => {
   // check after it is the branch check, so a fixture on another branch tells the two apart:
   // a refused version stops before "not on main", and an allowed one reaches it.
   test("release.mjs asks the gate first in its preflight, and stops on a refusal", () => {
-    const RELEASE_SCRIPTS = ["release.mjs", "lib/changelog-promote.mjs", "lib/release-branch.mjs", "lib/rust-release.mjs", "publish-set.mjs", "maven-coordinate.mjs"];
+    const RELEASE_SCRIPTS = ["release.mjs", "lib/changelog-promote.mjs", "lib/changelog-fragments.mjs", "lib/release-branch.mjs", "lib/rust-release.mjs", "publish-set.mjs", "maven-coordinate.mjs"];
     const onBranch = (pending: (typeof ENTRY)[]) => {
       const root = repoWith(JSON.stringify(manifest(pending)), RELEASE_SCRIPTS);
       const git = (...args: string[]) => spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });

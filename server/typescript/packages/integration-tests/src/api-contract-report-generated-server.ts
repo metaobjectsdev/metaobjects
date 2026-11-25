@@ -14,7 +14,7 @@
 //
 // Generated lane only, and on every port — see the corpus README.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -23,7 +23,8 @@ import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import {
   DEFAULT_PHYSICAL_NAMING, resolveColumnName, resolveTableName, type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, reportExport, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { loadMetadataFile } from "./load-metadata.ts";
@@ -198,6 +199,7 @@ export async function startGeneratedReportServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<GeneratedReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -211,19 +213,23 @@ export async function startGeneratedReportServer(
   // read, so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [
-        entityFile(),
-        routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS }),
-        // The export cap equals the list cap so the 61-row ReadingLog trips export_too_large; xsi:nil pins the nil spelling.
-        reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
-      ],
+      generators: apiGenerators(
+        lane,
+        [
+          entityFile(),
+          // The export cap equals the list cap so the 61-row ReadingLog trips export_too_large; xsi:nil pins the nil spelling.
+          reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
+        ],
+        () => [routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
+        { reportMaxRows: REPORT_CORPUS_MAX_ROWS },
+      ),
     }),
     metadata: root,
   });
@@ -262,21 +268,19 @@ export const db = drizzle(pool);
   `);
 
   // 4. Import the EMITTED route files unmodified and mount every served report.
-  const fastify = Fastify();
-  for (const r of SERVED_REPORTS) {
-    const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
-      string,
-      (f: FastifyInstance) => Promise<void>
-    >;
-    const registrar = mod[r.registrar];
-    if (registrar === undefined) {
-      throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    for (const r of SERVED_REPORTS) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
+        string,
+        (f: FastifyInstance) => Promise<void>
+      >;
+      const registrar = mod[r.registrar];
+      if (registrar === undefined) throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
+      await fastify.register(registrar);
     }
-    await fastify.register(registrar);
-  }
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -284,7 +288,7 @@ export const db = drizzle(pool);
       await seedReport(connectionUri, root, seed);
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

@@ -1,0 +1,30 @@
+{
+  "tables": [
+    {
+      "name": "invoices",
+      "primaryKey": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "nullable": false
+        }
+      ],
+      "foreignKeys": []
+    }
+  ],
+  "views": [
+    {
+      "name": "v_status_totals"
+    }
+  ],
+  "declaredBy": {
+    "invoices": "acme::billing::Invoice",
+    "v_status_totals": "acme::billing::StatusTotals"
+  }
+}

@@ -6,6 +6,8 @@
 // runner fails the moment they disagree. Every other port runs the same cases against its
 // own builders and the same templates. `expected/data/` pins what each template is FED, so a
 // port can tell a builder defect (wrong data) from a render defect (right data, wrong bytes).
+// `expected/rows/` pins the layer below that (D0a): the ledger rows and the model-only schema
+// rows each page is built from, in the shapes the docs site reads too.
 //
 // The schema page pinned here is the MODEL-ONLY one (`physical: false`): the page a port
 // without the expected schema writes. TypeScript builds its input from the expected schema
@@ -31,6 +33,8 @@ import {
   requirementRows,
   requirementsLedgerData,
   requirementsToonData,
+  schemaInputFromRows,
+  schemaRows,
 } from "@metaobjectsdev/codegen-ts";
 import { buildAgentSchemaInput } from "../src/lib/agent-schema.js";
 
@@ -47,7 +51,7 @@ async function load(dir: string): Promise<MetaRoot> {
 }
 
 /** Every pinned output of one case, by path under `expected/`. An absent page is no entry. */
-async function outputsOf(root: MetaRoot): Promise<Map<string, string>> {
+async function outputsOf(root: MetaRoot, migrate: boolean): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const json = (v: unknown): string => `${JSON.stringify(v, null, 2)}\n`;
 
@@ -57,6 +61,8 @@ async function outputsOf(root: MetaRoot): Promise<Map<string, string>> {
     out.set("requirements.toon", renderRequirementsToon(rows));
     out.set("data/requirements.md.json", json(requirementsLedgerData(rows)));
     out.set("data/requirements.toon.json", json(requirementsToonData(rows)));
+    // The rows layer (D0a): what both requirements pages, and the docs site, are built from.
+    out.set("rows/requirements.json", json(rows));
   }
   const agentRequirements = agentRequirementsPageData(root);
   if (agentRequirements !== undefined) {
@@ -71,16 +77,30 @@ async function outputsOf(root: MetaRoot): Promise<Map<string, string>> {
     skipRedundantChecks: false,
     foreignKeyIndexes: false,
     foreignKeyTargets: "refuse",
-  });
+  }, migrate);
   if (schema !== undefined) {
     const naming = physicalNamingOf(root).columns;
     const data = agentSchemaPageData(root, schema, naming, { physical: false });
     if (data !== undefined) {
       out.set("agent/schema.md", renderAgentSchemaPage(root, schema, naming, { physical: false }));
       out.set("data/agent-schema.md.json", json(data));
+      // The rows layer (D0a). The page data must follow from the rows and the model alone:
+      // that is all a port without the expected schema has.
+      const rowsLayer = schemaRows(schema);
+      out.set("rows/schema.json", json(rowsLayer));
+      expect(agentSchemaPageData(root, schemaInputFromRows(rowsLayer, migrate), naming, { physical: false })).toEqual(data);
     }
   }
   return out;
+}
+
+/** The case chose a `meta migrate` dialect: its `input/.metaobjects/config.json` sets
+ *  `migrate.dialect`. Feeds the schema page's `hasMigrate`. */
+function choseMigrateDialect(inputDir: string): boolean {
+  const path = join(inputDir, ".metaobjects", "config.json");
+  if (!existsSync(path)) return false;
+  const config = JSON.parse(readFileSync(path, "utf8")) as { migrate?: { dialect?: string } };
+  return config.migrate?.dialect !== undefined;
 }
 
 function expectedOf(dir: string): Map<string, string> {
@@ -106,7 +126,7 @@ describe("docs-page-conformance", () => {
   for (const name of cases) {
     test(name, async () => {
       const caseDir = join(CORPUS, name);
-      const actual = await outputsOf(await load(join(caseDir, "input")));
+      const actual = await outputsOf(await load(join(caseDir, "input")), choseMigrateDialect(join(caseDir, "input")));
       const expectedDir = join(caseDir, "expected");
       if (UPDATE) {
         rmSync(expectedDir, { recursive: true, force: true });

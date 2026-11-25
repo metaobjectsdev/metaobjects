@@ -1,0 +1,66 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Team",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Player",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "teamId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "team_fk",
+                "@fields": [
+                  "teamId"
+                ],
+                "@references": "Team"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

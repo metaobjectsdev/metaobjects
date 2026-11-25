@@ -1,0 +1,50 @@
+{
+  "tables": [
+    {
+      "name": "invoices",
+      "primaryKey": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "nullable": false,
+          "identity": "increment"
+        },
+        {
+          "name": "total_cents",
+          "nullable": false
+        }
+      ],
+      "foreignKeys": []
+    },
+    {
+      "name": "orders",
+      "description": "A customer's order, from cart to fulfilment.",
+      "primaryKey": [
+        "id"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "nullable": false
+        },
+        {
+          "name": "reference",
+          "nullable": false,
+          "description": "The code a customer reads down a phone line."
+        },
+        {
+          "name": "placed_at",
+          "nullable": false
+        }
+      ],
+      "foreignKeys": []
+    }
+  ],
+  "views": [],
+  "declaredBy": {
+    "invoices": "acme::shop::Invoice",
+    "orders": "acme::shop::Order"
+  }
+}

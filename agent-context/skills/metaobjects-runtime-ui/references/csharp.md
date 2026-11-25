@@ -5,7 +5,8 @@ The C# runtime tier **is the generated EF Core stack itself** — there is no se
 `<Entity>.g.cs` classes plus one `AppDbContext.g.cs` that ARE the persistence layer (EF
 Core), and `RoutesGenerator` emits ASP.NET minimal-API routes that mount on your
 `WebApplication`. Unlike the other ports, C# leaves **no repository seam** — the generated
-code is what runs. Schema is TS-owned (ADR-0015); EF Core is pure data-access at runtime.
+code is what runs. Schema migrations are EF Core Migrations or the Node `meta migrate`
+reference helper (ADR-0015); EF Core is pure data-access at runtime.
 
 ## Contents
 - The generated persistence layer
@@ -96,8 +97,8 @@ app.Run();
 
 Filter operators (`eq` `ne` `gt` `gte` `lt` `lte` `in` `like` `isNull`) ship via the
 per-entity `<Entity>FilterAllowlist` (from `FilterAllowlistGenerator`); the generated list
-handler calls the `FilterParser` / `EfCoreFilterDispatch` runtime helpers in
-`MetaObjects.Codegen`, so your ASP.NET host references that assembly at runtime. After
+handler calls the `ListQueryParser` / `EfCoreFilterDispatch` runtime helpers in the
+`MetaObjects.AspNetCore` package, so your ASP.NET host references that package. After
 `dotnet meta eject routes` it calls your own copies in `codegen/runtime/` (namespace
 `Codegen.Runtime`) instead: compile that folder into the app and the reference goes away. The same
 universal TS/Angular web client consumes those routes unchanged — the wire format matches

@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.app.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.settings'].children[0]['field.string']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -1,5 +1,5 @@
 // The `wire` project setting end to end (ADR-0019 Amendment 2): the options the generated routes
-// pass (`decimalColumnsLine`, read from the root's wire format) evaluated and handed to
+// pass (`decimalColumnsMembers`, read from the root's wire format) evaluated and handed to
 // runtime-ts's Hono mount over bun:sqlite, and the HTTP bodies it answers asserted.
 //
 // `amount` is a TEXT column here so a row holds the string a Postgres or MySQL driver would hand
@@ -17,7 +17,7 @@ import { MetaDataLoader, InMemoryStringSource, type MetaObject, type WireFormat 
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/hono";
 import { renderZodValidators, renderInsertSchemaOnly } from "../src/templates/zod-validators.js";
 import { renderFilterAllowlist } from "../src/templates/filter-allowlist.js";
-import { decimalColumnsLine } from "../src/api-surface.js";
+import { decimalColumnsMembers } from "../src/api-surface.js";
 import { removeTree } from "../src/scratch-dir.js";
 
 const MODEL = {
@@ -76,7 +76,7 @@ async function serverFor(wire: WireFormat | undefined): Promise<{ app: Hono; sql
   const schemas = await execute(`s${n}/schemas`, renderZodValidators(entry).toString());
   const allowlists = await execute(`s${n}/allowlist`, renderFilterAllowlist(entry).toString());
   // The generated route's option lines, evaluated as the object literal they are.
-  const options = decimalColumnsLine(entry, "");
+  const options = decimalColumnsMembers(entry).join(" ");
   const wireOptions = new Function(`return {${options}}`)() as Record<string, unknown>;
   const sqlite = new Database(":memory:");
   sqlite.run("CREATE TABLE entries (id INTEGER PRIMARY KEY AUTOINCREMENT, amount TEXT, weight NUMERIC, readings TEXT, total TEXT, lines TEXT, by_key TEXT)");
@@ -113,7 +113,7 @@ const get = async (app: Hono): Promise<Record<string, unknown>> => {
 describe("wire.decimals", () => {
   test("native (the default): a driver string is written as it is, a SQLite number at 15 digits, an array element-wise", async () => {
     const { app, sqlite, options } = await serverFor(undefined);
-    expect(options).toContain('decimalColumns: ["amount","weight","readings"]');
+    expect(options).toContain('decimalColumns: ["amount", "weight", "readings"]');
     expect(options).not.toContain("decimalWire");
     seed(sqlite);
     const row = await get(app);

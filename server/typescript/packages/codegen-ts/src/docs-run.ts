@@ -10,7 +10,7 @@
 //
 // ENGINE: a model of the run, not emitted text, so an owned docs generator keeps reading it
 // from the package.
-import type { Generator } from "./generator.js";
+import { providesOf, type Generator } from "./generator.js";
 import type { AgentSchemaInput } from "./generators/agent-schema-input.js";
 import { apiLabel } from "./generators/api-label.js";
 
@@ -32,9 +32,9 @@ export interface DocsApiSurface {
 
 /** `ctx.docs`: what the documentation generators in one target must agree on. */
 export interface DocsRunFacts {
-  /** The api reference pages in the same target (`emitsApiDocs`), for the model pages to link. */
+  /** The api reference pages in the same target (`provides.apiDocs`), for the model pages to link. */
   readonly apiSurfaces: readonly DocsApiSurface[];
-  /** Whether the model pages are written to the same target (`emitsModelDocs`), so an api
+  /** Whether the model pages are written to the same target (`provides.modelDocs`), so an api
    *  page can link back to its model page. */
   readonly modelPages: boolean;
   /**
@@ -53,11 +53,12 @@ export function docsRunFacts(
 ): DocsRunFacts {
   const apiSurfaces: DocsApiSurface[] = [];
   for (const g of inTarget) {
-    if (g.emitsApiDocs !== undefined) apiSurfaces.push({ label: apiLabel("ts"), subDir: g.emitsApiDocs.subDir });
+    const apiDocs = providesOf(g).apiDocs;
+    if (apiDocs !== undefined) apiSurfaces.push({ label: apiLabel("ts"), subDir: apiDocs.subDir });
   }
   return {
     apiSurfaces,
-    modelPages: inTarget.some((g) => g.emitsModelDocs === true),
+    modelPages: inTarget.some((g) => providesOf(g).modelDocs === true),
     ...(agentSchema !== undefined && { agentSchema }),
   };
 }

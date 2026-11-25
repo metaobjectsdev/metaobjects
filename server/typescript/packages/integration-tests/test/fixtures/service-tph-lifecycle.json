@@ -1,0 +1,44 @@
+{
+  "metadata.root": {
+    "package": "acme::desk",
+    "children": [
+      { "object.entity": {
+        "name": "Ticket",
+        "@discriminator": "type",
+        "children": [
+          { "source.rdb": { "@table": "tickets" } },
+          { "field.long": { "name": "id" } },
+          { "field.enum": { "name": "type", "@values": ["Bug", "Task"] } },
+          { "field.string": { "name": "title", "@maxLength": 80 } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "BugTicket",
+        "extends": "Ticket",
+        "@discriminatorValue": "Bug",
+        "children": [
+          { "field.enum": {
+            "name": "status",
+            "@values": ["open", "closed"],
+            "@default": "open",
+            "children": [
+              { "transition.action": { "name": "close", "@from": ["open"], "@to": "closed", "@public": true } }
+            ]
+          }}
+        ]
+      }},
+      { "object.entity": {
+        "name": "TaskTicket",
+        "extends": "Ticket",
+        "@discriminatorValue": "Task"
+      }},
+      { "api.operational": {
+        "name": "Desk",
+        "children": [
+          { "operation.query": { "name": "peek", "@objectRef": "BugTicket", "@outputRef": "BugTicket", "@public": true } }
+        ]
+      }}
+    ]
+  }
+}

@@ -24,14 +24,14 @@
 // within the temp dir, so the generated route is imported byte-for-byte as
 // emitted — no monkeypatching, no re-call of mountCrudRoutes here.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
-import { contractTypes, serviceFile, serviceRoutesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -45,7 +45,6 @@ import type { AuthorRow } from "./api-contract-server.ts";
  * hand-rolled ObjectManager server.
  */
 export interface GeneratedServerHandle {
-  fastify: FastifyInstance;
   baseUrl: string;
   truncate(): Promise<void>;
   applySeed(rows: AuthorRow[]): Promise<void>;
@@ -64,7 +63,7 @@ export interface GeneratedServerHandle {
  * layer behind its thin Fastify transport (`service`, ADR-0067 layers 4 and 5), which must answer
  * the same corpus the same way.
  */
-export type GeneratedLane = "routes" | "service";
+export type GeneratedLane = ApiLane;
 
 export async function startGeneratedServer(
   connectionUri: string,
@@ -99,9 +98,7 @@ export async function startGeneratedServer(
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: lane === "service"
-        ? [entityFile(), contractTypes(), serviceFile(), serviceRoutesFile()]
-        : [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()]),
     }),
     metadata: root,
   });
@@ -149,27 +146,16 @@ export const db = drizzle(pool);
 
   // 4. Import the EMITTED route file unmodified and mount it.
   const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
-  const fastify = Fastify();
-  if (lane === "service") {
-    // The service is built at the composition root with its dependencies, and the transport is
-    // registered with the service: the routes hold no database handle of their own.
-    const service = (await import(pathToFileURL(join(tmp, "acme/blog/service/index.ts")).href)) as {
-      createBlogService: (deps: { db: unknown }) => unknown;
-    };
-    const transport = (await import(pathToFileURL(join(tmp, "acme/blog/transport/fastify.ts")).href)) as {
-      blogServiceRoutes: (f: FastifyInstance, opts: { service: unknown }) => Promise<void>;
-    };
-    await fastify.register(transport.blogServiceRoutes, { service: service.createBlogService({ db: dbMod.db }) });
-  } else {
+  // The service lanes build the service at the composition root with its dependencies and mount
+  // its transport with it: the routes hold no database handle of their own.
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
     const routeUrl = pathToFileURL(emitted.locate("Author.routes.ts")).href;
     const mod = (await import(routeUrl)) as { authorRoutes: (f: FastifyInstance) => Promise<void> };
     await fastify.register(mod.authorRoutes);
-  }
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  });
+  const baseUrl = served.baseUrl;
 
   return {
-    fastify,
     baseUrl,
     truncate: async () => {
       await executeSql(connectionUri, 'TRUNCATE TABLE "authors" RESTART IDENTITY');
@@ -201,7 +187,7 @@ export const db = drizzle(pool);
       );
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

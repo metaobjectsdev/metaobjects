@@ -6,20 +6,16 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 
 namespace Acme.Shop;
 
 public static class VehicleTagRoutes
 {
-    private static readonly System.Collections.Generic.HashSet<string> SortAllowlist = new(System.StringComparer.OrdinalIgnoreCase)
+    private static readonly System.Collections.Generic.Dictionary<string, SortFieldRule> SortRules = new(System.StringComparer.OrdinalIgnoreCase)
     {
-        "VehicleId",
-        "TagId",
-    };
-
-    private static readonly System.Collections.Generic.Dictionary<string, bool> SortDefaultDesc = new(System.StringComparer.OrdinalIgnoreCase)
-    {
+        ["VehicleId"] = new SortFieldRule(property: "VehicleId"),
+        ["TagId"] = new SortFieldRule(property: "TagId"),
     };
 
     /// <summary>Maps <c>VehicleTag</c> REST routes. Unauthenticated — see remarks.</summary>
@@ -38,37 +34,35 @@ public static class VehicleTagRoutes
             var qs = http.Request.Query;
             IQueryable<VehicleTag> q = db.VehicleTags.AsNoTracking();
 
-            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.
-            var filter = EfCoreFilterDispatch.Validate<VehicleTag>(FilterParser.Parse(qs, VehicleTagFilterAllowlist.Fields, VehicleTagFilterAllowlist.OpsByField));
-            if (filter.ErrorEnvelope is not null)
-                return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });
-            q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates);
-
-            // Sort: ?sort=field:asc|desc against the static allowlist.
-            if (qs.TryGetValue("sort", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))
+            // ?filter[...] (or/and groups), ?search, ?sort and the page bounds, against the allowlist.
+            var __parsed = ListQueryParser.Parse(http.Request.QueryString.Value, VehicleTagFilterAllowlist.Rules, SortRules, VehicleTagFilterAllowlist.FieldNames);
+            if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());
+            var listQuery = __parsed.Query!;
+            if (EfCoreFilterDispatch.Validate<VehicleTag>(listQuery) is { } __invalid) return Results.BadRequest(__invalid.Body());
+            q = EfCoreFilterDispatch.Apply(q, listQuery, VehicleTagFilterAllowlist.Rules);
+            if (listQuery.Sort is { } __sort && SortRules[__sort.Field].Property is { } __sortProp)
             {
-                var parts = sortRaw.ToString().Split(':', 2);
-                var field = parts[0];
-                if (!SortAllowlist.TryGetValue(field, out var resolved))
-                    return Results.BadRequest(new { error = "invalid_sort", field });
-                var desc = parts.Length > 1
-                    ? string.Equals(parts[1], "desc", System.StringComparison.OrdinalIgnoreCase)
-                    : SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;
-                q = ApplySortVehicleTag(q, resolved, desc);
+                var desc = __sort.Descending;
+                q = ApplySortVehicleTag(q, __sortProp, desc);
             }
 
             // Pagination: ?offset=N first (skip), then ?limit=N (take).
-            if (qs.TryGetValue("offset", out var offsetRaw) && int.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var offset) && offset > 0)
-                q = q.Skip(offset);
-            if (qs.TryGetValue("limit", out var limitRaw) && int.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var limit) && limit > 0)
-                q = q.Take(limit);
+            if (listQuery.Offset is { } __offset && __offset > 0)
+                q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));
+            // No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.
+            var __take = 50;
+            if (listQuery.Limit is { } __limit)
+            {
+                __take = (int)System.Math.Min(__limit, int.MaxValue);
+            }
+            q = q.Take(__take);
 
             var rows = await q.ToListAsync();
 
             // withCount=1 → { rows, total } envelope; otherwise bare row array.
             var withCount = qs.TryGetValue("withCount", out var wc) && (wc == "1" || string.Equals(wc, "true", System.StringComparison.OrdinalIgnoreCase));
             if (!withCount) return Results.Ok(rows);
-            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.VehicleTags.AsNoTracking(), filter.Predicates);
+            var totalQ = EfCoreFilterDispatch.Apply(db.VehicleTags.AsNoTracking(), listQuery, VehicleTagFilterAllowlist.Rules);
             var total = await totalQ.CountAsync();
             return Results.Ok(new { rows, total });
         });

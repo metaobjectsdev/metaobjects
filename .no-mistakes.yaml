@@ -10,8 +10,9 @@
 # THE SPLIT. `lint` is `--only gates`, the one lane every change runs. `test` is
 # `--affected`: it lists what the branch changed against its merge base, maps the paths to
 # lanes with scripts/ci-lane-map.txt, prints which lanes it selected, skipped and why, and
-# runs only those (ts-fast + ts-unit for a TypeScript or web-client change; java-slow,
-# python or csharp for a change confined to that port; every selectable lane for a change
+# runs only those (ts-fast + ts-unit, plus the packs lane as a canary, for a TypeScript or
+# web-client change; java-slow, python or csharp for a change confined to that port; only
+# packs for a change under packs/ (ADR-0069); every selectable lane for a change
 # to fixtures, spec, scripts, workflows, agent-context, docs or any path the map does not
 # claim; none for a change to only the root README, CHANGELOG, CONTRIBUTING, AGENTS or CLAUDE
 # files, which the gates lane covers). Selected lanes run exactly as
@@ -37,9 +38,9 @@
 # reports a false red.
 #
 # --strict-toolchains closes a SKIP hole, and only that. These selections run two kinds of
-# step. The `step_if bun` ones — every step in `ts-fast` and `ts-unit`, and 17 of the 32 in
+# step. The `step_if bun` ones — every step in `ts-fast` and `ts-unit`, and 19 of the 36 in
 # `gates` — are the hazard: without the flag, a host with no bun on PATH SKIPS them and the
-# step still reports GREEN. Strict turns that false green into a loud failure. The other 15
+# step still reports GREEN. Strict turns that false green into a loud failure. The other 17
 # `gates` steps run under plain `step`, so they were never at risk either way: a missing
 # binary just makes the command fail. Most are shell-only (grep/sed — `check-pom-versions.sh`
 # and `check-uv-lock-version.sh` are deliberately toolchain-free so they need no lane), but

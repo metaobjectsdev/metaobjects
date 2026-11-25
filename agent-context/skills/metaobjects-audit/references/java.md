@@ -1,8 +1,9 @@
 # Java port — audit reference
 
 The Java port targets Spring Boot consumers on Maven. Codegen runs as a build-time
-Maven plugin goal (`mvn metaobjects:generate`). Schema migration and live-DB drift
-are **Node-`meta`-only** (ADR-0015) — the Maven plugin has no migrate goal.
+Maven plugin goal (`mvn metaobjects:generate`). Schema migration is the project's own
+tool (Flyway, Liquibase) or the Node `meta migrate` reference helper, and live-DB drift is
+the Node `meta verify --db` (ADR-0015) — the Maven plugin has no migrate goal.
 The runtime persistence tier is **OMDB** (`metaobjects-omdb`,
 `com.metaobjects.manager.db.ObjectManagerDB`).
 
@@ -158,8 +159,8 @@ versioning — **do not flag it** (only intra-port skew matters).
   against the generated `<Entity>FilterAllowlist`, and 400s on unknown field / disallowed op /
   over-cap `in`-list (api-contract corpus, both lanes). **Flag a hand-rolled filter parser as a
   finding.** The *richer* list surface — `?search=`, `filter[or][N]` / `filter[and][N]`
-  combinators, leading-wildcard gating (ADR-0068) — passes in TypeScript and is pending in Java
-  until the Java port's 1.3.0 REST-standard work lands — do NOT flag its absence in Java until then.
+  combinators, leading-wildcard gating (ADR-0068) — passes in TypeScript and C#, and is pending in
+  Java until the Java port's 1.3.0 REST-standard work lands — do NOT flag its absence in Java until then.
 - **Repository interface is a hand-implemented stub.** `SpringRepositoryGenerator`
   emits `<Entity>Repository.java` as a stub `interface`; the consumer hand-writes the
   implementation against OMDB (or any persistence layer). Hand-written repository

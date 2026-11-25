@@ -31,8 +31,8 @@
 // that checks the source row's own discriminator first.
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
-import { and, eq, or, inArray } from "drizzle-orm";
-import { coerceIdForColumn } from "./util.js";
+import { m2mRelated } from "../m2m-read.js";
+import { InvalidIdError } from "../read-only-read.js";
 import { timestampWire } from "../timestamp-wire.js";
 import { withWire, type WireOptions } from "../wire-format.js";
 import { withContractErrorHandler } from "./route-error-handler.js";
@@ -92,97 +92,11 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
 
   opts.fastify.get(route, ro, async (req, reply) => {
     const { id } = req.params as { id: string };
-
-    const srcCol = columnRef(opts.junctionTable, opts.sourceColumn);
-    const tgtCol = columnRef(opts.junctionTable, opts.targetColumn);
-
-    // Compare against the junction FK's real type — a numeric-LOOKING id on a
-    // TEXT fk must stay a string ('0123' ≠ '123'), or affinity traverses the
-    // WRONG source row's relations.
-    const sourceId = coerceIdForColumn(srcCol, id);
-    if (sourceId === undefined) {
-      return reply.code(400).send({ error: "invalid_id" });
+    try {
+      return (await m2mRelated(opts.db, opts, id)).map(toWire);
+    } catch (e) {
+      if (e instanceof InvalidIdError) return reply.code(400).send({ error: "invalid_id" });
+      throw e;
     }
-
-    // Stage 0 — the source id must name a row of THIS subtype. Skipping it would let
-    // `/auths/bridge/{a Coupon's id}/linkedAuths` return that Coupon's relations, because
-    // the junction FK cannot tell the subtypes apart: it points at the shared base table.
-    const srcDisc = opts.sourceDiscriminator;
-    if (srcDisc !== undefined) {
-      const srcPk = columnRef(srcDisc.table, srcDisc.pkColumn);
-      const ownId = coerceIdForColumn(srcPk, id);
-      if (ownId === undefined) {
-        return reply.code(400).send({ error: "invalid_id" });
-      }
-      const owner = await opts.db
-        .select({ d: columnRef(srcDisc.table, srcDisc.column) })
-        .from(srcDisc.table)
-        .where(eq(srcPk, ownId))
-        .limit(1);
-      if (owner.length === 0 || String(owner[0]?.d) !== srcDisc.value) return [];
-    }
-
-    // Stage 1 — junction rows for this source id.
-    const joinWhere = opts.symmetric
-      ? or(eq(srcCol, sourceId), eq(tgtCol, sourceId))
-      : eq(srcCol, sourceId);
-    const joinRows = (await opts.db
-      .select({ src: srcCol, tgt: tgtCol })
-      .from(opts.junctionTable)
-      .where(joinWhere)) as Array<{ src: unknown; tgt: unknown }>;
-
-    // Collect the related target ids. Symmetric: the related endpoint is the
-    // column that is NOT the source id (compared by string key to bridge
-    // number/bigint-as-string driver skew). Otherwise: always the target column.
-    const sourceKey = String(sourceId);
-    const relatedIds = new Set<string | number | bigint>();
-    for (const r of joinRows) {
-      if (!opts.symmetric) {
-        addId(relatedIds, r.tgt);
-        continue;
-      }
-      const srcIsSource = r.src != null && String(r.src) === sourceKey;
-      // Self-loop (a,a): src matches → relate to a itself (single occurrence).
-      if (srcIsSource) addId(relatedIds, r.tgt);
-      else addId(relatedIds, r.src);
-    }
-
-    if (relatedIds.size === 0) return [];
-
-    // Stage 2 — load the target rows.
-    const pkCol = columnRef(opts.targetTable, targetPk);
-    const byPk = inArray(pkCol, [...relatedIds]);
-    const disc = opts.targetDiscriminator;
-    const rows = await opts.db
-      .select()
-      .from(opts.targetTable)
-      .where(disc ? and(byPk, eq(columnRef(opts.targetTable, disc.column), disc.value)) : byPk);
-    return (rows as unknown[]).map(toWire);
   });
-}
-
-function addId(set: Set<string | number | bigint>, v: unknown): void {
-  if (v === null || v === undefined) return;
-  // Keep bigint AS bigint — Number(bigint) silently loses precision above
-  // 2^53, so a field.long id could round to a DIFFERENT row's key. Drizzle
-  // binds bigint params natively; the driver never needed the narrowing.
-  if (typeof v === "number" || typeof v === "string" || typeof v === "bigint") set.add(v);
-}
-
-/**
- * Resolve a physical column name to its Drizzle column object. Drizzle exposes
- * columns on the table object keyed by the TS property name, but the underlying
- * `.name` is the physical column. The descriptor carries physical names (what
- * the junction/target SQL uses), so match on `.name` and fall back to the key.
- */
-// biome-ignore lint/suspicious/noExplicitAny: returns a Drizzle column ref for the loose query builder
-function columnRef(table: AnyTable, physicalName: string): any {
-  for (const key of Object.keys(table)) {
-    const col = table[key];
-    if (col && typeof col === "object" && col.name === physicalName) return col;
-  }
-  // Fall back to the property-name lookup (covers tables whose TS key == column).
-  const direct = table[physicalName];
-  if (direct !== undefined) return direct;
-  throw new Error(`mountM2mRoute: column '${physicalName}' not found on table`);
 }

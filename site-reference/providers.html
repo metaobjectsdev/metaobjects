@@ -51,7 +51,7 @@ provider owns. This is the ownership lens over the same vocabulary
 <a href="index.html">INDEX.md</a> lists by type.</p>
 <h2>metaobjects-core-types</h2>
 <p>Core metaobjects metamodel types and subtypes.</p>
-<p><strong>Owns (registers):</strong> <code>attr.base</code>, <code>attr.boolean</code>, <code>attr.class</code>, <code>attr.double</code>, <code>attr.expression</code>, <code>attr.filter</code>, <code>attr.int</code>, <code>attr.intMap</code>, <code>attr.long</code>, <code>attr.properties</code>, <code>attr.string</code>, <code>field.base</code>, <code>field.boolean</code>, <code>field.currency</code>, <code>field.date</code>, <code>field.decimal</code>, <code>field.double</code>, <code>field.duration</code>, <code>field.enum</code>, <code>field.float</code>, <code>field.inet</code>, <code>field.int</code>, <code>field.long</code>, <code>field.map</code>, <code>field.object</code>, <code>field.string</code>, <code>field.time</code>, <code>field.timestamp</code>, <code>field.uri</code>, <code>field.uuid</code>, <code>identity.primary</code>, <code>identity.reference</code>, <code>identity.secondary</code>, <code>layout.base</code>, <code>layout.dataGrid</code>, <code>object.base</code>, <code>object.entity</code>, <code>object.projection</code>, <code>object.report</code>, <code>object.value</code>, <code>origin.aggregate</code>, <code>origin.base</code>, <code>origin.computed</code>, <code>origin.first</code>, <code>origin.passthrough</code>, <code>relationship.aggregation</code>, <code>relationship.association</code>, <code>relationship.base</code>, <code>relationship.composition</code>, <code>source.base</code>, <code>source.rdb</code>, <code>template.base</code>, <code>template.output</code>, <code>template.prompt</code>, <code>template.toolcall</code>, <code>validator.array</code>, <code>validator.atLeastOne</code>, <code>validator.base</code>, <code>validator.comparison</code>, <code>validator.exactlyOne</code>, <code>validator.length</code>, <code>validator.numeric</code>, <code>validator.presentIff</code>, <code>validator.regex</code>, <code>validator.required</code>, <code>validator.requiredWhen</code>, <code>view.base</code>, <code>view.checkbox</code>, <code>view.currency</code>, <code>view.date</code>, <code>view.dropdown</code>, <code>view.hidden</code>, <code>view.hotlink</code>, <code>view.image</code>, <code>view.month</code>, <code>view.number</code>, <code>view.password</code>, <code>view.radio</code>, <code>view.text</code>, <code>view.textarea</code>, <code>view.web</code></p>
+<p><strong>Owns (registers):</strong> <code>attr.base</code>, <code>attr.boolean</code>, <code>attr.class</code>, <code>attr.double</code>, <code>attr.expression</code>, <code>attr.filter</code>, <code>attr.int</code>, <code>attr.intMap</code>, <code>attr.long</code>, <code>attr.properties</code>, <code>attr.string</code>, <code>field.base</code>, <code>field.boolean</code>, <code>field.currency</code>, <code>field.date</code>, <code>field.decimal</code>, <code>field.double</code>, <code>field.duration</code>, <code>field.enum</code>, <code>field.float</code>, <code>field.inet</code>, <code>field.int</code>, <code>field.long</code>, <code>field.map</code>, <code>field.object</code>, <code>field.string</code>, <code>field.time</code>, <code>field.timestamp</code>, <code>field.uri</code>, <code>field.uuid</code>, <code>identity.primary</code>, <code>identity.reference</code>, <code>identity.secondary</code>, <code>layout.base</code>, <code>layout.dataGrid</code>, <code>object.base</code>, <code>object.entity</code>, <code>object.projection</code>, <code>object.value</code>, <code>origin.aggregate</code>, <code>origin.base</code>, <code>origin.computed</code>, <code>origin.first</code>, <code>origin.passthrough</code>, <code>relationship.aggregation</code>, <code>relationship.association</code>, <code>relationship.base</code>, <code>relationship.composition</code>, <code>source.base</code>, <code>source.rdb</code>, <code>template.base</code>, <code>template.output</code>, <code>template.prompt</code>, <code>template.toolcall</code>, <code>validator.array</code>, <code>validator.atLeastOne</code>, <code>validator.base</code>, <code>validator.comparison</code>, <code>validator.exactlyOne</code>, <code>validator.length</code>, <code>validator.numeric</code>, <code>validator.presentIff</code>, <code>validator.regex</code>, <code>validator.required</code>, <code>validator.requiredWhen</code>, <code>view.base</code>, <code>view.checkbox</code>, <code>view.currency</code>, <code>view.date</code>, <code>view.dropdown</code>, <code>view.hidden</code>, <code>view.hotlink</code>, <code>view.image</code>, <code>view.month</code>, <code>view.number</code>, <code>view.password</code>, <code>view.radio</code>, <code>view.text</code>, <code>view.textarea</code>, <code>view.web</code></p>
 <p><strong>Contributes attributes:</strong></p>
 <ul>
 <li><code>field.base</code>: <code>@default</code>, <code>@mutability</code>, <code>@required</code>, <code>@unique</code></li>
@@ -69,10 +69,9 @@ provider owns. This is the ownership lens over the same vocabulary
 <li><code>object.base</code>: <code>@object</code>, <code>@objectAdapter</code></li>
 <li><code>object.entity</code>: <code>@collectionName</code>, <code>@discriminator</code>, <code>@discriminatorValue</code></li>
 <li><code>object.projection</code>: <code>@collectionName</code>, <code>@filter</code></li>
-<li><code>object.report</code>: <code>@collectionName</code>, <code>@dimensions</code>, <code>@filter</code>, <code>@from</code>, <code>@measures</code>, <code>@segment</code>, <code>@spine</code></li>
-<li><code>origin.aggregate</code>: <code>@agg</code>, <code>@distinct</code>, <code>@filter</code>, <code>@of</code>, <code>@orderBy</code>, <code>@segment</code>, <code>@via</code></li>
+<li><code>origin.aggregate</code>: <code>@agg</code>, <code>@distinct</code>, <code>@filter</code>, <code>@of</code>, <code>@orderBy</code>, <code>@via</code></li>
 <li><code>origin.computed</code>: <code>@expr</code></li>
-<li><code>origin.first</code>: <code>@filter</code>, <code>@of</code>, <code>@orderBy</code>, <code>@segment</code>, <code>@via</code></li>
+<li><code>origin.first</code>: <code>@filter</code>, <code>@of</code>, <code>@orderBy</code>, <code>@via</code></li>
 <li><code>origin.passthrough</code>: <code>@convert</code>, <code>@from</code>, <code>@via</code></li>
 <li><code>relationship.aggregation</code>: <code>@cardinality</code>, <code>@objectRef</code>, <code>@onDelete</code>, <code>@onUpdate</code>, <code>@sourceRefField</code>, <code>@symmetric</code>, <code>@through</code></li>
 <li><code>relationship.association</code>: <code>@cardinality</code>, <code>@objectRef</code>, <code>@onDelete</code>, <code>@onUpdate</code>, <code>@sourceRefField</code>, <code>@symmetric</code>, <code>@through</code></li>
@@ -156,6 +155,29 @@ provider owns. This is the ownership lens over the same vocabulary
 <li><code>field.uri</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
 <li><code>field.uuid</code>: <code>@example</code>, <code>@instruction</code>, <code>@xmlText</code></li>
 <li><code>object.value</code>: <code>@normalize</code></li>
+</ul>
+<h2>metaobjects-reporting</h2>
+<p>Reporting (FR-044): object.report, dimension / measure / segment on an entity, and @segment on origin.aggregate and origin.first.</p>
+<p><strong>Owns (registers):</strong> <code>dimension.attribute</code>, <code>dimension.time</code>, <code>measure.aggregate</code>, <code>measure.derived</code>, <code>measure.ratio</code>, <code>object.report</code>, <code>segment.filter</code></p>
+<p><strong>Contributes attributes:</strong></p>
+<ul>
+<li><code>dimension.attribute</code>: <code>@of</code>, <code>@via</code></li>
+<li><code>dimension.time</code>: <code>@grains</code>, <code>@of</code>, <code>@via</code></li>
+<li><code>measure.aggregate</code>: <code>@agg</code>, <code>@default</code>, <code>@distinct</code>, <code>@filter</code>, <code>@of</code>, <code>@segment</code></li>
+<li><code>measure.derived</code>: <code>@expr</code></li>
+<li><code>measure.ratio</code>: <code>@default</code>, <code>@denominator</code>, <code>@numerator</code></li>
+<li><code>object.report</code>: <code>@collectionName</code>, <code>@dimensions</code>, <code>@filter</code>, <code>@from</code>, <code>@measures</code>, <code>@segment</code>, <code>@spine</code></li>
+<li><code>origin.aggregate</code>: <code>@segment</code></li>
+<li><code>origin.first</code>: <code>@segment</code></li>
+<li><code>segment.filter</code>: <code>@filter</code></li>
+</ul>
+<h2>metaobjects-requirements</h2>
+<p>Requirements: requirement.functional and requirement.architectural, declared at the document root and checked by meta verify.</p>
+<p><strong>Owns (registers):</strong> <code>requirement.architectural</code>, <code>requirement.functional</code></p>
+<p><strong>Contributes attributes:</strong></p>
+<ul>
+<li><code>requirement.architectural</code>: <code>@counterexample</code>, <code>@disposition</code>, <code>@implementedBy</code>, <code>@level</code>, <code>@statement</code>, <code>@status</code>, <code>@supersededBy</code>, <code>@trackedBy</code></li>
+<li><code>requirement.functional</code>: <code>@counterexample</code>, <code>@disposition</code>, <code>@implementedBy</code>, <code>@level</code>, <code>@statement</code>, <code>@status</code>, <code>@supersededBy</code>, <code>@trackedBy</code></li>
 </ul>
 <h2>metaobjects-rules</h2>
 <p>Business rules (ADR-0066, experimental): the declared API surface (api / operation / binding) and lifecycle moves (transition on a field.enum).</p>

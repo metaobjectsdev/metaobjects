@@ -147,9 +147,13 @@ so they are not re-derived.
    (`docs/features/cli.md`): exit 0 on success, 1 when the run failed (a model that does not load,
    a refused file, drift), 2 for a usage error; an unknown flag names the flags the command takes.
    `verify` is the one verb of ADR-0021 D2, and `--codegen` is the only gate this port ships, so a
-   bare `verify` runs it. `--db`, `--templates` and `--deps` exit 2 and say where that check lives.
+   bare `verify` runs it. *(Gates superseded by Amendment 6: the port now ships `verify --templates`
+   too, and a bare `verify` runs the codegen, template and rules gates.)* `--db`, `--templates` and
+   `--deps` exit 2 and say where that check lives. *(The `--templates` refusal is superseded by
+   Amendment 6; `--db` and `--deps` still exit 2.)*
    This corrects Decision 6, which listed `fmt`: the command today is `init`, `gen`, `verify
    --codegen` and `eject`. `fmt` and the template gate come with the phases that need them.
+   *(The template gate has arrived — Amendment 6; there is still no `fmt`.)*
    **No `migrate` and no `verify --db`, permanently** (ADR-0015): `init` and `--help` both say that
    the schema is the Node `meta` tool's.
 5. **An owned generator is a crate the project builds.** Rust is compiled, so a generator cannot
@@ -303,3 +307,39 @@ publish and are not published until the owner says go (Amendment 3). The conform
 grace for new fixtures: a fixture that is not on the ledger and fails in Rust prints a warning and
 does not fail the `rust` lane, and that stays until the owner turns the warning off, at which point
 an unlisted failure fails the lane. Nothing in the runner changes.
+
+## Amendment 5: the codegen crate's authoring surface is promised (2026-11-23)
+
+Owner ruling 2 said there is no generator plugin contract and that the engine's Rust API carries no
+stability promise while the port is in preview. Amendment 4 retired the preview label, and ADR-0034
+Amendment 12 names a generator-authoring surface in every port. The second half of ruling 2 is
+replaced; the first half stands.
+
+1. **Nothing discovers or loads a third-party generator.** That is unchanged, and it is the same in
+   every port: a project's generator list names generators the project compiles.
+2. **The owned codegen crate is the supported way to add a team's generator.** A team writes its
+   generator in the crate `cargo meta eject` gives the project, against the authoring surface of
+   `metaobjects-codegen`, and lists it in `metaobjects.config.json`.
+3. **That surface is promised.** The `surface.rust` entry of
+   `fixtures/generator-registry-conformance/registry.json` names it: `generator` and `emitted` (the
+   contract and what a generator returns), `plan` (the model walk), `writer` and `names`. It is
+   versioned with `metaobjects-codegen` under `docs/compatibility-policy.md`. The rest of the crate
+   is internal: an owned copy may still use it, and it may change in any release.
+
+`docs/ports/rust.md` says this where it describes the owned crate. The T7-RS row adds the
+name-level snapshot test.
+
+## Amendment 6: the template gate shipped (2026-11-25)
+
+Ruling 4 said `--codegen` was the only gate the port ships, that `--templates` exits 2, and that
+`fmt` and the template gate "come with the phases that need them". The template phase has arrived
+without a template *generator*: `cargo meta
+verify --templates` checks every `template.*` body (Mustache, under `prompts/` or `--prompts <dir>`)
+against its payload value object and checks each prompt's `@responseRef` reply, through the new
+`verify` module of `metaobjects-render`. A bare `verify` runs the codegen, template and rules gates;
+`--codegen` or `--templates` alone runs that one gate. `--db` and `--deps` still exit 2, and there is
+still no `fmt`, no `migrate`, no `verify --db` (ADR-0015) and no template generator. A Jinja body is
+refused (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`), as ruling 6 already stated. The port runs
+`fixtures/verify-conformance/` (all 45 cases), `fixtures/response-verify-conformance/` (all 7) and
+`fixtures/reference-source-conformance/` (all 6); `docs/features/cli.md` and `docs/ports/rust.md`
+carry the command surface.

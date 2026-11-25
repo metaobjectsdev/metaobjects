@@ -44,6 +44,8 @@ pub const ERR_SOURCE_KIND_UNSUPPORTED: &str = "ERR_SOURCE_KIND_UNSUPPORTED";
 pub const ERR_COLLECTION_NOT_FOUND: &str = "ERR_COLLECTION_NOT_FOUND";
 pub const ERR_COLLECTION_NAME_COLLISION: &str = "ERR_COLLECTION_NAME_COLLISION";
 pub const ERR_UNKNOWN_LIBRARY: &str = "ERR_UNKNOWN_LIBRARY";
+/// A `template.*` declared only in reference sources.
+pub const ERR_REFERENCE_SOURCE_TEMPLATE: &str = "ERR_REFERENCE_SOURCE_TEMPLATE";
 
 /// The code reported for a failure that carries none (a programming error in a
 /// provider definition, say).
@@ -80,6 +82,7 @@ pub const ALL_CODES: &[&str] = &[
     ERR_COLLECTION_NOT_FOUND,
     ERR_COLLECTION_NAME_COLLISION,
     ERR_UNKNOWN_LIBRARY,
+    ERR_REFERENCE_SOURCE_TEMPLATE,
     ERR_UNKNOWN,
 ];
 

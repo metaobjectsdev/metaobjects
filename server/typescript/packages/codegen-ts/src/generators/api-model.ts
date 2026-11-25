@@ -1283,7 +1283,7 @@ function templateExample(symbolBase: string, symbols: ApiSymbol[]): UnitExample 
  *
  * Which facts of a run the documented API depends on is this package's knowledge: the page
  * layout, whether a Hono routes generator is wired (the runner aggregates each generator's
- * `emitsHonoRoutes` marker into `ctx.config.includeHonoRoutes`, so the Hono surface is
+ * `provides.routes` (framework "hono") declaration into `ctx.config.includeHonoRoutes`, so the Hono surface is
  * documented exactly when it is emitted), the verbs each routes generator mounts
  * (`ctx.config.routesExpose`, from `routesFile({ expose })`), the project's `apiPrefix`
  * (every route is mounted inside it, so without it a page documents `/authors` for routes

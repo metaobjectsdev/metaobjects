@@ -18,14 +18,18 @@ public enum UnknownFieldsMode
 /// and a <c>limit</c> above <paramref name="MaxLimit"/> is <c>400 { "error": "limit_too_large", "maxLimit": N }</c>.</summary>
 public sealed record ApiPagination(int DefaultLimit, int MaxLimit);
 
-/// <summary>The project's <c>api</c> block. A project that sets nothing has no page size and rejects unknown fields.</summary>
+/// <summary>The project's <c>api</c> block. A project that sets nothing pages at <see cref="DefaultPageLimit"/> with no maximum and rejects unknown fields.</summary>
 public sealed record ApiSettings(ApiPagination? Pagination, UnknownFieldsMode UnknownFields = UnknownFieldsMode.Reject)
 {
     /// <summary>What a tree loaded with no project carries.</summary>
     public static readonly ApiSettings Default = new(null, UnknownFieldsMode.Reject);
 
+    /// <summary>The rows a list with no <c>limit</c> answers when the project sets no <c>api.pagination</c>:
+    /// the same 50 in every port. Without the block there is no maximum, so an explicit <c>limit</c> is served as asked.</summary>
+    public const int DefaultPageLimit = 50;
+
     /// <summary>What <c>dotnet meta init</c> writes for a new project.</summary>
-    public const int InitDefaultLimit = 50;
+    public const int InitDefaultLimit = DefaultPageLimit;
     /// <summary>What <c>dotnet meta init</c> writes for a new project.</summary>
     public const int InitMaxLimit = 1000;
 

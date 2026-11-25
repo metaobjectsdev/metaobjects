@@ -157,7 +157,7 @@ export { renderAgentApi, renderApiIndex, renderEntityApiPage } from "./generator
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
 // The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
-export { hasGeneratedForm, hasItemRoute, decimalColumnsLine, paginationLine, knownFieldsLine, knownFieldNames, writeDeniedColumnsLine, isCredentialField, decimalFieldNames, itemRouteField, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
+export { hasGeneratedForm, hasItemRoute, decimalColumnsMembers, paginationMembers, knownFieldsMembers, knownFieldNames, readOnlyMountMembers, writeDeniedColumnsMembers, decimalColumnsLine, paginationLine, knownFieldsLine, writeDeniedColumnsLine, isCredentialField, decimalFieldNames, itemRouteField, restPath, servesClientHooks, servesClientTier, servesReadApi, servesWriteApi } from "./api-surface.js";
 // #356 — every emitter selects a field's view by the SURFACE it renders, never by
 // declaration position. An owned generator (FR-040) composing the render layer must
 // use this too, or it reinstates the order-dependence in its own copy.
@@ -197,7 +197,7 @@ export type { SortOrder, GridDefaultSort } from "./templates/filter-shared.js";
 // entity/queries composers use; the reference templates relocate that assembly.
 export { renderTphDiscriminatorUnion } from "./templates/tph-discriminator.js";
 export { generatableObjects, hasWritableRdbSource, hasAnyRdbSource, isReport, isSourcelessEntity, servedReport } from "./source-detect.js";
-export { dialectModule, dbTypeBlock, supportsReturning, normalizeTimestampMode, type DialectModule } from "./dialect-module.js";
+export { dialectModule, dbTypeBlock, writeDbType, supportsReturning, normalizeTimestampMode, type DialectModule } from "./dialect-module.js";
 export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-file.js";
 
 // ADR-0034 scaffold-and-own — reader for the copyable reference generators in
@@ -236,6 +236,7 @@ export {
 export {
   arr,
   call,
+  json,
   key,
   type ModuleImports,
   type NamedImport,
@@ -245,21 +246,31 @@ export {
   TsWriter,
   type TsWriterOptions,
 } from "./writer/ts-writer.js";
+export { YamlWriter, type YamlWriterOptions } from "./writer/yaml-writer.js";
 
 export {
-  renderFindByIdFn,
-  renderListFn,
-  renderCreateFn,
+  writeFindByIdFn,
+  writeListFn,
+  writeCreateFn,
   // #203 — the `insertPreserving<Entity>` escape hatch, emitted only for an entity with an
   // `@autoSet` timestamp. Public because an OWNED queries generator must be able to emit it:
   // without this primitive (and `hasAutoSetFields` below) an ejected copy silently drops the
   // escape hatch on exactly the entities that have one, and the caller loses the only
   // generated way to insert a row preserving its own `@autoSet` values.
+  writeInsertPreservingFn,
+  writeUpdateFn,
+  writeDeleteByIdFn,
+  writeReverseFinderFns,
+  reverseFksFor,
+  useSchemaInputType,
+  renderFindByIdFn,
+  renderListFn,
+  renderCreateFn,
   renderInsertPreservingFn,
   renderUpdateFn,
   renderDeleteByIdFn,
   renderReverseFinderFns,
-  reverseFksFor,
+  schemaInputType,
 } from "./templates/queries.js";
 export {
   getPkInfo,
@@ -297,7 +308,7 @@ export { renderEntityConstants, renderValueObjectConstants, resourcePath } from 
 export { renderQueriesFile } from "./templates/queries-file.js";
 // #348 — which CRUD verbs a generated routes file mounts. Public because an OWNED
 // routes generator (ADR-0034) composes the same render call and needs the same option.
-export { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, resolveExpose, intersectExpose, exposeLine, authSeamJsDoc } from "./routes-expose.js";
+export { CRUD_VERBS, TPH_POLYMORPHIC_VERBS, resolveExpose, intersectExpose, exposeMembers, authSeamDoc, exposeLine, authSeamJsDoc } from "./routes-expose.js";
 export type { CrudVerb, ExposeOption } from "./routes-expose.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
 export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
@@ -450,6 +461,18 @@ export {
   type AgentSchemaPageData,
   type AgentSchemaPageOptions,
 } from "./generators/agent-schema-page.js";
+// The rows layer beneath the model-only schema page (1.3.0 D0a): a subset of the
+// `meta schema --as json` shape, pinned by the docs-page corpus and shared with the docs site.
+export {
+  schemaRows,
+  schemaInputFromRows,
+  schemaRowKey,
+  type SchemaRows,
+  type SchemaRowTable,
+  type SchemaRowColumn,
+  type SchemaRowForeignKey,
+  type SchemaRowView,
+} from "./generators/agent-schema-rows.js";
 export type {
   RequirementTestsOpts,
   RequirementTestRenderer,

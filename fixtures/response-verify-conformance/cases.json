@@ -1,0 +1,554 @@
+{
+  "cases": [
+    {
+      "name": "a-prompt-with-no-reply-has-nothing-to-check",
+      "metadata": {
+        "metadata.root": {
+          "package": "acme::support",
+          "children": [
+            {
+              "object.value": {
+                "name": "SupportRequest",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "question",
+                      "@required": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "AnswerSource",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "url"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "SupportAnswer",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "text",
+                      "@required": true
+                    }
+                  },
+                  {
+                    "field.object": {
+                      "name": "source",
+                      "@objectRef": "acme::support::AnswerSource"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "EmptyAnswer",
+                "children": []
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "SupportAnswerPrompt",
+                "@payloadRef": "acme::support::SupportRequest",
+                "@textRef": "support/answer",
+                "@format": "text"
+              }
+            }
+          ]
+        }
+      },
+      "expect": []
+    },
+    {
+      "name": "a-json-reply-that-resolves-is-clean",
+      "metadata": {
+        "metadata.root": {
+          "package": "acme::support",
+          "children": [
+            {
+              "object.value": {
+                "name": "SupportRequest",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "question",
+                      "@required": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "AnswerSource",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "url"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "SupportAnswer",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "text",
+                      "@required": true
+                    }
+                  },
+                  {
+                    "field.object": {
+                      "name": "source",
+                      "@objectRef": "acme::support::AnswerSource"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "EmptyAnswer",
+                "children": []
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "SupportAnswerPrompt",
+                "@payloadRef": "acme::support::SupportRequest",
+                "@textRef": "support/answer",
+                "@format": "text",
+                "@responseRef": "acme::support::SupportAnswer",
+                "@responseFormat": "json"
+              }
+            }
+          ]
+        }
+      },
+      "expect": []
+    },
+    {
+      "name": "a-reply-with-no-fields-is-unresolved",
+      "note": "The loader accepts an empty value object, and a parser for it reads nothing.",
+      "metadata": {
+        "metadata.root": {
+          "package": "acme::support",
+          "children": [
+            {
+              "object.value": {
+                "name": "SupportRequest",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "question",
+                      "@required": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "AnswerSource",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "url"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "SupportAnswer",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "text",
+                      "@required": true
+                    }
+                  },
+                  {
+                    "field.object": {
+                      "name": "source",
+                      "@objectRef": "acme::support::AnswerSource"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "EmptyAnswer",
+                "children": []
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "SupportAnswerPrompt",
+                "@payloadRef": "acme::support::SupportRequest",
+                "@textRef": "support/answer",
+                "@format": "text",
+                "@responseRef": "acme::support::EmptyAnswer"
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "template": "SupportAnswerPrompt",
+          "code": "ERR_RESPONSE_UNRESOLVED",
+          "path": "acme::support::EmptyAnswer",
+          "severity": "error"
+        }
+      ]
+    },
+    {
+      "name": "xml-required-tags-that-name-the-reply-and-its-fields-are-clean",
+      "note": "The reply type's own name and any field in its tree, nested ones included.",
+      "metadata": {
+        "metadata.root": {
+          "package": "acme::support",
+          "children": [
+            {
+              "object.value": {
+                "name": "SupportRequest",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "question",
+                      "@required": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "AnswerSource",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "url"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "SupportAnswer",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "text",
+                      "@required": true
+                    }
+                  },
+                  {
+                    "field.object": {
+                      "name": "source",
+                      "@objectRef": "acme::support::AnswerSource"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "EmptyAnswer",
+                "children": []
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "SupportAnswerPrompt",
+                "@payloadRef": "acme::support::SupportRequest",
+                "@textRef": "support/answer",
+                "@format": "text",
+                "@responseRef": "acme::support::SupportAnswer",
+                "@responseFormat": "xml",
+                "@requiredTags": [
+                  "SupportAnswer",
+                  "text",
+                  "source",
+                  "url"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "expect": []
+    },
+    {
+      "name": "an-xml-required-tag-the-reply-does-not-declare-is-reported",
+      "metadata": {
+        "metadata.root": {
+          "package": "acme::support",
+          "children": [
+            {
+              "object.value": {
+                "name": "SupportRequest",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "question",
+                      "@required": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "AnswerSource",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "url"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "SupportAnswer",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "text",
+                      "@required": true
+                    }
+                  },
+                  {
+                    "field.object": {
+                      "name": "source",
+                      "@objectRef": "acme::support::AnswerSource"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "EmptyAnswer",
+                "children": []
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "SupportAnswerPrompt",
+                "@payloadRef": "acme::support::SupportRequest",
+                "@textRef": "support/answer",
+                "@format": "text",
+                "@responseRef": "acme::support::SupportAnswer",
+                "@responseFormat": "xml",
+                "@requiredTags": [
+                  "text",
+                  "answer",
+                  "confidence"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "template": "SupportAnswerPrompt",
+          "code": "ERR_RESPONSE_TAG_UNDECLARED",
+          "path": "answer",
+          "severity": "warning"
+        },
+        {
+          "template": "SupportAnswerPrompt",
+          "code": "ERR_RESPONSE_TAG_UNDECLARED",
+          "path": "confidence",
+          "severity": "warning"
+        }
+      ]
+    },
+    {
+      "name": "required-tags-on-a-json-reply-are-not-checked-against-it",
+      "metadata": {
+        "metadata.root": {
+          "package": "acme::support",
+          "children": [
+            {
+              "object.value": {
+                "name": "SupportRequest",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "question",
+                      "@required": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "AnswerSource",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "url"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "SupportAnswer",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "text",
+                      "@required": true
+                    }
+                  },
+                  {
+                    "field.object": {
+                      "name": "source",
+                      "@objectRef": "acme::support::AnswerSource"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "EmptyAnswer",
+                "children": []
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "SupportAnswerPrompt",
+                "@payloadRef": "acme::support::SupportRequest",
+                "@textRef": "support/answer",
+                "@format": "text",
+                "@responseRef": "acme::support::SupportAnswer",
+                "@responseFormat": "json",
+                "@requiredTags": [
+                  "answer"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "expect": []
+    },
+    {
+      "name": "a-reply-inherited-from-an-abstract-prompt-is-checked",
+      "note": "@responseRef / @responseFormat / @requiredTags are read resolving (ADR-0039): an extends-inherited reply is the prompt's reply.",
+      "metadata": {
+        "metadata.root": {
+          "package": "acme::support",
+          "children": [
+            {
+              "object.value": {
+                "name": "SupportRequest",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "question",
+                      "@required": true
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "AnswerSource",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "url"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "SupportAnswer",
+                "children": [
+                  {
+                    "field.string": {
+                      "name": "text",
+                      "@required": true
+                    }
+                  },
+                  {
+                    "field.object": {
+                      "name": "source",
+                      "@objectRef": "acme::support::AnswerSource"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "object.value": {
+                "name": "EmptyAnswer",
+                "children": []
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "BasePrompt",
+                "abstract": true,
+                "@payloadRef": "acme::support::SupportRequest",
+                "@responseRef": "acme::support::SupportAnswer",
+                "@responseFormat": "xml",
+                "@format": "text",
+                "@textRef": "support/base"
+              }
+            },
+            {
+              "template.prompt": {
+                "name": "ChildPrompt",
+                "extends": "BasePrompt",
+                "@textRef": "support/answer",
+                "@requiredTags": [
+                  "text",
+                  "missing"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "template": "ChildPrompt",
+          "code": "ERR_RESPONSE_TAG_UNDECLARED",
+          "path": "missing",
+          "severity": "warning"
+        }
+      ]
+    }
+  ]
+}

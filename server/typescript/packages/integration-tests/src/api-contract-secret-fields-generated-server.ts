@@ -12,13 +12,14 @@
 // declares a credential. Their emitted routes are mounted too, so the credential redaction of
 // the projection and the M:N traversal is driven over HTTP as well.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -81,6 +82,7 @@ export async function startGeneratedSecretFieldsServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<GeneratedSecretFieldsServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -93,14 +95,14 @@ export async function startGeneratedSecretFieldsServer(
   // The lane provisions its table below in the generated Drizzle table's default spelling.
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()]),
     }),
     metadata: root,
   });
@@ -149,19 +151,15 @@ export const db = drizzle(pool);
      INSERT INTO "payer_auths" ("payer_id", "auth_id") VALUES (1, 1), (1, 2);`,
   );
 
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
 
-  const fastify = Fastify();
-  for (const [file, plugin] of [
-    ["Account.routes.ts", "accountRoutes"],
-    ["AccountView.routes.ts", "accountViewRoutes"],
-    ["Payer.routes.ts", "payerRoutes"],
-  ] as const) {
-    const mod = (await import(pathToFileURL(emitted.locate(file)).href)) as Record<string, (f: FastifyInstance) => Promise<void>>;
-    await fastify.register(mod[plugin]!);
-  }
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    for (const name of ["Account", "AccountView", "Payer"]) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${name}.routes.ts`)).href)) as Record<string, (f: FastifyInstance) => Promise<void>>;
+      await fastify.register(mod[`${name[0]!.toLowerCase()}${name.slice(1)}Routes`]!);
+    }
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -182,7 +180,7 @@ export const db = drizzle(pool);
       return res.rows.map((r) => ({ id: Number(r.id), tokenHash: r.token_hash, pinHash: r.pin_hash }));
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

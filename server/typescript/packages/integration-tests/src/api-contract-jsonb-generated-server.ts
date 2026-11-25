@@ -12,13 +12,14 @@
 //
 // Mirrors api-contract-generated-server.ts (the Author generated lane).
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -26,7 +27,6 @@ import { loadMetadataFile } from "./load-metadata.ts";
 import type { DocumentRow } from "./api-contract-jsonb-server.ts";
 
 export interface GeneratedJsonbServerHandle {
-  fastify: FastifyInstance;
   baseUrl: string;
   truncate(): Promise<void>;
   applySeed(rows: DocumentRow[]): Promise<void>;
@@ -37,6 +37,7 @@ export async function startGeneratedJsonbServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<GeneratedJsonbServerHandle> {
   // Emit INSIDE the package tree (under .gen-tmp/, gitignored) so the emitted
   // route's bare `@metaobjectsdev/runtime-ts/drizzle-fastify` import resolves
@@ -59,7 +60,7 @@ export async function startGeneratedJsonbServer(
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()]),
     }),
     metadata: root,
   });
@@ -100,17 +101,16 @@ export const db = drizzle(pool);
      )`,
   );
 
-  const routeUrl = pathToFileURL(emitted.locate("Document.routes.ts")).href;
-  const mod = (await import(routeUrl)) as { documentRoutes: (f: FastifyInstance) => Promise<void> };
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
 
-  const fastify = Fastify();
-  await fastify.register(mod.documentRoutes);
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    const routeUrl = pathToFileURL(emitted.locate("Document.routes.ts")).href;
+    const mod = (await import(routeUrl)) as { documentRoutes: (f: FastifyInstance) => Promise<void> };
+    await fastify.register(mod.documentRoutes);
+  });
+  const baseUrl = served.baseUrl;
 
   return {
-    fastify,
     baseUrl,
     truncate: async () => {
       await executeSql(connectionUri, 'TRUNCATE TABLE "documents" RESTART IDENTITY');
@@ -135,7 +135,7 @@ export const db = drizzle(pool);
       );
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

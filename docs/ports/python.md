@@ -5,11 +5,12 @@ metadata loader (canonical JSON + sigil-free YAML), conformance runner over the
 shared corpora, the FR-004 render engine, and the entity / payload / router
 codegen. **Keep your ORM:** the `entity` generator writes Pydantic v2 models (Pydantic 2.8 or later:
 a `validator.regex` field passes a compiled `re.ASCII` pattern, whose flags Pydantic keeps from 2.8)
-with no ORM of any kind, so your SQLAlchemy or Django models stay hand-written beside them. Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the
-Python port has no `migrate` command by design; it consumes the canonical
-`schema.postgres.sql` artifact verbatim.
+with no ORM of any kind, so your SQLAlchemy or Django models stay hand-written beside them. Schema migrations run in your own
+migration tool (Alembic, say), handed the schema `meta schema` prints; the Node `meta migrate` is
+the reference migration helper, one option (ADR-0015). The Python port has no `migrate` command
+by design.
 
-> **Schema migrations and database checks run in the Node `meta` tool.** `metaobjects` generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+> **The reference migration helper and the database check run in the Node `meta` tool.** `metaobjects` generates and verifies code. If you take the reference helper for migrations (`npx meta migrate`, `npx meta migrate apply-pending`) rather than your own tool, or check a live database against the model (`npx meta verify --db`), you need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
 
 ## Regeneration and hand edits
 
@@ -1085,6 +1086,7 @@ definitions, and import lines are stable.
 | Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
 | Drift verify | Yes — template / payload drift (`metaobjects verify`); `verify --codegen` regenerates the config's list and diffs each target's `outDir` |
 | API reference docs | Yes — `api-docs` in a target's `generators`, options in the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#python)) |
+| Requirements and agent pages | Yes — `requirements` (`requirements.md`, `requirements.toon`) and `agent-docs` (`agent/requirements.md` and the model-only `agent/schema.md`: no SQL types, defaults, indexes or checks; `agent/ui.md` is TypeScript-only) in a target's `generators`, rendered from the shared templates bundled in the package; a same-named file under the project's templates directory overrides a page; both ejectable |
 | Requirement gate + requirement tests | Yes (`metaobjects verify`, on every run; `requirement-tests` emits pytest and is ejectable) |
 | Business-rules gate (ADR-0066, experimental) | Yes (`metaobjects verify`, on every run; see [business rules](../features/business-rules.md)) |
 | Runtime metadata | Yes (`metaobjects.runtime.ObjectManagerDb` — DB-API 2 drivers: Postgres via pg8000/psycopg, `SqliteDriver` over the standard library's `sqlite3`, `MySqlDriver` over PyMySQL with the `mysql` extra) + loader API + render engine |

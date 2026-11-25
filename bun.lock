@@ -150,6 +150,60 @@
         "typescript": "^5.6.0",
       },
     },
+    "packs/config/typescript": {
+      "name": "@metaobjectsdev/pack-config",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@metaobjectsdev/codegen-ts": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
+        "bun-types": "latest",
+        "typescript": "^5.6.0",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/codegen-ts": ">=1.3.0 <2.0.0",
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
+    "packs/delivery/typescript": {
+      "name": "@metaobjectsdev/pack-delivery",
+      "version": "0.1.0",
+      "dependencies": {
+        "@metaobjectsdev/pack-systems": "workspace:*",
+      },
+      "devDependencies": {
+        "@metaobjectsdev/metadata": "workspace:*",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
+    "packs/railway/typescript": {
+      "name": "@metaobjectsdev/pack-railway",
+      "version": "0.1.0",
+      "dependencies": {
+        "@metaobjectsdev/pack-config": "workspace:*",
+        "@metaobjectsdev/pack-delivery": "workspace:*",
+        "@metaobjectsdev/pack-systems": "workspace:*",
+      },
+      "devDependencies": {
+        "@metaobjectsdev/codegen-ts": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/codegen-ts": ">=1.3.0 <2.0.0",
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
+    "packs/systems/typescript": {
+      "name": "@metaobjectsdev/pack-systems",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@metaobjectsdev/metadata": "workspace:*",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
     "server/typescript/packages/ai-runtime": {
       "name": "@metaobjectsdev/ai-runtime",
       "version": "1.3.0",
@@ -195,7 +249,6 @@
       "devDependencies": {
         "@libsql/client": "^0.14.0",
         "@libsql/kysely-libsql": "^0.4.1",
-        "@metaobjectsdev/test-generators": "workspace:*",
         "@types/node": "^22.0.0",
         "@types/pg": "^8.0.0",
         "bun-types": "latest",
@@ -223,8 +276,6 @@
       "name": "@metaobjectsdev/codegen-ts",
       "version": "1.3.0",
       "dependencies": {
-        "@dprint/formatter": "^0.6.0",
-        "@dprint/typescript": "0.87.1",
         "@metaobjectsdev/docs-site": "workspace:*",
         "@metaobjectsdev/metadata": "workspace:*",
         "@metaobjectsdev/migrate-ts": "workspace:*",
@@ -275,7 +326,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
-        "@metaobjectsdev/test-generators": "workspace:*",
         "bun-types": "latest",
         "typescript": "^5.6.0",
       },
@@ -289,7 +339,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^1.9.0",
-        "@metaobjectsdev/test-generators": "workspace:*",
         "bun-types": "latest",
         "typescript": "^5.6.0",
       },
@@ -330,9 +379,9 @@
         "@metaobjectsdev/migrate-ts": "workspace:*",
         "@metaobjectsdev/runtime-ts": "workspace:*",
         "@metaobjectsdev/sdk": "workspace:*",
-        "@metaobjectsdev/test-generators": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "fastify": "^5.6.2",
+        "hono": "^4.6.0",
         "js-yaml": "^4.1.0",
         "kysely": "^0.27.4",
         "pg": "^8.11.5",
@@ -451,18 +500,6 @@
         "@metaobjectsdev/metadata": "workspace:*",
         "yaml": "^2.9.0",
         "zod": "^4.6.6",
-      },
-      "devDependencies": {
-        "bun-types": "latest",
-        "typescript": "^5.6.0",
-      },
-    },
-    "server/typescript/packages/test-generators": {
-      "name": "@metaobjectsdev/test-generators",
-      "version": "0.1.0",
-      "dependencies": {
-        "@metaobjectsdev/codegen-ts": "workspace:*",
-        "@metaobjectsdev/metadata": "workspace:*",
       },
       "devDependencies": {
         "bun-types": "latest",
@@ -604,10 +641,6 @@
     "@csstools/css-syntax-patches-for-csstree": ["@csstools/css-syntax-patches-for-csstree@1.1.16", "", { "peerDependencies": { "css-tree": "^3.2.1" }, "optionalPeers": ["css-tree"] }, "sha512-LsDbJPP/B8cPasUJyTA5S99F7C4G93ngW8hUluXz8CFeOaaRnBPtBiIlvgcPYU0HmHNz8CXg+1vwFrIB4F6Dgw=="],
 
     "@csstools/css-tokenizer": ["@csstools/css-tokenizer@4.0.2", "", {}, "sha512-OoKoR0f76dCY666JlcbhmVTs2drYj1GUXZTYTcbUgJjh9Nv41aFfZ21bPQTERm5+L5cBDo466NltB2lplS5GBw=="],
-
-    "@dprint/formatter": ["@dprint/formatter@0.6.0", "", {}, "sha512-otnYh2jmGWbekYkAd4xiF416lpdZwNCbhkDrLQcAanvvutp0PhTNSJrwJ4DKBEu6xtP36NUX70t9YQw3oC/ONg=="],
-
-    "@dprint/typescript": ["@dprint/typescript@0.87.1", "", {}, "sha512-XdbJCIbUdqijEgKOuFCSRwJAjHp5zUKZVzxrNn5xU9vn6Uy71JkvZT9Esw9hCEjno/vPmJ6IFhVGdoGlEzN2vQ=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.5.16", "", {}, "sha512-Nj8KcIsJL748W408U2N8q4+9IlONdpRIU8MJypIAAINMJ5nqKyqpX7Mgg/5XKkXiAib3AoZGR6hnJFlrlLBrcg=="],
 
@@ -773,6 +806,14 @@
 
     "@metaobjectsdev/migrate-ts": ["@metaobjectsdev/migrate-ts@workspace:server/typescript/packages/migrate-ts"],
 
+    "@metaobjectsdev/pack-config": ["@metaobjectsdev/pack-config@workspace:packs/config/typescript"],
+
+    "@metaobjectsdev/pack-delivery": ["@metaobjectsdev/pack-delivery@workspace:packs/delivery/typescript"],
+
+    "@metaobjectsdev/pack-railway": ["@metaobjectsdev/pack-railway@workspace:packs/railway/typescript"],
+
+    "@metaobjectsdev/pack-systems": ["@metaobjectsdev/pack-systems@workspace:packs/systems/typescript"],
+
     "@metaobjectsdev/react": ["@metaobjectsdev/react@workspace:client/web/packages/react"],
 
     "@metaobjectsdev/render": ["@metaobjectsdev/render@workspace:server/typescript/packages/render"],
@@ -784,8 +825,6 @@
     "@metaobjectsdev/sdk": ["@metaobjectsdev/sdk@workspace:server/typescript/packages/sdk"],
 
     "@metaobjectsdev/tanstack": ["@metaobjectsdev/tanstack@workspace:client/web/packages/tanstack"],
-
-    "@metaobjectsdev/test-generators": ["@metaobjectsdev/test-generators@workspace:server/typescript/packages/test-generators"],
 
     "@neon-rs/load": ["@neon-rs/load@0.0.4", "", {}, "sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw=="],
 
@@ -1601,6 +1640,8 @@
 
     "@metaobjectsdev/migrate-ts/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
+    "@metaobjectsdev/pack-config/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
+
     "@metaobjectsdev/react/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
     "@metaobjectsdev/render/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
@@ -1614,8 +1655,6 @@
     "@metaobjectsdev/sdk/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
     "@metaobjectsdev/tanstack/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
-
-    "@metaobjectsdev/test-generators/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
     "@prisma/dev/@electric-sql/pglite": ["@electric-sql/pglite@0.4.3", "", {}, "sha512-ichuWTgtd4mOM1G4SpyGJa5trT03lWbMypDV0fUXUCXg5hiHqVAz/bZyV68NqmkLB7WcYmj1RMJVSp8HV/v/ZQ=="],
 

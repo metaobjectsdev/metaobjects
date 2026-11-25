@@ -30,6 +30,8 @@ import { serviceFile as builtinService } from "../src/generators/service-file.js
 import { serviceFile as refService } from "../src/reference/service.js";
 import { serviceRoutesFile as builtinServiceRoutes } from "../src/generators/service-routes-file.js";
 import { serviceRoutesFile as refServiceRoutes } from "../src/reference/service-routes.js";
+import { serviceRoutesHonoFile as builtinServiceRoutesHono } from "../src/generators/service-routes-hono-file.js";
+import { serviceRoutesHonoFile as refServiceRoutesHono } from "../src/reference/service-routes-hono.js";
 import { reportExport as builtinReportExport } from "../src/generators/report-export-file.js";
 import { reportExport as refReportExport } from "../src/reference/report-export.js";
 import { promptRender as builtinPromptRender } from "../src/generators/prompt-render-file.js";
@@ -194,6 +196,7 @@ const PAIRS: Record<ReferenceGeneratorName, { builtin: () => Generator; ref: () 
   // the copy `meta eject` places in `codegen/runtime/`.
   service: { builtin: builtinService, ref: () => refService(PKG) },
   "service-routes": { builtin: builtinServiceRoutes, ref: () => refServiceRoutes(PKG) },
+  "service-routes-hono": { builtin: builtinServiceRoutesHono, ref: () => refServiceRoutesHono(PKG) },
   // Emits nothing over the entity-shaped fixtures (none declares a served report); the
   // describe after the route-composition one runs the pair, with the routes, over the report corpus.
   "report-export": { builtin: builtinReportExport, ref: refReportExport },
@@ -1461,12 +1464,12 @@ describe("ADR-0034 Amendments 7 and 9 — the docs and api-docs references write
       const ref = PAIRS[name].ref();
       const builtin = PAIRS[name].builtin();
       const facts = (g: Generator) => JSON.stringify({
-        name: g.name, target: g.target, emitsModelDocs: g.emitsModelDocs, emitsApiDocs: g.emitsApiDocs,
+        name: g.name, target: g.target, provides: g.provides,
       });
       expect(facts(ref), name).toBe(facts(builtin));
     }
-    expect(refDocs().emitsModelDocs).toBe(true);
-    expect(refApiDocs({ subDir: "reference/ts/" }).emitsApiDocs).toEqual({ subDir: "reference/ts" });
+    expect(refDocs().provides?.modelDocs).toBe(true);
+    expect(refApiDocs({ subDir: "reference/ts/" }).provides?.apiDocs).toEqual({ subDir: "reference/ts" });
     for (const make of [refDocs, refApiDocs, refRequirements, refAgentDocs, refMetamodelDocs]) {
       expect(make().target).toBe("docs");
       expect(make({ target: "site" }).target).toBe("site");
@@ -1509,6 +1512,7 @@ describe("ADR-0034 Amendments 8 and 9 — the requirements and agent-docs refere
       provenance: built.provenance,
       columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
       qualify: qualifiedDbName,
+      migrate: true,
     };
   }
 

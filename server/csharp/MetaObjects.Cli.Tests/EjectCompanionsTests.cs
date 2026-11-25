@@ -42,14 +42,16 @@ public sealed class EjectCompanionsTests : IDisposable
             .Where(f => !CodegenScaffold.Files.Contains(f) && !f.StartsWith("codegen/runtime/", StringComparison.Ordinal))
             .Order(StringComparer.Ordinal)
             .ToList();
-        var expected = EjectableGenerators.SourcePaths(entry)
+        // A helper-runtime user brings its partners with it (EjectCommand.RuntimePartners).
+        var owned = EjectCommand.RuntimePartners([name], EjectableGenerators.Entries()).Prepend(entry).ToList();
+        var expected = owned.SelectMany(EjectableGenerators.SourcePaths).Distinct(StringComparer.Ordinal)
             .Select(EjectableGenerators.OwnedRelativePath)
             .Order(StringComparer.Ordinal)
             .ToList();
         Assert.Equal(expected, written);
 
         // Each is the embedded source, rewritten the one way eject rewrites it.
-        foreach (var sourcePath in EjectableGenerators.SourcePaths(entry))
+        foreach (var sourcePath in owned.SelectMany(EjectableGenerators.SourcePaths).Distinct(StringComparer.Ordinal))
             Assert.Equal(
                 EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSourcePath(sourcePath)),
                 File.ReadAllText(Owned(EjectableGenerators.OwnedRelativePath(sourcePath))));
@@ -91,7 +93,7 @@ public sealed class EjectCompanionsTests : IDisposable
     [Fact]
     public void A_generator_with_no_emitters_reports_none()
     {
-        var outcome = EjectCommand.Run(["filter-allowlist"], _root, force: false);
+        var outcome = EjectCommand.Run(["names"], _root, force: false);
         Assert.DoesNotContain("emitters", string.Join("\n", outcome.Out));
     }
 

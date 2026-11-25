@@ -17,17 +17,21 @@
 // back. Reads open no write transaction and call no hooks. The mechanics are
 // `@metaobjectsdev/runtime-ts/service`; what runs, against which schema and table, is written here.
 
-import type { MetaObject } from "@metaobjectsdev/metadata";
+import { TYPE_FIELD, resolveColumnName, type MetaObject } from "@metaobjectsdev/metadata";
+import { pkInfoOf } from "../pk-resolver.js";
+import { hasInsertRefinements } from "./zod-validators.js";
 import { GENERATED_EDIT_NOTE, GENERATED_HEADER } from "../constants.js";
 import { withExtIfRelative, type RenderContext } from "../render-context.js";
-import { decimalColumnsLine, knownFieldsLine, paginationLine, restPath, writeDeniedColumnsLine } from "../api-surface.js";
-import { dbTypeBlock } from "../dialect-module.js";
+import { decimalColumnsMembers, knownFieldsMembers, paginationMembers, restPath, writeDeniedColumnsMembers } from "../api-surface.js";
+import { writeDbType } from "../dialect-module.js";
 import { contractObjectPath, contractOperationsPath, contractSpecifier } from "../contract-walk.js";
 import { toPascalCase } from "../naming.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { effectivePackage } from "../docs-paths.js";
 import {
   fastifyTransportPath,
+  honoTransportPath,
+  serviceHonoRoutesName,
   runtimeSpecifierFrom,
   serviceFactoryName,
   serviceTypeName,
@@ -36,6 +40,7 @@ import {
   SERVICE_INDEX_FILE,
   type ServiceEntity,
   type ServiceOperation,
+  type ServiceRelation,
   type ServicePackage,
   type ServiceTransition,
   type ServiceTransitionCommand,
@@ -67,19 +72,14 @@ function header(w: TsWriter, what: string): void {
   w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`, `// Source metadata: ${what}`);
 }
 
-/**
- * An object literal of `key: value,` entries (an api-surface fragment may hold several): `head{}tail`
- * when there are none, else a block. The fragments' own indent is dropped and the writer's used.
- */
+/** An object literal of `key: value,` entries, one per line: `head{}tail` when there are none, else a block. */
 function objectLiteral(w: TsWriter, head: string, entries: readonly string[], tail: string): void {
-  // An entry is one `key: value,` line, or an api-surface fragment of several, each led by a break.
-  const lines = entries.flatMap((e) => e.split("\n")).map((l) => l.trim()).filter((l) => l !== "");
-  if (lines.length === 0) {
+  if (entries.length === 0) {
     w.line(`${head}{}${tail}`);
     return;
   }
   w.block(`${head}{`, () => {
-    for (const l of lines) w.line(l);
+    for (const l of entries) w.line(l);
   }, `}${tail}`);
 }
 
@@ -88,6 +88,11 @@ const lowerFirst = (s: string): string => `${s.charAt(0).toLowerCase()}${s.slice
 /** The wire mapper of an entity's rows, as the service index exports it. */
 export function wireMapperName(entityName: string): string {
   return `${lowerFirst(entityName)}ToWire`;
+}
+
+/** The wire mapper of a write-through entity's write answers, as the service index exports it. */
+export function writeWireMapperName(entityName: string): string {
+  return `${lowerFirst(entityName)}WriteToWire`;
 }
 
 /** Does the store hold a transaction across application code? (`interactiveTransactions`, default true) */
@@ -116,9 +121,13 @@ export function renderServiceFiles(pkg: ServicePackage, ctx: RenderContext): Ser
   }
   const files: ServiceFile[] = [];
   for (const e of pkg.entities) {
-    for (const op of ["list", "get", "create", "update", "delete"] as const) {
+    for (const op of e.verbs) {
       const path = servicePath(pkg.package, `${e.operations[op]}.ts`);
       files.push({ path, content: renderOperation(op, e, path, ctx, pkg) });
+    }
+    for (const r of e.relations) {
+      const path = servicePath(pkg.package, `${r.fn}.ts`);
+      files.push({ path, content: renderRelation(r, e, path, ctx) });
     }
     for (const c of e.commands) {
       const path = servicePath(pkg.package, `${c.fn}.ts`);
@@ -132,6 +141,66 @@ export function renderServiceFiles(pkg: ServicePackage, ctx: RenderContext): Ser
   const index = servicePath(pkg.package, SERVICE_INDEX_FILE);
   files.push({ path: index, content: renderServiceIndex(pkg, index, ctx) });
   return files;
+}
+
+/** Where an entity's operations read and write, as the operation file imports them. */
+interface Sources {
+  /** The table writes go to (a single-table subtype's base table). */
+  readonly table: string;
+  /** What reads select from: the table, a write-through entity's replica view, or a read-only object's view. */
+  readonly read: string;
+  /** The replica view a write is read back through (write-through), else undefined. */
+  readonly view: string | undefined;
+}
+
+function sourcesOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderContext): Sources {
+  const own = modulesOf(path, e.obj, ctx).entity;
+  if (e.kind !== "entity") {
+    const view = w.use(`${lowerFirst(e.obj.name)}View`, own);
+    return { table: view, read: view, view: undefined };
+  }
+  const table = w.use(ctx.collectionName(e.storage.name), modulesOf(path, e.storage, ctx).entity);
+  if (!e.readView) return { table, read: table, view: undefined };
+  const view = w.use(`${lowerFirst(e.obj.name)}View`, own);
+  return { table, read: view, view };
+}
+
+/**
+ * The table a transition command or a keyed declared operation addresses, and its key condition:
+ * the storage table, which for a single-table subtype is its base's, scoped to its discriminator
+ * value. The loader admits only an `object.entity` as an operation's target (ADR-0066).
+ */
+function addressedOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderContext, runtime: string): { table: string; cond: () => string } {
+  const table = w.use(ctx.collectionName(e.storage.name), modulesOf(path, e.storage, ctx).entity);
+  return { table, cond: () => addressedCond(w, e, table, table, runtime) };
+}
+
+/**
+ * The key condition of a keyed operation on `on` (a table or a read view), scoped to the single-table
+ * subtype's discriminator on `scopeTable` (the storage table).
+ */
+function addressedCond(w: TsWriter, e: ServiceEntity, on: string, scopeTable: string, runtime: string): string {
+  const key = `${w.use("keyCondition", runtime)}(${on}, ${str(e.keyField)}, id)`;
+  const scope = scopeExpr(w, e, scopeTable, runtime);
+  return scope === undefined ? key : `${w.use("scoped", runtime)}(${key}, ${scope})`;
+}
+
+/** The row type of an entity's operations: its contract type, or a report's row type from its entity module. */
+function rowTypeOf(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderContext): string {
+  const mods = modulesOf(path, e.obj, ctx);
+  return w.useType(e.obj.name, e.kind === "report" ? mods.entity : mods.contract);
+}
+
+/** A single-table subtype's create input: its create shape without the discriminator, which the path names. */
+function createInputType(w: TsWriter, e: ServiceEntity, path: string, ctx: RenderContext): string {
+  const create = w.useType(`${e.obj.name}Create`, modulesOf(path, e.obj, ctx).contract);
+  return e.discriminator === undefined ? create : `Omit<${create}, ${str(e.discriminator.field)}>`;
+}
+
+/** The scope expression of a single-table subtype's operations, or undefined. */
+function scopeExpr(w: TsWriter, e: ServiceEntity, table: string, runtime: string): string | undefined {
+  if (e.discriminator === undefined) return undefined;
+  return `${w.use("scopeCondition", runtime)}(${table}, ${str(e.discriminator.field)}, ${str(e.discriminator.value)})`;
 }
 
 function renderOperation(
@@ -148,8 +217,9 @@ function renderOperation(
   header(w, `${name} (${obj.fqn()}) — service operation ${fn} (ADR-0067 layer 4)`);
   const runtime = runtimeSpecifierFrom(path, "service", ctx);
   const mods = modulesOf(path, obj, ctx);
-  const table = w.use(ctx.collectionName(name), mods.entity);
-  const row = w.useType(name, mods.contract);
+  const src = sourcesOf(w, e, path, ctx);
+  const table = src.table;
+  const row = rowTypeOf(w, e, path, ctx);
   const deps = `${w.useType("ServiceDeps", indexSpecifier(ctx))}<A>`;
   const opOptions = `${w.useType("OpOptions", runtime)}<A>`;
   const opResult = w.useType("OpResult", runtime);
@@ -157,6 +227,71 @@ function renderOperation(
   const lifecycleFields = e.lifecycles.map((l) => l.field);
   const keyField = str(e.keyField);
   const id = "id: number | string";
+  const scope = scopeExpr(w, e, table, runtime);
+  const addressed = (on: string) => addressedCond(w, e, on, table, runtime);
+  const readOnly = e.kind !== "entity";
+
+  if (op === "list" && readOnly) {
+    const readOnlyList = w.use("readOnlyList", runtime);
+    const page = w.useType("ReadOnlyPage", runtime);
+    const query = w.useType("ListQueryInput", runtime);
+    const inReadScope = w.use("inReadScope", runtime);
+    const filter = w.use(`${name}FilterAllowlist`, mods.entity);
+    const sort = w.use(`${name}SortAllowlist`, mods.entity);
+    const report = e.kind === "report";
+    const exported = report && ctx.includeReportExport;
+    const keyed = e.verbs.includes("get");
+    w.doc(
+      ...(report
+        ? [
+            `The ${name} report's rows: the filter, search and sort of \`query\`, checked against the allowlists.`,
+            "It answers every row up to its cap and refuses above it (`report_too_large`); a `limit` pages it.",
+            ...(exported ? ["`?format=` asks for an export (`format` on the page), capped by the export's own row cap."] : []),
+          ]
+        : [
+            `A page of ${name} rows: the filter, search, sort and page of \`query\` (the bracketed tree a`,
+            "query string parses to), checked against the allowlists.",
+          ]),
+    );
+    w.block(
+      `export async function ${fn}<A>(deps: ${deps}, query: ${query} = {}, opts: ${opOptions} = {}): Promise<${opResult}<${page}<${row}>>> {`,
+      () => {
+        w.block(`return ${inReadScope}(deps.db, opts.tx, async (db) => {`, () => {
+          objectLiteral(
+            w,
+            `const spec: ${w.useType("ReadOnlySpec", runtime)} = `,
+            [
+              `filterAllowlist: ${filter},`,
+              `sortAllowlist: ${sort},`,
+              `dialect: ${dialect},`,
+              ...(keyed && e.keyField !== "id" ? [`idColumn: ${keyField},`] : []),
+              ...(report ? ["report: true,"] : []),
+              ...(report && pkg.reportMaxRows !== undefined ? [`reportMaxRows: ${pkg.reportMaxRows},`] : []),
+              ...(exported ? [`export: ${w.use(`${name}Export`, exportSpecifier(path, obj, ctx))},`] : []),
+              ...(report ? [] : paginationMembers(obj, ctx.loadedRoot)),
+            ],
+            ";",
+          );
+          w.line(`return (await ${readOnlyList}(db, ${table}, query, spec)) as ${page}<${row}>;`);
+        }, "});");
+      },
+    );
+    return w.toString();
+  }
+
+  if (op === "get" && readOnly) {
+    const inReadScope = w.use("inReadScope", runtime);
+    const notFound = w.use("notFound", runtime);
+    w.doc(`The ${name} row \`id\` names: \`not_found\` when there is none, \`invalid_id\` when \`id\` is no key.`);
+    w.block(`export async function ${fn}<A>(deps: ${deps}, ${id}, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`, () => {
+      w.block(`return ${inReadScope}(deps.db, opts.tx, async (db) => {`, () => {
+        w.line(`const row = await ${w.use("readOnlyGet", runtime)}(db, ${table}, id, { dialect: ${dialect}${e.keyField !== "id" ? `, idColumn: ${keyField}` : ""} });`);
+        w.line(`if (row === undefined) ${notFound}();`);
+        w.line(`return row as ${row};`);
+      }, "});");
+    });
+    return w.toString();
+  }
 
   if (op === "list") {
     const listRows = w.use("listRows", runtime);
@@ -168,6 +303,8 @@ function renderOperation(
     w.doc(
       `A page of ${name} rows: the filter, search, sort and page of \`query\` (the bracketed tree a`,
       "query string parses to), checked against the allowlists; ordered by the key when it names no sort.",
+      ...(e.discriminator !== undefined ? [`Only the rows of discriminator value ${e.discriminator.value}.`] : []),
+      ...(e.readView ? ["Read through the replica view, so a row carries its derived fields."] : []),
     );
     w.block(
       `export async function ${fn}<A>(deps: ${deps}, query: ${query} = {}, opts: ${opOptions} = {}): Promise<${opResult}<${listPage}<${row}>>> {`,
@@ -176,10 +313,17 @@ function renderOperation(
           objectLiteral(
             w,
             `const spec: ${w.useType("ListSpec", runtime)} = `,
-            [`filterAllowlist: ${filter},`, `sortAllowlist: ${sort},`, `dialect: ${dialect},`, `keyField: ${keyField},`, paginationLine(obj, "", ctx.loadedRoot)],
+            [
+              `filterAllowlist: ${filter},`,
+              `sortAllowlist: ${sort},`,
+              `dialect: ${dialect},`,
+              `keyField: ${keyField},`,
+              ...paginationMembers(obj, ctx.loadedRoot),
+              ...(scope === undefined ? [] : [`scope: ${scope},`]),
+            ],
             ";",
           );
-          w.line(`return (await ${listRows}(db, ${table}, query, spec)) as ${listPage}<${row}>;`);
+          w.line(`return (await ${listRows}(db, ${src.read}, query, spec)) as ${listPage}<${row}>;`);
         }, "});");
       },
     );
@@ -189,12 +333,11 @@ function renderOperation(
   if (op === "get") {
     const inReadScope = w.use("inReadScope", runtime);
     const readOne = w.use("readOne", runtime);
-    const keyCondition = w.use("keyCondition", runtime);
     const notFound = w.use("notFound", runtime);
     w.doc(`The ${name} row \`id\` names: \`not_found\` when there is none, \`invalid_id\` when \`id\` is no key.`);
     w.block(`export async function ${fn}<A>(deps: ${deps}, ${id}, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`, () => {
       w.block(`return ${inReadScope}(deps.db, opts.tx, async (db) => {`, () => {
-        w.line(`const row = await ${readOne}(db, ${table}, ${keyCondition}(${table}, ${keyField}, id));`);
+        w.line(`const row = await ${readOne}(db, ${src.read}, ${addressed(src.read)});`);
         w.line(`if (row === undefined) ${notFound}();`);
         w.line(`return row as ${row};`);
       }, "});");
@@ -202,21 +345,40 @@ function renderOperation(
     return w.toString();
   }
 
+  // A write to a write-through entity is read back through its replica view, so the answer
+  // carries the view's derived fields.
+  const readBack = (expr: string) =>
+    src.view === undefined ? expr : `(await ${w.use("readThroughView", runtime)}(tx, ${src.view}, ${keyField}, ${expr})) as ${row}`;
+
   // Under `interactiveTransactions: false` a write opens no transaction and has no hooks or event
   // hook to run inside one (ADR-0067 §4): it is its one statement, after the load and the checks.
   const tx = interactive(pkg);
   const inWriteTransaction = tx ? w.use("inWriteTransaction", runtime) : w.use("withoutTransaction", runtime);
   const inOne = tx ? "In one transaction:" : "With no transaction (`interactiveTransactions: false`):";
+  const disc = e.discriminator;
   if (op === "create" || op === "update") {
     const writeRules = w.useType("WriteBodyRules", runtime);
     const validateBody = w.use("validateBody", runtime);
     w.doc("What a write body may name: every other key is refused, a server-owned one dropped.");
-    objectLiteral(w, `const writeRules: ${writeRules} = `, [knownFieldsLine(obj, "", ctx.loadedRoot), writeDeniedColumnsLine(obj, "")], ";");
+    objectLiteral(
+      w,
+      `const writeRules: ${writeRules} = `,
+      [...knownFieldsMembers(obj, ctx.loadedRoot, e.hierarchy), ...writeDeniedColumnsMembers(obj, e.hierarchy)],
+      ";",
+    );
     w.blank();
     if (op === "create") {
       const insertRow = w.use("insertRow", runtime);
-      const schema = w.use(`${name}InsertSchema`, mods.contract);
-      const input = w.useType(`${name}Create`, mods.contract);
+      // A single-table subtype's body omits the discriminator: the path names the subtype. One with
+      // cross-field rules has a refined schema, which Zod will not `.omit()`: its entity module
+      // exports the discriminator-less body schema instead.
+      const schema =
+        disc === undefined
+          ? w.use(`${name}InsertSchema`, mods.contract)
+          : hasInsertRefinements(obj)
+            ? w.use(`${name}InsertBodySchema`, mods.entity)
+            : `${w.use(`${name}InsertSchema`, mods.contract)}.omit({ ${disc.field}: true })`;
+      const input = createInputType(w, e, path, ctx);
       w.doc(
         ...(tx
           ? [
@@ -225,6 +387,7 @@ function renderOperation(
               "and the event hook; answer the written row.",
             ]
           : [`Create a ${name}. ${inOne} validate the input and stamp what the model declares`, "(ADR-0045), insert it; answer the written row."]),
+        ...(disc !== undefined ? [`The row is stamped with discriminator value ${disc.value}.`] : []),
       );
       w.block(`export async function ${fn}<A>(deps: ${deps}, input: ${input}, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`, () => {
         w.block(`return ${inWriteTransaction}(deps.db, opts.tx, async (tx) => {`, () => {
@@ -233,6 +396,7 @@ function renderOperation(
             w.line(`const given = (await deps.hooks?.before${toPascalCase(fn)}?.(input, ctx)) ?? input;`);
           } else w.line("const given = input;");
           w.line(`const values: Record<string, unknown> = ${validateBody}(${schema}, given, writeRules);`);
+          if (disc !== undefined) w.line(`values[${str(disc.field)}] = ${str(disc.value)};`);
           if (e.lifecycles.length > 0) {
             if (pkg.settings.lifecycleCreate === "initial") {
               const initials = e.lifecycles.map((l) => `${l.field}: ${str(l.initial ?? "")}`).join(", ");
@@ -242,7 +406,7 @@ function renderOperation(
               w.line(`// rules.lifecycle.create: "any" — a create may start a lifecycle in any of its states.`);
             }
           }
-          w.line(`const row = (await ${insertRow}(tx, ${table}, values, ${dialect}, ${keyField})) as ${row};`);
+          w.line(`const row = ${readBack(`(await ${insertRow}(tx, ${table}, values, ${dialect}, ${keyField}))`)} as ${row};`);
           if (tx) {
             w.line(`await deps.hooks?.after${toPascalCase(fn)}?.(row, ctx);`);
             w.line(
@@ -254,7 +418,6 @@ function renderOperation(
       });
       return w.toString();
     }
-    const keyCondition = w.use("keyCondition", runtime);
     const loadForWrite = w.use("loadForWrite", runtime);
     const updateRow = w.use("updateRow", runtime);
     const notFound = w.use("notFound", runtime);
@@ -273,12 +436,13 @@ function renderOperation(
             "(`not_found` when there is none), validate the patch and stamp what the model declares",
             "(ADR-0045), write it; answer the written row. A patch with nothing to write answers the row.",
           ]),
+      ...(disc !== undefined ? [`A row's subtype never changes: the discriminator is dropped from the patch.`] : []),
     );
     w.block(
       `export async function ${fn}<A>(deps: ${deps}, ${id}, patch: ${patch}, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`,
       () => {
         w.block(`return ${inWriteTransaction}(deps.db, opts.tx, async (tx) => {`, () => {
-          w.line(`const cond = ${keyCondition}(${table}, ${keyField}, id);`);
+          w.line(`const cond = ${addressed(table)};`);
           w.line(`const current = (await ${loadForWrite}(tx, ${table}, cond, ${dialect})) as ${row} | undefined;`);
           w.line(`if (current === undefined) ${notFound}();`);
           if (tx) {
@@ -286,13 +450,15 @@ function renderOperation(
             w.line(`const given = (await deps.hooks?.before${toPascalCase(fn)}?.(patch, current, ctx)) ?? patch;`);
           } else w.line("const given = patch;");
           w.line(`const data: Record<string, unknown> = ${validateBody}(${schema}, given, writeRules);`);
+          if (disc !== undefined) w.line(`delete data[${str(disc.field)}];`);
           if (lifecycleFields.length > 0) {
             w.line("// A lifecycle moves only through its transitions (ADR-0066 §6 step 7).");
             w.line(`${w.use("checkStateManaged", runtime)}(data, current, ${JSON.stringify(lifecycleFields)});`);
           }
-          w.line("if (Object.keys(data).length === 0) return current;");
-          w.line(`const row = (await ${updateRow}(tx, ${table}, data, cond, ${dialect})) as ${row} | undefined;`);
-          w.line(`if (row === undefined) ${notFound}();`);
+          w.line(`if (Object.keys(data).length === 0) return ${readBack("current")};`);
+          w.line(`const written = (await ${updateRow}(tx, ${table}, data, cond, ${dialect})) as ${row} | undefined;`);
+          w.line(`if (written === undefined) ${notFound}();`);
+          w.line(`const row = ${readBack("written")};`);
           if (tx) {
             w.line(`await deps.hooks?.after${toPascalCase(fn)}?.(row, current, ctx);`);
             w.line(
@@ -306,7 +472,6 @@ function renderOperation(
     return w.toString();
   }
 
-  const keyCondition = w.use("keyCondition", runtime);
   const loadForWrite = w.use("loadForWrite", runtime);
   const deleteRows = w.use("deleteRows", runtime);
   const notFound = w.use("notFound", runtime);
@@ -320,7 +485,7 @@ function renderOperation(
   );
   w.block(`export async function ${fn}<A>(deps: ${deps}, ${id}, opts: ${opOptions} = {}): Promise<${opResult}<void>> {`, () => {
     w.block(`return ${inWriteTransaction}(deps.db, opts.tx, async (tx) => {`, () => {
-      w.line(`const cond = ${keyCondition}(${table}, ${keyField}, id);`);
+      w.line(`const cond = ${addressed(table)};`);
       w.line(`const current = (await ${loadForWrite}(tx, ${table}, cond, ${dialect})) as ${row} | undefined;`);
       w.line(`if (current === undefined) ${notFound}();`);
       if (!tx) {
@@ -335,6 +500,64 @@ function renderOperation(
         `await ${w.use("emitWrite", runtime)}(deps.events, { kind: "delete", entity: ${str(name)}, key: current.${e.keyField}, row: current, actor: opts.actor, at: new Date() }, tx);`,
       );
     }, "});");
+  });
+  return w.toString();
+}
+
+/** Where a report's export spec module (`report-export`, `<Report>.export`) is, from the file at `from`. */
+function exportSpecifier(from: string, obj: MetaObject, ctx: RenderContext): string {
+  const layout = ctx.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
+  return contractSpecifier(from, entityOutputPath(layout, effectivePackage(obj), `${obj.name}.export.ts`), ctx.extStyle);
+}
+
+/** The physical column of `obj`'s field `fieldName` (the field name when it declares none). */
+function physicalColumn(obj: MetaObject, fieldName: string, ctx: RenderContext): string {
+  // ADR-0039: resolving — a junction's key field may be inherited through extends.
+  const field = obj.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);
+  return field === undefined ? fieldName : resolveColumnName(field, ctx.columnNamingStrategy);
+}
+
+/** A many-to-many traversal of `e`: the target rows the junction links a source row to. */
+function renderRelation(r: ServiceRelation, e: ServiceEntity, path: string, ctx: RenderContext): string {
+  const w = new TsWriter();
+  header(w, `${e.obj.name} (${e.obj.fqn()}) — service query ${r.fn}, the ${r.name} relationship (ADR-0067 layer 4)`);
+  const runtime = runtimeSpecifierFrom(path, "service", ctx);
+  const deps = `${w.useType("ServiceDeps", indexSpecifier(ctx))}<A>`;
+  const opOptions = `${w.useType("OpOptions", runtime)}<A>`;
+  const opResult = w.useType("OpResult", runtime);
+  const junction = w.use(ctx.collectionName(r.junction.name), modulesOf(path, r.junction, ctx).entity);
+  const target = w.use(ctx.collectionName(r.target.name), modulesOf(path, r.target, ctx).entity);
+  const targetRow = w.useType(r.target.name, modulesOf(path, r.target, ctx).contract);
+  w.doc(
+    `The ${r.name} of the ${e.obj.name} row \`id\` names: the target rows its junction links it to.`,
+    ...(e.discriminator !== undefined ? [`An id that is no ${e.obj.name} (another subtype's row) has none.`] : []),
+  );
+  objectLiteral(
+    w,
+    `const spec: ${w.useType("M2mSpec", runtime)} = `,
+    [
+      `junctionTable: ${junction},`,
+      `targetTable: ${target},`,
+      `sourceColumn: ${str(physicalColumn(r.junction, r.sourceJoinField, ctx))},`,
+      `targetColumn: ${str(physicalColumn(r.junction, r.targetJoinField, ctx))},`,
+      `targetPkColumn: ${str(physicalColumn(r.target, pkInfoOf(r.target)?.fieldName ?? "id", ctx))},`,
+      `symmetric: ${r.symmetric},`,
+      ...(r.targetDiscriminator === undefined
+        ? []
+        : [`targetDiscriminator: { column: ${str(physicalColumn(r.target, r.targetDiscriminator.field, ctx))}, value: ${str(r.targetDiscriminator.value)} },`]),
+      ...(e.discriminator === undefined
+        ? []
+        : [
+            `sourceDiscriminator: { table: ${w.use(ctx.collectionName(e.storage.name), modulesOf(path, e.storage, ctx).entity)}, pkColumn: ${str(
+              physicalColumn(e.storage, e.keyField, ctx),
+            )}, column: ${str(physicalColumn(e.storage, e.discriminator.field, ctx))}, value: ${str(e.discriminator.value)} },`,
+          ]),
+    ],
+    ";",
+  );
+  w.blank();
+  w.block(`export async function ${r.fn}<A>(deps: ${deps}, id: number | string, opts: ${opOptions} = {}): Promise<${opResult}<${targetRow}[]>> {`, () => {
+    w.line(`return ${w.use("inReadScope", runtime)}(deps.db, opts.tx, async (db) => (await ${w.use("m2mRelated", runtime)}(db, spec, id)) as ${targetRow}[]);`);
   });
   return w.toString();
 }
@@ -405,9 +628,8 @@ function renderTransitionCommand(c: ServiceTransitionCommand, e: ServiceEntity, 
   const w = new TsWriter();
   header(w, `${name} (${obj.fqn()}) — transition ${t.field}.${t.name}, service operation ${c.fn} (ADR-0066 §2)`);
   const runtime = runtimeSpecifierFrom(path, "service", ctx);
-  const mods = modulesOf(path, obj, ctx);
-  const table = w.use(ctx.collectionName(name), mods.entity);
-  const row = w.useType(name, mods.contract);
+  const { table, cond } = addressedOf(w, e, path, ctx, runtime);
+  const row = w.useType(name, modulesOf(path, obj, ctx).contract);
   const deps = `${w.useType("ServiceDeps", indexSpecifier(ctx))}<A>`;
   const opOptions = `${w.useType("OpOptions", runtime)}<A>`;
   const opResult = w.useType("OpResult", runtime);
@@ -434,7 +656,7 @@ function renderTransitionCommand(c: ServiceTransitionCommand, e: ServiceEntity, 
   );
   w.block(`export async function ${c.fn}<A>(deps: ${deps}, id: number | string, opts: ${opOptions} = {}): Promise<${opResult}<${row}>> {`, () => {
     w.block(`return ${w.use(inTx ? "inWriteTransaction" : "withoutTransaction", runtime)}(deps.db, opts.tx, async (tx) => {`, () => {
-      w.line(`const cond = ${w.use("keyCondition", runtime)}(${table}, ${str(e.keyField)}, id);`);
+      w.line(`const cond = ${cond()};`);
       w.line(`const current = (await ${w.use("loadForWrite", runtime)}(tx, ${table}, cond, ${dialect})) as ${row} | undefined;`);
       w.line(`if (current === undefined) ${w.use("notFound", runtime)}();`);
       if (c.permission === undefined) w.line("// @public: the policy is not asked.");
@@ -467,16 +689,16 @@ function renderDeclaredOperation(op: ServiceOperation, path: string, ctx: Render
   const target = op.target;
   // The target's table and row type, imported only by an operation that reads or answers its row.
   const usesRow = op.keyed || outputIsTargetRow(op);
-  const mods = target === undefined || !usesRow ? undefined : modulesOf(path, target.obj, ctx);
-  const table = mods === undefined ? undefined : w.use(ctx.collectionName(target!.obj.name), mods.entity);
-  const row = mods === undefined ? undefined : w.useType(target!.obj.name, mods.contract);
+  const command = op.kind === "command";
+  const addressed = target === undefined || !usesRow ? undefined : addressedOf(w, target, path, ctx, runtime);
+  const table = addressed?.table;
+  const row = addressed === undefined ? undefined : w.useType(target!.obj.name, modulesOf(path, target!.obj, ctx).contract);
   const output = outputType(w, op, path, pkg, ctx);
   const params = [...operationParams(w, op, path, pkg, ctx), `opts: ${opOptions} = {}`];
-  const command = op.kind === "command";
 
   if (op.input !== undefined) {
     w.doc("What the input may name: every other key is refused.");
-    objectLiteral(w, `const inputRules: ${w.useType("WriteBodyRules", runtime)} = `, [knownFieldsLine(op.input, "", ctx.loadedRoot)], ";");
+    objectLiteral(w, `const inputRules: ${w.useType("WriteBodyRules", runtime)} = `, knownFieldsMembers(op.input, ctx.loadedRoot), ";");
     w.blank();
   }
   if (op.transitions.length > 0) {
@@ -506,7 +728,7 @@ function renderDeclaredOperation(op: ServiceOperation, path: string, ctx: Render
     const scope = command ? w.use("inWriteTransaction", runtime) : w.use("inReadScope", runtime);
     w.block(`return ${scope}(deps.db, opts.tx, async (tx) => {`, () => {
       if (op.keyed) {
-        w.line(`const cond = ${w.use("keyCondition", runtime)}(${table}, ${str(target!.keyField)}, id);`);
+        w.line(`const cond = ${addressed!.cond()};`);
         const load = command
           ? `await ${w.use("loadForWrite", runtime)}(tx, ${table}, cond, ${dialect})`
           : `await ${w.use("readOne", runtime)}(tx, ${table}, cond)`;
@@ -573,13 +795,10 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
   const query = w.useType("ListQueryInput", runtime);
   const type = serviceTypeName(pkg.package);
   const stem = type.replace(/Service$/, "");
-  const { import: dbImport, alias: dbAlias } = dbTypeBlock(ctx.dialect);
 
   // The dialect's Drizzle base type, the queries generator's. A sync SQLite driver (bun:sqlite,
   // better-sqlite3) is accepted: the runtime drives its transaction with statements.
-  const dbModule = /from "([^"]+)"/.exec(dbImport)![1]!;
-  for (const t of /import type \{ ([^}]+) \}/.exec(dbImport)![1]!.split(",").map((s) => s.trim())) w.useType(t, dbModule);
-  w.line(dbAlias);
+  writeDbType(w, ctx.dialect);
 
   const hasPolicy = pkg.permissions.length > 0;
   const hasBodies = pkg.operations.length > 0;
@@ -608,9 +827,10 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
     );
     w.block(`export interface ${stem}Hooks<A> {`, () => {
       for (const e of pkg.entities) {
+        if (!e.verbs.includes("create")) continue;
         const mods = modulesOf(path, e.obj, ctx);
         const row = w.useType(e.obj.name, mods.contract);
-        const create = w.useType(`${e.obj.name}Create`, mods.contract);
+        const create = createInputType(w, e, path, ctx);
         const patch = w.useType(`${e.obj.name}Patch`, mods.contract);
         const o = e.operations;
         const P = (f: string) => toPascalCase(f);
@@ -678,24 +898,34 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
   );
   w.block(`export interface ${type}<A = unknown> {`, () => {
     for (const e of pkg.entities) {
-      const mods = modulesOf(path, e.obj, ctx);
-      const row = w.useType(e.obj.name, mods.contract);
-      const create = w.useType(`${e.obj.name}Create`, mods.contract);
-      const patch = w.useType(`${e.obj.name}Patch`, mods.contract);
+      const row = rowTypeOf(w, e, path, ctx);
       const o = e.operations;
-      for (const f of Object.values(o)) w.use(f, withExtIfRelative(`./${f}`, ctx.extStyle));
-      w.line(`${o.list}(query?: ${query}, opts?: ${opOptions}): Promise<${opResult}<${listPage}<${row}>>>;`);
-      w.line(`${o.get}(id: number | string, opts?: ${opOptions}): Promise<${opResult}<${row}>>;`);
-      w.line(`${o.create}(input: ${create}, opts?: ${opOptions}): Promise<${opResult}<${row}>>;`);
-      w.line(`${o.update}(id: number | string, patch: ${patch}, opts?: ${opOptions}): Promise<${opResult}<${row}>>;`);
-      w.line(`${o.delete}(id: number | string, opts?: ${opOptions}): Promise<${opResult}<void>>;`);
-      calls.push(
-        `${o.list}: (query, opts) => ${o.list}(deps, query, opts),`,
-        `${o.get}: (id, opts) => ${o.get}(deps, id, opts),`,
-        `${o.create}: (input, opts) => ${o.create}(deps, input, opts),`,
-        `${o.update}: (id, patch, opts) => ${o.update}(deps, id, patch, opts),`,
-        `${o.delete}: (id, opts) => ${o.delete}(deps, id, opts),`,
-      );
+      for (const v of e.verbs) w.use(o[v], withExtIfRelative(`./${o[v]}`, ctx.extStyle));
+      const page = e.kind === "entity" ? listPage : w.useType("ReadOnlyPage", runtime);
+      w.line(`${o.list}(query?: ${query}, opts?: ${opOptions}): Promise<${opResult}<${page}<${row}>>>;`);
+      calls.push(`${o.list}: (query, opts) => ${o.list}(deps, query, opts),`);
+      if (e.verbs.includes("get")) {
+        w.line(`${o.get}(id: number | string, opts?: ${opOptions}): Promise<${opResult}<${row}>>;`);
+        calls.push(`${o.get}: (id, opts) => ${o.get}(deps, id, opts),`);
+      }
+      if (e.verbs.includes("create")) {
+        const create = createInputType(w, e, path, ctx);
+        const patch = w.useType(`${e.obj.name}Patch`, modulesOf(path, e.obj, ctx).contract);
+        w.line(`${o.create}(input: ${create}, opts?: ${opOptions}): Promise<${opResult}<${row}>>;`);
+        w.line(`${o.update}(id: number | string, patch: ${patch}, opts?: ${opOptions}): Promise<${opResult}<${row}>>;`);
+        w.line(`${o.delete}(id: number | string, opts?: ${opOptions}): Promise<${opResult}<void>>;`);
+        calls.push(
+          `${o.create}: (input, opts) => ${o.create}(deps, input, opts),`,
+          `${o.update}: (id, patch, opts) => ${o.update}(deps, id, patch, opts),`,
+          `${o.delete}: (id, opts) => ${o.delete}(deps, id, opts),`,
+        );
+      }
+      for (const r of e.relations) {
+        w.use(r.fn, withExtIfRelative(`./${r.fn}`, ctx.extStyle));
+        const targetRow = w.useType(r.target.name, modulesOf(path, r.target, ctx).contract);
+        w.line(`${r.fn}(id: number | string, opts?: ${opOptions}): Promise<${opResult}<${targetRow}[]>>;`);
+        calls.push(`${r.fn}: (id, opts) => ${r.fn}(deps, id, opts),`);
+      }
       for (const c of e.commands) {
         w.use(c.fn, withExtIfRelative(`./${c.fn}`, ctx.extStyle));
         w.line(`${c.fn}(id: number | string, opts?: ${opOptions}): Promise<${opResult}<${row}>>;`);
@@ -719,12 +949,31 @@ function renderServiceIndex(pkg: ServicePackage, path: string, ctx: RenderContex
     }, "};");
   });
 
+  const withWire = () => w.use("withWire", runtime);
+  const timestampWire = () => w.use("timestampWire", runtime);
   for (const e of pkg.entities) {
-    const mods = modulesOf(path, e.obj, ctx);
-    const table = w.use(ctx.collectionName(e.obj.name), mods.entity);
+    const src = sourcesOf(w, e, path, ctx);
+    const decimals =
+      e.discriminator !== undefined
+        ? decimalColumnsMembers(e.obj, ctx.loadedRoot, e.hierarchy)
+        : decimalColumnsMembers(e.hierarchy.length > 1 ? e.hierarchy : e.obj, ctx.loadedRoot);
     w.blank();
     w.doc(`The wire form (ADR-0019) of a ${e.obj.name} row: what a transport sends.`);
-    objectLiteral(w, `export const ${wireMapperName(e.obj.name)} = ${w.use("withWire", runtime)}(${w.use("timestampWire", runtime)}(${table}), `, [decimalColumnsLine(e.obj, "", ctx.loadedRoot)], ");");
+    objectLiteral(w, `export const ${wireMapperName(e.obj.name)} = ${withWire()}(${timestampWire()}(${src.read}), `, decimals, ");");
+    if (src.view !== undefined) {
+      w.blank();
+      w.doc(
+        `The wire form of a ${e.obj.name} row a write answers: read back through the replica view, or the`,
+        "table's row when the view has none, so it is mapped against both.",
+      );
+      objectLiteral(w, `export const ${writeWireMapperName(e.obj.name)} = ${withWire()}(${timestampWire()}(${src.table}, ${src.view}), `, decimals, ");");
+    }
+    for (const r of e.relations) {
+      w.blank();
+      w.doc(`The wire form of a row of ${e.obj.name}'s ${r.name}.`);
+      const target = w.use(ctx.collectionName(r.target.name), modulesOf(path, r.target, ctx).entity);
+      objectLiteral(w, `export const ${wireMapperName(r.fn)} = ${withWire()}(${timestampWire()}(${target}), `, decimalColumnsMembers(r.targetObjects, ctx.loadedRoot), ");");
+    }
   }
   return w.toString();
 }
@@ -751,6 +1000,34 @@ function refuseRouteCollisions(routes: readonly MountedRoute[]): void {
   }
 }
 
+/** Every route a transport of package `pkg` mounts, before the API prefix. */
+function transportRoutes(pkg: ServicePackage): MountedRoute[] {
+  const mounted: MountedRoute[] = [];
+  for (const e of pkg.entities) {
+    const base = e.path;
+    const item = `${base}/:id`;
+    const keyed = e.verbs.includes("get");
+    mounted.push({ method: "GET", path: base, what: `${e.obj.name} list` });
+    if (keyed) mounted.push({ method: "GET", path: item, what: `${e.obj.name} get` });
+    // A read-only object answers its writes 405; a single-table base serves no writes at all.
+    if (e.verbs.includes("create") || e.kind !== "entity") {
+      const what = (verb: string) => `${e.obj.name} ${e.kind === "entity" ? verb : "405"}`;
+      mounted.push({ method: "POST", path: base, what: what("create") });
+      if (keyed) {
+        mounted.push(
+          { method: "PATCH", path: item, what: what("update") },
+          { method: "PUT", path: item, what: what("update") },
+          { method: "DELETE", path: item, what: what("delete") },
+        );
+      }
+    }
+    for (const r of e.relations) mounted.push({ method: "GET", path: `${item}/${r.name}`, what: `${e.obj.name}.${r.name} traversal` });
+    for (const c of e.commands) mounted.push({ method: "POST", path: `${item}/${c.transition.name}`, what: `transition ${e.obj.name}.${c.transition.name}` });
+  }
+  for (const op of pkg.operations) mounted.push({ method: op.method, path: op.path, what: `operation ${op.name}` });
+  return mounted;
+}
+
 /** The thin Fastify transport of package `pkg`: parse, resolve the actor, call the service, send what it answered. */
 export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext): ServiceFile {
   const path = fastifyTransportPath(pkg.package);
@@ -769,22 +1046,7 @@ export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext):
   const type = w.useType(serviceTypeName(pkg.package), serviceIndex);
   const routes = serviceRoutesName(pkg.package);
 
-  const mounted: MountedRoute[] = [];
-  for (const e of pkg.entities) {
-    const base = restPath(e.obj);
-    const item = `${base}/:id`;
-    mounted.push(
-      { method: "GET", path: base, what: `${e.obj.name} list` },
-      { method: "GET", path: item, what: `${e.obj.name} get` },
-      { method: "POST", path: base, what: `${e.obj.name} create` },
-      { method: "PATCH", path: item, what: `${e.obj.name} update` },
-      { method: "PUT", path: item, what: `${e.obj.name} update` },
-      { method: "DELETE", path: item, what: `${e.obj.name} delete` },
-    );
-    for (const c of e.commands) mounted.push({ method: "POST", path: `${item}/${c.transition.name}`, what: `transition ${e.obj.name}.${c.transition.name}` });
-  }
-  for (const op of pkg.operations) mounted.push({ method: op.method, path: op.path, what: `operation ${op.name}` });
-  refuseRouteCollisions(mounted);
+  refuseRouteCollisions(transportRoutes(pkg));
 
   w.doc("What the routes need: the service they call, and who is calling.");
   w.block(`export interface ${type}RoutesOptions<A = unknown> {`, () => {
@@ -808,14 +1070,27 @@ export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext):
     w.line(`const ro = ${handler}(undefined);`);
     const mount = (app: string) => {
       for (const e of pkg.entities) {
-        const mods = modulesOf(path, e.obj, ctx);
-        const create = w.useType(`${e.obj.name}Create`, mods.contract);
-        const patch = w.useType(`${e.obj.name}Patch`, mods.contract);
         const toWire = w.use(wireMapperName(e.obj.name), serviceIndex);
         const o = e.operations;
-        const base = str(restPath(e.obj));
-        const item = str(`${restPath(e.obj)}/:id`);
+        const base = str(e.path);
+        const item = str(`${e.path}/:id`);
         const params = "{ Params: { id: string } }";
+        const keyed = e.verbs.includes("get");
+        if (e.kind !== "entity") {
+          const listPage = w.use("sendListPage", runtime);
+          const exported = e.kind === "report" && ctx.includeReportExport;
+          const exportOf = exported ? `, { spec: ${w.use(`${e.obj.name}Export`, exportSpecifier(path, e.obj, ctx))}, path: ${base} }` : "";
+          w.line(
+            `${app}.get(${base}, ro, async (req, reply) => ${listPage}(reply, await service.${o.list}(${parseQuery}(${rawQuery}(req.raw.url)), await actorOf(req)), ${toWire}${exportOf}));`,
+          );
+          if (keyed) w.line(`${app}.get<${params}>(${item}, ro, async (req, reply) => ${send}(reply, await service.${o.get}(req.params.id, await actorOf(req)), 200, ${toWire}));`);
+          const notAllowed = w.use("methodNotAllowed", runtime);
+          w.line(`// A ${e.kind} is read-only: every write answers 405.`);
+          w.line(`const ${lowerFirst(e.obj.name)}ReadOnly = async (req: ${fastifyRequest}, reply: ${w.useType("FastifyReply", "fastify")}) => reply.code(405).send(${notAllowed}(req.method, ${str(e.kind)}));`);
+          w.line(`${app}.post(${base}, ro, ${lowerFirst(e.obj.name)}ReadOnly);`);
+          if (keyed) for (const verb of ["patch", "put", "delete"]) w.line(`${app}.${verb}(${item}, ro, ${lowerFirst(e.obj.name)}ReadOnly);`);
+          continue;
+        }
         w.block(`${app}.get(${base}, ro, async (req, reply) => {`, () => {
           w.line(`const result = await service.${o.list}(${parseQuery}(${rawQuery}(req.raw.url)), await actorOf(req));`);
           w.line(
@@ -823,17 +1098,29 @@ export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext):
           );
         }, "});");
         w.line(`${app}.get<${params}>(${item}, ro, async (req, reply) => ${send}(reply, await service.${o.get}(req.params.id, await actorOf(req)), 200, ${toWire}));`);
-        w.line(`${app}.post(${base}, ro, async (req, reply) => ${send}(reply, await service.${o.create}(req.body as ${create}, await actorOf(req)), 201, ${toWire}));`);
-        w.line("// The update is reachable by PATCH and by PUT, as in every port.");
-        for (const verb of ["patch", "put"]) {
-          w.line(
-            `${app}.${verb}<${params}>(${item}, ro, async (req, reply) => ${send}(reply, await service.${o.update}(req.params.id, req.body as ${patch}, await actorOf(req)), 200, ${toWire}));`,
-          );
+        if (e.verbs.includes("create")) {
+          const mods = modulesOf(path, e.obj, ctx);
+          const create = createInputType(w, e, path, ctx);
+          const patch = w.useType(`${e.obj.name}Patch`, mods.contract);
+          const writeWire = e.readView ? w.use(writeWireMapperName(e.obj.name), serviceIndex) : toWire;
+          w.line(`${app}.post(${base}, ro, async (req, reply) => ${send}(reply, await service.${o.create}(req.body as ${create}, await actorOf(req)), 201, ${writeWire}));`);
+          w.line("// The update is reachable by PATCH and by PUT, as in every port.");
+          for (const verb of ["patch", "put"]) {
+            w.line(
+              `${app}.${verb}<${params}>(${item}, ro, async (req, reply) => ${send}(reply, await service.${o.update}(req.params.id, req.body as ${patch}, await actorOf(req)), 200, ${writeWire}));`,
+            );
+          }
+          w.line(`${app}.delete<${params}>(${item}, ro, async (req, reply) => ${send}(reply, await service.${o.delete}(req.params.id, await actorOf(req)), 204));`);
         }
-        w.line(`${app}.delete<${params}>(${item}, ro, async (req, reply) => ${send}(reply, await service.${o.delete}(req.params.id, await actorOf(req)), 204));`);
         for (const c of e.commands) {
           w.line(
-            `${app}.post<${params}>(${str(`${restPath(e.obj)}/:id/${c.transition.name}`)}, ro, async (req, reply) => ${send}(reply, await service.${c.fn}(req.params.id, await actorOf(req)), 200, ${toWire}));`,
+            `${app}.post<${params}>(${str(`${e.path}/:id/${c.transition.name}`)}, ro, async (req, reply) => ${send}(reply, await service.${c.fn}(req.params.id, await actorOf(req)), 200, ${toWire}));`,
+          );
+        }
+        for (const r of e.relations) {
+          const relWire = w.use(wireMapperName(r.fn), serviceIndex);
+          w.line(
+            `${app}.get<${params}>(${str(`${e.path}/:id/${r.name}`)}, ro, async (req, reply) => ${send}(reply, await service.${r.fn}(req.params.id, await actorOf(req)), 200, (rows) => rows.map(${relWire})));`,
           );
         }
       }
@@ -860,4 +1147,177 @@ export function renderFastifyTransport(pkg: ServicePackage, ctx: RenderContext):
     }
   });
   return { path, content: w.toString() };
+}
+
+/** The thin Hono transport of package `pkg`: the Fastify transport's routes, on a Hono app. */
+export function renderHonoTransport(pkg: ServicePackage, ctx: RenderContext): ServiceFile {
+  const path = honoTransportPath(pkg.package);
+  const w = new TsWriter();
+  const label = pkg.package === "" ? "the model's root package" : `package ${pkg.package}`;
+  header(w, `${label} — Hono transport (ADR-0067 layer 5)`);
+  const runtime = runtimeSpecifierFrom(path, "service-hono", ctx);
+  const serviceRuntime = runtimeSpecifierFrom(path, "service", ctx);
+  const serviceIndex = contractSpecifier(path, servicePath(pkg.package, SERVICE_INDEX_FILE), ctx.extStyle);
+  const hono = w.useType("Hono", "hono");
+  const context = w.useType("Context", "hono");
+  const send = w.use("sendOpResult", runtime);
+  const guard = w.use("guardRoute", runtime);
+  const readBody = w.use("readBody", runtime);
+  const parseQuery = w.use("parseListQueryString", runtime);
+  const rawQuery = w.use("rawQueryOf", runtime);
+  const type = w.useType(serviceTypeName(pkg.package), serviceIndex);
+  const routes = serviceHonoRoutesName(pkg.package);
+  const prefix = ctx.apiPrefix ?? "";
+  const at = (p: string) => str(`${prefix}${p}`);
+
+  refuseRouteCollisions(transportRoutes(pkg));
+
+  w.doc("What the routes need: the service they call, and who is calling.");
+  w.block(`export interface ${type}HonoRoutesOptions<A = unknown> {`, () => {
+    w.line(`readonly service: ${type}<A>;`);
+    w.doc(
+      "Who a request is for (ADR-0067 §7): the app's own resolver, from its own authentication. The",
+      "service never looks inside the actor; it hands it to the policy, the bodies, the hooks and the",
+      "event hook. Absent, every operation runs with no actor, which a policy may refuse.",
+    );
+    w.line(`readonly getActor?: (c: ${context}) => A | undefined | Promise<A | undefined>;`);
+  });
+  w.blank();
+  w.doc(
+    `Mount the REST routes of ${label} on \`app\`. Each route reads the request, resolves the actor,`,
+    "calls one operation of the service and answers what it answered; it holds no rules. Call it",
+    `with the service: \`${routes}(app, { service, getActor })\`.`,
+  );
+  w.block(`export function ${routes}<A = unknown>(app: ${hono}<any, any, any>, opts: ${type}HonoRoutesOptions<A>): void {`, () => {
+    w.line("const { service } = opts;");
+    w.line(`const actorOf = async (c: ${context}): Promise<${w.useType("OpOptions", serviceRuntime)}<A>> => ({ actor: (await opts.getActor?.(c)) as A | undefined });`);
+    // Hono tries routes in the order they are added, where Fastify's router prefers a fixed path
+    // segment to a parameter wherever two paths differ. So the routes are added in that order,
+    // `/requests/totals` before `/requests/:id`, and answer as the Fastify transport's do.
+    const routes: Array<{ path: string; emit: () => void }> = [];
+    const route = (path: string, emit: () => void) => routes.push({ path, emit });
+    for (const e of pkg.entities) {
+      const toWire = w.use(wireMapperName(e.obj.name), serviceIndex);
+      const o = e.operations;
+      const basePath = e.path;
+      const itemPath = `${basePath}/:id`;
+      const base = at(basePath);
+      const item = at(itemPath);
+      const id = `c.req.param("id") ?? ""`;
+      const keyed = e.verbs.includes("get");
+      if (e.kind !== "entity") {
+        const listPage = w.use("sendListPage", runtime);
+        const notAllowed = w.use("methodNotAllowed", runtime);
+        const exported = e.kind === "report" && ctx.includeReportExport;
+        const exportOf = exported ? `, { spec: ${w.use(`${e.obj.name}Export`, exportSpecifier(path, e.obj, ctx))}, path: ${str(basePath)} }` : "";
+        const kind = str(e.kind);
+        route(basePath, () => {
+          w.line(`app.get(${base}, ${guard}(async (c) => ${listPage}(c, await service.${o.list}(${parseQuery}(${rawQuery}(c.req.url)), await actorOf(c)), ${toWire}${exportOf})));`);
+          w.line(`// A ${e.kind} is read-only: every write answers 405.`);
+          w.line(`app.post(${base}, (c) => ${notAllowed}(c, ${kind}));`);
+        });
+        if (keyed) {
+          route(itemPath, () => {
+            w.line(`app.get(${item}, ${guard}(async (c) => ${send}(c, await service.${o.get}(${id}, await actorOf(c)), 200, ${toWire})));`);
+            for (const verb of ["patch", "put", "delete"]) w.line(`app.${verb}(${item}, (c) => ${notAllowed}(c, ${kind}));`);
+          });
+        }
+        continue;
+      }
+      const writable = e.verbs.includes("create");
+      const mods = modulesOf(path, e.obj, ctx);
+      const create = writable ? createInputType(w, e, path, ctx) : "";
+      const patch = writable ? w.useType(`${e.obj.name}Patch`, mods.contract) : "";
+      const writeWire = e.readView ? w.use(writeWireMapperName(e.obj.name), serviceIndex) : toWire;
+      route(basePath, () => {
+        w.block(`app.get(${base}, ${guard}(async (c) => {`, () => {
+          w.line(`const result = await service.${o.list}(${parseQuery}(${rawQuery}(c.req.url)), await actorOf(c));`);
+          w.line(
+            `return ${send}(c, result, 200, (page) => (page.total === undefined ? page.rows.map(${toWire}) : { rows: page.rows.map(${toWire}), total: page.total }));`,
+          );
+        }, "}));");
+        if (!writable) return;
+        w.block(`app.post(${base}, ${guard}(async (c) => {`, () => {
+          w.line(`const read = await ${readBody}(c);`);
+          w.line("if (!read.ok) return read.response;");
+          w.line(`return ${send}(c, await service.${o.create}(read.body as ${create}, await actorOf(c)), 201, ${writeWire});`);
+        }, "}));");
+      });
+      route(itemPath, () => {
+        w.line(`app.get(${item}, ${guard}(async (c) => ${send}(c, await service.${o.get}(${id}, await actorOf(c)), 200, ${toWire})));`);
+        if (!writable) return;
+        w.line("// The update is reachable by PATCH and by PUT, as in every port.");
+        for (const verb of ["patch", "put"]) {
+          w.block(`app.${verb}(${item}, ${guard}(async (c) => {`, () => {
+            w.line(`const read = await ${readBody}(c);`);
+            w.line("if (!read.ok) return read.response;");
+            w.line(`return ${send}(c, await service.${o.update}(${id}, read.body as ${patch}, await actorOf(c)), 200, ${writeWire});`);
+          }, "}));");
+        }
+        w.line(`app.delete(${item}, ${guard}(async (c) => ${send}(c, await service.${o.delete}(${id}, await actorOf(c)), 204)));`);
+      });
+      for (const c of e.commands) {
+        const path = `${itemPath}/${c.transition.name}`;
+        route(path, () =>
+          w.line(`app.post(${at(path)}, ${guard}(async (c) => ${send}(c, await service.${c.fn}(${id}, await actorOf(c)), 200, ${toWire})));`),
+        );
+      }
+      for (const r of e.relations) {
+        const path = `${itemPath}/${r.name}`;
+        const relWire = w.use(wireMapperName(r.fn), serviceIndex);
+        route(path, () =>
+          w.line(`app.get(${at(path)}, ${guard}(async (c) => ${send}(c, await service.${r.fn}(${id}, await actorOf(c)), 200, (rows) => rows.map(${relWire}))));`),
+        );
+      }
+    }
+    for (const op of pkg.operations) {
+      const key = op.keyed ? op.target!.keyField : undefined;
+      const fromGet = op.method === "GET" || op.method === "DELETE";
+      const readsBody = op.input !== undefined && !fromGet;
+      const args = [
+        ...(key === undefined ? [] : [`c.req.param(${str(key)}) ?? ""`]),
+        ...(op.input !== undefined ? [`(${fromGet ? "c.req.query()" : "read.body ?? {}"}) as never`] : []),
+        ...(op.kind === "query" && op.many ? [`${parseQuery}(${rawQuery}(c.req.url))`] : []),
+        "await actorOf(c)",
+      ];
+      const result = `await service.${op.name}(${args.join(", ")})`;
+      const wire = outputIsTargetRow(op) ? `, ${w.use(wireMapperName(op.target!.obj.name), serviceIndex)}` : "";
+      const status = op.output === undefined && op.kind === "command" ? "204" : "200";
+      const head = `app.${op.method.toLowerCase()}(${at(op.path)}, ${guard}(async (c) => `;
+      route(op.path, () => {
+        if (!readsBody) {
+          w.line(`${head}${send}(c, ${result}, ${status}${wire})));`);
+          return;
+        }
+        w.block(`${head}{`, () => {
+          w.line(`const read = await ${readBody}(c);`);
+          w.line("if (!read.ok) return read.response;");
+          w.line(`return ${send}(c, ${result}, ${status}${wire});`);
+        }, "}));");
+      });
+    }
+    for (const r of [...routes].sort((a, b) => fixedFirst(a.path, b.path))) r.emit();
+  });
+  return { path, content: w.toString() };
+}
+
+/**
+ * Order two route paths so that, wherever two of them could match one request, the one with a
+ * fixed segment comes first, as Fastify's router prefers it: at the first segment where they
+ * differ, a parameter sorts after any fixed text, and two fixed segments compare as text. A
+ * total order, so the emitted file is the same on every run.
+ */
+function fixedFirst(a: string, b: string): number {
+  const sa = a.split("/");
+  const sb = b.split("/");
+  for (let i = 0; i < Math.min(sa.length, sb.length); i++) {
+    const x = sa[i]!;
+    const y = sb[i]!;
+    if (x === y) continue;
+    const px = x.startsWith(":");
+    const py = y.startsWith(":");
+    if (px !== py) return px ? 1 : -1;
+    return x < y ? -1 : 1;
+  }
+  return sa.length - sb.length;
 }

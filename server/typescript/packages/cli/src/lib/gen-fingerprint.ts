@@ -23,9 +23,11 @@ import { fileURLToPath } from "node:url";
 import type { Collection } from "@metaobjectsdev/sdk/collection";
 import { readManifestState } from "@metaobjectsdev/codegen-ts";
 import { GEN_CONFIG_FILE } from "./gen-collection.js";
+import { CLI_ALIASED_PACKAGES } from "./load-metaobjects-config.js";
+import { packageNameOf } from "./package-name.js";
 
 /** Bumped whenever what goes into the fingerprint changes, so an old stored key never matches. */
-export const FINGERPRINT_FORMAT = 3;
+export const FINGERPRINT_FORMAT = 4;
 
 /** One input: what kind it is, which one, and the SHA-256 of its content. */
 export interface FingerprintEntry {
@@ -169,7 +171,8 @@ function packageEntries(kind: string, dir: string): FingerprintEntry[] {
 
 /**
  * The packages a package runs on: every `@metaobjectsdev/*` dependency, followed all the
- * way, by full identity; every other dependency by its `package.json` (its version).
+ * way, by full identity; every other dependency by its `package.json` (its version). The
+ * shared `seen` set counts one physical copy once, so the engine's copy is not repeated.
  */
 function packageClosureEntries(kind: string, rootDir: string, seen: Set<string>): FingerprintEntry[] {
   const entries: FingerprintEntry[] = [];
@@ -212,8 +215,8 @@ function cliPackageDir(): string | undefined {
 }
 
 /**
- * The engine: this CLI and every package it runs (the config's `@metaobjectsdev/*` imports
- * are aliased onto these copies). A compiled single binary has no package tree on disk; its
+ * The engine: this CLI and every package it runs (the config's imports of the packages in
+ * `CLI_ALIASED_PACKAGES` are aliased onto these copies). A compiled single binary has no package tree on disk; its
  * identity is the binary's own content.
  */
 function engineEntries(seen: Set<string>): FingerprintEntry[] {
@@ -244,11 +247,6 @@ function resolveRelative(spec: string, fromFile: string): string | undefined {
     try { if (statSync(c).isFile()) return c; } catch { /* next */ }
   }
   return undefined;
-}
-
-function packageNameOf(spec: string): string {
-  const parts = spec.split("/");
-  return spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
 }
 
 /**
@@ -284,9 +282,13 @@ function configGraphEntries(configFile: string, projectRoot: string, seen: Set<s
         entries.push({ kind: "generator-package", name, hash: "unresolved" });
         continue;
       }
-      // The engine's own packages are already counted; the CLI aliases the config's
-      // `@metaobjectsdev/*` imports onto them, so the project's copy is not what runs.
-      if (name.startsWith("@metaobjectsdev/")) continue;
+      // The CLI aliases the config file's own imports of the engine's packages onto its
+      // copies, so the project's copy is not what runs for those. Any other `@metaobjectsdev/*`
+      // package (a pack, which the CLI does not depend on) runs from the project like a
+      // third-party one, and a linked copy is hashed by content below. A package such a
+      // package depends on is hashed even when the CLI aliases it, because only the config
+      // file is rewritten; at worst that over-approximates.
+      if (CLI_ALIASED_PACKAGES.has(name)) continue;
       entries.push(...packageClosureEntries("generator-package", dir, seen));
     }
   }

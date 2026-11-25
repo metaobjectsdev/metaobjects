@@ -1,0 +1,474 @@
+{
+  "pack": "metaobjects-delivery",
+  "types": [
+    {
+      "type": "build",
+      "subType": "base",
+      "description": "Abstract build base: the attributes every build.* shares. A build is a child of an app and says how its deployable is made, the same in every environment. Not authored directly: a `build.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "attrs": [
+        {
+          "name": "watchExclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "build",
+      "subType": "command",
+      "description": "The app is built by a command the platform's own builder runs, with no Dockerfile.",
+      "whenToUse": "A buildpack-style build: `npm run build`, `./gradlew bootJar`.",
+      "attrs": [
+        {
+          "name": "command",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The build command, run from the repository root."
+        },
+        {
+          "name": "watchExclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "build",
+      "subType": "dockerfile",
+      "description": "The app is built as a container image from a Dockerfile.",
+      "whenToUse": "Any app whose image is described by a Dockerfile in the repository.",
+      "attrs": [
+        {
+          "name": "context",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The build context directory from the repository root. Absent means the root."
+        },
+        {
+          "name": "path",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The Dockerfile's path from the repository root. Absent means `Dockerfile`."
+        },
+        {
+          "name": "watchExclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "build",
+      "subType": "static",
+      "description": "The app is a directory of files served as they are, optionally produced by a command first.",
+      "whenToUse": "A static site or a single-page client served by a CDN.",
+      "attrs": [
+        {
+          "name": "command",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The command that produces the directory. Absent means the directory is committed as it is."
+        },
+        {
+          "name": "directory",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The directory of files to serve, from the repository root (`dist`)."
+        },
+        {
+          "name": "watchExclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "deployment",
+      "subType": "base",
+      "description": "Abstract deployment base: an app placed in an environment on a platform. A platform pack registers the concrete subtype (`deployment.<platform>`), which takes these attributes and adds the platform's own. A deployment holds only what differs per environment; what is true everywhere sits under the app. An estate repository adds deployments the app never declared and overrides the ones it did by overlay. Not authored directly: a `deployment.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "attrs": [
+        {
+          "name": "app",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The app deployed: `System.app` (`Shop.web`), or `pkg::System.app` from another package. It must resolve to an app.* node (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "branch",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The repository branch whose pushes deploy here."
+        },
+        {
+          "name": "domains",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The public host names that route to the app here."
+        },
+        {
+          "name": "environment",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The environment.* node it deploys to, by name (or `pkg::name`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "region",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The platform's region name."
+        },
+        {
+          "name": "replicas",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "How many copies run. Absent means the platform's default."
+        },
+        {
+          "name": "secrets",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The vault the deployment's secret settings come from, by name (a vault.* of the config pack). Recorded by name only: this pack does not require the config pack."
+        }
+      ],
+      "children": [
+        {
+          "childType": "value",
+          "childSubType": [
+            "literal",
+            "ref"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "environment",
+      "subType": "base",
+      "description": "Abstract environment base. Not authored directly: an `environment.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "environment",
+      "subType": "ephemeral",
+      "description": "An environment created for one change and removed after it: a pull-request preview.",
+      "whenToUse": "Per-branch or per-pull-request previews.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "environment",
+      "subType": "local",
+      "description": "A developer's own machine.",
+      "whenToUse": "The settings and resources a project needs to run on a workstation.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "environment",
+      "subType": "standing",
+      "description": "A named environment that stays up: production, staging. Deployments name it with @environment; a settings vault maps its secrets to it by the same name.",
+      "whenToUse": "Every environment that exists whether or not anyone is working on it.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "runtime",
+      "subType": "process",
+      "description": "How one of an app's processes runs, the same in every environment: its start command, port, health check, shutdown drain and restart policy. A platform generator writes what its platform's file can hold and lists the rest.",
+      "whenToUse": "Every app that runs as a process. A second runtime.process is a second process of the same app (a worker beside the web server).",
+      "attrs": [
+        {
+          "name": "command",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The start command. Absent means the image's or the builder's default."
+        },
+        {
+          "name": "drainSeconds",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "How long the old process keeps running after the new one is healthy, so requests in flight finish."
+        },
+        {
+          "name": "healthPath",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The HTTP path that answers 2xx when the process is ready (`/health`)."
+        },
+        {
+          "name": "healthTimeoutSeconds",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "How long a new deployment may take to pass its health check before it is failed."
+        },
+        {
+          "name": "port",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "The port the process listens on."
+        },
+        {
+          "name": "restart",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "always",
+            "onFailure",
+            "never"
+          ],
+          "description": "When the platform restarts the process after it exits: always, onFailure (a non-zero exit) or never."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "value",
+      "subType": "base",
+      "description": "Abstract value base: how one setting gets its value in one deployment. A child of a deployment. A secret needs no value node: the setting is marked secret and the deployment names its vault. Not authored directly: a `value.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "attrs": [
+        {
+          "name": "setting",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The setting this value is for, as `Group.field` (a field of an object.settings of the config pack). Recorded by name only: this pack does not require the config pack."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "value",
+      "subType": "literal",
+      "description": "The setting takes a fixed value in this deployment.",
+      "whenToUse": "A non-secret value that differs per environment: a profile name, a feature flag, a log level.",
+      "attrs": [
+        {
+          "name": "literal",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The value, as a string (the setting's type parses it). Named @literal because `value` is a reserved structural key."
+        },
+        {
+          "name": "setting",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The setting this value is for, as `Group.field` (a field of an object.settings of the config pack). Recorded by name only: this pack does not require the config pack."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "value",
+      "subType": "ref",
+      "description": "The setting takes a value another node produces at deploy time: a database's connection URL, another app's private address. This is how an address stays out of a repository: it is named, never written.",
+      "whenToUse": "A setting whose value only the platform knows once the resource or app exists.",
+      "attrs": [
+        {
+          "name": "output",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "allowedValues": [
+            "url",
+            "host",
+            "port",
+            "user",
+            "password",
+            "privateUrl",
+            "publicUrl"
+          ],
+          "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply."
+        },
+        {
+          "name": "path",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "A path appended to a URL output (`/api`): the address of one context of the producing app. Only on a url, privateUrl or publicUrl output; a platform generator refuses it on another."
+        },
+        {
+          "name": "producedBy",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The node that produces the value: a resource.* or app.*, as `System.child` (`Shop.db`, or `pkg::System.child`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "setting",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The setting this value is for, as `Group.field` (a field of an object.settings of the config pack). Recorded by name only: this pack does not require the config pack."
+        }
+      ],
+      "children": []
+    }
+  ],
+  "extends": [
+    {
+      "type": "app",
+      "subType": "client",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "build",
+          "childSubType": [
+            "dockerfile",
+            "command",
+            "static"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "childType": "runtime",
+          "childSubType": "process",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "subType": "job",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "build",
+          "childSubType": [
+            "dockerfile",
+            "command",
+            "static"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "childType": "runtime",
+          "childSubType": "process",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "subType": "service",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "build",
+          "childSubType": [
+            "dockerfile",
+            "command",
+            "static"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "childType": "runtime",
+          "childSubType": "process",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "metadata",
+      "subType": "root",
+      "attrs": [],
+      "children": [
+        {
+          "childType": "deployment",
+          "childSubType": "*",
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "environment",
+          "childSubType": [
+            "standing",
+            "ephemeral",
+            "local"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    }
+  ],
+  "commonAttrs": [],
+  "defaultSubTypes": {}
+}

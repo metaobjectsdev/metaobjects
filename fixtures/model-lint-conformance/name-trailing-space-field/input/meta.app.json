@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "defaultCurrencyId "
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

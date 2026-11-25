@@ -18,17 +18,18 @@
 // projection at all; a hand-rolled reference server would answer every scenario
 // by construction and prove nothing about the emitted artifact.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
-import { entityFile, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, routesFile } from "@metaobjectsdev/codegen-ts/generators";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
 import { loadMetadataFile } from "./load-metadata.ts";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 
 export interface ProjectionSeed {
   invoices: Array<{
@@ -51,6 +52,7 @@ export async function startGeneratedProjectionServer(
   connectionUri: string,
   metaPath: string,
   outputLayout: OutputLayout = "flat",
+  lane: ApiLane = "routes",
 ): Promise<GeneratedProjectionServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
@@ -64,14 +66,14 @@ export async function startGeneratedProjectionServer(
   // so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "postgres",
       apiPrefix: "/api",
-      generators: [entityFile(), routesFile()],
+      generators: apiGenerators(lane, [entityFile()], () => [routesFile()]),
     }),
     metadata: root,
   });
@@ -117,28 +119,16 @@ export const db = drizzle(pool);
       SELECT "id", "reference" FROM "invoices";
   `);
 
-  // 4. Import the EMITTED InvoiceSummary route file unmodified and mount it.
-  const routes = (await import(
-    pathToFileURL(emitted.locate("InvoiceSummary.routes.ts")).href
-  )) as { invoiceSummaryRoutes: (f: FastifyInstance) => Promise<void> };
-  const ledgerRoutes = (await import(
-    pathToFileURL(emitted.locate("InvoiceLedger.routes.ts")).href
-  )) as { invoiceLedgerRoutes: (f: FastifyInstance) => Promise<void> };
-  const registerRoutes = (await import(
-    pathToFileURL(emitted.locate("InvoiceRegister.routes.ts")).href
-  )) as { invoiceRegisterRoutes: (f: FastifyInstance) => Promise<void> };
-  const stubRoutes = (await import(
-    pathToFileURL(emitted.locate("InvoiceStub.routes.ts")).href
-  )) as { invoiceStubRoutes: (f: FastifyInstance) => Promise<void> };
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool };
-
-  const fastify = Fastify();
-  await fastify.register(routes.invoiceSummaryRoutes);
-  await fastify.register(ledgerRoutes.invoiceLedgerRoutes);
-  await fastify.register(registerRoutes.invoiceRegisterRoutes);
-  await fastify.register(stubRoutes.invoiceStubRoutes);
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  // 4. Import the EMITTED API unmodified and mount it: the four projections' routes, or the
+  //    service behind its transport.
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: pg.Pool; db: unknown };
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    for (const name of ["InvoiceSummary", "InvoiceLedger", "InvoiceRegister", "InvoiceStub"]) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${name}.routes.ts`)).href)) as Record<string, (f: FastifyInstance) => Promise<void>>;
+      await fastify.register(mod[`${name[0]!.toLowerCase()}${name.slice(1)}Routes`]!);
+    }
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -146,7 +136,7 @@ export const db = drizzle(pool);
       await seedProjection(connectionUri, seed);
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await dbMod.pool.end();
       rmSync(tmp, { recursive: true, force: true });
     },

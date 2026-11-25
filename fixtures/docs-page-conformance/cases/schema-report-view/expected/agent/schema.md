@@ -5,10 +5,10 @@
 The tables, columns and keys this model declares. Read it before writing a query, a migration, or anything that names a table or a column. SQL types, defaults, indexes, checks, constraint names and referential actions are not on this page: the migration files carry them.
 
 - The **DDL is not repeated here.** The migration files are the DDL, they are generated, and they are what runs — this page describes the schema they produce.
-- Change the schema by changing the **metadata** and running `meta migrate`. Never hand-apply SQL to a live database: it drifts from the migration history and collides at the next migrate.
+- Change the schema by changing the **metadata** and writing the migration with the project's migration tool, from the schema `meta schema` prints. Never hand-apply SQL to a live database: it drifts from the migration history and collides at the next migration.
 - `Field` and `Declared` are the METADATA names. Edit those; the column name follows.
 
-> **Nothing in this model declares a `description`.** The tables and columns below are named but not explained. Adding `description` to an entity or a field is the single highest-value change to this page: it is what tells a reader *which* of two plausible columns to use, and it is the same text `meta migrate` emits as a `COMMENT ON`, so it lands in the database too.
+> **Nothing in this model declares a `description`.** The tables and columns below are named but not explained. Adding `description` to an entity or a field is the single highest-value change to this page: it is what tells a reader *which* of two plausible columns to use, and it is the same text `meta schema` emits as a `COMMENT ON`, so it lands in the database too.
 
 ## Tables
 

@@ -23,11 +23,13 @@ import {
   unindexedFkRows,
   warnAdvisory,
   referentialActionConflictRows,
+  unenforcedLifecycleRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { scanForUnindexedForeignKeys, summarizeUnindexedFks, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
+import { scanForUnenforcedLifecycles, type GeneratorEntry, type UnenforcedLifecycleFinding } from "../lib/unenforced-lifecycle-advisory.js";
 import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
@@ -36,6 +38,7 @@ import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-pro
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
+import { responseFindings } from "../lib/response-verify.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { schemaBuildOptions, type SchemaBuildOptions } from "../lib/schema-build-options.js";
@@ -142,6 +145,7 @@ import {
   WIRE_KEY_NULL_MEMBERS,
   WIRE_KEY_DURATIONS,
   type WireFormat,
+  type MetaData,
 } from "@metaobjectsdev/metadata";
 import {
   verify,
@@ -1166,6 +1170,20 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
+    // ADR-0067 §6 — a lifecycle in a project whose generators include no service for that
+    // entity: the flat routes enforce nothing. Only with a loaded config, since the generator
+    // list is what it reads; a project without one (a non-TypeScript port's) has its own list.
+    let unenforcedLifecycles: UnenforcedLifecycleFinding[] = [];
+    try {
+      if (forgeConfig !== undefined) {
+        unenforcedLifecycles = scanForUnenforcedLifecycles(
+          root, forgeConfig.generators as readonly GeneratorEntry[], { skip: collection.imported },
+        );
+      }
+    } catch {
+      // advisory only — never breaks verify.
+    }
+
     const unindexedFkSummary = summarizeUnindexedFks(unindexedFks);
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
@@ -1174,6 +1192,7 @@ export async function verifyCommand(
       ...libraryPrefixRows(libraryPrefix),
       ...unindexedFkRows(unindexedFkSummary === undefined ? [] : [unindexedFkSummary]),
       ...referentialActionConflictRows(actionConflicts),
+      ...unenforcedLifecycleRows(unenforcedLifecycles),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -1209,6 +1228,13 @@ export async function verifyCommand(
           `that disagree on its referential action (advisory — does not fail the build):`,
       );
       warnAdvisory(actionConflicts.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (unenforcedLifecycles.length > 0) {
+      log.warn(
+        `meta verify — ${unenforcedLifecycles.length} entit(ies) declare a lifecycle no service generator ` +
+          `enforces (advisory — does not fail the build):`,
+      );
+      warnAdvisory(unenforcedLifecycles.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (libraryPrefix.length > 0) {
       log.warn(
@@ -1256,12 +1282,31 @@ export async function verifyCommand(
     let checkedTemplates = 0;
 
     for (const tmpl of templates) {
+      // The reply (`@responseRef`): its field tree, and an xml prompt's tag contract
+      // against it. Independent of the payload check below, so it runs first.
+      let replyError = false;
+      for (const f of responseFindings(tmpl)) {
+        const line = `[${tmpl.name}] (reply) ${f.code}: ${f.path}`;
+        if (f.severity === "error") {
+          log.error(line);
+          errorCount++;
+          replyError = true;
+        } else {
+          log.warn(line);
+          warnCount++;
+        }
+      }
+      if (verifyTemplateBody(tmpl) || replyError) checkedTemplates++;
+    }
+
+    // One template's body against its payload; true when the check engaged with it.
+    function verifyTemplateBody(tmpl: MetaData): boolean {
       // ADR-0039: effective attrs — @payloadRef may be inherited via an abstract template.
       const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
       // A typeless/absent @payloadRef is a loader-schema concern, not verify's. Every
       // renderable template needs it (do NOT gate on @textRef — an @kind=email output
       // has no @textRef, and gating on it silently skipped email drift; #193).
-      if (typeof payloadRef !== "string") continue;
+      if (typeof payloadRef !== "string") return false;
 
       // @payloadRef must resolve to a loaded object.value (drives the field tree
       // every render-engine drift check runs against).
@@ -1272,8 +1317,7 @@ export async function verifyCommand(
             `@payloadRef "${payloadRef}" did not resolve to a loaded object.value`,
         );
         errorCount++;
-        checkedTemplates++;
-        continue;
+        return true;
       }
 
       // Collect every renderable mustache ref for this template + whether the
@@ -1304,12 +1348,12 @@ export async function verifyCommand(
           if (typeof textRef === "string") refs = [{ label: "document", ref: textRef }];
         }
       } else {
-        continue; // unknown subtype — loader-schema concern.
+        return false; // unknown subtype — loader-schema concern.
       }
 
       // No renderable body ref present — absent required refs are a loader-schema
       // concern, not verify's (mirrors the pre-#193 behavior for a bodyless template).
-      if (refs.length === 0) continue;
+      if (refs.length === 0) return false;
 
       // Slot/tag requirements are a template.prompt concept; the render-helper's
       // email/document gate does NOT apply them per part (they would false-flag a
@@ -1357,7 +1401,7 @@ export async function verifyCommand(
           }
         }
       }
-      if (anyBodyChecked || anyErrorHere) checkedTemplates++;
+      return anyBodyChecked || anyErrorHere;
     }
 
     if (errorCount > 0) {
@@ -1858,6 +1902,7 @@ export async function verifyCommand(
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
           codegenSchema,
+          genCollection.migrateDialect !== undefined,
         ),
         schemaSettings: codegenSchema,
         requirementLedger,
@@ -1883,7 +1928,7 @@ export async function verifyCommand(
           const probe = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope,
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
-              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
+              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema, genCollection.migrateDialect !== undefined),
               schemaSettings: codegenSchema,
               requirementLedger,
               inLedger: genCollection.inLedger,

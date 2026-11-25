@@ -102,7 +102,7 @@ A derived read-only representation of entities. Its fields are extends-bound / o
 
 A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.
 
-**Owning provider:** metaobjects-core-types
+**Owning provider:** metaobjects-reporting
 
 **When to use:** Dashboard totals, per-day series and per-group summaries that would otherwise be hand-written GROUP BY queries.
 
@@ -110,15 +110,15 @@ A declared report (FR-044): a fixed combination of dimensions and measures of ON
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@collectionName` | string | no |  |  | metaobjects-core-types | The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own). |
-| `@dimensions` | string[] | no |  |  | metaobjects-core-types | Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row. |
-| `@filter` | filter | no |  |  | metaobjects-core-types | Optional row scope over @from's fields; may use relative-date values. |
-| `@from` | string | yes |  |  | metaobjects-core-types | The object.entity whose rows the report aggregates. |
-| `@measures` | string[] | yes |  |  | metaobjects-core-types | Measure names of @from. |
+| `@collectionName` | string | no |  |  | metaobjects-reporting | The name of this object's collection, in the object's own casing (e.g. 'CaseHistory', 'Queues'): the REST collection segment (snake_cased) in every port, the reverse-finder names in C#, TypeScript and Python, the C# DbSet property, and the TypeScript list function, list hook and Drizzle table variable. It need not be a grammatical plural. Absent, the project's pluralizer derives it from the object's name (naming.collections in .metaobjects/config.json; built in: standard, none; an application may register its own). |
+| `@dimensions` | string[] | no |  |  | metaobjects-reporting | Dimension names of @from; a time dimension is written 'name:grain'. Absent means one global row. |
+| `@filter` | filter | no |  |  | metaobjects-reporting | Optional row scope over @from's fields; may use relative-date values. |
+| `@from` | string | yes |  |  | metaobjects-reporting | The object.entity whose rows the report aggregates. |
+| `@measures` | string[] | yes |  |  | metaobjects-reporting | Measure names of @from. |
 | `@object` | string | no |  |  | metaobjects-core-types | The native class an object binds to (ADR-0001), in place of its default runtime class: on the JVM, a fully-qualified class name. Cross-port vocabulary only Java implements so far; every port loads and type-checks it, and the others do not act on it yet. |
 | `@objectAdapter` | string | no |  |  | metaobjects-core-types | JVM-only (ADR-0005): the fully-qualified name of an ObjectAdapter that takes over value access for this object's instances. Every port loads and type-checks it; only Java and Kotlin act on it. |
-| `@segment` | string | no |  |  | metaobjects-core-types | Optional segment of @from scoping the rows. |
-| `@spine` | string | no |  |  | metaobjects-core-types | Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report. |
+| `@segment` | string | no |  |  | metaobjects-reporting | Optional segment of @from scoping the rows. |
+| `@spine` | string | no |  |  | metaobjects-reporting | Optional to-one path from @from to the entity whose rows supply the report's rows (e.g. 'Purchase.program'), written like a dimension's @via. With it the report has one row per distinct dimension tuple among THAT entity's rows, including the ones no row of @from refers to: a count there is 0 and any other measure is null unless it declares @default. Every listed dimension must be reached through this path. @segment and @filter still scope the rows of @from and never remove a row. A row of @from whose reference is null or matches nothing is in no row of the report. |
 
 **Allowed children**
 

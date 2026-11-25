@@ -7,13 +7,14 @@
 // ADR-0015), create each view from buildReportViews (the real lowering, `dialect: "mysql"`),
 // import the EMITTED <Report>.routes.ts files unmodified and mount them.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGen, defineConfig, buildReportViews } from "@metaobjectsdev/codegen-ts";
 import { indexEmitted, type OutputLayout } from "./output-layout.ts";
-import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, reportExport, routesFile } from "@metaobjectsdev/codegen-ts/generators";
+import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import mysql from "mysql2/promise";
 import { REPORT_CORPUS_MAX_ROWS, seedInserts, SERVED_REPORTS, type ReportSeed } from "./api-contract-report-generated-server.ts";
 import { DEFAULT_PHYSICAL_NAMING } from "@metaobjectsdev/metadata";
@@ -90,7 +91,7 @@ const BASE_TABLES: ReadonlyArray<{ name: string; ddl: string }> = [
   },
 ];
 
-export async function startMysqlReportServer(mysqlUrl: string, metaPath: string, outputLayout: OutputLayout = "flat"): Promise<MysqlReportServerHandle> {
+export async function startMysqlReportServer(mysqlUrl: string, metaPath: string, outputLayout: OutputLayout = "flat", lane: ApiLane = "routes"): Promise<MysqlReportServerHandle> {
   const here = dirname(fileURLToPath(import.meta.url));
   const genTmpRoot = join(here, "..", ".gen-tmp");
   mkdirSync(genTmpRoot, { recursive: true });
@@ -102,18 +103,22 @@ export async function startMysqlReportServer(mysqlUrl: string, metaPath: string,
   // so it sets the root to the default rules (ADR-0058: every resolver reads the root).
   root.physicalNaming = DEFAULT_PHYSICAL_NAMING;
   const lr = await runGen({
-    config: defineConfig({ outputLayout: "flat", 
+    config: defineConfig({
       outDir: tmp,
       extStyle: "none",
       outputLayout,
       dbImport: "./db",
       dialect: "mysql",
       apiPrefix: "/api",
-      generators: [
-        entityFile(),
-        routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS }),
-        reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
-      ],
+      generators: apiGenerators(
+        lane,
+        [
+          entityFile(),
+          reportExport({ maxRows: REPORT_CORPUS_MAX_ROWS, xmlNulls: "nil" }),
+        ],
+        () => [routesFile({ reportMaxRows: REPORT_CORPUS_MAX_ROWS })],
+        { reportMaxRows: REPORT_CORPUS_MAX_ROWS },
+      ),
     }),
     metadata: root,
   });
@@ -136,7 +141,7 @@ export const pool = createPool({ uri: ${JSON.stringify(mysqlUrl)}, timezone: "Z"
 export const db = drizzle(pool);
 `;
   writeFileSync(join(tmp, "db.ts"), dbModule, "utf8");
-  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: { end(cb: () => void): void } };
+  const dbMod = (await import(pathToFileURL(join(tmp, "db.ts")).href)) as { pool: { end(cb: () => void): void }; db: unknown };
 
   const admin = await mysql.createConnection({ uri: mysqlUrl, timezone: "Z" });
   const views = buildReportViews(root, { dialect: "mysql" });
@@ -148,18 +153,18 @@ export const db = drizzle(pool);
     await admin.query(`CREATE VIEW \`${v.name}\` AS ${v.sql}`);
   }
 
-  const fastify = Fastify();
-  for (const r of SERVED_REPORTS) {
-    const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
-      string,
-      (f: FastifyInstance) => Promise<void>
-    >;
-    const registrar = mod[r.registrar];
-    if (registrar === undefined) throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
-    await fastify.register(registrar);
-  }
-  await fastify.ready();
-  const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
+  const served = await serveApi(lane, tmp, dbMod.db, async (fastify) => {
+    for (const r of SERVED_REPORTS) {
+      const mod = (await import(pathToFileURL(emitted.locate(`${r.name}.routes.ts`)).href)) as Record<
+        string,
+        (f: FastifyInstance) => Promise<void>
+      >;
+      const registrar = mod[r.registrar];
+      if (registrar === undefined) throw new Error(`${r.name}.routes.ts does not export ${r.registrar}`);
+      await fastify.register(registrar);
+    }
+  });
+  const baseUrl = served.baseUrl;
 
   return {
     baseUrl,
@@ -175,7 +180,7 @@ export const db = drizzle(pool);
       }
     },
     close: async () => {
-      await fastify.close();
+      await served.close();
       await new Promise<void>((done) => dbMod.pool.end(done));
       for (const v of views) await admin.query(`DROP VIEW IF EXISTS \`${v.name}\``);
       for (const t of [...BASE_TABLES].reverse()) await admin.query(`DROP TABLE IF EXISTS \`${t.name}\``);

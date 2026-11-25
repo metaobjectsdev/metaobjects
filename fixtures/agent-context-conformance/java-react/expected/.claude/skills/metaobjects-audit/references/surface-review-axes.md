@@ -26,7 +26,7 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
 - [ ] **D. Prompt pillar.** Every LLM prompt-construction site (see `prompt-anti-patterns.md`),
   including the **unlinked payload** count: for each `@payloadRef` object, how many of its
   fields are linked to the entity field they copy.
-- [ ] **E. Owned generators & scaffold-and-own** (see "Owned-codegen & scaffold-and-own assessment" in `SKILL.md`).
+- [ ] **E. Owned generators & scaffold-and-own** (see "Owned generators and generator gaps" in `SKILL.md`).
 - [ ] **E2. Capability ledger — `requirement.*`** (see `references/requirements.md` and the
   Requirement axis of the capability checklist). The one axis whose hunt is hand-written
   PROSE rather than hand-written code: a `CAPABILITIES.md`, a README features table, a
@@ -240,7 +240,8 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   `object.projection`; `value` carrying identity/source, ADR-0028); copy-pasted base-field
   blocks — or the same-named field re-declared across objects (drift signature 10) — instead of
   abstract + `extends`; `@`-prefixed YAML keys (ADR-0006); DB-type-as-logical-subtype (ADR-0013); per-port
-  migration engine where schema is Node-`meta`-owned (ADR-0015).
+  migration engine where the project's own tool or the `meta migrate` reference helper
+  already migrates (ADR-0015).
 
 - [ ] **H2. Wrong native type — `field.<x>` + `@dbColumnType` that hides the real type
   (CORRECTNESS-ADJACENT finding, NOT advisory axis-I).** The headline instance is a **UUID

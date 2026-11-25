@@ -22,7 +22,7 @@ using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using MetaObjects.IntegrationTests.Runner;
 using Npgsql;
 

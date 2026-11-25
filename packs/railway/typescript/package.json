@@ -1,0 +1,30 @@
+{
+  "name": "@metaobjectsdev/pack-railway",
+  "version": "0.1.0",
+  "description": "The railway pack: deployment.railway and its generators (.railway/railway.ts, the unexpressed facts, secret sync, deploy and doctor scripts, a deploy skill). ADR-0069 independent pack, preview.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@metaobjectsdev/pack-config": "workspace:*",
+    "@metaobjectsdev/pack-delivery": "workspace:*",
+    "@metaobjectsdev/pack-systems": "workspace:*"
+  },
+  "peerDependencies": {
+    "@metaobjectsdev/codegen-ts": ">=1.3.0 <2.0.0",
+    "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0"
+  },
+  "devDependencies": {
+    "@metaobjectsdev/codegen-ts": "workspace:*",
+    "@metaobjectsdev/metadata": "workspace:*"
+  },
+  "license": "Apache-2.0"
+}

@@ -420,18 +420,20 @@ public class MetaData implements Cloneable, Serializable {
         // accept these; the cross-port contract requires Java match. Also
         // accept FQN-qualified attr names (`pkg::name::attr` form) which the
         // loader synthesises for cross-package attr lookups.
-        if ("attr".equals(type)) {
+        // An operation's name may be dotted too ("Order.open"): TS, C# and Python accept it, and the
+        // rules pass (P3) must see it to flag a derived permission name that equals a transition's.
+        if ("attr".equals(type) || "operation".equals(type)) {
             if (name.contains("::")) {
                 for (String part : name.split("::")) {
                     if (!part.matches("^[a-zA-Z][a-zA-Z0-9_.]*$")) {
                         throw new IllegalArgumentException(
-                            "Invalid attr name part '" + part + "' in '" + name
+                            "Invalid " + type + " name part '" + part + "' in '" + name
                                 + "': must follow pattern ^[a-zA-Z][a-zA-Z0-9_.]*$");
                     }
                 }
             } else if (!name.matches("^[a-zA-Z][a-zA-Z0-9_.]*$")) {
                 throw new IllegalArgumentException(
-                    "Invalid attr name '" + name + "': must follow pattern ^[a-zA-Z][a-zA-Z0-9_.]*$");
+                    "Invalid " + type + " name '" + name + "': must follow pattern ^[a-zA-Z][a-zA-Z0-9_.]*$");
             }
             return;
         }

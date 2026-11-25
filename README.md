@@ -170,8 +170,8 @@ first-week wedge plan — and `meta init` picks up from there.
 | Java | **Maven Central `8.2.0`** (`com.metaobjects:*` — the JVM major is npm major + 7) — loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
 | Kotlin | **Maven Central `8.2.0`** — codegen tier on top of Java: 17 generators (entity, Exposed table, names, relations, repository, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller, requirement-tests, api-docs, report-export); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
 | C# | **NuGet `1.2.0`** — loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
-| Python | **PyPI `1.2.0`** — loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
-| Rust | **Crates ready to publish, not yet published** — loader (JSON + YAML), project and source resolution, naming and all 41 validation passes; 578 / 578 metamodel conformance; prompt render and the reply parser (`metaobjects-render`); `cargo meta init` / `gen` / `verify` / `eject` with the `entity`, `client` and `commands` generators (ADR-0065). Schema migrations stay with the Node `meta` tool | [`docs/ports/rust.md`](docs/ports/rust.md) | [`server/rust/`](server/rust/) |
+| Python | **PyPI `1.2.0`** — loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations in your own tool or the Node `meta migrate` reference helper (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
+| Rust | **Crates ready to publish, not yet published** — loader (JSON + YAML), project and source resolution, naming and all 41 validation passes; 584 / 584 metamodel conformance; prompt render and the reply parser (`metaobjects-render`); `cargo meta init` / `gen` / `verify` / `eject` with the `entity`, `client` and `commands` generators (ADR-0065). Schema migrations stay with the Node `meta` tool | [`docs/ports/rust.md`](docs/ports/rust.md) | [`server/rust/`](server/rust/) |
 
 ## Capability matrix
 
@@ -299,8 +299,8 @@ metaobjects/
 ├── README.md                       # you are here
 ├── CLAUDE.md                       # project instructions for Claude
 ├── spec/                           # canonical metamodel docs, ADRs, roadmap
-├── fixtures/                       # 25 cross-language conformance corpora — the oracle
-│   ├── conformance/                # metamodel (loader + serializer + navigation), 410 fixtures
+├── fixtures/                       # cross-language conformance corpora — the oracle (counted in docs/CONFORMANCE.md)
+│   ├── conformance/                # metamodel (loader + serializer + navigation)
 │   ├── yaml-conformance/           # YAML authoring desugar
 │   ├── render-conformance/         # FR-004 byte-identical render oracle
 │   ├── verify-conformance/         # FR-004 template-drift gate
@@ -323,6 +323,8 @@ metaobjects/
 ├── library/                        # shipped libraries, opt-in per project via `libraries: [...]`
 │   ├── ai/                         #   the LLM-call trace envelope (stable)
 │   └── iam/                        #   users, groups, roles, grants (preview)
+├── packs/                          # independent packs, outside the default bundle, each with its
+│                                   #   own version (ADR-0069; listed in packs/README.md)
 ├── templates/                      # canonical api/docs Mustache templates (the SSOT the
 │                                   #   ports embed; byte-gated so copies cannot drift)
 ├── agent-context/                  # the shared source the per-port AI-assistant context

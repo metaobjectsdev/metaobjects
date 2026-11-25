@@ -1,0 +1,87 @@
+{
+  "provider": "metaobjects-systems",
+  "types": [
+    {
+      "type": "system",
+      "subType": "base",
+      "description": "Abstract system base: the shared root of system.internal and system.external. Not authored directly: a `system.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED)."
+    },
+    {
+      "type": "system",
+      "subType": "internal",
+      "extendsBase": true,
+      "description": "A system this team builds and runs: the apps it is made of, the resources they use, and the outside systems they call. It answers what exists and what talks to what, and holds no deploy facts (those are the delivery pack's). Its apps and resources are addressed from outside it as `System.child` (`Shop.web`), or `pkg::System.child` from another package.",
+      "whenToUse": "Every product or service that has at least one app. One system per product; a system documentation explorer and every deploy generator start here.",
+      "children": [
+        { "type": "app", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "resource", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "system", "subType": "external", "name": "*", "min": 0, "max": null }
+      ]
+    },
+    {
+      "type": "system",
+      "subType": "external",
+      "extendsBase": true,
+      "description": "A system someone else runs that an app calls: a payment provider, a chat platform, a model API. Named so an app's @calls can resolve to it; its address and credentials are settings, never attributes here.",
+      "whenToUse": "Any third-party service an app depends on. Declare it inside the system that calls it, or at the document root when several systems share it."
+    },
+    {
+      "type": "app",
+      "subType": "base",
+      "description": "Abstract app base: the attributes every app.* shares. Not authored directly: an `app.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "needs", "isArray": true, "min": 0, "max": 1, "description": "The resources this app uses. Each entry names a resource.* node: a bare name is a resource of the same system; `System.resource` (or `pkg::System.resource`) names one in another. A name that resolves to nothing, or to a node that is not a resource, fails the load (ERR_SYSTEMS_UNRESOLVED_REF)." },
+        { "type": "attr", "subType": "string", "name": "calls", "isArray": true, "min": 0, "max": 1, "description": "The apps and outside systems this app calls. Each entry names an app.* or system.external node: a bare name is one in the same system (an outside system may also be declared at the document root); `System.child` names one in another system. A name that resolves to nothing, or to another kind of node, fails the load (ERR_SYSTEMS_UNRESOLVED_REF). Who may reach whom is derived from this list, so it is the list to keep current." },
+        { "type": "attr", "subType": "string", "name": "settings", "isArray": true, "min": 0, "max": 1, "description": "The settings groups this app reads, by name (an object.settings of the config pack). Recorded by name only: this pack does not require the config pack, so the name is not resolved here." }
+      ]
+    },
+    {
+      "type": "app",
+      "subType": "service",
+      "extendsBase": true,
+      "description": "A long-running process that answers requests: a web server, an API, a socket server. Where and how it runs (build, process, health check, deployments) is the delivery pack's, declared as children it admits.",
+      "whenToUse": "Anything that listens on a port and stays up."
+    },
+    {
+      "type": "app",
+      "subType": "client",
+      "extendsBase": true,
+      "description": "Code that runs on the user's device: a single-page web app, a static site, a mobile app. It calls services; it serves nothing itself.",
+      "whenToUse": "A front end built and shipped as files, whatever serves them.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "shell", "min": 0, "max": 1, "description": "The UI frame (a nav.shell of a UI pack) this client presents, by name. Recorded by name only: no UI pack is required, so the name is not resolved here." }
+      ]
+    },
+    {
+      "type": "app",
+      "subType": "job",
+      "extendsBase": true,
+      "description": "Work that runs to completion and exits: a scheduled task, a migration, a one-off batch. It may run on a schedule (@schedule) or when something triggers it.",
+      "whenToUse": "A cron job, a nightly import, a queue drain that is not a long-running service.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "schedule", "min": 0, "max": 1, "description": "When the job runs, as a five-field cron expression in UTC (`0 3 * * *`). Absent means it runs only when triggered." }
+      ]
+    },
+    {
+      "type": "resource",
+      "subType": "base",
+      "description": "Abstract resource base: the attributes every resource.* shares. Not authored directly: a `resource.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "engine", "min": 0, "max": 1, "description": "The product behind the resource, lower case: postgres, mysql, sqlite, redis, s3, r2. A platform generator reads it to pick the platform's own resource; this pack does not close the list." },
+        { "type": "attr", "subType": "string", "name": "version", "min": 0, "max": 1, "description": "The engine's major version, as a string (`18`)." },
+        { "type": "attr", "subType": "string", "name": "managedBy", "min": 0, "max": 1, "allowedValues": ["platform", "external"], "description": "Who provisions it. platform: the platform an app deploys to creates it beside the app (a platform database). external: it exists outside that platform and is reached by settings (a bucket at another provider). Absent means platform." }
+      ]
+    },
+    { "type": "resource", "subType": "database", "extendsBase": true, "description": "A database an app stores records in.", "whenToUse": "Postgres, MySQL, SQLite or any store an app queries." },
+    { "type": "resource", "subType": "cache", "extendsBase": true, "description": "A cache whose contents can be lost without losing data.", "whenToUse": "Redis or Memcached used for speed, sessions or rate limits." },
+    { "type": "resource", "subType": "bucket", "extendsBase": true, "description": "Object storage: files addressed by key.", "whenToUse": "Uploaded images, exports, static assets kept outside the app." },
+    { "type": "resource", "subType": "keyvalue", "extendsBase": true, "description": "A durable key-value store that is the source of its data, unlike a cache.", "whenToUse": "A platform key-value namespace an app reads and writes as its store." },
+    { "type": "resource", "subType": "queue", "extendsBase": true, "description": "A message queue apps send work through.", "whenToUse": "Work handed from one app to another to run later." },
+    { "type": "resource", "subType": "volume", "extendsBase": true, "description": "A disk attached to an app that survives a restart.", "whenToUse": "A file system path an app writes to and must keep." }
+  ],
+  "extends": [
+    { "type": "metadata", "subType": "root", "children": [
+        { "type": "system", "subType": ["internal", "external"], "name": "*", "min": 0, "max": null }
+      ] }
+  ]
+}

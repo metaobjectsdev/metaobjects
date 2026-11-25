@@ -18,6 +18,7 @@ import {
   FIELD_ATTR_VALUES,
   FIELD_SUBTYPE_ENUM,
   IDENTITY_ATTR_FIELDS,
+  PACKAGE_SEPARATOR,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   OBJECT_REPORT_ATTR_DIMENSIONS,
   OBJECT_REPORT_ATTR_FILTER,
@@ -148,8 +149,12 @@ export class Pages {
 
   // ─── Addresses ───────────────────────────────────────────────────────────────
 
+  /** A top-level node's page. A node whose id is qualified by its type (another type holds
+   *  the plain id) carries the type in its file name too, so the two never share a page. */
   objectPage(n: ExplorerNode): string {
-    return `model/${pkgDir(n.package)}/${pageStem(n.name)}.html`;
+    const qualifier = `[${n.type}.${n.subType}]`;
+    const typed = n.parent === undefined && n.id.endsWith(qualifier) ? `.${n.type}-${n.subType}` : "";
+    return `model/${pkgDir(n.package)}/${pageStem(n.name)}${typed}.html`;
   }
 
   packagePage(pkg: string): string {
@@ -181,7 +186,9 @@ export class Pages {
     const page = this.objectPage(owner);
     if (ownerId === id) return page;
     const member = this.memberOf(ownerId, id);
-    return member !== undefined && ANCHORED_TYPES.has(member.type) ? `${page}#${memberAnchor(member)}` : page;
+    if (member === undefined) return page;
+    // A generic page lists every member, so each one has a row to land on.
+    return ANCHORED_TYPES.has(member.type) || this.ix.kindOf(owner) === "other" ? `${page}#${memberAnchor(member)}` : page;
   }
 
   /** The direct child of `ownerId` that `id` sits in (or is). */
@@ -295,10 +302,10 @@ export class Pages {
   }
 
   private packageCard(from: string, pkg: string): Record<string, unknown> {
-    const members = [...this.ix.objects, ...this.ix.templates].filter((n) => n.package === pkg);
+    const members = [...this.ix.objects, ...this.ix.templates, ...this.ix.others].filter((n) => n.package === pkg);
     const kinds = new Map<string, number>();
     for (const m of members) kinds.set(this.ix.kindOf(m), (kinds.get(this.ix.kindOf(m)) ?? 0) + 1);
-    const order = ["entity", "value", "projection", "report", "prompt", "template", "object"];
+    const order = ["entity", "value", "projection", "report", "prompt", "template", "object", "other"];
     const kindLine = order.filter((k) => kinds.has(k)).map((k) => `<span class="kdot k-${k}">●</span> ${kinds.get(k)} ${plural(k, kinds.get(k) ?? 0)}`).join(" · ");
     const shown = members.slice(0, 12);
     return {
@@ -559,6 +566,60 @@ export class Pages {
     const groups = new Map<string, string[]>();
     for (const f of this.ix.generated(id)) groups.set(f.generatedBy, [...(groups.get(f.generatedBy) ?? []), f.path]);
     return [...groups.keys()].sort(byCodeUnit).map((g) => ({ generator: esc(g), files: (groups.get(g) ?? []).map((p) => esc(p)) }));
+  }
+
+  // ─── Generic node page: any other top-level type ─────────────────────────────
+
+  /** The page of a top-level node the explorer has no specific screen for: what the model
+   *  states about it (attributes, members), why it exists, what points at it, what was
+   *  generated from it. Every value comes off the node; nothing is interpreted. */
+  node(n: ExplorerNode): Record<string, unknown> {
+    const ix = this.ix;
+    const from = this.objectPage(n);
+    const kindLabel = `${n.type}.${n.subType}`;
+    const whyRows = this.whyRows(from, n);
+    const attrs = this.attrRows(from, n);
+    const refBy = [...new Set(ix.doc.edges.filter((e) => e.to === n.id || ix.ownerOf(e.to) === n.id).map((e) => ix.ownerOf(e.from)).filter((id) => id !== n.id))]
+      .sort(byCodeUnit)
+      .map((id) => this.link(from, id));
+    return {
+      id: esc(n.id),
+      name: esc(n.name),
+      kindLabel: esc(kindLabel),
+      crumbsHtml: `<a href="${esc(relHref(from, PAGE_MAP))}">Model</a> › <a href="${esc(relHref(from, this.packagePage(n.package)))}">${esc(n.package === "" ? "(no package)" : n.package)}</a> › ${esc(kindLabel)}`,
+      isAbstract: n.abstract === true,
+      description: this.description(n),
+      extendsHtml: n.extends !== undefined ? this.link(from, n.extends) : "",
+      attrs,
+      hasAttrs: attrs.length > 0,
+      members: ix.children(n.id).map((c) => ({
+        anchor: esc(memberAnchor(c)),
+        kind: esc(`${c.type}.${c.subType}`),
+        nameHtml: ix.reqById.has(c.id) ? this.link(from, c.id) : esc(c.name === "" ? `#${c.order}` : c.name),
+        attrsHtml: this.attrRows(from, c).map((a) => `<span class="mono">@${a.name}</span> ${a.valueHtml}`).join("<br>"),
+        below: ix.children(c.id).length,
+      })),
+      hasMembers: ix.children(n.id).length > 0,
+      whyRows,
+      hasWhy: whyRows.length > 0,
+      whyEmptyHtml: this.whyEmpty(n),
+      referencedByHtml: refBy.join(", "),
+      generated: this.generatedGroups(n.id),
+      hasGenerated: ix.generated(n.id).length > 0,
+      generatedNote: ix.doc.generated === undefined ? "No generation manifest was read." : "Nothing generated is traced to it.",
+    };
+  }
+
+  /** A node's attributes, sorted, each value linked when it names a node. */
+  private attrRows(from: string, n: ExplorerNode): { name: string; valueHtml: string }[] {
+    return Object.keys(n.attrs)
+      .sort(byCodeUnit)
+      .map((k) => {
+        const v = n.attrs[k];
+        const target = typeof v === "string" ? (v.startsWith(PACKAGE_SEPARATOR) ? v.slice(PACKAGE_SEPARATOR.length) : v) : undefined;
+        const linked = target !== undefined && this.ix.byId.has(target) && this.pageOf(target) !== undefined;
+        return { name: esc(k), valueHtml: linked ? this.link(from, target) : `<code>${esc(fmt(v))}</code>` };
+      });
   }
 
   // ─── S4: Prompt (and other template) page ────────────────────────────────────
@@ -897,7 +958,7 @@ export class Pages {
   packageIndex(pkg: string): Record<string, unknown> {
     const ix = this.ix;
     const from = this.packagePage(pkg);
-    const rows = [...ix.objects, ...ix.templates].filter((n) => n.package === pkg).map((n) => {
+    const rows = [...ix.objects, ...ix.templates, ...ix.others].filter((n) => n.package === pkg).map((n) => {
       const s = ix.storage(n.id);
       const st = ix.claimStatus(n.id);
       return {

@@ -53,7 +53,7 @@ Every stock generator can be used two ways:
 | | Import it | Own a copy |
 |---|---|---|
 | How | `import { entityFile } from "@metaobjectsdev/codegen-ts/generators";` | `meta eject entity`, then `import { entityFile } from "./codegen/generators/entity.js";` |
-| In your repo | the import, nothing else | `codegen/generators/entity.ts`, the template modules it calls under `codegen/templates/`, and for `entity`, `routes` and `routes-hono` the HTTP adapter source under `codegen/runtime/` |
+| In your repo | the import, nothing else | `codegen/generators/entity.ts`, the template modules it calls under `codegen/templates/`, and, for the generators that copy runtime source (listed under [What `meta eject` hands over](#what-meta-eject-hands-over-and-what-stays-core-typescript)), that source under `codegen/runtime/` |
 | An upstream fix | arrives when you upgrade the package | arrives when you merge it into your copy |
 | Changing what it emits | only through its options (`filter`, `target`, `expose`, …) | edit the file |
 | After a package upgrade | output can change; `meta verify --codegen` reports it until you run `meta gen` | output changes only when your copy does |
@@ -175,8 +175,8 @@ falls behind the reference. To drop one:
      imports your project's template modules where the reference imports the package's).
    - **A copy with lines of your own is a customization.** Keep it.
 
-   For `entity`, `routes` and `routes-hono`, check the adapter too. Ejecting one also
-   copied the HTTP adapter into `codegen/runtime/`, and a route fix is often made there
+   For each generator that copies runtime source, check the adapter too. Ejecting one also
+   copied that source into `codegen/runtime/`, and a route fix is often made there
    with the generator file left untouched. The text listing marks each of those files
    `identical`, `DIFFERS` or `not in the package`; `meta gen --list --format json` carries
    the same comparison as `source.runtimeCopy[]` on the generator's row, with a `verdict`
@@ -215,8 +215,8 @@ What the diff in step 4 holds:
   catching up, and you can read it the way you would read an upgrade, only once step 1 has
   confirmed the copy carried no change of your own. A line you had removed from the copy
   comes back in this same diff, and nothing marks it as yours.
-- **`entity`, `routes` and `routes-hono` also move one import.** An ejected `entity`,
-  `routes` or `routes-hono` points its output at the adapter copy in `codegen/runtime/`,
+- **The generators that copy runtime source also move one import.** An ejected one
+  points its output at the copy in `codegen/runtime/`,
   and the packaged generator imports `@metaobjectsdev/runtime-ts`. So those import lines
   change, and the project needs
   `@metaobjectsdev/runtime-ts` installed again (`meta gen --list --format json` gives the
@@ -277,9 +277,9 @@ eject any of them and not the others.
 
 The model and api page sets link to each other, so the runner tells every generator the
 same facts on `ctx.docs`, read from the list: the api surfaces in each target (the
-directory each `apiDocsFile()` writes to, from its `emitsApiDocs` marker) and whether the
-model pages are written (`docsFile()`'s `emitsModelDocs` marker). An owned copy keeps the
-marker, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
+directory each `apiDocsFile()` writes to, from its `provides.apiDocs` declaration) and whether
+the model pages are written (`docsFile()`'s `provides.modelDocs`). An owned copy keeps the
+declaration, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
 somewhere else (another port's, with a `baseUrl` each) and wins over the fact. The agent
 pages need the physical schema, which `meta gen` computes from your dialect and the
 project's `naming` setting when the list includes `agentDocsFile()` (the generator package
@@ -398,6 +398,7 @@ calls it copies the adapter's source too:
 | `entity` | `entity.ts` | `drizzle-fastify/filter-allowlist.ts` — the `FilterAllowlist` / `SortAllowlist` types the entity module's allowlists are typed by |
 | `service` | `service.ts` | `service/index.ts` — the store mechanics the generated service modules call (transaction, row lock, write-rule stamping), and `service/rules.ts`, the business-rules mechanics it re-exports |
 | `service-routes` | `service-routes.ts` | `service/fastify.ts` — the request and reply helpers the generated Fastify transport imports |
+| `service-routes-hono` | `service-routes-hono.ts` | `service/hono.ts` — the same helpers for the generated Hono transport, plus the files it reaches: the Hono route guard, the shared list-query parser and the route-error constants |
 
 The ejected generators point their output at that copy
 (`import { mountCrudRoutes } from "../../codegen/runtime/drizzle-fastify/index.js"`), so
@@ -902,7 +903,8 @@ Through 1.0 both ports also discovered a project-root `template-spec.json` (and 
 nothing declaring a spec fails and names the migration section.
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
-ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
+ADR-0015. `meta migrate` is the reference migration helper for every port, one option beside each
+language's own tool.)*
 
 ## What's shared vs. per-port
 
@@ -1698,20 +1700,27 @@ is no `dotnet meta docs`: see [the migration section](migrations/docs-are-genera
 
 Generated routes call a handful of helpers: the filter parser, the EF Core filter
 dispatch, the value-object validator and the constraint-error mapping. In the package they
-live in `MetaObjects.Codegen.Runtime`. They are helpers, not core, because nothing but
+live in `MetaObjects.AspNetCore` (namespace `MetaObjects.AspNetCore`), which the app references;
+before 1.3.0 they were part of `MetaObjects.Codegen`, under `MetaObjects.Codegen.Runtime`. They are helpers, not core, because nothing but
 generated routes calls them, so an owned routes generator comes with owned copies of them.
 Otherwise a bug in the filter parser would still mean waiting for a MetaObjects release.
 
 `dotnet meta eject routes` therefore also writes their source to `codegen/runtime/`:
-`FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`,
-`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `ConstraintErrors.cs` and
-`Iso8601TimestampConverter.cs`, the converter your host registers for the api contract's
-timestamp spelling. Each file is the packaged source with one change: its namespace becomes
+`FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`, `FilterRules.cs`,
+`FilterValueFormat.cs`, `ListQuery.cs`, `EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`,
+`ConstraintErrors.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `DecimalWire.cs`,
+`DurationWire.cs`, `DecimalRangeEndpointFilter.cs`, `ReportExportHttp.cs`, `SerializerKeys.cs`,
+`RouteErrors.cs` and `Iso8601TimestampConverter.cs`, the converter your host registers for the
+api contract's timestamp spelling. Each file is the packaged source with one change: its namespace becomes
 `Codegen.Runtime`, matching the folder the way `codegen/generators/` matches
 `Codegen.Generators`. The ejected `RoutesGenerator.cs` differs from the reference in one
 more line, its `HelperRuntimeNamespace` constant, so its output says
-`using Codegen.Runtime;`. Ejecting a generator whose output uses none of these, such as
-`entity` or `filter-allowlist`, copies nothing extra.
+`using Codegen.Runtime;`. The filter allowlist's output uses the helper types too (the rule
+table the routes hand to the list parser), so `routes` and `filter-allowlist` are owned
+together: ejecting either writes both, each with that constant changed, and
+`dotnet meta eject --undo routes` gives both back. One owned and one packaged would put two
+copies of the helper types in one build. Ejecting a generator whose output uses none of these,
+such as `entity` or `names`, copies nothing extra.
 
 Wire it in two places:
 
@@ -1728,7 +1737,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 ```
 
 The generated routes then compile against your copy, and the app needs no
-`MetaObjects.Codegen` reference for them. A `codegen/Codegen.csproj` scaffolded by this
+`MetaObjects.AspNetCore` reference for them. A `codegen/Codegen.csproj` scaffolded by this
 version already excludes `runtime/**` from the codegen tool's own build. If yours predates
 it, add `<Compile Remove="runtime/**" />`. The tool builds either way, but the runtime
 belongs to your app, not to the generator.
@@ -1740,7 +1749,7 @@ M of your own` or is `missing`. `dotnet meta verify --codegen` never reads the f
 compares `--out` against a fresh regen, and your runtime copy is owned code, not generated
 output.
 
-What stays in the package is core: `ExtractObject`, the reply parser the prompt-tier
+What stays in `MetaObjects.Codegen` is core: `ExtractObject`, the reply parser the prompt-tier
 modules delegate to, and `M2MResolver`, the metadata-driven M:N traversal. The loader,
 registry, render and verify stay package dependencies too.
 
@@ -1764,8 +1773,10 @@ a conflict only where upstream and you changed the same lines. The same recipe c
 generator copies. Afterwards, bump the version in `codegen/Codegen.csproj` so the next
 diff starts from the right place.
 
-A copy of `RoutesGenerator.cs` ejected before this change still emits
-`using MetaObjects.Codegen.Runtime;` and keeps working against the package. To move it over,
+A copy of `RoutesGenerator.cs` ejected before the helpers were handed over still emits
+`using MetaObjects.Codegen.Runtime;`. Since 1.3.0 that namespace no longer holds the helpers, so
+its output does not compile, and `dotnet meta gen` and `verify` say so. Either set its
+`HelperRuntimeNamespace` constant to `"MetaObjects.AspNetCore"` and reference that package, or
 run the recipe above: the patch carries the `HelperRuntimeNamespace` line and adds
 `codegen/runtime/`.
 

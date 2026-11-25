@@ -294,12 +294,10 @@ pub fn check_templates(tree: &Tree, root: NodeId, project_root: &Path) -> Templa
                 })
                 .unwrap_or_default()
         };
-        let required_slots = strings(ATTR_REQUIRED_SLOTS);
-        let required_tags = strings(ATTR_REQUIRED_TAGS);
         let options = VerifyOptions {
             provider: Some(&provider),
-            required_slots: &required_slots,
-            required_tags: &required_tags,
+            required_slots: strings(ATTR_REQUIRED_SLOTS),
+            required_tags: strings(ATTR_REQUIRED_TAGS),
         };
         for reference in refs {
             let Some(text) = provider.resolve(reference) else {
@@ -514,7 +512,7 @@ fn gate(
             e.path.clone()
         };
         return Err(GenError::new(
-            code_of(&e.code),
+            e.code,
             format!(
                 "render-helper drift: template \"{template}\" ref \"{reference}\" — {}: {detail}",
                 e.code
@@ -522,21 +520,6 @@ fn gate(
         ));
     }
     Ok(())
-}
-
-/// A verify code as the `'static` code a [`GenError`] carries.
-fn code_of(code: &str) -> &'static str {
-    [
-        verify::ERR_VAR_NOT_ON_PAYLOAD,
-        verify::ERR_PARTIAL_UNRESOLVED,
-        verify::ERR_REQUIRED_SLOT_UNUSED,
-        verify::ERR_OUTPUT_TAG_MISSING,
-        verify::ERR_TEMPLATE_SYNTAX,
-        verify::ERR_TEMPLATE_ENGINE_UNSUPPORTED,
-    ]
-    .into_iter()
-    .find(|c| *c == code)
-    .unwrap_or(verify::ERR_TEMPLATE_SYNTAX)
 }
 
 // ---- one prompts crate -----------------------------------------------------------------

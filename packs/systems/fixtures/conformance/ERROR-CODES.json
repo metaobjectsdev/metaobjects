@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "codes": {
+    "ERR_SYSTEMS_UNRESOLVED_REF": "An app's @needs or @calls entry names no node, or names a node of the wrong kind (@needs takes a resource.*, @calls an app.* or a system.external)."
+  }
+}

@@ -33,11 +33,12 @@ import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { libraryManifests } from "@metaobjectsdev/metadata/library";
 import type { GenContext } from "../generator.js";
 import { responseFormatOf } from "./find-inbound.js";
-import { valueObjectImport, valueObjectImportLines } from "./value-object-import.js";
+import { useValueObjectType, valueObjectImport } from "./value-object-import.js";
 import { GENERATED_HEADER, GENERATED_EDIT_NOTE } from "../constants.js";
 import { toPascalCase } from "../naming.js";
 import { tphDiscriminatorPin } from "../tph.js";
 import { withExt } from "../render-context.js";
+import { TsWriter } from "../writer/ts-writer.js";
 
 /** The generator's stable name — the key a library manifest declares its anchor under. */
 export const TRACE_HELPER_STABLE_NAME = "trace-helper";
@@ -123,149 +124,150 @@ export function traceHelperCallsLlm(entity: MetaObject): boolean {
  * `@metaobjectsdev/runtime-ts`, which the helper imports anyway.
  */
 export function renderLlmCallSupport(): string {
-  return [
+  const w = new TsWriter();
+  w.header(
     `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
-    `//`,
-    `// The LLM call loop behind the generated call<Entity> trace helpers. The provider call is`,
-    `// yours: implement LlmClient over your LLM library and pass it in. Nothing here talks to a`,
-    `// provider, keeps a rate table or retries.`,
-    ``,
-    `import type { LlmCallInput } from "@metaobjectsdev/runtime-ts";`,
-    ``,
-    `export interface LlmRequest {`,
-    `  /** The rendered prompt text. */`,
-    `  prompt: string;`,
-    `  /** gen_ai.request.model */`,
-    `  model: string;`,
-    `  /** Optional system prompt text. */`,
-    `  system?: string;`,
-    `  /** Provider params: temperature, max_tokens, top_p, ... */`,
-    `  params?: Record<string, unknown>;`,
-    `}`,
-    ``,
-    `export interface LlmUsage {`,
-    `  /** gen_ai.usage.input_tokens */`,
-    `  inputTokens?: number;`,
-    `  /** gen_ai.usage.output_tokens */`,
-    `  outputTokens?: number;`,
-    `}`,
-    ``,
-    `export interface LlmCompletion {`,
-    `  /** Raw completion text, which the helper extracts the response from. */`,
-    `  body: string;`,
-    `  usage?: LlmUsage;`,
-    `  /** gen_ai.response.model (may differ from the request's model). */`,
-    `  model?: string;`,
-    `  /** The full wire request, stored as llmRequest (falls back to the LlmRequest). */`,
-    `  request?: unknown;`,
-    `  /** gen_ai.response.finish_reasons */`,
-    `  finishReason?: string;`,
-    `}`,
-    ``,
-    `/** The single-method, provider-neutral call seam. */`,
-    `export interface LlmClient {`,
-    `  complete(req: LlmRequest): Promise<LlmCompletion>;`,
-    `}`,
-    ``,
-    `/** Wall clock in ms since the epoch, injectable so tests are deterministic. */`,
-    `export interface Clock {`,
-    `  now(): number;`,
-    `}`,
-    ``,
-    `/** Span and trace id source, injectable so tests are deterministic. */`,
-    `export interface IdGen {`,
-    `  next(): string;`,
-    `}`,
-    ``,
-    `export const systemClock: Clock = { now: () => Date.now() };`,
-    ``,
-    `export const uuidIds: IdGen = { next: () => crypto.randomUUID() };`,
-    ``,
-    `/**`,
-    ` * Maps (model, usage) to a cost in integer USD minor units (cents), or null when unknown.`,
-    ` * No rate table ships: supply your own from your LLM library's usage and your rates.`,
-    ` */`,
-    `export type CostFn = (model: string, usage: LlmUsage | undefined) => number | null;`,
-    ``,
-    `export interface RunLlmCallInput {`,
-    `  /** Discriminator / call identity. */`,
-    `  callType: string;`,
-    `  /** The already-rendered request sent to the client. */`,
-    `  request: LlmRequest;`,
-    `  /** An existing trace to attach to; a new trace id is generated when absent. */`,
-    `  traceId?: string;`,
-    `  parentSpanId?: string;`,
-    `  sessionId?: string;`,
-    `}`,
-    ``,
-    `export interface RunLlmCallDeps {`,
-    `  client: LlmClient;`,
-    `  cost?: CostFn;`,
-    `  clock?: Clock;`,
-    `  ids?: IdGen;`,
-    `}`,
-    ``,
-    `export interface RunLlmCallResult {`,
-    `  /** The base trace input, ready to persist: envelope, raw I/O and status. */`,
-    `  input: LlmCallInput;`,
-    `  /** The provider completion, or undefined when the client threw. */`,
-    `  completion?: LlmCompletion;`,
-    `}`,
-    ``,
-    `/**`,
-    ` * Make the call: generate ids, time it, call the client (a throw becomes an error status,`,
-    ` * never a rethrow) and compute the cost. Persists nothing and extracts nothing; the`,
-    ` * generated call<Entity> does both.`,
-    ` */`,
-    `export async function runLlmCall(input: RunLlmCallInput, deps: RunLlmCallDeps): Promise<RunLlmCallResult> {`,
-    `  const clock = deps.clock ?? systemClock;`,
-    `  const ids = deps.ids ?? uuidIds;`,
-    ``,
-    `  const spanId = ids.next();`,
-    `  const traceId = input.traceId ?? ids.next();`,
-    `  const t0 = clock.now();`,
-    `  const startedAt = new Date(t0).toISOString();`,
-    ``,
-    `  let completion: LlmCompletion | undefined;`,
-    `  let status: "ok" | "error" = "ok";`,
-    `  let errorDetail: string | null = null;`,
-    `  try {`,
-    `    completion = await deps.client.complete(input.request);`,
-    `  } catch (err) {`,
-    `    status = "error";`,
-    `    errorDetail = err instanceof Error ? err.message : String(err);`,
-    `  }`,
-    `  const latencyMs = clock.now() - t0;`,
-    ``,
-    `  // exactOptionalPropertyTypes: assign an optional only when it is defined.`,
-    `  const recInput: LlmCallInput = {`,
-    `    spanId,`,
-    `    traceId,`,
-    `    callType: input.callType,`,
-    `    startedAt,`,
-    `    latencyMs,`,
-    `    requestModel: input.request.model,`,
-    `    llmRequest: completion?.request ?? input.request,`,
-    `    llmResponseText: completion?.body ?? "",`,
-    `    status,`,
-    `    errorDetail,`,
-    `  };`,
-    `  if (input.request.system !== undefined) recInput.system = input.request.system;`,
-    `  if (input.parentSpanId !== undefined) recInput.parentSpanId = input.parentSpanId;`,
-    `  if (input.sessionId !== undefined) recInput.sessionId = input.sessionId;`,
-    `  if (completion?.model !== undefined) recInput.responseModel = completion.model;`,
-    `  if (completion?.usage?.inputTokens !== undefined) recInput.inputTokens = completion.usage.inputTokens;`,
-    `  if (completion?.usage?.outputTokens !== undefined) recInput.outputTokens = completion.usage.outputTokens;`,
-    `  if (completion?.finishReason !== undefined) recInput.finishReason = completion.finishReason;`,
-    `  if (completion !== undefined && deps.cost !== undefined) {`,
-    `    const c = deps.cost(completion.model ?? input.request.model, completion.usage);`,
-    `    if (c !== null) recInput.costMinor = c;`,
-    `  }`,
-    ``,
-    `  return completion !== undefined ? { input: recInput, completion } : { input: recInput };`,
-    `}`,
-    ``,
-  ].join("\n");
+    "//",
+    "// The LLM call loop behind the generated call<Entity> trace helpers. The provider call is",
+    "// yours: implement LlmClient over your LLM library and pass it in. Nothing here talks to a",
+    "// provider, keeps a rate table or retries.",
+  );
+  const llmCallInput = w.useType("LlmCallInput", "@metaobjectsdev/runtime-ts");
+  w.text(`
+      export interface LlmRequest {
+        /** The rendered prompt text. */
+        prompt: string;
+        /** gen_ai.request.model */
+        model: string;
+        /** Optional system prompt text. */
+        system?: string;
+        /** Provider params: temperature, max_tokens, top_p, ... */
+        params?: Record<string, unknown>;
+      }
+
+      export interface LlmUsage {
+        /** gen_ai.usage.input_tokens */
+        inputTokens?: number;
+        /** gen_ai.usage.output_tokens */
+        outputTokens?: number;
+      }
+
+      export interface LlmCompletion {
+        /** Raw completion text, which the helper extracts the response from. */
+        body: string;
+        usage?: LlmUsage;
+        /** gen_ai.response.model (may differ from the request's model). */
+        model?: string;
+        /** The full wire request, stored as llmRequest (falls back to the LlmRequest). */
+        request?: unknown;
+        /** gen_ai.response.finish_reasons */
+        finishReason?: string;
+      }
+
+      /** The single-method, provider-neutral call seam. */
+      export interface LlmClient {
+        complete(req: LlmRequest): Promise<LlmCompletion>;
+      }
+
+      /** Wall clock in ms since the epoch, injectable so tests are deterministic. */
+      export interface Clock {
+        now(): number;
+      }
+
+      /** Span and trace id source, injectable so tests are deterministic. */
+      export interface IdGen {
+        next(): string;
+      }
+
+      export const systemClock: Clock = { now: () => Date.now() };
+
+      export const uuidIds: IdGen = { next: () => crypto.randomUUID() };
+
+      /**
+       * Maps (model, usage) to a cost in integer USD minor units (cents), or null when unknown.
+       * No rate table ships: supply your own from your LLM library's usage and your rates.
+       */
+      export type CostFn = (model: string, usage: LlmUsage | undefined) => number | null;
+
+      export interface Run${llmCallInput} {
+        /** Discriminator / call identity. */
+        callType: string;
+        /** The already-rendered request sent to the client. */
+        request: LlmRequest;
+        /** An existing trace to attach to; a new trace id is generated when absent. */
+        traceId?: string;
+        parentSpanId?: string;
+        sessionId?: string;
+      }
+
+      export interface RunLlmCallDeps {
+        client: LlmClient;
+        cost?: CostFn;
+        clock?: Clock;
+        ids?: IdGen;
+      }
+
+      export interface RunLlmCallResult {
+        /** The base trace input, ready to persist: envelope, raw I/O and status. */
+        input: ${llmCallInput};
+        /** The provider completion, or undefined when the client threw. */
+        completion?: LlmCompletion;
+      }
+
+      /**
+       * Make the call: generate ids, time it, call the client (a throw becomes an error status,
+       * never a rethrow) and compute the cost. Persists nothing and extracts nothing; the
+       * generated call<Entity> does both.
+       */
+      export async function runLlmCall(input: Run${llmCallInput}, deps: RunLlmCallDeps): Promise<RunLlmCallResult> {
+        const clock = deps.clock ?? systemClock;
+        const ids = deps.ids ?? uuidIds;
+
+        const spanId = ids.next();
+        const traceId = input.traceId ?? ids.next();
+        const t0 = clock.now();
+        const startedAt = new Date(t0).toISOString();
+
+        let completion: LlmCompletion | undefined;
+        let status: "ok" | "error" = "ok";
+        let errorDetail: string | null = null;
+        try {
+          completion = await deps.client.complete(input.request);
+        } catch (err) {
+          status = "error";
+          errorDetail = err instanceof Error ? err.message : String(err);
+        }
+        const latencyMs = clock.now() - t0;
+
+        // exactOptionalPropertyTypes: assign an optional only when it is defined.
+        const recInput: ${llmCallInput} = {
+          spanId,
+          traceId,
+          callType: input.callType,
+          startedAt,
+          latencyMs,
+          requestModel: input.request.model,
+          llmRequest: completion?.request ?? input.request,
+          llmResponseText: completion?.body ?? "",
+          status,
+          errorDetail,
+        };
+        if (input.request.system !== undefined) recInput.system = input.request.system;
+        if (input.parentSpanId !== undefined) recInput.parentSpanId = input.parentSpanId;
+        if (input.sessionId !== undefined) recInput.sessionId = input.sessionId;
+        if (completion?.model !== undefined) recInput.responseModel = completion.model;
+        if (completion?.usage?.inputTokens !== undefined) recInput.inputTokens = completion.usage.inputTokens;
+        if (completion?.usage?.outputTokens !== undefined) recInput.outputTokens = completion.usage.outputTokens;
+        if (completion?.finishReason !== undefined) recInput.finishReason = completion.finishReason;
+        if (completion !== undefined && deps.cost !== undefined) {
+          const c = deps.cost(completion.model ?? input.request.model, completion.usage);
+          if (c !== null) recInput.costMinor = c;
+        }
+
+        return completion !== undefined ? { input: recInput, completion } : { input: recInput };
+      }
+  `);
+  return w.toString();
 }
 
 /**
@@ -310,8 +312,6 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
   const extStyle = ctx.config.extStyle ?? "js";
   const requestImport = valueObjectImport(ctx.renderContext, requestVo, outPath, extStyle);
   const responseImport = valueObjectImport(ctx.renderContext, responseVo, outPath, extStyle);
-  const requestType = requestImport.name;
-  const responseType = responseImport.name;
 
   // STI: a trace entity that is a TPH subtype stamps its declared
   // discriminator value as callType and drops callType from the caller input
@@ -358,175 +358,156 @@ export function renderTraceHelper(entity: MetaObject, ctx: GenContext, outPath: 
   const promptFormat = prompt.attr(TEMPLATE_ATTR_FORMAT);
   const renderFormat = typeof promptFormat === "string" ? promptFormat : "text";
 
-  // Build the import block — all imports MUST stay at the top of the emitted file.
-  // `extract` + `render` both live in @metaobjectsdev/render: import them together
-  // (one de-duplicated statement) when the prompt is renderable, else import only
-  // `extract`.
-  const importLines: string[] = [
-    `import type { ObjectManager } from "@metaobjectsdev/runtime-ts";`,
-    `import {`,
-    `  LlmCallDbRecorder,`,
-    `  buildLlmCallRow,`,
-    `  persistLlmCallRow,`,
-    `  extractSchemaFor,`,
-    `  Format,`,
-    `  type LlmCallInput,`,
-    `  type LlmCallRow,`,
-    `} from "@metaobjectsdev/runtime-ts";`,
-    renderable
-      ? `import { extract, render, type ExtractionReport, type Provider } from "@metaobjectsdev/render";`
-      : `import { extract, type ExtractionReport } from "@metaobjectsdev/render";`,
-    `import type { MetaObject } from "@metaobjectsdev/metadata";`,
-    ...valueObjectImportLines([requestImport, responseImport]),
-  ];
+  // All imports are collected by the writer and printed at the top of the file. `extract` and
+  // `render` both live in @metaobjectsdev/render; `render` (and `Provider`) only when the prompt
+  // is renderable.
+  const w = new TsWriter();
+  w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`);
+  const RUNTIME = "@metaobjectsdev/runtime-ts";
+  const RENDER = "@metaobjectsdev/render";
+  for (const name of ["LlmCallDbRecorder", "buildLlmCallRow", "persistLlmCallRow", "extractSchemaFor", "Format"]) w.use(name, RUNTIME);
+  for (const name of ["ObjectManager", "LlmCallInput", "LlmCallRow"]) w.useType(name, RUNTIME);
+  w.use("extract", RENDER);
+  w.useType("ExtractionReport", RENDER);
+  w.useType("MetaObject", "@metaobjectsdev/metadata");
+  const requestType = useValueObjectType(w, requestImport);
+  const responseType = useValueObjectType(w, responseImport);
+
+  w.text(`
+
+      // ---- Typed result -----------------------------------------------------------
+
+      export interface ${entityName}TraceResult {
+        status: "ok" | "error";
+        errorDetail: string | null;
+        /** Parsed response VO, or null when a required field was lost or malformed. */
+        /** Note: voResponse is the plain extracted record typed as the response shape (structural, not an instance). */
+        voResponse: ${responseType} | null;
+      }
+
+      /**
+       * The failure detail when a required response field is unusable — lost (absent) or
+       * malformed (present but not coercible) — else null. Either way its value is missing,
+       * so the response must not be handed back typed as \`${responseType}\`.
+       */
+      function unusableRequired(report: ExtractionReport): string | null {
+        const parts: string[] = [];
+        if (report.hasLostRequired()) parts.push(\`lost required: \${report.lostRequired().join(", ")}\`);
+        if (report.hasMalformedRequired()) parts.push(\`malformed required: \${report.malformedRequired().join(", ")}\`);
+        return parts.length > 0 ? parts.join("; ") : null;
+      }
+
+      // ---- Record helper ----------------------------------------------------------
+
+      /**
+       * Record a single ${entityName} LLM call: extract the response VO and persist a
+       * trace row via ObjectManager regardless of whether extraction succeeded.
+       *
+       * @param om         - ObjectManager wired to the application database.
+       * @param responseMo - MetaObject for \`${responseRef}\` (resolve via the loaded
+       *                     metadata root: \`root.findObject("${responseRef}")\`).
+       *                     Passed explicitly because ObjectManager does not expose
+       *                     its loaded metadata root.
+       * @param input      - LLM call inputs; type \`llmRequest\` as \`${requestType}\`.
+       * @param opts       - Optional \`redact\` hook applied to the row before persist
+       *                     (scrub PII/secrets on the typed path, same as the generic
+       *                     recordLlmCall/callLlm helpers).
+       */
+      export async function ${fnName}(
+        om: ObjectManager,
+        responseMo: MetaObject,
+        input: Omit<LlmCallInput, ${recordInputOmit}> & { llmRequest: ${requestType} },
+        opts?: { redact?: (row: LlmCallRow) => LlmCallRow },
+      ): Promise<${entityName}TraceResult> {
+        const schema = extractSchemaFor(responseMo, ${formatLiteral});
+        const outcome = extract(input.llmResponseText, schema);
+        const errorDetail = unusableRequired(outcome.report);
+        const failed = errorDetail !== null;
+        const status = failed ? ("error" as const) : ("ok" as const);
+        const base = buildLlmCallRow(${recordBuildArg});
+        const row = { ...base, voRequest: input.llmRequest, voResponse: failed ? null : outcome.data };
+        await persistLlmCallRow(new LlmCallDbRecorder(om, "${entityName}"), row, opts?.redact ? { redact: opts.redact } : undefined);
+        return { status, errorDetail, voResponse: failed ? null : (outcome.data as unknown as ${responseType}) };
+      }
+
+  `);
+
   if (renderable) {
+    w.use("render", RENDER);
+    w.useType("Provider", RENDER);
     // The call loop is the project's own module, written beside this one by the same
     // generator (LLM_CALL_SUPPORT_FILE), so the helper imports nothing that is not an
     // ordinary published package (ADR-0024 Amendment 2).
-    importLines.push(
-      `import {`,
-      `  runLlmCall,`,
-      `  type RunLlmCallInput,`,
-      `  type RunLlmCallDeps,`,
-      `  type LlmClient,`,
-      `  type LlmRequest,`,
-      `  type CostFn,`,
-      `  type Clock,`,
-      `  type IdGen,`,
-      `} from "${withExt(`./${LLM_CALL_SUPPORT_MODULE}`, extStyle)}";`,
-    );
-  }
-
-  const lines: string[] = [
-    `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
-    ``,
-    ...importLines,
-    ``,
-    `// ---- Typed result -----------------------------------------------------------`,
-    ``,
-    `export interface ${entityName}TraceResult {`,
-    `  status: "ok" | "error";`,
-    `  errorDetail: string | null;`,
-    `  /** Parsed response VO, or null when a required field was lost or malformed. */`,
-    `  /** Note: voResponse is the plain extracted record typed as the response shape (structural, not an instance). */`,
-    `  voResponse: ${responseType} | null;`,
-    `}`,
-    ``,
-    `/**`,
-    ` * The failure detail when a required response field is unusable — lost (absent) or`,
-    ` * malformed (present but not coercible) — else null. Either way its value is missing,`,
-    ` * so the response must not be handed back typed as \`${responseType}\`.`,
-    ` */`,
-    `function unusableRequired(report: ExtractionReport): string | null {`,
-    `  const parts: string[] = [];`,
-    '  if (report.hasLostRequired()) parts.push(`lost required: ${report.lostRequired().join(", ")}`);',
-    '  if (report.hasMalformedRequired()) parts.push(`malformed required: ${report.malformedRequired().join(", ")}`);',
-    `  return parts.length > 0 ? parts.join("; ") : null;`,
-    `}`,
-    ``,
-    `// ---- Record helper ----------------------------------------------------------`,
-    ``,
-    `/**`,
-    ` * Record a single ${entityName} LLM call: extract the response VO and persist a`,
-    ` * trace row via ObjectManager regardless of whether extraction succeeded.`,
-    ` *`,
-    ` * @param om         - ObjectManager wired to the application database.`,
-    ` * @param responseMo - MetaObject for \`${responseRef}\` (resolve via the loaded`,
-    ` *                     metadata root: \`root.findObject("${responseRef}")\`).`,
-    ` *                     Passed explicitly because ObjectManager does not expose`,
-    ` *                     its loaded metadata root.`,
-    ` * @param input      - LLM call inputs; type \`llmRequest\` as \`${requestType}\`.`,
-    ` * @param opts       - Optional \`redact\` hook applied to the row before persist`,
-    ` *                     (scrub PII/secrets on the typed path, same as the generic`,
-    ` *                     recordLlmCall/callLlm helpers).`,
-    ` */`,
-    `export async function ${fnName}(`,
-    `  om: ObjectManager,`,
-    `  responseMo: MetaObject,`,
-    `  input: Omit<LlmCallInput, ${recordInputOmit}> & { llmRequest: ${requestType} },`,
-    `  opts?: { redact?: (row: LlmCallRow) => LlmCallRow },`,
-    `): Promise<${entityName}TraceResult> {`,
-    `  const schema = extractSchemaFor(responseMo, ${formatLiteral});`,
-    `  const outcome = extract(input.llmResponseText, schema);`,
-    `  const errorDetail = unusableRequired(outcome.report);`,
-    `  const failed = errorDetail !== null;`,
-    `  const status = failed ? ("error" as const) : ("ok" as const);`,
-    `  const base = buildLlmCallRow(${recordBuildArg});`,
-    `  const row = { ...base, voRequest: input.llmRequest, voResponse: failed ? null : outcome.data };`,
-    `  await persistLlmCallRow(new LlmCallDbRecorder(om, "${entityName}"), row, opts?.redact ? { redact: opts.redact } : undefined);`,
-    `  return { status, errorDetail, voResponse: failed ? null : (outcome.data as unknown as ${responseType}) };`,
-    `}`,
-    ``,
-  ];
-
-  if (renderable) {
+    const support = withExt(`./${LLM_CALL_SUPPORT_MODULE}`, extStyle);
+    w.use("runLlmCall", support);
+    for (const name of ["RunLlmCallInput", "RunLlmCallDeps", "LlmClient", "LlmRequest", "CostFn", "Clock", "IdGen"]) w.useType(name, support);
     const callFn = `call${toPascalCase(entityName)}`;
-    lines.push(
-      ``,
-      `// ---- Call helper (GENERATE -> CALL -> record) -------------------------------`,
-      ``,
-      `export interface ${entityName}CallDeps {`,
-      `  om: ObjectManager;`,
-      `  responseMo: MetaObject;`,
-      `  client: LlmClient;`,
-      `  /** Prompt-TEXT resolver for render() (NOT the LLM client). */`,
-      `  provider: Provider;`,
-      `  model: string;`,
-      `  system?: string;`,
-      `  params?: Record<string, unknown>;`,
-      `  cost?: CostFn;`,
-      `  clock?: Clock;`,
-      `  ids?: IdGen;`,
-      `  traceId?: string;`,
-      `  parentSpanId?: string;`,
-      `  sessionId?: string;`,
-      `  /** Optional row-redaction hook applied before persist (scrub PII/secrets). */`,
-      `  redact?: (row: LlmCallRow) => LlmCallRow;`,
-      `}`,
-      ``,
-      `/**`,
-      ` * Render the ${entityName} prompt, call the LLM, then parse + persist a trace`,
-      ` * row (finally-style: a call/parse failure still writes a row).`,
-      ` */`,
-      `export async function ${callFn}(`,
-      `  payload: ${requestType},`,
-      `  deps: ${entityName}CallDeps,`,
-      `): Promise<${entityName}TraceResult> {`,
-      `  const prompt = render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(renderFormat)}, provider: deps.provider });`,
-      // Build request/input/deps conditionally so that an absent optional (T |
-      // undefined) is never assigned to an optional T? property — required for
-      // exactOptionalPropertyTypes-strict consumer projects.
-      `  const request: LlmRequest = { prompt, model: deps.model };`,
-      `  if (deps.system !== undefined) request.system = deps.system;`,
-      `  if (deps.params !== undefined) request.params = deps.params;`,
-      `  const runInput: RunLlmCallInput = { callType: ${JSON.stringify(callTypeValue)}, request };`,
-      `  if (deps.traceId !== undefined) runInput.traceId = deps.traceId;`,
-      `  if (deps.parentSpanId !== undefined) runInput.parentSpanId = deps.parentSpanId;`,
-      `  if (deps.sessionId !== undefined) runInput.sessionId = deps.sessionId;`,
-      `  const runDeps: RunLlmCallDeps = { client: deps.client };`,
-      `  if (deps.cost !== undefined) runDeps.cost = deps.cost;`,
-      `  if (deps.clock !== undefined) runDeps.clock = deps.clock;`,
-      `  if (deps.ids !== undefined) runDeps.ids = deps.ids;`,
-      `  const { input: recInput, completion } = await runLlmCall(runInput, runDeps);`,
-      `  let voResponse: ${responseType} | null = null;`,
-      `  let status = recInput.status;`,
-      `  let errorDetail = recInput.errorDetail;`,
-      `  if (completion !== undefined) {`,
-      `    const outcome = extract(completion.body, extractSchemaFor(deps.responseMo, ${formatLiteral}));`,
-      `    const unusable = unusableRequired(outcome.report);`,
-      `    if (unusable !== null) {`,
-      `      status = "error";`,
-      `      errorDetail = unusable;`,
-      `    } else {`,
-      `      voResponse = outcome.data as unknown as ${responseType};`,
-      `    }`,
-      `  }`,
-      `  const row = { ...buildLlmCallRow({ ...recInput, status, errorDetail }), voRequest: payload, voResponse };`,
-      `  await persistLlmCallRow(new LlmCallDbRecorder(deps.om, ${JSON.stringify(entityName)}), row, deps.redact ? { redact: deps.redact } : undefined);`,
-      `  return { status, errorDetail, voResponse };`,
-      `}`,
-    );
+    // Request, input and deps are built conditionally so that an absent optional (T |
+    // undefined) is never assigned to an optional T? property — required for
+    // exactOptionalPropertyTypes-strict consumer projects.
+    w.blank().text(`
+
+        // ---- Call helper (GENERATE -> CALL -> record) -------------------------------
+
+        export interface ${entityName}CallDeps {
+          om: ObjectManager;
+          responseMo: MetaObject;
+          client: LlmClient;
+          /** Prompt-TEXT resolver for render() (NOT the LLM client). */
+          provider: Provider;
+          model: string;
+          system?: string;
+          params?: Record<string, unknown>;
+          cost?: CostFn;
+          clock?: Clock;
+          ids?: IdGen;
+          traceId?: string;
+          parentSpanId?: string;
+          sessionId?: string;
+          /** Optional row-redaction hook applied before persist (scrub PII/secrets). */
+          redact?: (row: LlmCallRow) => LlmCallRow;
+        }
+
+        /**
+         * Render the ${entityName} prompt, call the LLM, then parse + persist a trace
+         * row (finally-style: a call/parse failure still writes a row).
+         */
+        export async function ${callFn}(
+          payload: ${requestType},
+          deps: ${entityName}CallDeps,
+        ): Promise<${entityName}TraceResult> {
+          const prompt = render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(renderFormat)}, provider: deps.provider });
+          const request: LlmRequest = { prompt, model: deps.model };
+          if (deps.system !== undefined) request.system = deps.system;
+          if (deps.params !== undefined) request.params = deps.params;
+          const runInput: RunLlmCallInput = { callType: ${JSON.stringify(callTypeValue)}, request };
+          if (deps.traceId !== undefined) runInput.traceId = deps.traceId;
+          if (deps.parentSpanId !== undefined) runInput.parentSpanId = deps.parentSpanId;
+          if (deps.sessionId !== undefined) runInput.sessionId = deps.sessionId;
+          const runDeps: RunLlmCallDeps = { client: deps.client };
+          if (deps.cost !== undefined) runDeps.cost = deps.cost;
+          if (deps.clock !== undefined) runDeps.clock = deps.clock;
+          if (deps.ids !== undefined) runDeps.ids = deps.ids;
+          const { input: recInput, completion } = await runLlmCall(runInput, runDeps);
+          let voResponse: ${responseType} | null = null;
+          let status = recInput.status;
+          let errorDetail = recInput.errorDetail;
+          if (completion !== undefined) {
+            const outcome = extract(completion.body, extractSchemaFor(deps.responseMo, ${formatLiteral}));
+            const unusable = unusableRequired(outcome.report);
+            if (unusable !== null) {
+              status = "error";
+              errorDetail = unusable;
+            } else {
+              voResponse = outcome.data as unknown as ${responseType};
+            }
+          }
+          const row = { ...buildLlmCallRow({ ...recInput, status, errorDetail }), voRequest: payload, voResponse };
+          await persistLlmCallRow(new LlmCallDbRecorder(deps.om, ${JSON.stringify(entityName)}), row, deps.redact ? { redact: deps.redact } : undefined);
+          return { status, errorDetail, voResponse };
+        }
+    `);
   }
 
-  return lines.join("\n");
+  return w.toString();
 }

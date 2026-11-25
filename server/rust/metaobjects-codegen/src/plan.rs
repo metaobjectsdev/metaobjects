@@ -859,11 +859,16 @@ fn field_rules(
 impl Plan {
     /// The plan of the model a generator was handed.
     pub fn of(ctx: &GenContext<'_>) -> Result<Plan, GenError> {
-        Plan::build(ctx.tree, ctx.root, ctx.collection)
+        Plan::build(ctx.tree, ctx.root, ctx.collection, ctx.reference_nodes)
     }
 
-    pub fn build(tree: &Tree, root: NodeId, collection: &Collection) -> Result<Plan, GenError> {
-        Plan::build_with(tree, root, collection, None)
+    pub fn build(
+        tree: &Tree,
+        root: NodeId,
+        collection: &Collection,
+        reference: &BTreeSet<String>,
+    ) -> Result<Plan, GenError> {
+        Plan::build_with(tree, root, collection, reference, None)
     }
 
     /// The plan with the concrete `object.projection`s in `projections` planned too, each as a
@@ -880,6 +885,7 @@ impl Plan {
             ctx.tree,
             ctx.root,
             ctx.collection,
+            ctx.reference_nodes,
             Some((suffix, projections)),
         )
     }
@@ -888,12 +894,15 @@ impl Plan {
         tree: &Tree,
         root: NodeId,
         collection: &Collection,
+        reference: &BTreeSet<String>,
         projections: Option<(&str, &HashSet<NodeId>)>,
     ) -> Result<Plan, GenError> {
         // Every concrete entity and value object (and, when asked, projection), in model order.
         let mut structs: Vec<StructPlan> = Vec::new();
         let mut by_node: HashMap<NodeId, usize> = HashMap::new();
         let index = ObjectIndex::build(tree, root);
+        // A reference node loads and resolves but another run owns it (`reference` is the
+        // set the load computed and already vetted).
         for &id in tree.own_children(root) {
             let n = tree.node(id);
             let projection = n.sub_type == OBJECT_PROJECTION;
@@ -903,6 +912,7 @@ impl Plan {
                     || served_read
                     || (projection && projections.is_some_and(|(_, set)| set.contains(&id))))
                 || n.is_abstract
+                || reference.contains(&tree.resolution_key(id))
             {
                 continue;
             }

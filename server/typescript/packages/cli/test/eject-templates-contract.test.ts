@@ -246,11 +246,10 @@ describe("eject contract (typescript) — an owned generator owns what writes it
   });
 
   test("each generator's copy count is stable: the closure is what the registry says it is", () => {
-    // `barrel` and `requirement-tests` call no template module (the latter renders its own
-    // stub and takes only types from the engine), nor does `metamodel-docs` (its pages are
-    // rendered by the metamodel package, which is core), nor does `report-export` (its two emitted
-    // modules are plain string templates held in the generator's own file); every other generator calls one.
-    const callsNone = new Set(["barrel", "requirement-tests", "metamodel-docs", "report-export"]);
+    // `requirement-tests` calls no template module (it renders its own stub and takes only
+    // types from the engine), nor does `metamodel-docs` (its pages are rendered by the
+    // metamodel package, which is core); every other generator calls one.
+    const callsNone = new Set(["requirement-tests", "metamodel-docs"]);
     for (const [name, copy] of owned) {
       const templates = copy.files.filter((f) => f.includes(`${join("codegen", "templates")}`));
       expect(templates.length > 0, name).toBe(!callsNone.has(name));
@@ -307,6 +306,7 @@ const OWNED_OPTIONS: Record<string, unknown> = {
   "routes-hono": { runtimeImport: HTTP_RUNTIME_PACKAGE },
   service: { runtimeImport: HTTP_RUNTIME_PACKAGE },
   "service-routes": { runtimeImport: HTTP_RUNTIME_PACKAGE },
+  "service-routes-hono": { runtimeImport: HTTP_RUNTIME_PACKAGE },
 };
 
 type Factory = (opts?: unknown) => Generator;
@@ -333,6 +333,7 @@ function agentSchema(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]):
       provenance: built.provenance,
       columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
       qualify: qualifiedDbName,
+      migrate: true,
     };
   } catch {
     return undefined;

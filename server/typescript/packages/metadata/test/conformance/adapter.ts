@@ -23,6 +23,8 @@ import { uiProvider } from "../../src/presentation/ui/ui-provider.js";
 import { uiWebProvider } from "../../src/presentation/ui-web/ui-web-provider.js";
 import { rulesProvider } from "../../src/core/rules/rules-provider.js";
 import { viewExpressionsProvider } from "../../src/persistence/view-expressions/view-expressions-provider.js";
+import { reportingProvider } from "../../src/core/reporting/reporting-provider.js";
+import { requirementsProvider } from "../../src/core/requirement/requirements-provider.js";
 import { MetaDataLoader } from "../../src/loader/meta-data-loader.js";
 import type { MetaData } from "../../src/shared/meta-data.js";
 import { canonicalSerialize, canonicalSerializeEffective } from "../../src/serializer-json.js";
@@ -163,6 +165,8 @@ export const PROVIDERS: Readonly<Record<string, MetaDataTypeProvider>> = {
   [uiWebProvider.id]: uiWebProvider,         // "metaobjects-ui-web" (view control attrs)
   [rulesProvider.id]: rulesProvider,         // "metaobjects-rules" (api/operation/binding/transition)
   [viewExpressionsProvider.id]: viewExpressionsProvider, // "metaobjects-view-expressions" (origin.function, @union/@grain)
+  [reportingProvider.id]: reportingProvider, // "metaobjects-reporting" (object.report, dimension/measure/segment)
+  [requirementsProvider.id]: requirementsProvider, // "metaobjects-requirements" (requirement.*)
   // Test-only — provider-extension-* fixtures.
   "example-template-briefing": exampleTemplateBriefingProvider,
   "example-custom-vocabulary": exampleCustomVocabularyProvider,
@@ -179,63 +183,109 @@ function errorCode(err: Error): string {
   return typeof code === "string" ? code : "ERR_UNKNOWN";
 }
 
-export const tsAdapter: ConformanceAdapter = {
-  language: "typescript",
+/**
+ * The adapter, composed over {@link PROVIDERS} plus `extraProviders`.
+ *
+ * `extraProviders` is how an independent pack's corpus runs through this port
+ * (ADR-0069): scripts/pack-conformance.ts passes the pack's provider, keyed by
+ * its id. An extra may add an id and never replace one, so a pack cannot stand
+ * in for a bundled provider.
+ */
+export function createTsAdapter(
+  extraProviders: Readonly<Record<string, MetaDataTypeProvider>> = {},
+): ConformanceAdapter {
+  for (const id of Object.keys(extraProviders)) {
+    if (id in PROVIDERS) {
+      throw new Error(`createTsAdapter: provider id "${id}" is already in the adapter's provider set`);
+    }
+  }
+  const known: Readonly<Record<string, MetaDataTypeProvider>> = { ...PROVIDERS, ...extraProviders };
+  return {
+    language: "typescript",
 
-  async loadFixture(
-    inputDir: string,
-    providers: readonly string[],
-  ): Promise<LoadOutcome> {
-    const resolved: MetaDataTypeProvider[] = providers.map((id) => {
-      const provider = PROVIDERS[id];
-      if (provider === undefined) {
-        throw new Error(`Unknown provider id "${id}"`);
+    async loadFixture(
+      inputDir: string,
+      providers: readonly string[],
+    ): Promise<LoadOutcome> {
+      const resolved: MetaDataTypeProvider[] = providers.map((id) => {
+        const provider = known[id];
+        if (provider === undefined) {
+          throw new Error(`Unknown provider id "${id}"`);
+        }
+        return provider;
+      });
+      // Provider composition errors (duplicate id / missing dep / cycle) are
+      // first-class fixture outcomes: surface them as a code-only LoadOutcome
+      // so the cross-port runner can compare expected-errors.json directly.
+      let registry;
+      try {
+        registry = composeRegistry(resolved);
+      } catch (err) {
+        const code = (err as { code?: unknown }).code;
+        const codeStr = typeof code === "string" ? code : "ERR_UNKNOWN";
+        const compErr: ErrorEnvelopeRecord = {
+          code: codeStr,
+          source: { format: "code", files: [] },
+        };
+        return {
+          tree: undefined as unknown as TreeHandle,
+          errorCodes: [codeStr],
+          warnings: [],
+          errors: [compErr],
+          warningEnvelopes: [],
+        };
       }
-      return provider;
-    });
-    // Provider composition errors (duplicate id / missing dep / cycle) are
-    // first-class fixture outcomes: surface them as a code-only LoadOutcome
-    // so the cross-port runner can compare expected-errors.json directly.
-    let registry;
-    try {
-      registry = composeRegistry(resolved);
-    } catch (err) {
-      const code = (err as { code?: unknown }).code;
-      const codeStr = typeof code === "string" ? code : "ERR_UNKNOWN";
-      const compErr: ErrorEnvelopeRecord = {
-        code: codeStr,
-        source: { format: "code", files: [] },
-      };
-      return {
-        tree: undefined as unknown as TreeHandle,
-        errorCodes: [codeStr],
-        warnings: [],
-        errors: [compErr],
-        warningEnvelopes: [],
-      };
-    }
-    // ADR-0023 — the library's own conformance corpora load STRICT: an
-    // undeclared @-attr is ERR_UNKNOWN_ATTR (no open-attr policy). The public
-    // LoadOptions.strict default stays false so a downstream app can loosen.
-    const result = await MetaDataLoader.fromDirectory(inputDir, { registry, strict: true });
-    // FR5a — surface the full ParseError envelopes; normalize files[] to be
-    // relative to the fixture's inputDir so the cross-port assertion has a
-    // portable file token. Errors without an envelope (rare; only non-ParseError)
-    // synthesize a minimal $-rooted shape.
-    function relativize(f: string): string {
-      const fwd = f.replace(/\\/g, "/");
-      return f.startsWith(inputDir) ? relative(inputDir, f).replace(/\\/g, "/") : fwd;
-    }
-    const envelopes: ErrorEnvelopeRecord[] = result.errors.map((err) => {
-      if (err instanceof ParseError) {
-        const src = err.source;
+      // ADR-0023 — the library's own conformance corpora load STRICT: an
+      // undeclared @-attr is ERR_UNKNOWN_ATTR (no open-attr policy). The public
+      // LoadOptions.strict default stays false so a downstream app can loosen.
+      const result = await MetaDataLoader.fromDirectory(inputDir, { registry, strict: true });
+      // FR5a — surface the full ParseError envelopes; normalize files[] to be
+      // relative to the fixture's inputDir so the cross-port assertion has a
+      // portable file token. Errors without an envelope (rare; only non-ParseError)
+      // synthesize a minimal $-rooted shape.
+      function relativize(f: string): string {
+        const fwd = f.replace(/\\/g, "/");
+        return f.startsWith(inputDir) ? relative(inputDir, f).replace(/\\/g, "/") : fwd;
+      }
+      const envelopes: ErrorEnvelopeRecord[] = result.errors.map((err) => {
+        if (err instanceof ParseError) {
+          const src = err.source;
+          if (src.format === "json" || src.format === "yaml"
+            || src.format === "merged" || src.format === "resolved") {
+            const files = src.files.map(relativize);
+            const jp = (src as { jsonPath?: string }).jsonPath;
+            // FR5d — surface referrer + target on resolved envelopes so the
+            // cross-port runner can assert byte-identical envelopes across all
+            // four ports.
+            const referrer = (src as { referrer?: string }).referrer;
+            const target = (src as { target?: string }).target;
+            const source: ErrorEnvelopeRecord["source"] = {
+              format: src.format,
+              files,
+              ...(jp !== undefined ? { jsonPath: jp } : {}),
+              ...(referrer !== undefined ? { referrer } : {}),
+              ...(target !== undefined ? { target } : {}),
+            };
+            return { code: err.code, message: err.message, source };
+          }
+          return { code: err.code, message: err.message, source: { format: src.format, files: [] } };
+        }
+        const code = (err as { code?: unknown }).code;
+        return {
+          code: typeof code === "string" ? code : "ERR_UNKNOWN",
+          source: { format: "json", files: [], jsonPath: "$" },
+        };
+      });
+      // FR5c-finalize — surface warning envelopes (same envelope shape as
+      // errors). Loader warnings already carry full `LoaderWarning` envelopes;
+      // mirror the error-envelope normalization (relativize files; preserve
+      // jsonPath / referrer / target when present on the source variant).
+      const warningEnvelopes: ErrorEnvelopeRecord[] = result.warnings.map((w) => {
+        const src = w.source;
         if (src.format === "json" || src.format === "yaml"
           || src.format === "merged" || src.format === "resolved") {
           const files = src.files.map(relativize);
           const jp = (src as { jsonPath?: string }).jsonPath;
-          // FR5d — surface referrer + target on resolved envelopes so the
-          // cross-port runner can assert byte-identical envelopes across all
-          // four ports.
           const referrer = (src as { referrer?: string }).referrer;
           const target = (src as { target?: string }).target;
           const source: ErrorEnvelopeRecord["source"] = {
@@ -245,72 +295,46 @@ export const tsAdapter: ConformanceAdapter = {
             ...(referrer !== undefined ? { referrer } : {}),
             ...(target !== undefined ? { target } : {}),
           };
-          return { code: err.code, message: err.message, source };
+          return { code: w.code, source };
         }
-        return { code: err.code, message: err.message, source: { format: src.format, files: [] } };
-      }
-      const code = (err as { code?: unknown }).code;
+        return { code: w.code, source: { format: src.format, files: [] } };
+      });
       return {
-        code: typeof code === "string" ? code : "ERR_UNKNOWN",
-        source: { format: "json", files: [], jsonPath: "$" },
+        tree: result.root,
+        errorCodes: result.errors.map(errorCode),
+        // ConformanceAdapter.LoadOutcome.warnings is `string[]`; the loader now
+        // returns LoaderWarning envelopes (FR5a). Extract the human-readable
+        // message for cross-port string-equality comparison.
+        warnings: result.warnings.map((w) => w.message),
+        errors: envelopes,
+        warningEnvelopes,
       };
-    });
-    // FR5c-finalize — surface warning envelopes (same envelope shape as
-    // errors). Loader warnings already carry full `LoaderWarning` envelopes;
-    // mirror the error-envelope normalization (relativize files; preserve
-    // jsonPath / referrer / target when present on the source variant).
-    const warningEnvelopes: ErrorEnvelopeRecord[] = result.warnings.map((w) => {
-      const src = w.source;
-      if (src.format === "json" || src.format === "yaml"
-        || src.format === "merged" || src.format === "resolved") {
-        const files = src.files.map(relativize);
-        const jp = (src as { jsonPath?: string }).jsonPath;
-        const referrer = (src as { referrer?: string }).referrer;
-        const target = (src as { target?: string }).target;
-        const source: ErrorEnvelopeRecord["source"] = {
-          format: src.format,
-          files,
-          ...(jp !== undefined ? { jsonPath: jp } : {}),
-          ...(referrer !== undefined ? { referrer } : {}),
-          ...(target !== undefined ? { target } : {}),
-        };
-        return { code: w.code, source };
+    },
+
+    canonicalSerialize(tree: TreeHandle): string {
+      return canonicalSerialize(tree as MetaData);
+    },
+
+    canonicalSerializeEffective(tree: TreeHandle): string {
+      return canonicalSerializeEffective(tree as MetaData);
+    },
+
+    navigate(tree: TreeHandle, path: readonly string[]): NodeHandle | undefined {
+      return navigate(tree as MetaData, path);
+    },
+
+    invoke(
+      node: NodeHandle,
+      capabilityId: string,
+      args: Record<string, string | number | boolean>,
+    ): NormalizedResult {
+      const fn = binding[capabilityId];
+      if (fn === undefined) {
+        throw new UnknownCapabilityError(capabilityId);
       }
-      return { code: w.code, source: { format: src.format, files: [] } };
-    });
-    return {
-      tree: result.root,
-      errorCodes: result.errors.map(errorCode),
-      // ConformanceAdapter.LoadOutcome.warnings is `string[]`; the loader now
-      // returns LoaderWarning envelopes (FR5a). Extract the human-readable
-      // message for cross-port string-equality comparison.
-      warnings: result.warnings.map((w) => w.message),
-      errors: envelopes,
-      warningEnvelopes,
-    };
-  },
+      return fn(node as MetaData, args);
+    },
+  };
+}
 
-  canonicalSerialize(tree: TreeHandle): string {
-    return canonicalSerialize(tree as MetaData);
-  },
-
-  canonicalSerializeEffective(tree: TreeHandle): string {
-    return canonicalSerializeEffective(tree as MetaData);
-  },
-
-  navigate(tree: TreeHandle, path: readonly string[]): NodeHandle | undefined {
-    return navigate(tree as MetaData, path);
-  },
-
-  invoke(
-    node: NodeHandle,
-    capabilityId: string,
-    args: Record<string, string | number | boolean>,
-  ): NormalizedResult {
-    const fn = binding[capabilityId];
-    if (fn === undefined) {
-      throw new UnknownCapabilityError(capabilityId);
-    }
-    return fn(node as MetaData, args);
-  },
-};
+export const tsAdapter: ConformanceAdapter = createTsAdapter();

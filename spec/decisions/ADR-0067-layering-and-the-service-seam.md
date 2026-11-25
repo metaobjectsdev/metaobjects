@@ -18,9 +18,13 @@ and every generator below is a helper.
 Layer 0 and layer 1 are generated: `rules-names` and `contract-types` write in TypeScript, and C#
 writes its own names and create and update records. In TypeScript, layers 4 and 5 have started:
 `service` writes each package's derived list, get, create, update and delete in one transaction with
-the declared write rules, and `service-routes` the thin Fastify transport over it (the `service`
-layer label of §5.6). The same generators now write ADR-0066's transitions and declared operations,
-with the policy, bodies, hooks and events interfaces, and enforce the rules at run time. The other
+the declared write rules, for every object the flat routes serve: a projection's and a served
+report's reads (their writes answer 405), a write-through entity's writes read back through its
+view, a single-table hierarchy's polymorphic base reads and per-subtype operations, and each
+many-to-many traversal, and `service-routes` the thin Fastify transport over it, with
+`service-routes-hono` its Hono twin (the `service` layer label of §5.6). The same generators now
+write ADR-0066's transitions and declared operations, with the policy, bodies, hooks and events
+interfaces, and enforce the rules at run time. The other
 ports' shells and the per-package choice of generators are later work. ADR-0066's vocabulary is
 inert at run time in any port whose service generator has not landed.
 
@@ -104,7 +108,7 @@ shell's private state and could call around it.
 | Mapping (2) | Drizzle tables | EF Core entities and `AppDbContext` | none generated | Exposed `Table` objects | none generated | none: row types derive sqlx `FromRow` |
 | Data access (3) | query functions taking `db` | none: the context is the data layer | a generated repository implementation on `ObjectManagerDB`, with the guarded update as a method | Exposed repository functions | a generated repository over the abstract `ObjectManager`, implemented by `ObjectManagerDb` | generated repository functions on sqlx, with the guarded update |
 | Service (4) | a function per operation; `createXService(deps)` | `sealed class XService`, constructor-injected `IXPolicy`, `IXBodies`, `IXEvents`; `services.AddX()` | `@Service` class implementing a generated `XOperations`; constructor injection of `XPolicy` and `XBodies`; `@Transactional` per operation | `class XService(db, policy, bodies, events)`; each operation in `transaction {}`; returns a sealed `OpResult` | a module per package, a function per operation taking an `OpContext`; bodies and policy as `Protocol`s | `struct XService<P, B, E>` over generated traits `XPolicy`, `XBodies`, `XEvents`; each operation takes the transaction and returns `Result<T, XError>` |
-| Transport (5) | Fastify routes | minimal-API route groups | Spring MVC controllers | Spring controllers | FastAPI router with `Depends` | an axum router |
+| Transport (5) | Fastify routes, or Hono routes | minimal-API route groups | Spring MVC controllers | Spring controllers | FastAPI router with `Depends` | an axum router |
 
 **Rust gets layered generators like every other port** (ruled 2026-11-20); it is not exempt. The
 Rust column above is the shape its generators are written to.
@@ -213,8 +217,9 @@ The shell sits in layer 4, and only there:
   queue consumer or an agent tool that calls the service gets the same checks as an HTTP request.
 
 Today's flat generators have no service layer. A project that declares a lifecycle and wires no
-service generator will be advised by `verify` that the lifecycle is not enforced, once that check
-lands (it is not yet emitted); the flat routes enforce nothing. (This replaces the first version of this section, which promised the
+service generator covering it is advised by `verify` (rule `unenforced-lifecycle`, never an exit
+code) that the lifecycle is not enforced; the flat routes enforce nothing. Node `meta verify` emits
+it today, the first port with a service generator. (This replaces the first version of this section, which promised the
 guarded update and the `state_managed` refusal in the flat routes. That would have changed the
 output of five routes generators for projects that asked for nothing.)
 
@@ -257,7 +262,10 @@ permission model, and the model names where a decision is needed, never what the
 
 `meta init`, `dotnet meta init` and `metaobjects init` keep writing an **empty** generator list
 (ADR-0034 Amendment 2), with a comment naming the usual generators. One opt-in flag, on the
-pattern of the existing `--with-docs`, wires the recommended list of §5 instead. Rust's
+pattern of the existing `--with-docs`, wires the recommended list of §5 instead (TypeScript:
+`meta init --with-services`, writing `entityFile()`, `rulesNamesFile()`, `contractTypes()`,
+`serviceFile()` and `serviceRoutesFile()`, with `serviceFile({ interactiveTransactions: false })` on
+D1; `meta gen --list` names the same list under the catalog). Rust's
 `init` writes the project's list the same way. Java and Kotlin have no
 `init`: the documentation carries the recommended pom `<generators>` block.
 
