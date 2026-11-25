@@ -73,8 +73,8 @@ workflows (the step after checkout) refuse a version with no prerelease suffix w
 holds an entry. A release candidate (`1.1.0-rc.3`, or `1.1.0rc3` on PyPI) is allowed.
 
 A publish you type by hand passes through none of those, so run the gate yourself as the
-command before it. This document has it before each of the four: the npm promote in step 3,
-the isolated one-package `bun publish`, the PyPI fallback `uv publish`, and the local
+command before it. This document has it before each of the three: the npm promote in step 3,
+the PyPI fallback `uv publish`, and the local
 `mvn -Prelease deploy`. It exits non-zero on a refusal:
 
 ```
@@ -102,8 +102,9 @@ each one cost a broken/burned release to learn.
 
 ## What gets published
 
-The publish-candidate packages (versioned in lockstep unless a package gets an
-isolated patch). **Enumerate the set each release — do not trust this count** (it
+The publish-candidate packages, versioned in lockstep — there is no single-package
+release (see [Isolated patch (one package)](#isolated-patch-one-package) below).
+**Enumerate the set each release — do not trust this count** (it
 was **13** at 0.11.5); the lockstep set is "every non-`private` package at the
 previous version":
 
@@ -441,7 +442,8 @@ diff explained.
 
 - The JS/TS **workspace root is the repo root** (`/package.json`), globbing
   `server/typescript/packages/*` + `client/web/packages/*` (and the private `examples/dynamic-grid`,
-  which publishes nothing). This is what makes `workspace:*`
+  plus the private pack workspaces under `packs/*/typescript` (ADR-0069) — no core release
+  publishes anything from either). This is what makes `workspace:*`
   resolve uniformly at publish time — don't move it.
 - npm auth as an owner of the `metaobjectsdev` org. The account has 2FA **auth-and-writes**, so for
   an unattended publish use a **Granular/Automation token with the bypass-2FA option**, scoped
