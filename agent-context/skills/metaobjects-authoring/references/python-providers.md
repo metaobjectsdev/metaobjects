@@ -3,6 +3,7 @@
 > Part of the `metaobjects-authoring` skill, "Your own vocabulary". Read it when the project
 > needs a subtype or an attribute the core does not ship, and its Python tools load the
 > metadata.
+> Shape the vocabulary first: `semantic-modelling.md`.
 
 A provider is a `metaobjects.provider.Provider`: an id, the provider ids it depends on, the
 `TypeDefinition`s it adds (a new subtype), and an `on_register` hook that `extend`s existing

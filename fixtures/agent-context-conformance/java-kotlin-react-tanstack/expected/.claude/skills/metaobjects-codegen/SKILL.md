@@ -341,7 +341,9 @@ a generator emits the wrong column type the fix is the field shape, not a templa
 `metaobjects-authoring` skill's `references/choosing-a-shape.md` has the decision procedure
 (an array is `isArray: true`, never an array column type; a native UUID is `field.uuid`, not
 a string plus `@dbColumnType`). The same procedure decides whether custom vocabulary for a
-custom generator is a subtype, a `@kind` variant or an attribute. That vocabulary is a
+custom generator is a subtype, a `@kind` variant or an attribute; what it may say at all (what
+a thing is, never the product, version or step the generator writes) is that skill's
+`references/semantic-modelling.md`. That vocabulary is a
 provider class listed once in the port's project configuration, so `gen`, `verify --codegen`
 and the docs generators all load it (`metaobjects-authoring`, "Your own vocabulary"); a
 generator reads the custom attribute through the resolving accessor like any other.

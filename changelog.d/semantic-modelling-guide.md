@@ -6,5 +6,6 @@
   ordered test for where one fact goes, worked before and after examples, and the wrong turns
   an AI assistant makes. The `metaobjects-authoring` skill carries the same guidance as
   `references/semantic-modelling.md` and opens it whenever custom vocabulary is added or
-  changed; the always-on file gains one rule. Run `meta agent-docs` to take the new text in an
-  existing project. `agent-context/evals/skill-triggers/` gains twelve cases for that skill.
+  changed; the always-on file's vocabulary rule gains one sentence. Run `meta agent-docs` to
+  take the new text in an existing project. `agent-context/evals/skill-triggers/` gains twelve
+  cases for that skill.

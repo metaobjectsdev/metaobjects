@@ -14,8 +14,8 @@ It sits above three pages that each answer a narrower question:
 - [extending-with-providers.md](extending-with-providers.md): how a provider registers it, in
   each language.
 
-> **About the examples.** `plan`, `entitlement`, `role` and `grant` below are invented for this
-> page; a provider of your own would register them. None of them ships, and the infrastructure
+> **About the examples.** `plan`, `entitlement`, `role`, `grant` and `action` below are invented
+> for this page; a provider of your own would register them. None of them ships, and the infrastructure
 > names in particular are not a proposal. The independent packs under
 > [`packs/`](../../packs/README.md) are preview and their vocabulary is not settled: where one
 > of them records a product or a version on a node today, its README states the current fact
@@ -29,10 +29,6 @@ its generators and their configuration. After that, a new queue, a new database 
 is a few lines of metadata, and the generators already know how to set it up, because they
 know how this application behaves. That is also the aim of the default generators: pick a
 platform, and its setup is written from the model.
-
-It keeps the model portable too. Moving to another product or another platform changes
-generators and configuration. The model stays as it is, because it never said which product it
-was.
 
 None of this competes with Terraform, a Dockerfile or a platform's own configuration. Those
 stay the tools that do the work. The model is a layer on top that generates their input, so
@@ -88,7 +84,7 @@ Take one fact and ask these in order. The first that matches decides where it go
 | 1 | Does it say what exists, what kind of thing it is, what it relates to, who may do what to it, or a rule it must keep, and does it pass the upgrade test? | **metadata** |
 | 2 | Is it how one target writes things down: syntax, file layout, an idiom, a sensible default? | **the generator**, as a default |
 | 3 | Is it a choice this project makes that is the same in every environment: which product, which version, which dialect, a naming convention? | **project configuration**, overriding the generator's default |
-| 4 | Is it a *value* that differs per environment: an address, a credential, a size? | **environment configuration**. The model may declare its name, never its value |
+| 4 | Is it a *value* that differs per environment: an address, a credential, a size? | **environment configuration**. The model may declare its name, never its value ([names-only configuration](downstream-metadata-decisions.md#design-rules-for-downstream-vocabulary-that-ages-well)) |
 | 5 | Is it a *fact* that differs per environment: this one has something the others lack? | **metadata**, as a variant that extends a shared base (below) |
 
 This is the same line a source-code generator draws for entities. The model says "an `Order`
@@ -200,11 +196,10 @@ names reserved for planned core vocabulary.
 
 When several nodes are the same thing in different circumstances (one per environment, plan
 tier, region or tenant class), write what they share **once**, on an abstract node. Each
-variant `extends` it and holds only its differences. A child that reuses the name of a base
-child replaces it; any other child is added.
-
-`abstract` and `extends` are core structural keys and need no vocabulary of their own
-([abstracts-and-inheritance.md](abstracts-and-inheritance.md)).
+variant `extends` it and holds only its differences. A child with the same type and the same
+name as a base child replaces it; any other child is added. `abstract` and `extends` are core
+structural keys and need no vocabulary of their own
+([abstracts-and-inheritance.md](abstracts-and-inheritance.md#how-resolution-works)).
 
 <!-- meta-example: external-provider -->
 ```yaml
@@ -263,10 +258,8 @@ transcription of the billing code:
     stripePriceId: price_1QxYz          # a value that differs between test and live
     features: [projects, exports]       # things with facts of their own, flattened to names
     maxProjects: 50                     # ...with those facts scattered beside them
-    maxSeats: 10
     children:
-      - action.enableFeature: { name: enableExports, feature: exports }   # a verb as a node
-      - action.syncToStripe: { name: pushPrice }                          # a step the tooling runs
+      - action.syncToStripe: { name: pushPrice }   # a verb as a node: a step the tooling runs
 ```
 
 Now the sentences, with no product and no step: *A plan is something an account subscribes to.
@@ -283,10 +276,9 @@ entitlement either opens an object or caps how many of it the account may hold.
     children:
       - entitlement.access: { name: projects, objectRef: Project }
       - entitlement.quota: { name: projectLimit, objectRef: Project, limit: 3 }
-      - entitlement.quota: { name: seatLimit, objectRef: Member, limit: 1 }
 
 - plan.recurring:
-    name: Free
+    name: Starter
     extends: Base
 
 - plan.recurring:
@@ -294,8 +286,7 @@ entitlement either opens an object or caps how many of it the account may hold.
     extends: Base
     children:
       - entitlement.access: { name: exports, objectRef: ProjectExport }
-      - entitlement.quota: { name: projectLimit, objectRef: Project, limit: 50 }
-      - entitlement.quota: { name: seatLimit, objectRef: Member, limit: 10 }
+      - entitlement.quota: { name: projectLimit, objectRef: Project, limit: 50 }   # replaces Base's
 ```
 
 Where each line of the first draft went:
@@ -306,13 +297,15 @@ Where each line of the first draft went:
 | `proMonthlyV2` | `Pro`, with `interval: month` | "Monthly" is a fact, so it is an attribute. "V2" is history, which git keeps |
 | `stripeApiVersion` | a generator default | It fails the upgrade test |
 | `stripePriceId` | environment configuration, under a name the generator derives | Test and live differ, so it is a value per environment |
-| `features` + `maxProjects` + `maxSeats` | `entitlement.access` and `entitlement.quota` children | Each has facts of its own, and `Pro` overrides two of them by name |
-| `action.enableFeature` | nothing | Holding the entitlement is what enables it. The check is generated |
+| `features` + `maxProjects` | `entitlement.access` and `entitlement.quota` children | Each has facts of its own, and `Pro` replaces one of them by name |
 | `action.syncToStripe` | nothing | A generator writes the billing catalogue; a script it writes pushes it |
 
 `objectRef` is the name the shipped vocabulary already uses for a reference to an object, so
-the new types reuse it and the reference is resolved at load: renaming `Project` without
-updating the plans fails the build.
+the new types reuse it. The name alone resolves nothing: the provider declares it as a
+reference to an object (a `ReferenceDescriptor`, see
+[extending-with-providers.md](extending-with-providers.md#defining-a-custom-top-level-node-type)).
+With that in place the reference is resolved at load, and renaming `Project` without updating
+the plans fails the build.
 
 Run the upgrade test. The billing provider releases a new API version: no line changes. The
 company moves to another provider: no line changes. Pro's project limit becomes 100: one line
@@ -353,8 +346,6 @@ Each of these is that habit in a different place.
 | **A one-off subtype that adds a relationship** | A subtype used by exactly one node, or one that accepts a child or reference its siblings do not | Make it an instance of an existing subtype. Put the relationship on the type, or make a new type |
 | **Everything flattened into attributes** | A list of names with their facts in sibling attributes; parallel lists; a name that encodes two facts | Give each thing a child node of its own type |
 | **An environment value in the model** | A host name, URL, credential, account id or size, or the same node copied once per environment | Values go in environment configuration. Real differences go in a variant that extends a shared base |
-| **A model that needs configuration to mean anything** | Nothing useful generates until several config files exist | Move those answers into the generator as defaults |
-| **Reproducing the hand-written file exactly** | The generator is tuned until a diff against the old file is empty | Check coverage of its facts, then let the generated file be better |
 
 ## Checklist
 

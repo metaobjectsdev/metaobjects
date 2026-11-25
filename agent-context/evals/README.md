@@ -10,8 +10,11 @@ prompts, model edits that need no generated output) forbid it.
 
 The `metaobjects-authoring` cases cover one part of that skill only: vocabulary of the project's
 own (a custom type, subtype, attribute or provider, or a config file or script to be "put in the
-metadata"), which is where `references/semantic-modelling.md` applies. Their negative cases are
-work that touches a product, a version or an environment value without touching the model.
+metadata"), which is where `references/semantic-modelling.md` applies. They grade skill
+selection only, not whether the agent then opens or follows that reference. Their negative
+cases are work that leaves the model alone: a repository that does not use MetaObjects, infrastructure
+that is deliberately not modelled, an environment value in an env file, business logic and
+queries over generated code, and applying a migration.
 
 Most cases are a fresh request. The `*-midtask-*` cases are the shape real work takes: the
 prompt states what has already been done in the session (entities declared, `meta gen` run, a

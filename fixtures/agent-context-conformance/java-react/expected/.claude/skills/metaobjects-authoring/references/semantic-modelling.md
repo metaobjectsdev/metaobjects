@@ -131,8 +131,8 @@ Then run `references/choosing-a-shape.md` for each concept, and search before re
 
 Several nodes that are the same thing in different circumstances (per environment, tier,
 region) share one `abstract: true` node. Each variant `extends` it and holds only its
-differences. A child that reuses a base child's name replaces it. A variant that repeats a
-line of its base is a copy that will drift: delete the line. Mechanics:
+differences. A child with the same type and name as a base child replaces it. A variant that
+repeats a line of its base is a copy that will drift: delete the line. Mechanics:
 `references/abstracts-and-overlay.md`.
 
 ## Generated output: cover every fact, then do better
@@ -189,6 +189,10 @@ entitlement is what the plan gives on one object of the model.*
 The billing product became project configuration, its API version a generator default, the
 price id an environment value, and the sync a generated script. A new API version or a new
 billing provider changes no line of the model. A new limit changes one.
+
+`objectRef` reuses the shipped name for a reference to an object. Reusing the name resolves
+nothing by itself: register it in the provider as a reference to an object, so a renamed
+`Project` fails the load instead of leaving the plans pointing at nothing.
 
 ## Check before you register or commit
 
