@@ -132,6 +132,8 @@ pub struct TypeDefinition {
     pub max_occurs: Option<i64>,
     pub default_name: Option<String>,
     pub references: Vec<ReferenceDescriptor>,
+    /// The attributes of the registered `<type>.base` were folded into this definition.
+    pub extends_base: bool,
 }
 
 impl TypeDefinition {
@@ -151,6 +153,7 @@ impl TypeDefinition {
             max_occurs: None,
             default_name: None,
             references: Vec::new(),
+            extends_base: false,
         }
     }
 
@@ -315,7 +318,7 @@ impl TypeRegistry {
         // subtype with `extendsBase`, e.g. object.report) is the base owner's, not a new
         // claim: it is not checked against the registering provider, and is stamped with
         // the owner the base attribute already has.
-        let base_names: HashSet<String> = if def.sub_type == SUBTYPE_BASE {
+        let base_names: HashSet<String> = if def.sub_type == SUBTYPE_BASE || !def.extends_base {
             HashSet::new()
         } else {
             self.find(&def.type_name, SUBTYPE_BASE)

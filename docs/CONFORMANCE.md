@@ -486,8 +486,7 @@ indented standalone tag, which shared docs templates rely on), raw-HTML bypass, 
 `has` accessor, and the `-last` list-separator accessor. 2 are error cases: a fixture
 that must refuse carries `expected-error.txt` in place of `expected.txt`, holding the error text
 the render must raise (`render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)`). Every port that runs
-this corpus reads that convention; TypeScript compares the text exactly, and Java, Python, C# and Rust
-require it to appear in the raised message.
+this corpus reads that convention; every port requires it to appear in the raised message (Python's jinja runner compares it exactly).
 
 Two engines read a case differently from the shared baseline (the TypeScript renderer on
 mustache.js), and each runner ledgers the case instead of skipping it, asserting it STILL

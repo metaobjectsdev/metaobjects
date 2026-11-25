@@ -8,7 +8,7 @@ import { render, InMemoryProvider, type RenderFormat } from "../src/index.js";
 //   template.mustache  the entry template
 //   partials/*.mustache  optional partials, referenced as `partials/<name>`
 //   payload.json       the render payload (pre-formatted primitives)
-//   expected.txt       byte-exact expected output, or expected-error.txt: the exact error message
+//   expected.txt       byte-exact expected output, or expected-error.txt: a message the thrown error must contain
 // The same (payload + template) MUST produce expected.txt byte-for-byte.
 const CORPUS = join(import.meta.dir, "../../../../../fixtures/render-conformance");
 
@@ -43,7 +43,7 @@ describe("render-conformance corpus", () => {
       const template = readFileSync(join(dir, "template.mustache"), "utf8");
       const payload = JSON.parse(readFileSync(join(dir, "payload.json"), "utf8"));
       const provider = providerFromPartials(dir);
-      // expected-error.txt (instead of expected.txt): the exact message the render must throw.
+      // expected-error.txt (instead of expected.txt): a message the render's thrown error must contain.
       if (existsSync(join(dir, "expected-error.txt"))) {
         const message = readFileSync(join(dir, "expected-error.txt"), "utf8").replace(/\n$/, "");
         expect(() => render({ template, payload, provider, format: meta.format })).toThrow(message);

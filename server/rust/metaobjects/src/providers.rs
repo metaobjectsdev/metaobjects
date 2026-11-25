@@ -450,6 +450,7 @@ fn define_from_data(
         def.implemented_in = t.implemented_in.clone();
         def.max_occurs = t.max_occurs;
         def.default_name = t.default_name.clone();
+        def.extends_base = t.extends_base;
         out.push(def);
     }
     Ok(out)
