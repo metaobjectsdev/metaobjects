@@ -782,14 +782,14 @@ for payload typing per #270)
 - [`fixtures/conformance/error-origin-passthrough-array-mismatch/`](../../fixtures/conformance/error-origin-passthrough-array-mismatch/) — a `passthrough` field whose array-ness differs from its `@from` source fails with `ERR_PASSTHROUGH_TYPE_MISMATCH`
 - [`fixtures/conformance/origin-passthrough-convert-optout/`](../../fixtures/conformance/origin-passthrough-convert-optout/) — `@convert: true` acknowledges a deliberate type divergence (no cast generated)
 
-**Render engine output (`fixtures/render-conformance/`)** — byte-identical Mustache output across ports
+**Render engine output (`fixtures/render-conformance/`)** — byte-identical Mustache output across ports, except the two engines' ledgered cases recorded at the end of this section
 
 - [`fixtures/render-conformance/render-example-prompt/`](../../fixtures/render-conformance/render-example-prompt/) — `template.prompt` end-to-end render
 - [`fixtures/render-conformance/render-example-email/`](../../fixtures/render-conformance/render-example-email/) — `template.output @format=html` (transactional email)
 - [`fixtures/render-conformance/render-example-spreadsheet/`](../../fixtures/render-conformance/render-example-spreadsheet/) — `@format=csv` with header row
 - [`fixtures/render-conformance/render-csv-injection/`](../../fixtures/render-conformance/render-csv-injection/) — OWASP CSV-injection escaping (leading `= + - @ \t \r`)
 
-**Render engine semantics** — Mustache-spec behavior pinned cross-port (every port's renderer must emit byte-identical output)
+**Render engine semantics** — Mustache-spec behavior pinned cross-port (byte-identical output, the ledgered engine differences recorded below aside)
 
 - [`fixtures/render-conformance/render-dotted-path-lookup/`](../../fixtures/render-conformance/render-dotted-path-lookup/) — `{{a.b.c}}` traversal across nested objects
 - [`fixtures/render-conformance/render-error-missing-variable/`](../../fixtures/render-conformance/render-error-missing-variable/) — a `{{name}}` the payload lacks raises `ERR_VAR_NOT_ON_PAYLOAD` (`expected-error.txt`, in place of `expected.txt`)
@@ -797,7 +797,7 @@ for payload typing per #270)
 - [`fixtures/render-conformance/render-parent-context-fallthrough/`](../../fixtures/render-conformance/render-parent-context-fallthrough/) — a key missing in the current section falls through to the parent context
 - [`fixtures/render-conformance/render-empty-array-falsiness/`](../../fixtures/render-conformance/render-empty-array-falsiness/) — `{{#xs}}…{{/xs}}` over an empty array renders nothing (vs. iterates)
 - [`fixtures/render-conformance/render-falsy-values/`](../../fixtures/render-conformance/render-falsy-values/) — `false`, `null`, an empty string and an empty array are falsy for `{{#x}}` sections; a non-empty object renders its body once
-- [`fixtures/render-conformance/render-zero-falsiness/`](../../fixtures/render-conformance/render-zero-falsiness/) — `0` is falsy for a section too, as JavaScript truthiness reads it (mustache.js, not the Mustache spec text), and still prints as `0`. NaN is falsy the same way in TypeScript, Java, Kotlin and Python; no JSON payload can carry it, and the C# engine reads it as truthy
+- [`fixtures/render-conformance/render-zero-falsiness/`](../../fixtures/render-conformance/render-zero-falsiness/) — `0` is falsy for a section too, as JavaScript truthiness reads it (mustache.js, not the Mustache spec text), and still prints as `0`. NaN is falsy the same way in TypeScript, Java, Kotlin and Python; no JSON payload can carry it, and the C# engine reads NaN as truthy
 - [`fixtures/render-conformance/render-shadowed-dotted-prefix/`](../../fixtures/render-conformance/render-shadowed-dotted-prefix/) — a dotted name, printed or as a section, is tried whole against each context from the innermost outward: `{{a.b}}` inside `{{#items}}` falls through to the enclosing context when the item's `a` has no `b`, and a path that reaches a null does not resolve there
 - [`fixtures/render-conformance/render-list-length/`](../../fixtures/render-conformance/render-list-length/) — a list's `length` reads as a number: printed, and as a section and an inverted section
 - [`fixtures/render-conformance/render-inverted-section/`](../../fixtures/render-conformance/render-inverted-section/) — `{{^x}}…{{/x}}` renders when `x` is falsy/absent

@@ -461,6 +461,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `reporting-*`, `error-dimension-*`, `error-measure-*`, `error-ratio-*`, `error-segment-*`, `error-report-*`, `error-relative-date-*` | [features/reporting.md](features/reporting.md) (the `dimension` / `measure` / `segment` / `object.report` vocabulary and its load-time rules; design in the [FR-044 spec](superpowers/specs/2026-10-02-fr-044-core-reporting-design.md)) |
 | `rules-*`, `error-rules-*` | [features/business-rules.md](features/business-rules.md) (operations, permission names and lifecycles: the vocabulary and its load-time rules, ADR-0066; the `verify` gate has its own corpus, `rules-check-conformance/`) |
 | `provider-extension-*`, `provider-custom-vocabulary-*` | [features/extending-with-providers.md](features/extending-with-providers.md) (a project's own provider: a new subtype plus attributes on an existing type load with it and are refused without it, every port writing the provider in its own language) |
+| `error-packs-left-out-*` | [features/extending-with-providers.md](features/extending-with-providers.md) ([Where vocabulary lives](features/extending-with-providers.md#where-vocabulary-lives): a model that uses a left-out pack's type fails to load, naming the unknown type or subtype) |
 | `object-collection-name` | [features/migrations/physical-naming.md](features/migrations/physical-naming.md) (`@collectionName` and the `collections` pluralizer) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
