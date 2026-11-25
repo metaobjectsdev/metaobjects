@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from metaobjects.config.neutral_config import chose_migrate_dialect
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
+from metaobjects.config.neutral_config import chose_migrate_dialect
 from metaobjects.render.doc_pages import doc_provider, end_with_one_newline, render_doc_page
 from metaobjects.render.verify import Provider
 

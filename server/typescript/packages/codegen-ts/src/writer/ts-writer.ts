@@ -5,6 +5,7 @@
 // (src/poet.ts, the vendored ts-poet printer), harvesting their `imp()` imports, so a generator
 // can move to the writer one function at a time while the rest of it still returns `Code`.
 
+import { compareCodeUnits } from "../code-unit-order.js";
 import { Code, Import, ImportsAll, ImportsDefault, ImportsName, Node, SideEffect } from "../poet.js";
 import { CodeWriter, type CodeWriterOptions, flat, Group, type Piece, WRITER_ERRORS, WriterError } from "./code-writer.js";
 
@@ -235,7 +236,7 @@ export class TsWriter extends CodeWriter {
   /** Package imports first, then relative ones; each group in code-unit order. */
   protected orderModules(modules: readonly string[]): string[] {
     const relative = (m: string) => m.startsWith(".");
-    return [...modules.filter((m) => !relative(m)).sort(byCodeUnit), ...modules.filter(relative).sort(byCodeUnit)];
+    return [...modules.filter((m) => !relative(m)).sort(compareCodeUnits), ...modules.filter(relative).sort(compareCodeUnits)];
   }
 
   protected override piece(p: unknown): Piece {
@@ -305,8 +306,8 @@ export class TsWriter extends CodeWriter {
 
   protected writeImport(w: CodeWriter, from: string, m: ModuleImports): void {
     const tail = ` from ${str(from)};`;
-    for (const ns of [...m.namespaces].sort(byCodeUnit)) w.line(`import * as ${ns}${tail}`);
-    const names = [...m.named].sort(([a], [b]) => byCodeUnit(a, b));
+    for (const ns of [...m.namespaces].sort(compareCodeUnits)) w.line(`import * as ${ns}${tail}`);
+    const names = [...m.named].sort(([a], [b]) => compareCodeUnits(a, b));
     const typeOnly = m.defaultName === undefined && names.length > 0 && names.every(([, n]) => n.typeOnly);
     const items = names.map(([local, n]) => {
       const spec = n.exported === local ? local : `${n.exported} as ${local}`;
@@ -342,4 +343,3 @@ function looksLikeForeignPoet(p: unknown): boolean {
   return typeof p === "object" && p !== null && "toCodeString" in p && "childNodes" in p;
 }
 
-const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

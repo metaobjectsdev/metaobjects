@@ -200,7 +200,8 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     let kept = 0;
     for (const line of after) if (line === before[kept]) kept++;
     expect(kept).toBe(before.length);
-    const ids = after.filter((l) => !before.includes(l) && l.includes(`"type": `)).map((l) => l.trim());
+    const beforeLines = new Set(before);
+    const ids = after.filter((l) => !beforeLines.has(l) && l.includes(`"type": `)).map((l) => l.trim());
     expect([...new Set(ids)].sort()).toEqual(
       [`"type": "api",`, `"type": "binding",`, `"type": "operation",`, `"type": "transition",`],
     );
@@ -209,18 +210,18 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     const graph = (text: string): Record<string, unknown> => JSON.parse(text.slice(text.indexOf("=") + 1).trim().replace(/;$/, ""));
     const g0 = graph(expected[`${site}assets/explorer-data.js`]!);
     const g1 = graph(actual[`${site}assets/explorer-data.js`]!);
-    const search0 = g0.search as Array<{ h: string }>;
-    const search1 = g1.search as Array<{ h: string }>;
-    expect(search1.filter((e) => !search0.some((x) => JSON.stringify(x) === JSON.stringify(e))).map((e) => e.h)).toEqual([
+    const seen = new Set((g0.search as unknown[]).map((e) => JSON.stringify(e)));
+    expect((g1.search as Array<{ h: string }>).filter((e) => !seen.has(JSON.stringify(e))).map((e) => e.h)).toEqual([
       "model/acme/purchasing/Purchasing.html",
     ]);
     expect({ ...g1, search: undefined }).toEqual({ ...g0, search: undefined });
 
     // The HTML pages that list the package's members name the API, and change nowhere else.
     for (const page of [`${site}index.html`, `${site}model/index.html`, `${site}model/acme/purchasing/index.html`]) {
-      const b = expected[page]!.split("\n");
-      const changed = actual[page]!.split("\n").filter((l) => !b.includes(l));
-      expect({ page, all: changed.every((l) => l.includes("acme/purchasing/")) }).toEqual({ page, all: true });
+      const b = new Set(expected[page]!.split("\n"));
+      const changed = actual[page]!.split("\n").filter((l) => !b.has(l));
+      // The page and the offending lines, so a failure names what moved.
+      expect({ page, stray: changed.filter((l) => !l.includes("acme/purchasing/")) }).toEqual({ page, stray: [] });
     }
   });
 

@@ -292,7 +292,7 @@ def agent_requirements_page_data(
                 stated[c["path"]] = {"subType": c["subType"], "statement": c["statement"]}
     statements = [
         {"path": path, "subType": info["subType"], "statement": md_cell(one_line(info["statement"]))}
-        for path, info in sorted(stated.items(), key=lambda kv: kv[0])
+        for path, info in sorted(stated.items())
     ]
 
     def claims_cell(entry: dict[str, Any]) -> str:

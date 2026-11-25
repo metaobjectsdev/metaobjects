@@ -364,7 +364,6 @@ export function requirementTestIdentity(
   };
 }
 
-
 /**
  * Every test the generator would emit for the project's ledger, sorted by id. Pass the
  * collection's `inLedger`, as the generator receives it; omitted, every loaded
