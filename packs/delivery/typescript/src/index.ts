@@ -20,22 +20,32 @@ import {
 } from "@metaobjectsdev/metadata";
 import { SYSTEMS_PROVIDER_ID, TYPE_APP, TYPE_RESOURCE, checkRefs, packTypeMaps, refList, resolveSystemRef } from "@metaobjectsdev/pack-systems";
 import definition from "../../metamodel/delivery.json" with { type: "json" };
+import { readProcesses } from "./readers.js";
 import {
+  APP_OUTPUTS,
   DELIVERY_PROVIDER_ID,
   DEPLOYMENT_ATTR_APP,
   DEPLOYMENT_ATTR_ENVIRONMENT,
   ERR_DELIVERY_DUPLICATE_DEPLOYMENT,
   ERR_DELIVERY_DUPLICATE_SETTING,
   ERR_DELIVERY_UNRESOLVED_REF,
+  ERR_DELIVERY_UNSUPPORTED_OUTPUT,
+  PORT_OUTPUTS,
   TYPE_BUILD,
   TYPE_DEPLOYMENT,
   TYPE_ENVIRONMENT,
   TYPE_VALUE,
+  URL_OUTPUTS,
+  VALUE_ATTR_OUTPUT,
+  VALUE_ATTR_PATH,
   VALUE_ATTR_PRODUCED_BY,
   VALUE_ATTR_SETTING,
+  VALUE_SUBTYPE_REF,
+  type ValueOutput,
 } from "./constants.js";
 
 export * from "./constants.js";
+export { readBuild, readProcesses, type Build, type Process } from "./readers.js";
 
 export const DELIVERY_DEFINITION = definition as ProviderDefinition;
 
@@ -54,11 +64,12 @@ function deploymentTarget(node: MetaData): [MetaData, MetaData] | undefined {
 // An app runs once per environment: two deployments for one (app, environment) leave a
 // generator to pick by load order. The error lands on the later one.
 function checkDeploymentUnique(node: MetaData, ctx: ValidationContext): void {
+  if (node.isAbstract) return; // a template for the deployments that extend it, never deployed itself
   const mine = deploymentTarget(node);
   const root = topLevelNodeOf(node).parent;
   if (mine === undefined || root === undefined) return;
   // ADR-0039: resolving, the deployments the model effectively holds.
-  const deployments = root.children().filter((c) => c.type === TYPE_DEPLOYMENT);
+  const deployments = root.children().filter((c) => c.type === TYPE_DEPLOYMENT && !c.isAbstract);
   const first = deployments.find((d) => {
     const t = deploymentTarget(d);
     return t !== undefined && t[0] === mine[0] && t[1] === mine[1];
@@ -131,7 +142,28 @@ const validateValue: NodeValidator = (node, ctx) => {
     }
   }
   checkRefs(node, VALUE_ATTR_PRODUCED_BY, [TYPE_RESOURCE, TYPE_APP], ERR_DELIVERY_UNRESOLVED_REF, ctx);
+  if (node.subType === VALUE_SUBTYPE_REF) checkOutput(node, ctx);
 };
+
+// What a value.ref may ask for, whatever the platform: `@path` extends only a URL, and an app
+// produces only its addresses, the port-bearing ones only when a process declares a port. A
+// platform generator maps what passes to its own references; a resource's outputs depend on
+// its engine, which only the platform knows.
+function checkOutput(node: MetaData, ctx: ValidationContext): void {
+  const output = node.attr(VALUE_ATTR_OUTPUT) as ValueOutput;
+  const where = `${node.type}.${node.subType} "${node.name}"`;
+  if (node.attr(VALUE_ATTR_PATH) !== undefined && !URL_OUTPUTS.includes(output)) {
+    ctx.error(ERR_DELIVERY_UNSUPPORTED_OUTPUT, node, `${where} has @path, which extends a URL, and @output ${output} is not one (${URL_OUTPUTS.join(", ")}).`);
+  }
+  const ref = refList(node, VALUE_ATTR_PRODUCED_BY)[0];
+  const app = ref === undefined ? undefined : resolveSystemRef(node, ref, VALUE_ATTR_PRODUCED_BY, [TYPE_APP]);
+  if (app?.type !== TYPE_APP) return; // a resource's outputs depend on its engine
+  if (!APP_OUTPUTS.includes(output)) {
+    ctx.error(ERR_DELIVERY_UNSUPPORTED_OUTPUT, node, `${where} asks app "${app.name}" for its ${output}; an app produces ${APP_OUTPUTS.join(", ")}.`);
+  } else if (PORT_OUTPUTS.includes(output) && !readProcesses(app).some((p) => p.port !== undefined)) {
+    ctx.error(ERR_DELIVERY_UNSUPPORTED_OUTPUT, node, `${where} asks app "${app.name}" for its ${output}, and it declares no runtime.process @port.`);
+  }
+}
 
 export const provider: MetaDataTypeProvider = {
   id: DELIVERY_PROVIDER_ID,

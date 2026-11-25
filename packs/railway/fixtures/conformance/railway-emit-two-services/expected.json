@@ -1,0 +1,312 @@
+{
+  "metadata.root": {
+    "package": "acme::tables",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Tables",
+          "@description": "Two services from one monorepo: a web arena and a Java backend it calls over Railway's private network, sharing a database and a cache.",
+          "children": [
+            {
+              "app.service": {
+                "name": "arena",
+                "@calls": [
+                  "java"
+                ],
+                "@needs": [
+                  "Postgres",
+                  "Redis"
+                ],
+                "@settings": [
+                  "Database",
+                  "Cache",
+                  "Router",
+                  "Backend",
+                  "Session",
+                  "Llm",
+                  "Commentary"
+                ],
+                "children": [
+                  {
+                    "build.dockerfile": {
+                      "name": "image",
+                      "@path": "arena/Dockerfile",
+                      "@watchExclude": [
+                        "arena/tests/**",
+                        "metaobjects/**"
+                      ],
+                      "@watchInclude": [
+                        "arena/**"
+                      ]
+                    }
+                  },
+                  {
+                    "runtime.process": {
+                      "name": "web"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "app.service": {
+                "name": "java",
+                "@needs": [
+                  "Postgres"
+                ],
+                "@settings": [
+                  "Database"
+                ],
+                "children": [
+                  {
+                    "build.dockerfile": {
+                      "name": "image",
+                      "@path": "java/Dockerfile",
+                      "@watchInclude": [
+                        "java/**",
+                        "poker/**",
+                        "framework/**"
+                      ]
+                    }
+                  },
+                  {
+                    "runtime.process": {
+                      "name": "tomcat",
+                      "@healthPath": "/health",
+                      "@port": 8080
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "resource.database": {
+                "name": "Postgres",
+                "@engine": "postgres",
+                "@version": "18"
+              }
+            },
+            {
+              "resource.cache": {
+                "name": "Redis",
+                "@engine": "redis"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Database",
+          "children": [
+            {
+              "field.string": {
+                "name": "url",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Cache",
+          "children": [
+            {
+              "field.string": {
+                "name": "url",
+                "@envName": "REDIS_URL",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Router",
+          "children": [
+            {
+              "field.string": {
+                "name": "host",
+                "@required": true
+              }
+            },
+            {
+              "field.int": {
+                "name": "port",
+                "@required": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "password",
+                "@required": true,
+                "@secret": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Backend",
+          "children": [
+            {
+              "field.string": {
+                "name": "apiUrl",
+                "@envName": "JAVA_API_URL",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Session",
+          "children": [
+            {
+              "field.string": {
+                "name": "secret",
+                "@required": true,
+                "@secret": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Llm",
+          "children": [
+            {
+              "field.string": {
+                "name": "anthropicKey",
+                "@envName": "ANTHROPIC_API_KEY",
+                "@secret": true
+              }
+            },
+            {
+              "field.string": {
+                "name": "openaiKey",
+                "@envName": "OPENAI_API_KEY",
+                "@secret": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Commentary",
+          "children": [
+            {
+              "field.string": {
+                "name": "baseUrl"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "vault.infisical": {
+          "name": "keys",
+          "children": [
+            {
+              "scope.env": {
+                "name": "production",
+                "@env": "prod",
+                "@project": "acme-tables"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "arena-production",
+          "@app": "Tables.arena",
+          "@branch": "main",
+          "@domains": [
+            "example.com"
+          ],
+          "@environment": "production",
+          "@project": "acme-prod",
+          "@repo": "acme/tables",
+          "@secrets": "keys",
+          "children": [
+            {
+              "value.ref": {
+                "name": "db",
+                "@output": "url",
+                "@producedBy": "Tables.Postgres",
+                "@setting": "Database.url"
+              }
+            },
+            {
+              "value.ref": {
+                "name": "cache",
+                "@output": "url",
+                "@producedBy": "Tables.Redis",
+                "@setting": "Cache.url"
+              }
+            },
+            {
+              "value.ref": {
+                "name": "routerHost",
+                "@output": "host",
+                "@producedBy": "Tables.java",
+                "@setting": "Router.host"
+              }
+            },
+            {
+              "value.literal": {
+                "name": "routerPort",
+                "@literal": "8891",
+                "@setting": "Router.port"
+              }
+            },
+            {
+              "value.ref": {
+                "name": "api",
+                "@output": "privateUrl",
+                "@path": "/api",
+                "@producedBy": "Tables.java",
+                "@setting": "Backend.apiUrl"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "java-production",
+          "@app": "Tables.java",
+          "@branch": "main",
+          "@domains": [
+            "admin.example.com"
+          ],
+          "@environment": "production",
+          "@project": "acme-prod",
+          "@repo": "acme/tables",
+          "children": [
+            {
+              "value.ref": {
+                "name": "db",
+                "@output": "url",
+                "@producedBy": "Tables.Postgres",
+                "@setting": "Database.url"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

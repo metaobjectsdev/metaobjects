@@ -23,6 +23,8 @@ export const APP_ATTR_SCHEDULE = "schedule";
 export const RESOURCE_ATTR_ENGINE = "engine";
 export const RESOURCE_ATTR_VERSION = "version";
 export const RESOURCE_ATTR_MANAGED_BY = "managedBy";
+export const MANAGED_BY_PLATFORM = "platform";
+export const MANAGED_BY_EXTERNAL = "external";
 
 /** Raised when an app's @needs or @calls names nothing, or the wrong kind of node. */
 export const ERR_SYSTEMS_UNRESOLVED_REF = "ERR_SYSTEMS_UNRESOLVED_REF";

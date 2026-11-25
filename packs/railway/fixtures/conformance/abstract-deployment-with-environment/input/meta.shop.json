@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "system.internal": {
+          "name": "Shop",
+          "children": [
+            { "app.service": { "name": "server", "children": [ { "runtime.process": { "name": "web" } } ] } }
+          ]
+      } },
+      { "environment.standing": { "name": "production" } },
+      { "deployment.railway": {
+          "name": "server-base",
+          "abstract": true,
+          "@app": "Shop.server",
+          "@environment": "production",
+          "@project": "acme-shop",
+          "@repo": "acme/shop"
+      } },
+      { "deployment.railway": {
+          "name": "server-production",
+          "extends": "server-base",
+          "@branch": "main"
+      } }
+    ]
+  }
+}

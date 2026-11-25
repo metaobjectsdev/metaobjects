@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "system.internal": { "name": "Shop", "children": [
+        { "app.service": { "name": "web" } },
+        { "app.service": { "name": "api", "children": [ { "runtime.process": { "name": "main" } } ] } },
+        { "resource.database": { "name": "db", "@engine": "postgres" } }
+      ] } },
+      { "environment.standing": { "name": "production" } },
+      { "deployment.railway": {
+          "name": "web-production",
+          "@app": "Shop.web",
+          "@environment": "production",
+          "@project": "shop",
+          "children": [
+            { "value.ref": { "name": "dbHost", "@setting": "Database.host", "@producedBy": "Shop.db", "@output": "host", "@path": "/x" } },
+            { "value.ref": { "name": "apiUrl", "@setting": "Api.url", "@producedBy": "Shop.api", "@output": "url" } },
+            { "value.ref": { "name": "apiPrivate", "@setting": "Api.privateUrl", "@producedBy": "Shop.api", "@output": "privateUrl" } },
+            { "value.ref": { "name": "apiHost", "@setting": "Api.host", "@producedBy": "Shop.api", "@output": "host" } }
+          ]
+      } }
+    ]
+  }
+}
