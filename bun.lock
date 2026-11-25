@@ -150,6 +150,20 @@
         "typescript": "^5.6.0",
       },
     },
+    "packs/config/typescript": {
+      "name": "@metaobjectsdev/pack-config",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@metaobjectsdev/codegen-ts": "workspace:*",
+        "@metaobjectsdev/metadata": "workspace:*",
+        "bun-types": "latest",
+        "typescript": "^5.6.0",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/codegen-ts": ">=1.3.0 <2.0.0",
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
     "server/typescript/packages/ai-runtime": {
       "name": "@metaobjectsdev/ai-runtime",
       "version": "1.3.0",
@@ -751,6 +765,8 @@
     "@metaobjectsdev/metadata": ["@metaobjectsdev/metadata@workspace:server/typescript/packages/metadata"],
 
     "@metaobjectsdev/migrate-ts": ["@metaobjectsdev/migrate-ts@workspace:server/typescript/packages/migrate-ts"],
+
+    "@metaobjectsdev/pack-config": ["@metaobjectsdev/pack-config@workspace:packs/config/typescript"],
 
     "@metaobjectsdev/react": ["@metaobjectsdev/react@workspace:client/web/packages/react"],
 
@@ -1577,6 +1593,8 @@
     "@metaobjectsdev/metadata/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
     "@metaobjectsdev/migrate-ts/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
+
+    "@metaobjectsdev/pack-config/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 
     "@metaobjectsdev/react/bun-types": ["bun-types@1.4.5", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-ECHn+9dhL3wv0G6u0+7dQvrnaimXiRDxxerYBmhTaLyJEEuvTPWk2Fye3XIf5Y++JIIiHKfQw4Z7V5D8KuiXbg=="],
 

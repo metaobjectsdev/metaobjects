@@ -80,7 +80,9 @@ export function coreFiles(root: string): string[] {
 export function scanCore(root: string, packs: Map<string, string> = packsById(root)): string[] {
   const out: string[] = [];
   const ids = [...packs.keys()];
-  const idRes = ids.map((id) => [id, new RegExp(`(^|[^A-Za-z0-9_-])${id}([^A-Za-z0-9_-]|$)`)] as const);
+  // A whole id, not part of a longer name and not a file stem: `metaobjects-config.ts` is
+  // core's own config module, not the config pack's provider id.
+  const idRes = ids.map((id) => [id, new RegExp(`(^|[^A-Za-z0-9_-])${id}(?![A-Za-z0-9_-]|\\.[A-Za-z])`)] as const);
   for (const rel of coreFiles(root)) {
     const text = readFileSync(join(root, rel), "utf8");
     if (!PACK_COORDINATE.test(text) && !INTO_PACKS.test(text) && !ids.some((id) => text.includes(id))) continue;

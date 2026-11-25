@@ -174,6 +174,18 @@ describe("pack boundary", () => {
     expect(problems).not.toContain("docs/packs.md");
   });
 
+  test("a file named like a pack id is not the id", () => {
+    const root = scratchRoot();
+    makePack(root, "demo");
+    write(root, "server/typescript/packages/cli/src/c.ts", `import { x } from "./metaobjects-demo.js";\n`);
+    write(root, "server/python/src/d.py", `SCHEMA = "metaobjects-demo.schema.json"\n`);
+    write(root, "server/python/src/e.py", "# The provider is metaobjects-demo.\n");
+    const problems = scanCore(root).join("\n");
+    expect(problems).not.toContain("c.ts");
+    expect(problems).not.toContain("d.py");
+    expect(problems).toContain('server/python/src/e.py:1: names the independent pack provider "metaobjects-demo"');
+  });
+
   test("the root workspace may hold the pack glob, and core's scripts may not filter on '*'", () => {
     const root = scratchRoot();
     write(root, "package.json", json({

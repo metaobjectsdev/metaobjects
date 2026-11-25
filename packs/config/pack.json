@@ -1,0 +1,10 @@
+{
+  "id": "metaobjects-config",
+  "version": "0.1.0",
+  "stability": "preview",
+  "description": "Settings and secrets: object.settings, the @secret / @envName / @phase field attributes, vault.infisical with its scopes, and generators for .env.example, the key manifest and .keys-axi.toml.",
+  "requires": { "metamodel": ">=1.3 <2", "packs": {} },
+  "ports": {
+    "typescript": { "package": "@metaobjectsdev/pack-config", "core": ">=1.3.0 <2.0.0", "publish": false }
+  }
+}

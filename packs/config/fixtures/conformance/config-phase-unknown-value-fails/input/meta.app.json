@@ -1,0 +1,5 @@
+{ "metadata.root": { "package": "acme::app", "children": [
+  { "object.settings": { "name": "Build", "children": [
+    { "field.string": { "name": "commitSha", "@phase": "deploy" } }
+  ]}}
+]}}

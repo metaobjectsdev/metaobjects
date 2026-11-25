@@ -1,0 +1,51 @@
+{
+  "name": "@metaobjectsdev/pack-config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MetaObjects config pack: settings groups, secret settings, vaults, and the .env.example, key manifest and .keys-axi.toml generators.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "embed": "bun scripts/embed-definition.ts"
+  },
+  "license": "Apache-2.0",
+  "author": "MetaObjects contributors",
+  "homepage": "https://metaobjects.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metaobjectsdev/metaobjects.git",
+    "directory": "packs/config/typescript"
+  },
+  "keywords": [
+    "metaobjects",
+    "settings",
+    "secrets",
+    "infisical",
+    "env"
+  ],
+  "peerDependencies": {
+    "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+    "@metaobjectsdev/codegen-ts": ">=1.3.0 <2.0.0"
+  },
+  "devDependencies": {
+    "@metaobjectsdev/metadata": "workspace:*",
+    "@metaobjectsdev/codegen-ts": "workspace:*",
+    "bun-types": "latest",
+    "typescript": "^5.6.0"
+  }
+}
