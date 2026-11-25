@@ -56,7 +56,6 @@ export async function emit(root: MetaRoot, opts: CloudflareGeneratorOptions = {}
   return files;
 }
 
-/** A fixture's input with `edit` applied to its one file's JSON: for the refusal tests. */
 const emitted = new Map<string, Promise<Map<string, string>>>();
 
 /** A fixture's generated files with the default options, loaded and emitted once per test file. */
@@ -66,6 +65,7 @@ export function emitFixture(scenario: string): Promise<Map<string, string>> {
   return files;
 }
 
+/** A fixture's input with `edit` applied to its one file's JSON: for the refusal tests. */
 export function editFixture(scenario: string, edit: (root: { "metadata.root": { children: Record<string, Record<string, unknown>>[] } }) => void): Source[] {
   const [only, ...rest] = fixtureSources(scenario);
   if (only === undefined || rest.length > 0) throw new Error(`${scenario}: editFixture needs a fixture with one input file`);
