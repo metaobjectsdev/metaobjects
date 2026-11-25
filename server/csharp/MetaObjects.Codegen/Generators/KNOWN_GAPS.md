@@ -52,13 +52,14 @@ Update when a gap closes or a new one surfaces.
 
 So the entry stays OPEN, scoped to TPH only, and its cross-port framing is intact rather than obsolete. What closed is the part that was stale: the vanilla path, corrected in **Today** above. Reopening the TPH half is a feature decision (extend the TPH union to carry owned navigations), not a bug fix, and it would want to move on Java and C# together.
 
-### G5 — `EfCoreFilterDispatch` ordered-comparison fallback
+### G5 — `EfCoreFilterDispatch` ordered-comparison fallback — **CLOSED**
 
-**Contract.** `gt` / `gte` / `lt` / `lte` work uniformly for all numeric/date subtypes.
-
-**Today.** [`EfCoreFilterDispatch.BuildComparison<T>`](../Runtime/EfCoreFilterDispatch.cs) tries `long.TryParse` first and falls through to lexicographic `string.Compare`. Works for `long` columns and for ISO 8601 string-backed dates (which sort lexicographically). Fragile for `decimal` / `double` / non-ISO date columns — those degrade silently to string-compare semantics. The contract still holds for the operator vocabulary; only the comparison precision is gappy.
-
-**Workaround.** Consumers can hand-write a typed dispatcher in their repository layer that materializes `Expression<Func<T,bool>>` with the column's CLR type. A future closure pass would add `decimal.TryParse` + `DateTime.TryParse` to the dispatcher; tracked here rather than auto-closed because the right fix is per-port substrate-aware emit, not a runtime tweak.
+**Was.** `EfCoreFilterDispatch` compared `gt` / `gte` / `lt` / `lte` through a string fallback
+(`long.TryParse`, then lexicographic `string.Compare`), so `decimal`, `double` and non-ISO date
+columns compared as text. The 1.3.0 dispatch types each operand to its column's CLR type
+(`EfCoreFilterDispatch.CoerceTo`: exact `decimal`, `TimeSpan` duration, `DateTimeOffset`, `DateTime`,
+`DateOnly`, `TimeOnly`, enum, `bool`, `Guid`) before it builds the comparison, and the api-contract
+`decimal/` corpus gates the ordered operators (`gt` / `lt` on exact decimals) in the generated C# lane.
 
 ### G6 — CORS
 

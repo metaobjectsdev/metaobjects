@@ -162,7 +162,7 @@ another) matters.
   validated against the generated filter allowlist (api-contract corpus, both lanes). **Flag a
   hand-rolled filter parser as a finding.** The richer list surface (`?search=`,
   `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating; ADR-0068) passes in
-  TypeScript and is pending in Python until the Python port's 1.3.0 REST-standard work lands — do
+  TypeScript and C#, and is pending in Python until the Python port's 1.3.0 REST-standard work lands — do
   NOT flag its absence in Python until then.
 - **Partial relationship + flattened-object codegen.** Relationship navigation,
   non-`table` source kinds, and `field.object @storage: flattened` codegen are

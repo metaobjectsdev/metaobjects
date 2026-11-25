@@ -1,13 +1,10 @@
-// FilterParser — substrate-agnostic parser for the FR-009 filter URL grammar
-// (filter[<field>][<op>]=<value>, plus filter[<field>]=<value> sugar for eq).
+// FilterParser — the flat FR-009 filter parser (filter[<field>][<op>]=<value>, plus
+// filter[<field>]=<value> sugar for eq). Obsolete since 1.3.0: generated routes call
+// ListQueryParser.Parse, which reads the whole REST-standard list query (or/and groups, search,
+// sort, page and the named refusals). Kept only for hand-written callers until 2.0.
 //
-// Generated routes call FilterParser.Parse(request.Query, allowlistFields,
-// opsByField) at the top of their list handler. On error → 400 with the
-// returned envelope key; on success → the dispatcher (EfCoreFilterDispatch)
-// applies the predicates to an IQueryable<T>.
-//
-// Part of the codegen runtime surface; mirrors Java codegen-spring's
-// runtime/FilterParser.java byte-for-byte semantics.
+// Part of the helper runtime surface; mirrors Java codegen-spring's
+// runtime/FilterParser.java semantics for the flat grammar.
 
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Http;

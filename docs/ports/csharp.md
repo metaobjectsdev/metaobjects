@@ -1245,8 +1245,9 @@ Today's `RoutesGenerator` honours pagination (`?limit`/`?offset`), sort
 always sends. Filter operators (`eq` / `ne` / `gt` / `gte` / `lt` / `lte`
 / `in` / `like` / `isNull`) per [`api-contract.md`](../features/api-contract.md)
 ship too — the generated `<Entity>FilterAllowlist` (`FilterAllowlistGenerator`)
-feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
-directly into the generated list handler. A read-only projection
+feeds `ListQueryParser.Parse` + `EfCoreFilterDispatch.Apply`, both wired
+directly into the generated list handler; the REST-standard query (`?search`, `filter[or]` / `filter[and]`,
+the named refusals) is read the same way. A read-only projection
 (`source.rdb @kind: view`) and a view-backed report get the same filter and sort
 on their list route, against an allowlist of their own fields.
 
@@ -1264,12 +1265,9 @@ integer is `400 pagination.invalid_value` with or without the setting.
 
 **Known gaps** (full list with workarounds in
 [KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md)):
-no `filter[or]` / `filter[and]` boolean grouping and a single sort key only (both outside the
-cross-port contract today); the `<Entity>View` / `<Entity>Views` names are reserved for a
+a single sort key only (`G3`); the sort set is wider than the contract's sortable set (`G10`); the `<Entity>View` / `<Entity>Views` names are reserved for a
 write-through entity's generated read model; an `EmitMappedClass` override does not reach that
-read model; M:N traversal on a write-through entity is not routed through the replica view; the
-ordered-comparison filter fallback in `EfCoreFilterDispatch` needs a hand-written typed
-dispatcher for some column types; there is no metadata-driven runtime tier (EF Core output is
+read model; M:N traversal on a write-through entity is not routed through the replica view; there is no metadata-driven runtime tier (EF Core output is
 generated code), and no `migrate` surface (EF Core Migrations, or the Node `meta migrate` reference helper).
 
 ## Capability snapshot

@@ -350,7 +350,7 @@ to nothing, and does not check that each claimed node complies).
     is **generated in all five ports** (api-contract corpus, both lanes) — **flag hand-rolled
     filter parsing anywhere.** The richer list surface (`?search=`, explicit
     `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating; ADR-0068) passes in
-    TypeScript and is pending in each other port until its 1.3.0 REST-standard work lands — do not
+    TypeScript and C#, and is pending in each other port until its 1.3.0 REST-standard work lands — do not
     flag its absence in a port before then.
     Output-parser codegen also ships in **all five ports**, keyed on a **responding
     `template.prompt`** (`@responseRef`), never on a `template.output` (ADR-0052) — Java's

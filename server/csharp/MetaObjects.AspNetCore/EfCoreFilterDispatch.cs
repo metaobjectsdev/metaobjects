@@ -1,10 +1,10 @@
-// EfCoreFilterDispatch — translates a list of FilterPredicate into an
-// IQueryable<T> filter chain. Generated routes call
-// EfCoreFilterDispatch.ApplyFilter(q, predicates) in their list handler after
-// FilterParser.Parse returns success.
+// EfCoreFilterDispatch — translates the filter tree of a ListQuery into an
+// IQueryable<T> filter chain. Generated routes call EfCoreFilterDispatch.Apply(q, query)
+// in their list handler after ListQueryParser.Parse returns success. The flat
+// ApplyFilter(q, predicates) overload is [Obsolete] (1.3.0) and kept only for hand-written callers.
 //
-// Each predicate becomes a single Expression<Func<T, bool>> appended via
-// IQueryable<T>.Where; multiple predicates AND together.
+// Each leaf predicate becomes a single Expression<Func<T, bool>> appended via
+// IQueryable<T>.Where; sibling predicates AND together.
 //
 // Translation strategy — the predicate field name is the METADATA field name
 // (e.g. "createdAt"), which maps to the entity's PascalCase CLR property

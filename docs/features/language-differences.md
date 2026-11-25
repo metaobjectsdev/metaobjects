@@ -41,9 +41,9 @@ project.
 | **Largest report page** | 10,000 rows, then 400 `report_too_large` | Same | Same | Same | Same |
 | **`api.pagination`, `api.unknownFields`, the validation `issues` list** | The same in every port; defined once in [api-contract.md](api-contract.md) ([page size](api-contract.md#sort--pagination), [unknown fields](api-contract.md#unknown-request-fields-apiunknownfields), [validation issues](api-contract.md#a-validation-error-lists-every-issue)) | | | | |
 | **Filter and sort errors** | 400 with `field`, plus `op`, `expected` and the allowed fields | 400 with `field` | 400 with `field` | 400 with `field` | 400 with `field` |
-| **`?status=active` (a bare field, not `filter[status][eq]`)** | 400 `filter.bare_field`, naming the form that works | Ignored: every row comes back | Ignored | Ignored | Ignored |
-| **Filter extras beyond the nine operators** | `?search=`, `filter[or]` / `filter[and]`, leading-`%` refusal, filter-value format check | None | None | None | None |
-| **Malformed JSON, a malformed id, a bad page bound, a database constraint, a server error** | Pinned bodies: `invalid_json`, `invalid_id`, `pagination.invalid_value`, `constraint_violation`, 500 `internal` | As the framework answers (a report's bad page bound is pinned in every port) | Same as C# | Same as C# | Same as C# |
+| **`?status=active` (a bare field, not `filter[status][eq]`)** | 400 `filter.bare_field`, naming the form that works | 400 `filter.bare_field`, naming the form that works | Ignored: every row comes back | Ignored | Ignored |
+| **Filter extras beyond the nine operators** | `?search=`, `filter[or]` / `filter[and]`, leading-`%` refusal, filter-value format check | Same as TypeScript | None | None | None |
+| **Malformed JSON, a malformed id, a bad page bound, a database constraint, a server error** | Pinned bodies: `invalid_json`, `invalid_id`, `pagination.invalid_value`, `constraint_violation`, 500 `internal` | The same pinned bodies as TypeScript | As the framework answers | As the framework answers | As the framework answers |
 | **Field names in code** | The model's names (`createdAt`) | PascalCase properties (`CreatedAt`) | The model's names | The model's names | The model's names, not snake_case (`createdAt`) |
 | **Field names on the wire** | The model's names, in every port | | | | |
 | **Decimals and null members on the wire** | Each port writes its serializer's default; a `wire` setting makes them identical. The per-port table is under [The wire setting](api-contract.md#the-wire-setting) | | | | |
