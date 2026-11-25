@@ -278,8 +278,10 @@ nothing. No port has a `doctor` command: `eject --list` (or the matching goal) i
 Every port's `gen` loads the metadata, then computes a key before it renders anything: the
 loaded model (each node in its canonical effective form, so reformatting or splitting a metadata
 file changes nothing) plus everything the generators are built from (the engine's built code,
-the codegen config and every owned generator, the template roots, declared extra inputs, the
-project config, the output-changing flags). When the key matches the last successful run and
+every generator package the config imports beyond the engine's own (a pack or a third-party
+package: by its content when linked, by its version when installed), the codegen config and every
+owned generator, the template roots, declared extra inputs, the project config, the
+output-changing flags). When the key matches the last successful run and
 every generated file still holds the bytes that run left, `gen` says so and renders and writes
 nothing. The key lives in `.metaobjects/.gen-state/.fingerprint-<port>.json` (on the JVM,
 one per owner module), which is not committed.
