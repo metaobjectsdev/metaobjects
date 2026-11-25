@@ -72,8 +72,9 @@ The generators refuse, naming each node, a model whose deploy Railway could not 
 with no source or two, a secret setting with no vault (`@secrets`) or no scope for the
 environment, a vault other than `vault.infisical`, a value for a secret setting or for a setting
 nobody declared, a reference to a resource managed outside Railway or to an output its engine does
-not supply, `@path` on an output that is not a URL, an `@settings` group that is not in the model,
-an app with no settings in a managed file, and a partial name Railway refuses.
+not supply, an `@settings` group that is not in the model, an app with no settings in a managed
+file, and a partial name Railway refuses. (A `value.ref` asking for an output its producer lacks,
+such as `@path` on a non-URL output, fails the load in the delivery pack.)
 
 ### Wiring
 
@@ -119,9 +120,10 @@ export default defineConfig({
 
 Names, domains, repositories and project names are placeholders.
 
-The two emit fixtures are modelled on two adopters' hand-written Railway configuration (a
-hand-migrated `.railway/railway.ts`, and two `railway.json` files). The bar is coverage, not
-identity: `typescript/test/coverage.test.ts` evaluates the generated file and checks that every
+The `railway-emit-one-service` and `railway-emit-two-services` fixtures are modelled on two
+adopters' hand-written Railway configuration (a hand-migrated `.railway/railway.ts`, and two
+`railway.json` files). The bar is coverage, not identity: `typescript/test/coverage.test.ts`
+evaluates the generated file and checks that every
 fact of that configuration is in it, fact by fact (source, watch patterns, Dockerfile path, health
 check, restart policy, draining, variable policy). Where the generated file goes further:
 

@@ -53,7 +53,7 @@ environment name, in the scope the vault maps to the environment being deployed.
 | Generator | Writes | Holds |
 |---|---|---|
 | `envExampleFile()` | `.env.example` | Every setting by name, grouped; the default of a non-secret setting; a comment line with type, required, secret and build-time |
-| `keyManifestFile()` | `keys.manifest.json` | Every setting's name, model name, type, required, secret, phase and default, sorted by name; each vault and its scopes. What a deploy or doctor script compares a vault and a platform against |
+| `keyManifestFile()` | `keys.manifest.json` | Every setting's name, model name, type, required, secret, phase and default, sorted by name; each vault and its scopes. A script or agent reads the names and vault scopes here without the model; the `railway` pack's deploy scripts read the model instead |
 | `keysAxiTomlFile({ vault? })` | `.keys-axi.toml` | The vault's backend, default scope and one `[environments.<slug>]` table per scope, the file `keys-axi` reads so `keys-axi run` needs no project flag. Name the vault when the model declares more than one |
 
 Each takes `path` and `target`. No value of a secret ever reaches their output: the model
