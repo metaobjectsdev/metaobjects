@@ -57,10 +57,11 @@ environment name, in the scope the vault maps to the environment being deployed.
 | `keysAxiTomlFile({ vault? })` | `.keys-axi.toml` | The vault's backend, default scope and one `[environments.<slug>]` table per scope, the file `keys-axi` reads so `keys-axi run` needs no project flag. Name the vault when the model declares more than one |
 
 Each takes `path` and `target`. No value of a secret ever reaches their output: the model
-holds none. A problem the loader cannot see (two settings on one variable name, a malformed
-`@envName`, a secret with a default, an array setting, a `@defaultScope` naming no scope, two
-scopes on one Infisical environment, a vault with no scope) fails the run with every such
-problem listed, each naming its node.
+holds none. A problem the loader cannot see fails the run with every such problem listed, each
+naming its node. These include: two settings on one variable name; a malformed `@envName`; a
+derived variable name that is not valid; a setting that is not a scalar field, or is an array;
+a secret with a default; a `@defaultScope` naming no scope; two scopes on one Infisical
+environment; a vault with no scope. Abstract groups are checked too.
 
 ### Wiring
 
@@ -81,8 +82,8 @@ export default defineConfig({
 });
 ```
 
-Vaults, like settings, are read inside the project's `scope`. `meta gen` runs no generator over a model with no object at all, so a model that declares a
-vault and no settings group writes nothing.
+Vaults, like settings, are read inside the project's `scope`. `meta gen` runs no generator over
+a model with no object at all, so a model whose only declaration is a vault writes nothing.
 
 ## Checks
 
