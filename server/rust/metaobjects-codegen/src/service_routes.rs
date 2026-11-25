@@ -38,7 +38,7 @@ use metaobjects_codegen::generator::{
     ERR_NAME_COLLISION, EmittedFile, GenContext, GenError, Generator,
 };
 use metaobjects_codegen::layers::service::{
-    SERVICE_CRATE, ServiceEntity, ServiceOperation, ServicePackage, service_packages,
+    SERVICE_CRATE, ServiceEntity, ServiceOperation, ServicePackage, service_packages_in,
 };
 use metaobjects_codegen::names::literal;
 use metaobjects_codegen::plan::{FieldPlan, Kind, Plan, Presence, STORE_CRATE, SUPPORT_CRATE};
@@ -281,7 +281,6 @@ pub fn body_spec(tree: &Tree, fields: &[FieldPlan], reject_unknown: bool) -> Bod
     }
 }
 
-/// The transport crates of the run, one per service crate with a route, in crate order.
 /// The wire names of the credentials among `fields`.
 pub fn secret(fields: &[FieldPlan]) -> Vec<String> {
     fields
@@ -297,12 +296,13 @@ fn secret_arg(secret: &[String]) -> String {
     format!("&[{}]", names.join(", "))
 }
 
+/// The transport crates of the run, one per service crate with a route, in crate order.
 pub fn routes_packages(ctx: &GenContext<'_>) -> Result<Vec<RoutesPackage>, GenError> {
     let tree = ctx.tree;
     let plan = Plan::of(ctx)?;
     let reject = ctx.collection.config.api_unknown_fields() != Some(UnknownFieldsMode::Drop);
     let mut out = Vec::new();
-    for service in service_packages(ctx)? {
+    for service in service_packages_in(ctx, &plan)? {
         let mut entities = Vec::new();
         for (index, e) in service.entities.iter().enumerate() {
             let Some(s) = plan.structs.iter().find(|s| s.node == e.store.node) else {
@@ -374,65 +374,36 @@ pub fn routes_packages(ctx: &GenContext<'_>) -> Result<Vec<RoutesPackage>, GenEr
         if entities.is_empty() && operations.is_empty() {
             continue;
         }
-        check_mounts(&service, &entities, &operations)?;
-        out.push(RoutesPackage {
+        let package = RoutesPackage {
             name: format!("{}{HTTP_SUFFIX}", service.model),
             service,
             entities,
             operations,
-        });
+        };
+        check_mounts(&package)?;
+        out.push(package);
     }
     Ok(out)
 }
 
 /// Refuse two routes on one path and method (axum panics when such a router is built): a
 /// declared operation's `binding.rest` over a derived route, or a transition named like a
-/// relation. The mounts listed are the ones [`lib_file`] writes.
-fn check_mounts(
-    service: &ServicePackage,
-    entities: &[RoutesEntity],
-    operations: &[RoutesOperation],
-) -> Result<(), GenError> {
-    let mut mounts: Vec<(String, String, String)> = Vec::new();
-    for e in entities {
-        let se = &service.entities[e.index];
-        let what = format!("the derived routes of {}", se.store.module);
-        let item = format!("{}/{{id}}", e.path);
-        for verb in ["get", "post"] {
-            mounts.push((e.path.clone(), verb.to_string(), what.clone()));
-        }
-        if se.store.key.is_some() {
-            for verb in ["get", "patch", "put", "delete"] {
-                mounts.push((item.clone(), verb.to_string(), what.clone()));
-            }
-            for t in &se.store.traversals {
-                let path = format!("{item}/{}", t.relation);
-                mounts.push((
-                    path,
-                    "get".to_string(),
-                    format!("the relation {}", t.relation),
-                ));
-            }
-        }
-        for c in &se.commands {
-            let path = format!("{item}/{}", c.transition.name);
-            let what = format!("the transition command {}", c.function);
-            mounts.push((path, "post".to_string(), what));
-        }
-    }
-    for o in operations {
-        let what = format!("the operation {}", service.operations[o.index].function);
-        mounts.push((o.path.clone(), o.method.clone(), what));
-    }
-    for (i, (path, method, what)) in mounts.iter().enumerate() {
-        if let Some((_, _, first)) = mounts[..i]
-            .iter()
-            .find(|(p, m, _)| p == path && m == method)
-        {
-            let verb = method.to_ascii_uppercase();
+/// relation. It reads the table [`lib_file`] mounts.
+fn check_mounts(r: &RoutesPackage) -> Result<(), GenError> {
+    for p in mounts(r) {
+        for (i, (method, h)) in p.methods.iter().enumerate() {
+            let Some((_, first)) = p.methods[..i].iter().find(|(m, _)| m == method) else {
+                continue;
+            };
+            let name = |h: &str| h.strip_prefix(HANDLER_PREFIX).unwrap_or(h).to_string();
+            let (verb, path) = (method.to_ascii_uppercase(), &p.path);
             return Err(GenError::new(
                 ERR_NAME_COLLISION,
-                format!("{what} and {first} are both {verb} /{path}: give one a different path"),
+                format!(
+                    "the routes {} and {} are both {verb} /{path}: give one a different path",
+                    name(first),
+                    name(h)
+                ),
             ));
         }
     }
@@ -641,6 +612,53 @@ fn add(routes: &mut Vec<PathRoutes>, path: &str, method: &str, handler: String) 
     routes[i].methods.push((method.to_string(), handler));
 }
 
+/// The package's route table, path by path in mount order: what [`lib_file`] mounts and
+/// [`check_mounts`] checks. Each handler it names is one [`lib_file`] writes.
+fn mounts(r: &RoutesPackage) -> Vec<PathRoutes> {
+    let s = &r.service;
+    let mut routes = Vec::new();
+    for e in &r.entities {
+        let st = &s.entities[e.index].store;
+        let m = &st.module;
+        let (path, keyed) = (&e.path, st.key.is_some());
+        let item_path = format!("{path}/{{id}}");
+        add(&mut routes, path, "get", format!("list_{m}"));
+        if keyed {
+            add(&mut routes, &item_path, "get", format!("get_{m}"));
+        }
+        if st.read_only {
+            add(&mut routes, path, "post", REFUSED.to_string());
+            if keyed {
+                for verb in ["patch", "put", "delete"] {
+                    add(&mut routes, &item_path, verb, REFUSED.to_string());
+                }
+            }
+        } else {
+            add(&mut routes, path, "post", format!("create_{m}"));
+            if keyed {
+                add(&mut routes, &item_path, "patch", format!("update_{m}"));
+                add(&mut routes, &item_path, "put", format!("update_{m}"));
+                add(&mut routes, &item_path, "delete", format!("delete_{m}"));
+            }
+        }
+        if keyed {
+            for t in &st.traversals {
+                let at = format!("{item_path}/{}", t.relation);
+                add(&mut routes, &at, "get", format!("{}_{m}", t.function));
+            }
+        }
+        for c in &s.entities[e.index].commands {
+            let at = format!("{item_path}/{}", c.transition.name);
+            add(&mut routes, &at, "post", c.function.clone());
+        }
+    }
+    for ro in &r.operations {
+        let function = s.operations[ro.index].function.clone();
+        add(&mut routes, &ro.path, &ro.method, function);
+    }
+    routes
+}
+
 /// The prefix of every handler's local, so no name the model gives an operation (`post`,
 /// `router`, `refused`) can shadow what the router is built from.
 const HANDLER_PREFIX: &str = "on_";
@@ -744,7 +762,6 @@ pub fn lib_file(r: &RoutesPackage) -> String {
         .expect("balanced"),
     );
 
-    let mut routes: Vec<PathRoutes> = Vec::new();
     let mut body = CodeWriter::new();
     body.line("let app = Arc::new(App { service, actor });");
     for e in &r.entities {
@@ -752,13 +769,10 @@ pub fn lib_file(r: &RoutesPackage) -> String {
         let hide = secret_arg(&e.secret);
         let st = &se.store;
         let m = &st.module;
-        let path = &e.path;
         let keyed = st.key.is_some();
-        let item_path = format!("{path}/{{id}}");
-        let list_name = format!("list_{m}");
         handler(
             &mut body,
-            &list_name,
+            &format!("list_{m}"),
             &[ARG_RAW],
             &[
                 format!("let l = meta_http::list(raw.as_deref(), &{m}::LIST)?;"),
@@ -767,7 +781,6 @@ pub fn lib_file(r: &RoutesPackage) -> String {
                 ),
             ],
         );
-        add(&mut routes, path, "get", list_name);
         if keyed {
             let name = format!("get_{m}");
             handler(
@@ -779,16 +792,8 @@ pub fn lib_file(r: &RoutesPackage) -> String {
                     format!("meta_http::ok(a.service.get_{m}(id).await, {hide})"),
                 ],
             );
-            add(&mut routes, &item_path, "get", name);
         }
-        if st.read_only {
-            add(&mut routes, path, "post", REFUSED.to_string());
-            if keyed {
-                for verb in ["patch", "put", "delete"] {
-                    add(&mut routes, &item_path, verb, REFUSED.to_string());
-                }
-            }
-        } else {
+        if !st.read_only {
             let name = format!("create_{m}");
             handler(
                 &mut body,
@@ -806,7 +811,6 @@ pub fn lib_file(r: &RoutesPackage) -> String {
                     ),
                 ],
             );
-            add(&mut routes, path, "post", name);
             if keyed {
                 let name = format!("update_{m}");
                 handler(
@@ -823,8 +827,6 @@ pub fn lib_file(r: &RoutesPackage) -> String {
                         ),
                     ],
                 );
-                add(&mut routes, &item_path, "patch", name.clone());
-                add(&mut routes, &item_path, "put", name);
                 let name = format!("delete_{m}");
                 handler(
                     &mut body,
@@ -838,7 +840,6 @@ pub fn lib_file(r: &RoutesPackage) -> String {
                         ),
                     ],
                 );
-                add(&mut routes, &item_path, "delete", name);
             }
         }
         if keyed {
@@ -853,12 +854,6 @@ pub fn lib_file(r: &RoutesPackage) -> String {
                         key_read(se),
                         format!("meta_http::ok(a.service.{function}(id).await, {hide})"),
                     ],
-                );
-                add(
-                    &mut routes,
-                    &format!("{item_path}/{}", t.relation),
-                    "get",
-                    function,
                 );
             }
         }
@@ -876,13 +871,6 @@ pub fn lib_file(r: &RoutesPackage) -> String {
                     ),
                 ],
             );
-            let segment = &c.transition.name;
-            add(
-                &mut routes,
-                &format!("{item_path}/{segment}"),
-                "post",
-                c.function.clone(),
-            );
         }
     }
     for ro in &r.operations {
@@ -897,14 +885,14 @@ pub fn lib_file(r: &RoutesPackage) -> String {
             None => "&[]".to_string(),
         };
         operation(&mut body, s, o, &hide);
-        add(&mut routes, &ro.path, &ro.method, o.function.clone());
     }
+    let routes = mounts(r);
     if routes
         .iter()
         .any(|p| p.methods.iter().any(|(_, h)| h == REFUSED))
     {
         body.blank();
-        body.line("let refused = meta_http::method_not_allowed;");
+        body.line(format!("let {REFUSED} = meta_http::method_not_allowed;"));
     }
     body.blank();
     body.line("let mut router = Router::new();");

@@ -483,8 +483,12 @@ pub struct StoredCrate {
 /// Every store crate the run writes, in crate order: the walk the `repository` generator
 /// renders, and the one the `service` generator builds its operations over.
 pub fn stored_crates(ctx: &GenContext<'_>) -> Result<Vec<StoredCrate>, GenError> {
+    stored_crates_in(ctx, &Plan::of(ctx)?)
+}
+
+/// [`stored_crates`] over a plan the caller already built.
+pub fn stored_crates_in(ctx: &GenContext<'_>, plan: &Plan) -> Result<Vec<StoredCrate>, GenError> {
     let tree = ctx.tree;
-    let plan = Plan::of(ctx)?;
     let selected = plan.selected_crates(ctx.entities)?;
     let registry = NamingRegistry::builtin();
     let naming = NamingCtx::new(&registry, &ctx.collection.physical_naming);
@@ -521,7 +525,7 @@ pub fn stored_crates(ctx: &GenContext<'_>) -> Result<Vec<StoredCrate>, GenError>
         for s in served {
             let route = s.route.as_ref().expect("a stored object has a route");
             let mut e = stored_entity(tree, &naming, s, route, &lifecycles)?;
-            e.traversals = traversals(tree, &index, &naming, &plan, s, route, &mut deps)?;
+            e.traversals = traversals(tree, &index, &naming, plan, s, route, &mut deps)?;
             for f in &s.fields {
                 if let Some(t) = f.ty.type_ref() {
                     deps.insert(t.crate_name.clone());

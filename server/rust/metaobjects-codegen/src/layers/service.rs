@@ -13,7 +13,7 @@ use metaobjects::validate::util::ObjectIndex;
 
 use crate::generator::{ERR_NAME_COLLISION, ERR_UNSUPPORTED, GenContext, GenError};
 use crate::layers::rules::{EntityNames, RULES_SUFFIX, RulesCrate, crate_of};
-use crate::layers::store::{StoredCrate, StoredEntity, stored_crates};
+use crate::layers::store::{StoredCrate, StoredEntity, stored_crates_in};
 use crate::names::{crate_name, pascal, snake, type_ident};
 use crate::plan::{Plan, Presence, StructPlan};
 
@@ -265,14 +265,21 @@ fn moves_of(
 
 /// The service crates of the run, one per package with a stored entity, in crate order.
 pub fn service_packages(ctx: &GenContext<'_>) -> Result<Vec<ServicePackage>, GenError> {
+    service_packages_in(ctx, &Plan::of(ctx)?)
+}
+
+/// [`service_packages`] over a plan the caller already built.
+pub fn service_packages_in(
+    ctx: &GenContext<'_>,
+    plan: &Plan,
+) -> Result<Vec<ServicePackage>, GenError> {
     let tree = ctx.tree;
-    let plan = Plan::of(ctx)?;
     let index = ObjectIndex::build(tree, ctx.root);
     let settings = &ctx.collection.config.rules;
     let require = settings.permission_names == RulesPermissionNames::Require;
     let mut rules: BTreeMap<String, RulesCrate> = BTreeMap::new();
     for p in rules_names_of(tree, ctx.root, &index, settings, &|_| true) {
-        rules.insert(crate_name(&p.package), crate_of(&plan, p)?);
+        rules.insert(crate_name(&p.package), crate_of(plan, p)?);
     }
 
     let mut out = Vec::new();
@@ -282,13 +289,13 @@ pub fn service_packages(ctx: &GenContext<'_>) -> Result<Vec<ServicePackage>, Gen
         package,
         entities,
         mut deps,
-    } in stored_crates(ctx)?
+    } in stored_crates_in(ctx, plan)?
     {
         let rc = rules.get(&model);
         let rules_crate = format!("{model}{RULES_SUFFIX}");
         let mut list = Vec::new();
         for e in entities {
-            let s = struct_of(&plan, e.node)
+            let s = struct_of(plan, e.node)
                 .ok_or_else(|| unsupported(format!("service: {} is not planned", e.object)))?;
             let names = rc.and_then(|r| r.entities.iter().find(|n| n.names.node == e.node));
             let mut lifecycles = Vec::new();
@@ -379,8 +386,7 @@ pub fn service_packages(ctx: &GenContext<'_>) -> Result<Vec<ServicePackage>, Gen
                 }
                 let input = index.ref_target(tree, o.node, ATTR_INPUT_REF);
                 let output = index.ref_target(tree, o.node, ATTR_OUTPUT_REF);
-                let input_key = match (&o.input_key_field, input.and_then(|i| struct_of(&plan, i)))
-                {
+                let input_key = match (&o.input_key_field, input.and_then(|i| struct_of(plan, i))) {
                     (Some(field), Some(v)) if keyed => v
                         .fields
                         .iter()
@@ -393,7 +399,7 @@ pub fn service_packages(ctx: &GenContext<'_>) -> Result<Vec<ServicePackage>, Gen
                     Some(i) if command => {
                         let e = &list[i];
                         let names = r.entities.iter().find(|n| n.names.node == e.store.node);
-                        match (names, struct_of(&plan, e.store.node)) {
+                        match (names, struct_of(plan, e.store.node)) {
                             (Some(n), Some(s)) => moves_of(r, &rules_crate, n, s, &|t| {
                                 o.transitions.iter().any(|x| x == t)
                             }),

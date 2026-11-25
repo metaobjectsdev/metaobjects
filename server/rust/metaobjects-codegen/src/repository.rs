@@ -43,7 +43,9 @@ use std::collections::BTreeSet;
 
 use metaobjects_codegen::emitted::STORE_RS;
 use metaobjects_codegen::generator::{EmittedFile, GenContext, GenError, Generator};
-use metaobjects_codegen::layers::store::{ColumnPlan, StoredEntity, TraversalPlan, stored_crates};
+use metaobjects_codegen::layers::store::{
+    ColumnPlan, StoredEntity, TraversalPlan, stored_crates_in,
+};
 use metaobjects_codegen::names::literal;
 use metaobjects_codegen::plan::{CratePlan, Plan, STORE_CRATE, SUPPORT_CRATE};
 use metaobjects_codegen::writer::{
@@ -126,7 +128,7 @@ pub fn render<P: RepositoryParts + ?Sized>(
 ) -> Result<Vec<EmittedFile>, GenError> {
     let plan = Plan::of(ctx)?;
     let mut files = Vec::new();
-    for sc in stored_crates(ctx)? {
+    for sc in stored_crates_in(ctx, &plan)? {
         for e in &sc.entities {
             files.push(EmittedFile::new(
                 format!("{}/src/{}.rs", sc.name, e.module),
