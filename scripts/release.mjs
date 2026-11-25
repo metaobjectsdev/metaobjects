@@ -141,6 +141,28 @@ try {
 // its own sibling deps; everything below this line is irreversible once publishing starts.
 const { lockstep: current, set } = publishSet();
 
+// Changelog computed in memory before anything is written: a "split" layout must stop the
+// release before the version bump, not after it has dirtied package.json and bun.lock.
+// The fragments become ordinary [Unreleased] entries (scripts/lib/changelog-fragments.mjs);
+// a section prepared ahead of the cut carries the date it was started and is restamped with
+// the release date (rule and cases: scripts/lib/changelog-promote.mjs, tested by
+// scripts/test-changelog-promote.mjs).
+const fragments = readFragments(FRAGMENT_DIR);
+const assembled = assembleChangelog(readFileSync("CHANGELOG.md", "utf8"), fragments);
+const today = out("date +%F");
+const promoted = promoteChangelog(
+  assembled,
+  VERSION,
+  today,
+  `_npm \`${VERSION}\` (full lockstep across all ${set.length} \`@metaobjectsdev/*\` publish candidates)._`,
+);
+if (promoted.action === "split") {
+  die(
+    `CHANGELOG has entries under [Unreleased] (${fragments.length} from changelog.d/) above a prepared [${VERSION}] section. ` +
+      "Fold them into that section by hand (node scripts/changelog-fragments.mjs --assemble, then move them), and re-run.",
+  );
+}
+
 // The target version must be free for EVERY package in the set, not just the cli.
 // Checking one package is a late failure waiting to happen: npm versions are permanent
 // (unpublish is refused outright once anything depends on the version, and deprecating it
@@ -238,32 +260,10 @@ const bad = Object.entries(pj.dependencies || {}).filter(([k, v]) => k.startsWit
 if (bad.length) die(`packed cli pins stale/workspace sibling deps: ${JSON.stringify(bad)}`);
 ok(`packed deps verified: all @metaobjectsdev/* pinned to ${VERSION}`);
 
-// --- fold changelog.d/ fragments into [Unreleased], then promote it --------------
-// One file per change (scripts/lib/changelog-fragments.mjs) keeps parallel PRs from
-// conflicting in CHANGELOG.md; here they become ordinary [Unreleased] entries and the files
-// go, so the release commit carries one CHANGELOG and an empty changelog.d/.
-// Assembled and promoted in memory first: a "split" layout stops the release before any
-// fragment is deleted.
-const fragments = readFragments(FRAGMENT_DIR);
-const assembled = assembleChangelog(readFileSync("CHANGELOG.md", "utf8"), fragments);
-
-// --- promote CHANGELOG [Unreleased] → [VERSION], or date a prepared [VERSION] ----
-// The rule and its cases live in scripts/lib/changelog-promote.mjs (tested by
-// scripts/test-changelog-promote.mjs): a section prepared ahead of the cut carries the date it
-// was started, and is restamped with the release date here rather than by hand.
-const today = out("date +%F");
-const promoted = promoteChangelog(
-  assembled,
-  VERSION,
-  today,
-  `_npm \`${VERSION}\` (full lockstep across all ${set.length} \`@metaobjectsdev/*\` publish candidates)._`,
-);
-if (promoted.action === "split") {
-  die(
-    `CHANGELOG has entries under [Unreleased] (${fragments.length} from changelog.d/) above a prepared [${VERSION}] section. ` +
-      "Fold them into that section by hand (node scripts/changelog-fragments.mjs --assemble, then move them), and re-run.",
-  );
-}
+// --- write the changelog computed in Phase 0 -----------------------------------------
+// One file per change (scripts/lib/changelog-fragments.mjs): the fragments became ordinary
+// [Unreleased] entries in `assembled`, and the files go, so the release commit carries one
+// CHANGELOG and an empty changelog.d/.
 if (fragments.length) {
   for (const f of fragments) rmSync(join(FRAGMENT_DIR, f.name));
   ok(`${fragments.length} changelog fragment(s) assembled into [Unreleased]`);
