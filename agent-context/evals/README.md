@@ -1,11 +1,17 @@
 # Skill trigger evaluations
 
-Should-trigger and should-not-trigger cases for the `description` of two shipped skills,
-`metaobjects-prompts` and `metaobjects-codegen`. A description decides when a skill's whole
+Should-trigger and should-not-trigger cases for the `description` of three shipped skills,
+`metaobjects-prompts`, `metaobjects-codegen` and `metaobjects-authoring`. A description decides
+when a skill's whole
 body is loaded, so an over-eager one costs tokens on every unrelated edit. Each case is a
 one-message prompt plus a `tool_used: Skill` grader: positive cases require the skill to
 fire, negative cases (near-misses: LLM code in a project that does not use MetaObjects
 prompts, model edits that need no generated output) forbid it.
+
+The `metaobjects-authoring` cases cover one part of that skill only: vocabulary of the project's
+own (a custom type, subtype, attribute or provider, or a config file or script to be "put in the
+metadata"), which is where `references/semantic-modelling.md` applies. Their negative cases are
+work that touches a product, a version or an environment value without touching the model.
 
 Most cases are a fresh request. The `*-midtask-*` cases are the shape real work takes: the
 prompt states what has already been done in the session (entities declared, `meta gen` run, a
@@ -25,12 +31,15 @@ business logic over generated types, running a rename migration).
 agent-context/evals/run-skill-triggers.sh <out-dir>
 ```
 
-It starts real Claude sessions on your own login (31 cases x 3 runs = 93 sessions, a few
-minutes with `-j 4`) and writes `<out-dir>/result.json`. Use `--case '<glob>'` to run a
-subset. It is manual-only and not part of CI, because model behaviour is not deterministic.
+It starts real Claude sessions on your own login (43 cases x 3 runs = 129 sessions, a few
+minutes with `-j 4`) and writes `<out-dir>/result.json`. To run one skill's cases, add
+`--eval-dir evals/<skill>` (`--eval-dir evals/metaobjects-authoring`). `--case '<glob>'` matches
+a case's own directory name, not its path, so `--case '*-midtask-*'` selects cases and
+`--case 'metaobjects-codegen/*'` selects none. It is manual-only and not part of CI, because
+model behaviour is not deterministic.
 
-Re-run it after editing either description. A `Reached maximum number of turns` note on a
-case is expected: the runs are capped at 3 turns because only the first tool call matters.
+Re-run it after editing any of the three descriptions. A `Reached maximum number of turns` note
+on a case is expected: the runs are capped at 3 turns because only the first tool call matters.
 
 # Skill body A/B (`skill-ab/`)
 

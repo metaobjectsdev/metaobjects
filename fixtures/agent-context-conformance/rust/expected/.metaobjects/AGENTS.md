@@ -67,6 +67,7 @@ When the project serves the generated routes (any port):
   (`metaobjects-authoring`). Open the skill before writing either by hand.
 - Never invent metadata vocabulary. Search it: `npx meta types <term>`, and
   `npx meta types <type>.<subType> --detail` for one construct's valid attributes.
+- Vocabulary of your own says what a thing is and relates to, never a product, a version or a step: open `metaobjects-authoring` first.
 - Metadata nodes are fused-key maps, `{"field.string": {"name": "email"}}`. Attribute names are
   unique within a node, and package paths use `::`.
 
@@ -74,7 +75,7 @@ When the project serves the generated routes (any port):
 
 The loop above needs no skill. For less common work load a `metaobjects-*` skill by name, or open
 `.claude/skills/<skill>/SKILL.md` if your assistant does not load skills: `metaobjects-authoring`
-(unusual shapes, reports, adopting existing code), `metaobjects-codegen` (owning or writing a
+(unusual shapes, your own vocabulary, reports, adopting existing code), `metaobjects-codegen` (owning or writing a
 generator), `metaobjects-runtime-ui` (REST routes, the web client), `metaobjects-prompts` (LLM
 prompts), `metaobjects-verify` (migration edge cases, drift, upgrades), `metaobjects-audit` (an
 adoption review). Each names the one reference page to open.

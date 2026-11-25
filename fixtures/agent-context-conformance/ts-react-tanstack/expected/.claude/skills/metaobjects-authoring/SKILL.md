@@ -1,6 +1,6 @@
 ---
 name: metaobjects-authoring
-description: Use when authoring or modifying MetaObjects metadata — fields, entities, relationships, sources, enums, abstracts/inheritance — in YAML or canonical JSON; includes deciding whether and how to register custom vocabulary (new subtypes or attributes via a provider).
+description: Use when authoring or modifying MetaObjects metadata — fields, entities, relationships, sources, enums, abstracts/inheritance — in YAML or canonical JSON; includes designing, registering or changing custom vocabulary (your own types, subtypes or attributes via a provider) and modelling a domain, a config file or infrastructure with it.
 ---
 
 # Authoring MetaObjects metadata
@@ -21,6 +21,9 @@ emits code in each language from it, and the drift gates check everything agains
   `children`, …) are bare; every attribute is `@`-prefixed in JSON and bare in YAML.
 - **Never invent a subtype or attribute.** The loader is strict, so an unregistered name
   fails the load. `meta types` says what exists; vocabulary of your own is a provider class.
+- **Vocabulary of your own is modelled semantically.** A type says what a thing is and what it
+  relates to, a subtype says which kind, and products, versions, steps and environment values
+  stay in generators and configuration. Read `references/semantic-modelling.md` first.
 - **Choose a field's shape by what the value is, not how it is stored**: a UUID is
   `field.uuid`, money is `field.currency`, a list is `isArray: true`, and a JSON column takes
   the type its writer already declares. The canonical-form table below covers the common
@@ -45,6 +48,7 @@ This file covers what almost every model needs. The topics below live in
 | `references/adopting-existing-code.md` | working code or a populated schema already exists for what you are modeling |
 | `references/adopting-existing-models.md` | moving existing Zod, Drizzle or Pydantic models into the model: the step-by-step recipe, and how to prove the generated types match before the switch |
 | `references/choosing-a-shape.md` | no row of "Canonical form for common field needs" fits; you need the full UUID / timestamp / URI / `@autoSet` rule; or you are registering your own vocabulary |
+| `references/semantic-modelling.md` | **open first** when you add or change a custom type, subtype, attribute or provider, author nodes of vocabulary the project registered, or are asked to put a config file, a script or infrastructure "in the metadata" |
 | `references/json-columns.md` | a JSON column beyond the ladder below: coverage per port, `field.map` at runtime, version caveats, bag → native array |
 | `references/identities-and-indexes.md` | declaring a primary, secondary or reference identity, an FK, or a non-unique `index.lookup` |
 | `references/sources.md` | the `source.rdb` shape and `@kind`; a store MetaObjects does not manage; a derived or computed column (reach for an entity read-view first) |
@@ -445,8 +449,10 @@ immutable. Supported in all five ports; the worked example is in `references/inh
 
 A subtype or attribute the core does not ship (a `layout.picker`, `@searchable` on fields) is
 registered by a **provider class** in the project's own language, never a side file and
-never a loosened `strict`. Decide the shape first (`references/choosing-a-shape.md`, which
-also has the register and extend rules). List the provider once in the port's project
+never a loosened `strict`. Model it semantically first (`references/semantic-modelling.md`:
+what the thing is and relates to, never a product, a version or a step), then decide each
+concept's shape (`references/choosing-a-shape.md`, which also has the register and extend
+rules). List the provider once in the port's project
 configuration and every command that loads metadata (gen and its docs generators, verify,
 fmt) composes it. Where each port lists it, with a worked example:
 `references/typescript-providers.md`, `references/python-providers.md`,
