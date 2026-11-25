@@ -78,7 +78,7 @@ public static class Normalization
         IPAddress ip => ip.ToString(),
         // field.duration (System.TimeSpan — Npgsql reads an interval as one) renders its canonical
         // ISO-8601 wire form: hours never folded into days, at most six fractional digits.
-        TimeSpan span => MetaObjects.Codegen.Runtime.DurationWire.Format(span),
+        TimeSpan span => MetaObjects.AspNetCore.DurationWire.Format(span),
         byte[] bytes => Convert.ToBase64String(bytes),
         // A pre-parsed JsonNode (assembled by a runner path) — sort keys.
         // (JsonDocument/JsonElement from a @dbColumnType:jsonb column are handled above.)

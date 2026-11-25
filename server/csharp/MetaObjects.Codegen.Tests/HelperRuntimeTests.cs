@@ -1,7 +1,8 @@
 // ADR-0034 Amendment 3 — the helper runtime `dotnet meta eject routes` hands over with the
 // generator (MetaObjects.Codegen.HelperRuntime). These tests gate:
-//   1. the embedded copies are byte-identical to Runtime/<file> and match HelperRuntime.Files;
-//   2. every Runtime/ file is classified helper (copied) or core (stays in the package);
+//   1. the embedded copies are byte-identical to MetaObjects.AspNetCore/<file> and match HelperRuntime.Files;
+//   2. every MetaObjects.AspNetCore/ file is a helper (copied) and every MetaObjects.Codegen/Runtime/
+//      file is core (stays in MetaObjects.Codegen);
 //   3. the helper set is CLOSED — it compiles on its own, with no MetaObjects assembly;
 //   4. an ejected routes generator's output compiles against the OWNED copy with no
 //      MetaObjects assembly referenced at all, and binds to that copy: break the copy and
@@ -17,6 +18,9 @@ namespace MetaObjects.Codegen.Tests;
 public class HelperRuntimeTests
 {
     private static string RuntimeDir() =>
+        Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.AspNetCore");
+
+    private static string CoreRuntimeDir() =>
         Path.Combine(CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen", "Runtime");
 
     private static string Normalize(string s) => s.Replace("\r\n", "\n");
@@ -27,7 +31,7 @@ public class HelperRuntimeTests
         foreach (var file in HelperRuntime.Files)
             Assert.True(
                 Normalize(HelperRuntime.ReadSourceFile(file)) == Normalize(File.ReadAllText(Path.Combine(RuntimeDir(), file))),
-                $"embedded Runtime/{file} diverges from its source file — rebuild MetaObjects.Codegen.");
+                $"embedded MetaObjects.AspNetCore/{file} diverges from its source file — rebuild MetaObjects.Codegen.");
     }
 
     [Fact]
@@ -43,11 +47,12 @@ public class HelperRuntimeTests
     [Fact]
     public void Every_runtime_file_is_classified_helper_or_core_and_never_both()
     {
-        // A new Runtime/ file must be put on one side of the line on purpose: copied to an
-        // adopter who ejects, or kept in the package as core.
-        var onDisk = Directory.GetFiles(RuntimeDir(), "*.cs").Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal);
-        var classified = HelperRuntime.Files.Concat(HelperRuntime.CoreFiles).OrderBy(n => n, StringComparer.Ordinal);
-        Assert.Equal(classified, onDisk);
+        // A new runtime file must be put on one side of the line on purpose: a helper in
+        // MetaObjects.AspNetCore, copied to an adopter who ejects, or core in MetaObjects.Codegen.
+        static IEnumerable<string?> CsFiles(string dir) =>
+            Directory.GetFiles(dir, "*.cs").Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(HelperRuntime.Files.OrderBy(n => n, StringComparer.Ordinal), CsFiles(RuntimeDir()));
+        Assert.Equal(HelperRuntime.CoreFiles.OrderBy(n => n, StringComparer.Ordinal), CsFiles(CoreRuntimeDir()));
         Assert.Empty(HelperRuntime.Files.Intersect(HelperRuntime.CoreFiles));
     }
 
@@ -73,7 +78,7 @@ public class HelperRuntimeTests
             .Where(e => HelperRuntime.UsedBy(EjectableGenerators.ReadSourceFile(e.SourceFileName!)))
             .Select(e => e.Name)
             .ToList();
-        Assert.Equal(["routes"], users);
+        Assert.Equal(["filter-allowlist", "routes"], users);
 
         var rewritten = EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSource("routes")!);
         Assert.DoesNotContain(HelperRuntime.GeneratorMarkerLine, rewritten);
@@ -145,8 +150,9 @@ public class HelperRuntimeTests
             "does not hand over:\n" + string.Join("\n", errors));
     }
 
-    /// <summary>What an adopter who ejected routes generates: the packaged entity /
-    /// db-context / filter-allowlist / names output plus the OWNED routes copy's output.</summary>
+    /// <summary>What an adopter who ejected routes and the filter allowlist generates: the packaged
+    /// entity / db-context / names output plus the OWNED routes and allowlist copies' output (the
+    /// allowlist's rules are helper-runtime types, so it binds to the owned runtime too).</summary>
     private static List<EmittedFile> GenerateWithEjectedRoutes()
     {
         var root = EjectedGeneratorCompileTests.LoadCorpus();
@@ -157,9 +163,10 @@ public class HelperRuntimeTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated", IncludeNames = true },
         };
         var ownedRoutes = EjectedGeneratorsAloneTests.EjectAlone("routes").Generator;
+        var ownedAllowlist = EjectedGeneratorsAloneTests.EjectAlone("filter-allowlist").Generator;
         var generators = new List<IGenerator>
         {
-            new EntityGenerator(), new DbContextGenerator(), new FilterAllowlistGenerator(), new NamesGenerator(), ownedRoutes,
+            new EntityGenerator(), new DbContextGenerator(), ownedAllowlist, new NamesGenerator(), ownedRoutes,
         };
         return generators.SelectMany(g => g.Generate(ctx)).ToList();
     }
@@ -187,18 +194,20 @@ public class HelperRuntimeTests
     [Fact]
     public void Generated_routes_bind_to_the_owned_copy_an_edit_there_is_what_they_compile_against()
     {
-        // Rename the owned FilterParser.Parse. If the generated routes bound to anything but
+        // Rename the owned ListQueryParser.Parse. If the generated routes bound to anything but
         // the owned copy (the package, say), this would not touch them; instead every list
         // handler stops compiling, at the call site in the generated routes file.
         var files = GenerateWithEjectedRoutes();
-        var edited = OwnedRuntime((file, text) => file == "FilterParser.cs"
-            ? text.Replace("public static FilterParseResult Parse(", "public static FilterParseResult ParseEdited(", StringComparison.Ordinal)
+        var edited = OwnedRuntime((file, text) => file == "ListQuery.cs"
+            ? text.Replace("public static ListQueryResult Parse(", "public static ListQueryResult ParseEdited(", StringComparison.Ordinal)
             : text);
         var errors = CompileErrors(
             files.Select(f => (f.Path, f.Content)).Concat(edited).Append(("GlobalUsings.g.cs", ImplicitUsings)));
 
         Assert.NotEmpty(errors);
-        Assert.All(errors, e => Assert.Contains("FilterParser", e));
-        Assert.Contains(errors, e => e.Contains("Routes", StringComparison.Ordinal));
+        // The missing Parse is named, and the knock-on errors (its result has no type) are all at the
+        // call sites in the generated routes.
+        Assert.Contains(errors, e => e.Contains("ListQueryParser", StringComparison.Ordinal));
+        Assert.All(errors, e => Assert.Contains("Routes.g.cs", e));
     }
 }

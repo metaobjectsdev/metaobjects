@@ -157,12 +157,12 @@ version across these packages is an intra-port skew finding.
   (ADR-0015). `dotnet meta` has no migrate subcommand; `meta migrate` is correct.
 - **Core filter-operator codegen ships in C# — do NOT treat it as deferred.** The `routes`
   generator (`<Entity>Routes.cs`, Minimal API) generates the `?filter[field][op]=value` grammar
-  (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`) via the runtime `FilterParser` +
+  (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`) via the runtime `ListQueryParser` +
   `EfCoreFilterDispatch`, validated against the generated filter allowlist (api-contract corpus,
   both lanes). **Flag a hand-rolled filter parser as a finding.** The richer list surface
   (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating; ADR-0068)
-  passes in TypeScript and is pending in C# until the C# port's 1.3.0 REST-standard work lands —
-  do NOT flag its absence in C# until then.
+  passes in TypeScript and C#; it is pending in each other port until that port's 1.3.0
+  REST-standard work lands — do NOT flag its absence in a port before then.
 - **Output-parser codegen ships in C#.** `output-parser` / `extractor` / `render-helper`
   generators are available (list `OutputParserGenerator` in `codegen/Generators.cs`). Absence of
   wired output parsers where a **responding `template.prompt`** (`@responseRef`) exists IS a

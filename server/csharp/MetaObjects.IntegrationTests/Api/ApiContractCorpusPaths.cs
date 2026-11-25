@@ -128,5 +128,10 @@ internal static class ApiContractCorpusPaths
     public static readonly string EnumDefaultScenariosDir = Path.Combine(EnumDefaultDir, "scenarios");
     public static readonly string EnumDefaultSeedFile = Path.Combine(EnumDefaultDir, "seed.json");
     public static readonly string EnumDefaultMetaJson = Path.Combine(EnumDefaultDir, "meta.json");
-}
 
+    // list-query subcorpus (the REST standard's list handling over a 60-row Part seed), generated lane only.
+    public static readonly string ListQueryDir = Path.Combine(Corpus, "list-query");
+    public static readonly string ListQueryScenariosDir = Path.Combine(ListQueryDir, "scenarios");
+    public static readonly string ListQuerySeedFile = Path.Combine(ListQueryDir, "seed.json");
+    public static readonly string ListQueryMetaJson = Path.Combine(ListQueryDir, "meta.json");
+}

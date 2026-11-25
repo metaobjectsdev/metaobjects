@@ -211,7 +211,7 @@ via `metamodelVersion` (see the Phase 0 cross-language consistency item).
 
 TypeScript is the reference implementation — it ships the full feature set:
 
-- Filter-operator codegen: **complete** — the core `?filter[field][op]` grammar (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`, `<Entity>FilterAllowlist`) generates in every port; the richer list surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating; ADR-0068) passes in TypeScript; each other port is pending until its 1.3.0 REST-standard work lands.
+- Filter-operator codegen: **complete** — the core `?filter[field][op]` grammar (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`, `<Entity>FilterAllowlist`) generates in every port; the richer list surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating; ADR-0068) passes in TypeScript and C#; each other port is pending until its 1.3.0 REST-standard work lands.
 - Output-parser codegen: **complete** (`outputParser()` generator; `parse*`/`safeParse*`/`extract*` emitted as `<Name>.response.ts` per **responding `template.prompt`** — one carrying `@responseRef`; ADR-0052).
 - ObjectManager: **complete** (`@metaobjectsdev/runtime-ts`; `kyselyDriver` / `inMemoryDriver`).
 - Schema migrate / `meta verify --db`: **complete** (the Node CLI hosts the reference migration helper, one option for every port).

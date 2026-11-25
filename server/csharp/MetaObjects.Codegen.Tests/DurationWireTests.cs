@@ -1,6 +1,6 @@
 // field.duration — the C# half of the duration wire rule, gated against the shared vectors in
 // fixtures/duration-wire/vectors.json. No database: the production wire helper
-// (Runtime/DurationWire.cs, the SAME text the entity generator emits into every generated project)
+// (MetaObjects.AspNetCore/DurationWire.cs, the SAME text the entity generator emits into every generated project)
 // runs every `wire` vector (the `precision` ones at seven digits: a TimeSpan tick is 100 ns), and
 // the emitted text is proven identical to it. Of the `codecs` groups C# has two in production:
 // `storedMicros` (the generated value converter on SQLite and MySQL, here) and the Postgres read
@@ -13,7 +13,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using MetaObjects.Codegen.Generators;
-using MetaObjects.Codegen.Runtime;
+using MetaObjects.AspNetCore;
 using MetaObjects.Core.Query;
 using MetaObjects.Loader;
 using MetaObjects.Meta;
@@ -168,8 +168,13 @@ public class DurationWireTests
 
     public sealed class Row { public TimeSpan Wait { get; set; } public TimeSpan? Grace { get; set; } }
 
-    private static FilterParseResult Check(string field, string op, object value) =>
-        EfCoreFilterDispatch.Validate<Row>(FilterParseResult.Ok([new FilterPredicate(field, op, value)]));
+    private static ListQueryError? Check(string field, string op, object value) =>
+        EfCoreFilterDispatch.Validate<Row>(new ListQuery(new FilterLeaf(field, op, value), null, null, null, null));
+
+    private static List<object> Many(params string[] items) => items.Cast<object>().ToList();
+
+    private static string? FieldOf(ListQueryError error) =>
+        (string?)error.Details.Single(d => d.Key == "field").Value;
 
     [Theory]
     [InlineData("wait", "eq", "P1M")]
@@ -179,17 +184,18 @@ public class DurationWireTests
     public void A_malformed_duration_operand_is_invalid_filter_value_naming_the_field(string field, string op, string operand)
     {
         var r = Check(field, op, operand);
-        Assert.Equal("invalid_filter_value", r.ErrorEnvelope);
-        Assert.Equal(field, r.Field);
+        Assert.NotNull(r);
+        Assert.Equal("invalid_filter_value", r!.Error);
+        Assert.Equal(field, FieldOf(r));
     }
 
     [Fact]
     public void A_good_duration_operand_passes_and_an_in_list_is_checked_element_wise()
     {
-        Assert.Null(Check("wait", "eq", "PT90M").ErrorEnvelope);
-        Assert.Null(Check("grace", "ne", "-P1DT0.5S").ErrorEnvelope);
-        Assert.Null(Check("wait", "in", new List<string> { "PT1H", "P2D", "P1W" }).ErrorEnvelope);
-        Assert.Equal("invalid_filter_value", Check("wait", "in", new List<string> { "PT1H", "P1Y" }).ErrorEnvelope);
+        Assert.Null(Check("wait", "eq", "PT90M"));
+        Assert.Null(Check("grace", "ne", "-P1DT0.5S"));
+        Assert.Null(Check("wait", "in", Many("PT1H", "P2D", "P1W")));
+        Assert.Equal("invalid_filter_value", Check("wait", "in", Many("PT1H", "P1Y"))?.Error);
     }
 
     [Fact]
@@ -254,8 +260,8 @@ public class DurationWireTests
     {
         var emitted = Emit().Single(f => f.Path == "DurationWire.g.cs");
         var production = File.ReadAllText(Path.Combine(
-            CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.Codegen", "Runtime", "DurationWire.cs")).Replace("\r\n", "\n");
-        Assert.Equal(production.Replace("namespace MetaObjects.Codegen.Runtime;", "namespace Acme.Ops;"), emitted.Content.Replace("\r\n", "\n"));
+            CorpusPaths.RepoRoot(), "server", "csharp", "MetaObjects.AspNetCore", "DurationWire.cs")).Replace("\r\n", "\n");
+        Assert.Equal(production.Replace("namespace MetaObjects.AspNetCore;", "namespace Acme.Ops;"), emitted.Content.Replace("\r\n", "\n"));
     }
 
     [Fact]

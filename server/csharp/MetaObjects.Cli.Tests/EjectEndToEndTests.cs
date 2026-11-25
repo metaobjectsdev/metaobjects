@@ -331,7 +331,7 @@ public sealed class EjectEndToEndTests : IDisposable
         Assert.True(verifyExit == 0, $"verify --codegen failed (exit {verifyExit}):\n{verifyOutput}");
 
         // The adopter's fix, made in their own copy.
-        var parserPath = Path.Combine(runtimeDir, "FilterParser.cs");
+        var parserPath = Path.Combine(runtimeDir, "ListQuery.cs");
         var parser = File.ReadAllText(parserPath);
         Assert.Contains("\"invalid_filter_field\"", parser);
         File.WriteAllText(parserPath, parser.Replace("\"invalid_filter_field\"", "\"invalid_filter_field_OWNED_EDIT\""));

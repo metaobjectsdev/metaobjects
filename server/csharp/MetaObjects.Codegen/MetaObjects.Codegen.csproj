@@ -8,19 +8,11 @@
     <RootNamespace>MetaObjects.Codegen</RootNamespace>
     <PackageId>MetaObjects.Codegen</PackageId>
     <Title>MetaObjects.Codegen</Title>
-    <Description>MetaObjects code generation for .NET — emits idiomatic EF Core entities, an AppDbContext, and ASP.NET Core CRUD minimal-API routes from typed metadata. Includes the runtime filter/dispatch helpers that generated routes reference (ASP.NET Core + EF Core); `dotnet meta eject routes` copies them into the adopter's repo.</Description>
+    <Description>MetaObjects code generation for .NET — emits idiomatic EF Core entities, an AppDbContext, and ASP.NET Core CRUD minimal-API routes from typed metadata. Carries no EF Core or ASP.NET Core dependency: the helpers generated routes call are the MetaObjects.AspNetCore package, which the app references.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../MetaObjects/MetaObjects.csproj" />
     <ProjectReference Include="../MetaObjects.Render/MetaObjects.Render.csproj" />
-  </ItemGroup>
-  <!-- Runtime helpers under Runtime/ are referenced by generated consumer code:
-       FilterParser uses IQueryCollection (ASP.NET), EfCoreFilterDispatch uses
-       IQueryable<T> + EF.Property<>. Consumers reference this assembly at
-       runtime in their ASP.NET Core host. -->
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
   </ItemGroup>
   <!--
     ADR-0034 Amendment 3 — eject: each EJECTABLE generator's own .cs source is embedded
@@ -77,26 +69,31 @@
     <EmbeddedResource Include="ApiDocs/DocsPaths.cs" />
   </ItemGroup>
   <!--
-    The HELPER RUNTIME (HelperRuntime.cs) — the Runtime/ files generated routes import.
-    `dotnet meta eject routes` copies these into the adopter's codegen/runtime/ so they own
-    them with the generator. HelperRuntimeTests asserts each embedded copy equals its source
-    and that this list matches HelperRuntime.Files. ExtractObject.cs and M2MResolver.cs are
-    core and deliberately NOT here.
+    The HELPER RUNTIME (HelperRuntime.cs): the MetaObjects.AspNetCore files generated routes import.
+    This package does not compile them (the app references MetaObjects.AspNetCore for that); it
+    embeds their SOURCE so `dotnet meta eject routes` can copy it into the adopter's codegen/runtime/
+    without the tool carrying ASP.NET Core or EF Core. HelperRuntimeTests asserts each embedded copy
+    equals its source and that this list matches HelperRuntime.Files. Runtime/ExtractObject.cs and
+    Runtime/M2MResolver.cs are core, compiled here, and deliberately NOT in this list.
   -->
   <ItemGroup>
-    <EmbeddedResource Include="Runtime/FilterParser.cs" />
-    <EmbeddedResource Include="Runtime/FilterParseResult.cs" />
-    <EmbeddedResource Include="Runtime/FilterPredicate.cs" />
-    <EmbeddedResource Include="Runtime/EfCoreFilterDispatch.cs" />
-    <EmbeddedResource Include="Runtime/ValueObjectValidator.cs" />
-    <EmbeddedResource Include="Runtime/ConstraintErrors.cs" />
-    <EmbeddedResource Include="Runtime/ValidationIssues.cs" />
-    <EmbeddedResource Include="Runtime/UnknownFieldCheck.cs" />
-    <EmbeddedResource Include="Runtime/Iso8601TimestampConverter.cs" />
-    <EmbeddedResource Include="Runtime/DecimalWire.cs" />
-    <EmbeddedResource Include="Runtime/DurationWire.cs" />
-    <EmbeddedResource Include="Runtime/DecimalRangeEndpointFilter.cs" />
-    <EmbeddedResource Include="Runtime/ReportExportHttp.cs" />
-    <EmbeddedResource Include="Runtime/SerializerKeys.cs" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterParser.cs" LogicalName="MetaObjects.AspNetCore.FilterParser.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterParseResult.cs" LogicalName="MetaObjects.AspNetCore.FilterParseResult.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterPredicate.cs" LogicalName="MetaObjects.AspNetCore.FilterPredicate.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterRules.cs" LogicalName="MetaObjects.AspNetCore.FilterRules.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/FilterValueFormat.cs" LogicalName="MetaObjects.AspNetCore.FilterValueFormat.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/ListQuery.cs" LogicalName="MetaObjects.AspNetCore.ListQuery.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/EfCoreFilterDispatch.cs" LogicalName="MetaObjects.AspNetCore.EfCoreFilterDispatch.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/ValueObjectValidator.cs" LogicalName="MetaObjects.AspNetCore.ValueObjectValidator.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/ConstraintErrors.cs" LogicalName="MetaObjects.AspNetCore.ConstraintErrors.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/ValidationIssues.cs" LogicalName="MetaObjects.AspNetCore.ValidationIssues.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/UnknownFieldCheck.cs" LogicalName="MetaObjects.AspNetCore.UnknownFieldCheck.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/Iso8601TimestampConverter.cs" LogicalName="MetaObjects.AspNetCore.Iso8601TimestampConverter.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/DecimalWire.cs" LogicalName="MetaObjects.AspNetCore.DecimalWire.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/DurationWire.cs" LogicalName="MetaObjects.AspNetCore.DurationWire.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/DecimalRangeEndpointFilter.cs" LogicalName="MetaObjects.AspNetCore.DecimalRangeEndpointFilter.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/ReportExportHttp.cs" LogicalName="MetaObjects.AspNetCore.ReportExportHttp.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/SerializerKeys.cs" LogicalName="MetaObjects.AspNetCore.SerializerKeys.cs" Visible="false" />
+    <EmbeddedResource Include="../MetaObjects.AspNetCore/RouteErrors.cs" LogicalName="MetaObjects.AspNetCore.RouteErrors.cs" Visible="false" />
   </ItemGroup>
 </Project>

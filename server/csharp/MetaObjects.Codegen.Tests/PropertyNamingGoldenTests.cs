@@ -3,8 +3,10 @@
 // generators BEFORE the fix (de59161f5) and then re-captured ONLY where the credential-stripping security
 // fix legitimately changed the output: the four routes files (GizmoRoutes, VehicleRoutes, TagRoutes,
 // LineRoutes: the credential omit list, the strip helper call, the startup contract check and the PATCH key
-// lookup). Callable, Extractor, ReportExport, FilterAllowlist and DbContext are still byte-identical to
-// de59161f5. So with no resolver the output is unchanged except for that security change.
+// lookup), and the routes files again for the 1.3.0 default page of 50 (a list with no `api.pagination`
+// pages at 50 and refuses a malformed bound). Callable, Extractor, ReportExport, FilterAllowlist and
+// DbContext are still byte-identical to de59161f5. So with no resolver the output is unchanged except
+// for those two deliberate route changes.
 //
 // Capture (re-capture only for a deliberate, reviewed output change): GOLDEN_WRITE=1 dotnet test
 // --filter PropertyNamingGoldenTests. Compare mode is the default.

@@ -87,13 +87,13 @@ public static class WriteCoercion
         if (underlying == typeof(double))  return double.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
         if (underlying == typeof(float))   return float.Parse(raw, NumberStyles.Float, CultureInfo.InvariantCulture);
         if (underlying == typeof(decimal))
-            return MetaObjects.Codegen.Runtime.DecimalWire.TryParse(raw, out var exact)
+            return MetaObjects.AspNetCore.DecimalWire.TryParse(raw, out var exact)
                 ? exact
                 : throw new FormatException($"not a decimal: {raw}");
         // field.duration → System.TimeSpan from the ISO-8601 authoring form (Npgsql binds a
         // TimeSpan as interval natively; elsewhere the context's converter stores its microsecond count).
         if (underlying == typeof(TimeSpan))
-            return MetaObjects.Codegen.Runtime.DurationWire.TryParse(raw, out var span)
+            return MetaObjects.AspNetCore.DurationWire.TryParse(raw, out var span)
                 ? span
                 : throw new FormatException($"not an ISO-8601 duration: {raw}");
         if (underlying == typeof(DateOnly)) return ParseDate(raw);

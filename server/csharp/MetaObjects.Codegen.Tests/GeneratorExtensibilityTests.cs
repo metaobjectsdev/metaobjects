@@ -130,9 +130,11 @@ public class GeneratorExtensibilityTests
     {
         var ctx = Ctx(Load(EntityModel));
         var src = Assert.Single(new NoOpsFilterAllowlistGenerator().Generate(ctx)).Content;
-        // Overridden to empty → no field entries emitted.
-        Assert.DoesNotContain("\"email\"", src);
-        Assert.DoesNotContain("\"subscribed\"", src);
+        // Overridden to empty → no filter entries emitted: no operator set, no rule. (FieldNames
+        // and Sort still list the fields: what is a field, and what sorts, is not this seam's.)
+        Assert.DoesNotContain("[\"email\"] = new(System.StringComparer.Ordinal)", src);
+        Assert.DoesNotContain("[\"email\"] = new(FilterValueKind", src);
+        Assert.DoesNotContain("[\"subscribed\"] = new(FilterValueKind", src);
     }
 
     [Fact]

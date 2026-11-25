@@ -152,6 +152,20 @@ public static class EjectCommand
             : ["", warning + "."];
     }
 
+    /// <summary>True when generator <paramref name="name"/>'s output uses the helper runtime.</summary>
+    private static bool UsesRuntime(string name) =>
+        EjectableGenerators.ReadSource(name) is { } src && HelperRuntime.UsedBy(src);
+
+    /// <summary>
+    /// The helper-runtime users (<see cref="HelperRuntime.UsedBy"/>) not in <paramref name="names"/>,
+    /// when <paramref name="names"/> holds one; else none. They are owned, and given back, together.
+    /// </summary>
+    internal static List<GeneratorRegistryEntry> RuntimePartners(IReadOnlyList<string> names, IEnumerable<GeneratorRegistryEntry> entries)
+    {
+        if (!names.Any(UsesRuntime)) return [];
+        return entries.Where(e => !names.Contains(e.Name, StringComparer.Ordinal) && UsesRuntime(e.Name)).ToList();
+    }
+
     /// <summary>
     /// Eject <paramref name="names"/> into <paramref name="root"/>/codegen/. Every name
     /// is validated before anything is written. Returns exit 2 (usage) for no names or
@@ -175,6 +189,15 @@ public static class EjectCommand
 
         var generatorsDir = Path.Combine(root, "codegen", "generators");
 
+        // The generators whose output uses the helper runtime share its types (the routes hand the
+        // allowlist's FilterFieldRule table to ListQueryParser), so they are owned together: one owned
+        // and one packaged would put two copies of those types in one build. A partner already owned
+        // stays as it is.
+        var partners = RuntimePartners(names, known.Values)
+            .Where(e => !File.Exists(Path.Combine(generatorsDir, e.SourceFileName!)))
+            .Select(e => e.Name).ToList();
+        names = [.. names, .. partners];
+
         // All names checked BEFORE any write — see the ADR-0034 Amendment 3 doc comment
         // above. A partial eject (half copied, one refused) is worse than refusing the
         // whole call: the adopter cannot tell what state the repo is in.
@@ -197,10 +220,13 @@ public static class EjectCommand
             var rewritten = EjectableGenerators.RewriteForEject(EjectableGenerators.ReadSource(name)!);
             var dest = Path.Combine(generatorsDir, file);
             var status = WriteOwnedCopy(dest, rewritten, File.Exists(dest) ? "replaced" : "created");
-            outLines.Add($"ejected \"{name}\" -> codegen/generators/{file} [{status}]");
+            var why = partners.Contains(name)
+                ? " — its output shares the helper types with the generator(s) named, so it is owned with them"
+                : "";
+            outLines.Add($"ejected \"{name}\" -> codegen/generators/{file} [{status}]{why}");
         }
         outLines.AddRange(EjectCompanions(root, names.Select(n => known[n]).ToList(), force));
-        var runtimeUsers = names.Where(n => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(n)!)).ToList();
+        var runtimeUsers = names.Where(UsesRuntime).ToList();
         if (runtimeUsers.Count > 0)
             outLines.AddRange(EjectRuntime(root, runtimeUsers, force));
 
@@ -257,6 +283,11 @@ public static class EjectCommand
         if (names.Count == 0)
         {
             targets = OwnedCopy.IdenticalCopies(root).ToList();
+            // An identical helper-runtime user stays while an edited partner is still owned (see Run).
+            var editedRuntimeUser = all.Any(e => UsesRuntime(e.Name)
+                && OwnedCopy.Status(root, e) is not null && !targets.Contains(e));
+            if (editedRuntimeUser)
+                targets.RemoveAll(e => UsesRuntime(e.Name));
             if (targets.Count == 0)
             {
                 var owned = all.Where(e => OwnedCopy.Status(root, e) is not null).ToList();
@@ -275,6 +306,9 @@ public static class EjectCommand
                     $"unknown or non-ejectable generator(s): {string.Join(", ", unknown)}. " +
                     $"Nothing was removed. Ejectable: {string.Join(", ", EjectableNames())}.");
             targets = names.Distinct(StringComparer.Ordinal).Select(n => known[n]).ToList();
+            // A helper-runtime user goes back to the package with its owned partners (see Run).
+            targets.AddRange(RuntimePartners(targets.Select(t => t.Name).ToList(), all)
+                .Where(e => OwnedCopy.Status(root, e) is not null));
             var notOwned = targets.Where(e => OwnedCopy.Status(root, e) is null).Select(e => e.Name).ToList();
             if (notOwned.Count > 0)
                 return Outcome.Usage(
@@ -316,12 +350,12 @@ public static class EjectCommand
             }
         }
 
-        var runtimeUsers = targets.Where(t => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(t.Name)!)).ToList();
+        var runtimeUsers = targets.Where(t => UsesRuntime(t.Name)).ToList();
         var runtimeDir = Path.Combine(root, HelperRuntime.OwnedDirectory.Replace('/', Path.DirectorySeparatorChar));
         var runtimeRemoved = false;
         if (runtimeUsers.Count > 0 && Directory.Exists(runtimeDir))
         {
-            if (remaining.FirstOrDefault(e => HelperRuntime.UsedBy(EjectableGenerators.ReadSource(e.Name)!)) is { } user)
+            if (remaining.FirstOrDefault(e => UsesRuntime(e.Name)) is { } user)
                 lines.Add($"  kept {HelperRuntime.OwnedDirectory}/ — \"{user.Name}\" is still owned and uses it");
             else
             {
@@ -347,7 +381,7 @@ public static class EjectCommand
         if (runtimeRemoved)
             lines.Add($"The helper runtime copy is gone: drop the `<Compile Include=\".../{HelperRuntime.OwnedDirectory}/**/*.cs\" />` " +
                       $"line from the project that compiled it, and register the timestamp converter from " +
-                      $"`{HelperRuntime.PackagedNamespace}` again.");
+                      $"`{HelperRuntime.PackagedNamespace}` again (the app needs its {HelperRuntime.PackageId} package reference back).");
         return new Outcome(0, lines, []);
     }
 
@@ -438,7 +472,7 @@ public static class EjectCommand
         lines.Add($"  <Compile Include=\"<path-to-project-root>/{HelperRuntime.OwnedDirectory}/**/*.cs\" />");
         lines.Add(
             $"and register the timestamp converter from `{HelperRuntime.OwnedNamespace}` rather than " +
-            $"`{HelperRuntime.PackagedNamespace}`. The generated routes then need no MetaObjects.Codegen " +
+            $"`{HelperRuntime.PackagedNamespace}`. The generated routes then need no {HelperRuntime.PackageId} " +
             "reference. codegen/Codegen.csproj must not compile runtime/ " +
             "(`<Compile Remove=\"runtime/**\" />`; a scaffold written by this version already has it).");
         return lines;

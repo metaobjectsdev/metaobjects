@@ -24,6 +24,7 @@ Per the always-on descriptor:
 ```bash
 dotnet tool install --global MetaObjects.Cli   # provides `dotnet meta`
 dotnet add package MetaObjects.Codegen          # the codegen generators
+dotnet add package MetaObjects.AspNetCore       # in the app: the helpers generated routes call
 dotnet meta init                                # writes codegen/: Generators.cs, Program.cs, Codegen.csproj
 ```
 

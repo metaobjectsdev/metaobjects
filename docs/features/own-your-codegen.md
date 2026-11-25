@@ -1700,20 +1700,27 @@ is no `dotnet meta docs`: see [the migration section](migrations/docs-are-genera
 
 Generated routes call a handful of helpers: the filter parser, the EF Core filter
 dispatch, the value-object validator and the constraint-error mapping. In the package they
-live in `MetaObjects.Codegen.Runtime`. They are helpers, not core, because nothing but
+live in `MetaObjects.AspNetCore` (namespace `MetaObjects.AspNetCore`), which the app references;
+before 1.3.0 they were part of `MetaObjects.Codegen`, under `MetaObjects.Codegen.Runtime`. They are helpers, not core, because nothing but
 generated routes calls them, so an owned routes generator comes with owned copies of them.
 Otherwise a bug in the filter parser would still mean waiting for a MetaObjects release.
 
 `dotnet meta eject routes` therefore also writes their source to `codegen/runtime/`:
-`FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`,
-`EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `ConstraintErrors.cs` and
-`Iso8601TimestampConverter.cs`, the converter your host registers for the api contract's
-timestamp spelling. Each file is the packaged source with one change: its namespace becomes
+`FilterParser.cs`, `FilterParseResult.cs`, `FilterPredicate.cs`, `FilterRules.cs`,
+`FilterValueFormat.cs`, `ListQuery.cs`, `EfCoreFilterDispatch.cs`, `ValueObjectValidator.cs`,
+`ConstraintErrors.cs`, `ValidationIssues.cs`, `UnknownFieldCheck.cs`, `DecimalWire.cs`,
+`DurationWire.cs`, `DecimalRangeEndpointFilter.cs`, `ReportExportHttp.cs`, `SerializerKeys.cs`,
+`RouteErrors.cs` and `Iso8601TimestampConverter.cs`, the converter your host registers for the
+api contract's timestamp spelling. Each file is the packaged source with one change: its namespace becomes
 `Codegen.Runtime`, matching the folder the way `codegen/generators/` matches
 `Codegen.Generators`. The ejected `RoutesGenerator.cs` differs from the reference in one
 more line, its `HelperRuntimeNamespace` constant, so its output says
-`using Codegen.Runtime;`. Ejecting a generator whose output uses none of these, such as
-`entity` or `filter-allowlist`, copies nothing extra.
+`using Codegen.Runtime;`. The filter allowlist's output uses the helper types too (the rule
+table the routes hand to the list parser), so `routes` and `filter-allowlist` are owned
+together: ejecting either writes both, each with that constant changed, and
+`dotnet meta eject --undo routes` gives both back. One owned and one packaged would put two
+copies of the helper types in one build. Ejecting a generator whose output uses none of these,
+such as `entity` or `names`, copies nothing extra.
 
 Wire it in two places:
 
@@ -1730,7 +1737,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 ```
 
 The generated routes then compile against your copy, and the app needs no
-`MetaObjects.Codegen` reference for them. A `codegen/Codegen.csproj` scaffolded by this
+`MetaObjects.AspNetCore` reference for them. A `codegen/Codegen.csproj` scaffolded by this
 version already excludes `runtime/**` from the codegen tool's own build. If yours predates
 it, add `<Compile Remove="runtime/**" />`. The tool builds either way, but the runtime
 belongs to your app, not to the generator.
@@ -1742,7 +1749,7 @@ M of your own` or is `missing`. `dotnet meta verify --codegen` never reads the f
 compares `--out` against a fresh regen, and your runtime copy is owned code, not generated
 output.
 
-What stays in the package is core: `ExtractObject`, the reply parser the prompt-tier
+What stays in `MetaObjects.Codegen` is core: `ExtractObject`, the reply parser the prompt-tier
 modules delegate to, and `M2MResolver`, the metadata-driven M:N traversal. The loader,
 registry, render and verify stay package dependencies too.
 
@@ -1766,8 +1773,10 @@ a conflict only where upstream and you changed the same lines. The same recipe c
 generator copies. Afterwards, bump the version in `codegen/Codegen.csproj` so the next
 diff starts from the right place.
 
-A copy of `RoutesGenerator.cs` ejected before this change still emits
-`using MetaObjects.Codegen.Runtime;` and keeps working against the package. To move it over,
+A copy of `RoutesGenerator.cs` ejected before the helpers were handed over still emits
+`using MetaObjects.Codegen.Runtime;`. Since 1.3.0 that namespace no longer holds the helpers, so
+its output does not compile, and `dotnet meta gen` and `verify` say so. Either set its
+`HelperRuntimeNamespace` constant to `"MetaObjects.AspNetCore"` and reference that package, or
 run the recipe above: the patch carries the `HelperRuntimeNamespace` line and adds
 `codegen/runtime/`.
 
