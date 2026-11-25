@@ -43,6 +43,7 @@ fn a_reference_node_is_loaded_and_not_generated() {
         root: loaded.result.root,
         entities: &[],
         collection: &loaded.collection,
+        reference_nodes: &loaded.reference_nodes,
     };
     let files = EntityGenerator.generate(&ctx).expect("generates");
     let all: String = files.iter().map(|f| f.content.as_str()).collect();

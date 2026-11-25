@@ -3048,8 +3048,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
     checked = 0
     for tmpl in sorted(templates, key=lambda c: c.name):
         # The reply (`@responseRef`): its field tree, and an xml prompt's tag contract against
-        # it. Independent of the payload check, so it runs first; a responding prompt counts as
-        # checked even when its body has nothing more to check.
+        # it. Independent of the payload check, so it runs first.
         reply_error = False
         for finding in response_findings(root, tmpl):
             line = f"[{tmpl.name}] (reply) {finding.code}: {finding.path}"
@@ -3062,9 +3061,9 @@ def _verify_templates(args: argparse.Namespace) -> int:
         body_errors, body_checked = _verify_body(tmpl)
         error_count += body_errors
         checked += body_checked
-        if body_checked == 0 and (
-            reply_error or isinstance(tmpl.get_meta_attr(tc.TEMPLATE_ATTR_RESPONSE_REF), str)
-        ):
+        # As TypeScript counts: a template the body check did not engage with still counts
+        # when its reply check raised an error.
+        if body_checked == 0 and reply_error:
             checked += 1
 
     if error_count > 0:

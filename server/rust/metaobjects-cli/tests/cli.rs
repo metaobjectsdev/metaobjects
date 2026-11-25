@@ -888,3 +888,151 @@ fn verify_runs_the_rules_gate_and_a_setting_decides_whether_a_finding_fails_it()
         "{err}"
     );
 }
+
+/// A prompt over a payload value object, replying with a typed answer in xml.
+fn prompt_model(required_tags: &str) -> String {
+    format!(
+        r#"{{ "metadata.root": {{ "package": "acme::support", "children": [
+  {{ "object.value": {{ "name": "SupportRequest", "children": [
+    {{ "field.string": {{ "name": "question" }} }}
+  ] }} }},
+  {{ "object.value": {{ "name": "SupportAnswer", "children": [
+    {{ "field.string": {{ "name": "text" }} }}
+  ] }} }},
+  {{ "template.prompt": {{ "name": "AnswerPrompt",
+    "@payloadRef": "acme::support::SupportRequest",
+    "@textRef": "support/answer",
+    "@responseRef": "acme::support::SupportAnswer",
+    "@responseFormat": "xml",
+    "@requiredTags": {required_tags} }} }}
+] }} }}"#
+    )
+}
+
+const ANSWER_BODY: &str =
+    "Answer {{question}} inside <SupportAnswer><text>..</text></SupportAnswer>\n";
+
+fn template_project(tag: &str, required_tags: &str) -> Project {
+    let p = Project::new(tag);
+    std::fs::write(
+        p.0.join("metaobjects/meta.shop.json"),
+        prompt_model(required_tags),
+    )
+    .unwrap();
+    std::fs::create_dir_all(p.0.join("prompts/support")).unwrap();
+    std::fs::write(p.0.join("prompts/support/answer.mustache"), ANSWER_BODY).unwrap();
+    p
+}
+
+#[test]
+fn verify_templates_passes_a_clean_project_and_needs_no_gen() {
+    let p = template_project("tpl-clean", r#"["SupportAnswer", "text"]"#);
+    let r = p.run(&["meta", "verify", "--templates"]);
+    let out = ok(&r);
+    assert!(out.contains("1 template(s) clean."), "{out}");
+    assert!(!text(&r.stderr).contains("warning"), "{}", text(&r.stderr));
+}
+
+#[test]
+fn verify_templates_fails_on_drift_and_names_the_file_and_line() {
+    let p = template_project("tpl-drift", r#"["SupportAnswer"]"#);
+    std::fs::write(
+        p.0.join("prompts/support/answer.mustache"),
+        "Intro\nAnswer {{qustion}} <SupportAnswer>x</SupportAnswer>\n",
+    )
+    .unwrap();
+    let r = p.run(&["meta", "verify", "--templates"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("[AnswerPrompt] (prompt) ERR_VAR_NOT_ON_PAYLOAD: qustion (prompts/support/answer.mustache:2)"),
+        "{err}"
+    );
+    assert!(
+        err.contains("1 drift error(s) across 1 template(s)."),
+        "{err}"
+    );
+
+    // A body that is not there is an error too, and --prompts points the gate elsewhere.
+    std::fs::remove_file(p.0.join("prompts/support/answer.mustache")).unwrap();
+    let r = p.run(&["meta", "verify", "--templates"]);
+    assert_eq!(r.status.code(), Some(1));
+    assert!(
+        text(&r.stderr).contains("ERR_PARTIAL_UNRESOLVED"),
+        "{}",
+        text(&r.stderr)
+    );
+    std::fs::create_dir_all(p.0.join("bodies/support")).unwrap();
+    std::fs::write(p.0.join("bodies/support/answer.mustache"), ANSWER_BODY).unwrap();
+    ok(&p.run(&["meta", "verify", "--templates", "--prompts", "bodies"]));
+}
+
+#[test]
+fn verify_templates_prints_a_reply_warning_without_failing() {
+    // `confidence` is neither the reply type nor one of its fields.
+    let p = template_project("tpl-reply", r#"["SupportAnswer", "text", "confidence"]"#);
+    std::fs::write(
+        p.0.join("prompts/support/answer.mustache"),
+        "{{question}} <SupportAnswer><text>a</text></SupportAnswer> <confidence>1</confidence>",
+    )
+    .unwrap();
+    let r = p.run(&["meta", "verify", "--templates"]);
+    let err = text(&r.stderr);
+    assert_eq!(r.status.code(), Some(0), "{err}");
+    assert!(
+        err.contains("[AnswerPrompt] (reply) ERR_RESPONSE_TAG_UNDECLARED: confidence"),
+        "{err}"
+    );
+    assert!(text(&r.stdout).contains("1 template(s) clean (1 warning(s))."));
+}
+
+#[test]
+fn a_bare_verify_runs_the_template_gate_beside_the_codegen_gate() {
+    let p = template_project("tpl-bare", r#"["SupportAnswer"]"#);
+    ok(&p.run(&["meta", "gen"]));
+    ok(&p.run(&["meta", "verify"]));
+    std::fs::write(p.0.join("prompts/support/answer.mustache"), "{{nope}}").unwrap();
+    let r = p.run(&["meta", "verify"]);
+    assert_eq!(r.status.code(), Some(1));
+    assert!(text(&r.stderr).contains("ERR_VAR_NOT_ON_PAYLOAD: nope"));
+    // `--codegen` alone never reads the templates.
+    ok(&p.run(&["meta", "verify", "--codegen"]));
+}
+
+#[test]
+fn verify_strict_rejects_the_unregistered_attribute_the_corpus_pins() {
+    // fixtures/verify-strict-conformance/unregistered-attr: a field carries an attribute no
+    // provider declares. The loader's code is the corpus's; the Rust port loads strictly on
+    // `--strict` (the other ports' `verify` is strict by default, `--lax` opting out), so the
+    // two halves of the expectation are `--strict` and the bare command.
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../fixtures/verify-strict-conformance/unregistered-attr");
+    let expected: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(fixture.join("expected.json")).unwrap())
+            .unwrap();
+    let p = Project::new("strict");
+    std::fs::copy(
+        fixture.join("input/meta.users.json"),
+        p.0.join("metaobjects/meta.shop.json"),
+    )
+    .unwrap();
+    ok(&p.run(&["meta", "gen"]));
+    let strict = p.run(&["meta", "verify", "--templates", "--strict"]);
+    assert_eq!(
+        strict.status.success(),
+        !expected["strict"]["exitNonZero"].as_bool().unwrap()
+    );
+    let code = expected["strict"]["errorCode"].as_str().unwrap();
+    assert!(
+        text(&strict.stderr).contains(code),
+        "{}",
+        text(&strict.stderr)
+    );
+    let lax = p.run(&["meta", "verify"]);
+    assert_eq!(
+        lax.status.success(),
+        expected["lax"]["exitZero"].as_bool().unwrap(),
+        "{}",
+        text(&lax.stderr)
+    );
+}

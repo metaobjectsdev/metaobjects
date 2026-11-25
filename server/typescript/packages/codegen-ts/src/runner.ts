@@ -510,6 +510,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       reason = "root has no object children";
     } else if (afterEntityFilter.length === 0) {
       reason = "no object children match the provided entityFilter";
+    } else if (afterEntityFilter.every((o) => referenceNodes.has(o.resolutionKey()))) {
+      // Only reference nodes remained: name the reference sources, not a `scope` the
+      // project may never have written.
+      reason = "every object is declared only in a reference source";
     } else {
       reason = "no object children match the configured scope";
     }

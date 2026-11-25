@@ -5,7 +5,6 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { resolveCollection } from "../src/collection.js";
 import { loadMemory } from "../src/memory.js";
 
 interface Case {
@@ -40,14 +39,8 @@ describe("reference-source-conformance", () => {
   for (const c of cases) {
     test(c.name, async () => {
       const root = await materialize(c);
-      const collection = await resolveCollection(root);
-      const load = loadMemory(root, {
-        files: collection.files,
-        fileIds: collection.fileIds,
-        importedPackages: collection.importedPackages,
-        importedNodes: collection.importedNodes,
-        referenceIds: collection.referenceIds,
-      });
+      // The project-aware arm: loadMemory resolves the collection itself, reference ids included.
+      const load = loadMemory(root);
       if (c.expectLoadError !== undefined) {
         await expect(load).rejects.toMatchObject({ code: c.expectLoadError });
         return;

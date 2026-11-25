@@ -18,7 +18,6 @@ use metaobjects::naming::{
     primary_rdb_source, source_is_read_only,
 };
 use metaobjects::node::{NodeId, PACKAGE_SEP, Tree};
-use metaobjects::reference::reference_nodes_of;
 use metaobjects::validate::util::{ObjectIndex, ops_for_field};
 use serde_json::Value;
 
@@ -842,18 +841,21 @@ fn field_rules(
 impl Plan {
     /// The plan of the model a generator was handed.
     pub fn of(ctx: &GenContext<'_>) -> Result<Plan, GenError> {
-        Plan::build(ctx.tree, ctx.root, ctx.collection)
+        Plan::build(ctx.tree, ctx.root, ctx.collection, ctx.reference_nodes)
     }
 
-    pub fn build(tree: &Tree, root: NodeId, collection: &Collection) -> Result<Plan, GenError> {
+    pub fn build(
+        tree: &Tree,
+        root: NodeId,
+        collection: &Collection,
+        reference: &BTreeSet<String>,
+    ) -> Result<Plan, GenError> {
         // Every concrete entity and value object, in model order.
         let mut structs: Vec<StructPlan> = Vec::new();
         let mut by_node: HashMap<NodeId, usize> = HashMap::new();
         let index = ObjectIndex::build(tree, root);
-        // A reference node loads and resolves but another run owns it. The load already
-        // refused a reference-only template, so the set is empty only when there is none.
-        let reference =
-            reference_nodes_of(tree, root, &collection.reference_ids).unwrap_or_default();
+        // A reference node loads and resolves but another run owns it (`reference` is the
+        // set the load computed and already vetted).
         for &id in tree.own_children(root) {
             let n = tree.node(id);
             if n.type_name != TYPE_OBJECT

@@ -503,6 +503,7 @@ fn render(p: &mut Prepared<'_>, opts: &RunOptions) -> Result<Vec<EmittedFile>, R
         root: p.loaded.result.root,
         entities: &opts.entities,
         collection: &p.loaded.collection,
+        reference_nodes: &p.loaded.reference_nodes,
     };
     let mut emitted: Vec<EmittedFile> = Vec::new();
     for g in &p.selected {

@@ -23,5 +23,5 @@ gate already runs (`ERR_OUTPUT_TAG_MISSING`, `ERR_REQUIRED_SLOT_UNUSED`, …) ar
 this corpus.
 
 Runners: TypeScript `server/typescript/packages/cli/test/response-verify-conformance.test.ts`
-(reference implementation) and one per port that ships a template gate; Rust ships none. See
+(reference implementation) and one per port that ships a template gate (Rust's is `server/rust/metaobjects-cli/tests/response_verify_conformance.rs`). See
 `docs/CONFORMANCE.md`.

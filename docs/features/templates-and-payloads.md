@@ -741,13 +741,17 @@ for each `@requiredTags` tag that names neither the reply type nor any field in 
 body is already held to those tags (`ERR_OUTPUT_TAG_MISSING`); this ties them to the type the
 extractor reads, so renaming a reply field without renaming the tag the prompt asks for is
 caught. Pinned by [`fixtures/response-verify-conformance/`](../../fixtures/response-verify-conformance/)
-in TypeScript, Java (and so Kotlin), C# and Python; Rust ships no template check.
+in TypeScript, Java (and so Kotlin), C#, Python and Rust.
 
 A bare `verify` also checks generated code and the requirement ledger; name the template
 check to run it alone. Java and Python skip this check with a note when no template root is
 configured; C# does not skip, and a bare run with no `prompts/` or `templates/` directory
 (and no `--templates <root>`) exits 2
 ([cli.md](cli.md#verify-is-one-verb-with-explicit-subverbs-adr-0021-d2)).
+
+Rust's check reads Mustache bodies only: a body resolving to a `.jinja` / `.j2` file is
+reported as `ERR_TEMPLATE_ENGINE_UNSUPPORTED`. Its engine, `verify` in `metaobjects-render`,
+is held to `fixtures/verify-conformance/` with no ledgered case.
 
 | Port | Bare command (runs this check) | This check alone |
 |---|---|---|
@@ -756,6 +760,7 @@ configured; C# does not skip, and a bare run with no `prompts/` or `templates/` 
 | Kotlin | `mvn metaobjects:verify` (same Maven goal) | `-Dmeta.verify.mode=templates` |
 | C# | `dotnet meta verify` (needs a `prompts/` or `templates/` directory, else exits 2) | `dotnet meta verify --templates <root>` |
 | Python | `metaobjects verify` (needs `metaobjects.config.yaml` or `--prompts <dir>`) | `metaobjects verify --templates` |
+| Rust | `cargo meta verify` (bodies under `prompts/`, or `--prompts <dir>`; a project with no `template.*` node prints nothing) | `cargo meta verify --templates` |
 
 ## Determinism contract
 

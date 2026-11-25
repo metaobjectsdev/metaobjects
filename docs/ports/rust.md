@@ -53,7 +53,7 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 |---|---|
 | `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
 | `cargo meta gen [ENTITY...]` | Generates the crates. It skips the whole run when the model, the project config and the generators are unchanged ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)), writes only files whose bytes changed, removes a generated file nothing emits any more, and refuses to overwrite or delete a generated file that was edited by hand. It prints what it created, updated and removed, and the crates to re-check. |
-| `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db`, `--templates` and `--deps` exit 2 with the reason and where that check lives. |
+| `cargo meta verify [--codegen] [--templates] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. `--templates` is the template drift gate: each `template.*` body (under `prompts/`, or `--prompts <dir>`) against its payload value object, and each prompt's `@responseRef` reply; a bare `verify` runs it too, and a Jinja body is refused (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`). A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db` and `--deps` exit 2 with the reason and where that check lives. |
 | `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. An existing copy is refused; `--force` replaces it with the reference, and leaves a copy that already matches untouched. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
 
 `gen` and `verify` share `--project <dir>`, `--out <dir>` (default `generated`), `--generators <a,b>`,
@@ -320,14 +320,14 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 - **Other generators.** There is no server-side route, ORM or repository generator, no template
   generator and no documentation generator. Projections and reports get no client yet.
-- **Other gates.** `verify --codegen` and the business-rules gate are the ones it has. There is no
-  template gate, no requirement gate and no `fmt`.
+- **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones it has.
+  There is no requirement gate and no `fmt`.
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
 - **Prompt codegen.** The render engine and the reply parser exist as a library; no generator yet
-  writes a template's payload type or its response parser from the model, and there is no template
-  gate in `verify`.
+  writes a template's payload type or its response parser from the model. (`verify --templates`
+  does check the bodies and the reply against the model.)
 - **Publication.** The crates are publishable and the lane proves they package (`cargo publish
   --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
   the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).

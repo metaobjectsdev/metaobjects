@@ -26,6 +26,7 @@ fn generate_named(
         root: loaded.result.root,
         entities: &names,
         collection: &loaded.collection,
+        reference_nodes: &loaded.reference_nodes,
     };
     EntityGenerator
         .generate(&ctx)

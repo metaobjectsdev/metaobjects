@@ -26,6 +26,7 @@ fn generate(files: &[(&str, &str)]) -> BTreeMap<String, String> {
         root: loaded.result.root,
         entities: &[],
         collection: &loaded.collection,
+        reference_nodes: &loaded.reference_nodes,
     };
     shipped_generators()
         .iter()
@@ -114,6 +115,7 @@ fn the_support_crate_is_the_emitted_modules() {
         root: loaded.result.root,
         entities: &[],
         collection: &loaded.collection,
+        reference_nodes: &loaded.reference_nodes,
     };
     let files = EntityGenerator
         .generate(&ctx)

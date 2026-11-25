@@ -56,6 +56,13 @@ fn err<T>(message: impl Into<String>) -> Result<T, RenderError> {
 pub trait Provider {
     /// The text `reference` names, or `None` when there is none.
     fn resolve(&self, reference: &str) -> Option<String>;
+
+    /// Whether `reference` is a file written for the Jinja engine (ADR-0061), when the
+    /// provider knows. `None` (the default) means it does not, and the text is Mustache.
+    /// The template drift check refuses a Jinja partial rather than read it as Mustache.
+    fn is_jinja(&self, _reference: &str) -> Option<bool> {
+        None
+    }
 }
 
 /// A provider over a fixed map of references to bodies.

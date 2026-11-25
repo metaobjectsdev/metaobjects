@@ -79,7 +79,7 @@ fn walk<'a>(tags: &[Tag], stack: &mut Vec<&'a Value>) -> Option<String> {
 /// The index of the close tag that ends the section opened at `open`. The scanner has
 /// already refused unbalanced sections, so a close always exists; the end of the list is
 /// the fallback.
-fn matching_close(tags: &[Tag], open: usize) -> usize {
+pub(crate) fn matching_close(tags: &[Tag], open: usize) -> usize {
     let mut depth = 0usize;
     for (offset, tag) in tags[open + 1..].iter().enumerate() {
         match tag.kind {

@@ -249,7 +249,7 @@ fn label(tree: &Tree, node: NodeId) -> String {
 }
 
 /// A string-array attr read resolving; a bare string is one element.
-pub(crate) fn string_list<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Vec<&'a str> {
+pub fn string_list<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Vec<&'a str> {
     match tree.attr(node, attr) {
         Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).collect(),
         Some(Value::String(s)) => vec![s.as_str()],
@@ -257,7 +257,7 @@ pub(crate) fn string_list<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Vec<&
     }
 }
 
-pub(crate) fn str_attr<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Option<&'a str> {
+pub fn str_attr<'a>(tree: &'a Tree, node: NodeId, attr: &str) -> Option<&'a str> {
     tree.attr(node, attr).and_then(Value::as_str)
 }
 

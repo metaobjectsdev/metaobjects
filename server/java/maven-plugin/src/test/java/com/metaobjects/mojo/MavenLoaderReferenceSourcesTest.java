@@ -72,13 +72,17 @@ public class MavenLoaderReferenceSourcesTest {
         assertTrue("loader errors: " + loader.getErrors(), loader.getErrors().isEmpty());
         assertEquals(Set.of("acme::support::SupportAnswer", "acme::support::AnswerSource"),
                 loader.getRoot().getReferenceNodes());
-        loader.refuseReferenceTemplates();
     }
 
     @Test
     public void aTemplateDeclaredOnlyInAReferenceSourceIsRefused() throws Exception {
-        MetaDataLoader loader = load(project("a-template-in-a-reference-source-is-refused"));
-        MetaDataException e = assertThrows(MetaDataException.class, loader::refuseReferenceTemplates);
-        assertEquals("ERR_REFERENCE_SOURCE_TEMPLATE", e.getCode().map(Enum::name).orElse("<none>"));
+        Path project = project("a-template-in-a-reference-source-is-refused");
+        // Refused by the load itself, so every Java entry point refuses it; init() may wrap it.
+        Throwable t = assertThrows(RuntimeException.class, () -> load(project));
+        String code = "<none>";
+        for (; t != null; t = t.getCause()) {
+            if (t instanceof MetaDataException m && m.getCode().isPresent()) { code = m.getCode().get().name(); break; }
+        }
+        assertEquals("ERR_REFERENCE_SOURCE_TEMPLATE", code);
     }
 }

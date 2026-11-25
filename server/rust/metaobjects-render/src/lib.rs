@@ -10,6 +10,9 @@
 //!
 //! [`extract`] is the other half of a prompt: the tolerant reply parser that reads a typed
 //! answer back out of a model's reply, held to `fixtures/extract-conformance/`.
+//! [`verify`] is the build-time half: it checks a template's variables, partials and
+//! contracted output tags against the payload's declared field tree, held to
+//! `fixtures/verify-conformance/`.
 //! [`prompt`] writes the output-format fragment that asks for that answer.
 
 pub mod accessors;
@@ -19,6 +22,7 @@ pub mod presence;
 pub mod prompt;
 pub mod render;
 pub mod tags;
+pub mod verify;
 
 pub use render::{
     Body, InMemoryProvider, MAX_DEPTH, Provider, RenderError, RenderRequest, render,

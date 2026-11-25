@@ -9,8 +9,7 @@ use std::collections::BTreeSet;
 
 use crate::errors::{ERR_REFERENCE_SOURCE_TEMPLATE, MetaError};
 use crate::node::{NodeId, Tree};
-
-const TYPE_TEMPLATE: &str = "template";
+use crate::validate::prompt::TYPE_TEMPLATE;
 
 /// The resolution keys of the top-level nodes every one of whose declaring files (every
 /// overlay contributor included) is in `reference_ids`. One declaration in an ordinary

@@ -133,7 +133,6 @@ public class ReferenceSourceConformanceTest extends SharedRegistryTestBase {
             loader.setReferenceSourceIds(referenceIds);
             try {
                 loader.load(sources);
-                if (loader.getErrors().isEmpty()) loader.refuseReferenceTemplates();
             } catch (MetaDataException e) {
                 assertRefusal(e);
                 return;
