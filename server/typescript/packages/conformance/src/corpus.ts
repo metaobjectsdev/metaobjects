@@ -43,7 +43,11 @@ export interface CorpusFixtureResult {
 export interface CorpusResult {
   readonly corpusRoot: string;
   readonly fixtures: readonly CorpusFixtureResult[];
-  /** True when no scenario is `fail` or `fixed-but-listed`. */
+  /**
+   * True when at least one scenario ran and none is `fail` or `fixed-but-listed`. A corpus
+   * with nothing runnable (empty, or docs-only and contract-only scenarios alone) tests
+   * nothing, so it does not pass.
+   */
   readonly passed: boolean;
 }
 
@@ -53,21 +57,29 @@ export async function runCorpus(opts: CorpusOptions): Promise<CorpusResult> {
   const required = opts.requireProviders ?? [];
   const results: CorpusFixtureResult[] = [];
   for (const fix of await discoverFixtures(opts.corpusRoot)) {
+    // The provider rule comes first, so a docs-only or contract-only scenario in a pack's
+    // corpus must name the pack too.
+    const missing = required
+      .filter((id) => !fix.providers.includes(id))
+      .map((id) => `providers.json must name "${id}" (it lists: ${fix.providers.join(", ")})`);
     if (isDocsOnlyFixture(fix) || isContractOnlyFixture(fix)) {
-      results.push({ name: fix.name, status: "skipped", problems: [] });
+      results.push(missing.length > 0 ? { name: fix.name, status: "fail", problems: missing } : { name: fix.name, status: "skipped", problems: [] });
       continue;
     }
-    const problems = [...lintFixture(fix, opts.errorCodes)];
-    for (const id of required) {
-      if (!fix.providers.includes(id)) {
-        problems.push(`providers.json must name "${id}" (it lists: ${fix.providers.join(", ")})`);
-      }
-    }
+    const problems = [...lintFixture(fix, opts.errorCodes), ...missing];
     if (problems.length > 0) {
       results.push({ name: fix.name, status: "fail", problems });
       continue;
     }
-    const report = await runFixture(fix, opts.adapter);
+    let report: Awaited<ReturnType<typeof runFixture>>;
+    try {
+      report = await runFixture(fix, opts.adapter);
+    } catch (e) {
+      // An adapter that throws (an unknown provider id, say) is this scenario's failure,
+      // not the run's: every other scenario still gets its verdict.
+      results.push({ name: fix.name, status: "fail", problems: [`the adapter threw: ${(e as Error).message}`] });
+      continue;
+    }
     const status = classifyAgainstLedger(report.status === "pass" ? "pass" : "fail", fix.name, ledger);
     const failed = report.checks.filter((c) => !c.passed).map((c) => c.detail ?? c.kind);
     results.push({
@@ -76,6 +88,7 @@ export async function runCorpus(opts: CorpusOptions): Promise<CorpusResult> {
       problems: status === "fixed-but-listed" ? ["passes but is listed in the expected-failures ledger"] : failed,
     });
   }
-  const passed = results.every((r) => r.status !== "fail" && r.status !== "fixed-but-listed");
+  const ran = results.some((r) => r.status !== "skipped");
+  const passed = ran && results.every((r) => r.status !== "fail" && r.status !== "fixed-but-listed");
   return { corpusRoot: opts.corpusRoot, fixtures: results, passed };
 }

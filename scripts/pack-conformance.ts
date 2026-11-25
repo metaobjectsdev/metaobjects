@@ -76,6 +76,10 @@ if (import.meta.main) {
       continue;
     }
     failed++;
+    if (r.fixtures.every((f) => f.status === "skipped")) {
+      console.error(`pack ${name}: conformance FAILED — ${PACK_CORPUS}/ holds no runnable scenario${summary ? ` (${summary})` : ""}, so it tests nothing`);
+      continue;
+    }
     console.error(`pack ${name}: conformance FAILED (${summary})`);
     for (const f of r.fixtures.filter((x) => x.status === "fail" || x.status === "fixed-but-listed")) {
       console.error(`  ✖ ${f.name} [${f.status}]: ${f.problems.join("; ")}`);

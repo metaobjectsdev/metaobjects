@@ -266,6 +266,11 @@ export function derivePackVocabulary(
     const attrs = t.attrs.filter((a) => !base.has(`attr ${key} @${a.name}`));
     const children = t.children.filter((c) => !base.has(`child ${key} > ${childKey(c)}`));
     if (attrs.length > 0 || children.length > 0) ext.push({ type: t.type, subType: t.subType, attrs, children });
+    // ADR-0050: what a pack projects onto a type it does not own must be optional, or every
+    // model that loaded before the pack was composed stops loading once it is. The registry
+    // refuses a required projected attribute itself (ERR_EXTEND_REQUIRED_ATTR); a child rule
+    // with a lower bound it does not check, so this does.
+    for (const c of children) if ((c.min ?? 0) > 0) coreChanges.push(`required: child ${key} > ${childKey(c)} (min ${c.min}) — a child rule added to a type the pack does not own must allow zero`);
   }
   const commonAttrs = composed.commonAttrs.filter((a) => !base.has(`common @${a.name}`));
   const defaultSubTypes: Record<string, string> = {};

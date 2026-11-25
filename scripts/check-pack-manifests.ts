@@ -44,9 +44,15 @@ const NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 const CORE_NPM = "@metaobjectsdev/metadata";
 
-/** A range is bounded when it states an upper limit: `<X`, `<=X`, or an interval `[a,b)`. */
-function bounded(range: string): boolean {
-  return /<=?\s*\d/.test(range) || /^[[(][^,]*,\s*[^\])\s]+[\])]$/.test(range.trim());
+/**
+ * A range is bounded when it states an upper limit: `<X` or `<=X` (npm, PyPI, Cargo), a
+ * caret or tilde range (`^1.3.0`, `~1.3`, which npm and Cargo bound at the next major or
+ * minor), PyPI's compatible release `~=1.3`, or a Maven/NuGet interval with a closed or
+ * open upper end (`[1.3.0,2.0.0)`). An interval with no upper end (`[1.3.0,)`) is not.
+ */
+export function bounded(range: string): boolean {
+  const r = range.trim();
+  return /<=?\s*\d/.test(r) || /^(\^|~=?)\s*\d/.test(r) || /^[[(][^,]*,\s*[^\])\s]+[\])]$/.test(r);
 }
 
 function readText(path: string): string | undefined {

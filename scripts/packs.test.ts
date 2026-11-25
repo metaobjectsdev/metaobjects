@@ -9,7 +9,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { checkPackManifests } from "./check-pack-manifests.js";
+import { bounded, checkPackManifests } from "./check-pack-manifests.js";
 import { checkPackBoundary, scanCore, scanRegistry, scanReleaseTooling } from "./check-pack-boundary.js";
 import { checkPackVocabulary } from "./pack-vocabulary.js";
 import { runPackConformance } from "./pack-conformance.js";
@@ -35,7 +35,7 @@ function write(root: string, rel: string, content: string): void {
 const json = (v: unknown): string => `${JSON.stringify(v, null, 2)}\n`;
 
 /** A provider in the shape a pack ships: a new layout subtype plus two optional field.string attrs. */
-function providerSource(id: string, opts: { breakCore?: boolean } = {}): string {
+function providerSource(id: string, opts: { breakCore?: boolean; requireOnCore?: boolean } = {}): string {
   return `import { TypeId, MetaLayout } from ${JSON.stringify(METADATA_SRC)};
 export const provider = {
   id: ${JSON.stringify(id)},
@@ -55,13 +55,14 @@ export const provider = {
       ],
     });
     ${opts.breakCore === true ? `registry.setDefaultSubType("object", "value");` : ""}
+    ${opts.requireOnCore === true ? `registry.extend("object", "entity", { childRules: [{ childType: "layout", childSubType: "picker", childName: "*", min: 1 }] });` : ""}
   },
 };
 `;
 }
 
 /** A complete, valid TypeScript-only pack named `name` under `root`. */
-function makePack(root: string, name: string, opts: { breakCore?: boolean; manifest?: Record<string, unknown>; pkg?: Record<string, unknown> } = {}): void {
+function makePack(root: string, name: string, opts: { breakCore?: boolean; requireOnCore?: boolean; manifest?: Record<string, unknown>; pkg?: Record<string, unknown> } = {}): void {
   const base = `packs/${name}`;
   write(root, `${base}/pack.json`, json({
     id: `metaobjects-${name}`,
@@ -89,6 +90,11 @@ function makePack(root: string, name: string, opts: { breakCore?: boolean; manif
 }
 
 describe("pack.json check", () => {
+  test("a range is bounded in every registry's own spelling", () => {
+    for (const r of [">=1.3.0 <2.0.0", ">=1.3,<2", "^1.3.0", "~1.3", "~=1.3", "[1.3.0,2.0.0)", "(1.3,2.0]"]) expect(bounded(r)).toBe(true);
+    for (const r of [">=1.3.0", "[1.3.0,)", "*", "1.3.0"]) expect(bounded(r)).toBe(false);
+  });
+
   test("a complete pack passes", () => {
     const root = scratchRoot();
     makePack(root, "demo");
@@ -244,6 +250,13 @@ describe("pack vocabulary", () => {
     makePack(root, "demo", { breakCore: true });
     const problems = (await checkPackVocabulary("demo", root)).problems.join("\n");
     expect(problems).toContain("does not leave core alone — changed: default object");
+  });
+
+  test("a pack that adds a required child rule to a bundle type does not leave core alone (ADR-0050)", async () => {
+    const root = scratchRoot();
+    makePack(root, "demo", { requireOnCore: true });
+    const problems = (await checkPackVocabulary("demo", root)).problems.join("\n");
+    expect(problems).toContain("does not leave core alone — required: child object.entity > layout.picker:* (min 1)");
   });
 
   test("a pack is pinned only for its own rows when it requires another pack", async () => {

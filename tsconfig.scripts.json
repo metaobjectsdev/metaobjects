@@ -2,7 +2,7 @@
   "//": [
     "Typecheck for scripts/ \u2014 the repo-root tooling that no package tsconfig covers.",
     "",
-    "`bun test` transpiles per file and never typechecks, and `bun run --filter '*'",
+    "`bun test` transpiles per file and never typechecks, and `bun run",
     "typecheck` walks WORKSPACE PACKAGES only, so every script here was unchecked. Two",
     "defects in one session came straight out of that gap: `node.title` read as an",
     "accessor that does not exist (always undefined, silently reporting the wrong",

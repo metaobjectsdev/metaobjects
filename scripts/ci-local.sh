@@ -574,7 +574,7 @@ gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --che
 gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && node scripts/test-release-branch.mjs && bash tools/prerelease/test-prerelease-link.sh && bash tools/prerelease/test-estate-run.sh; }
 
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
-# `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
+# `bun test` transpiles per file and never typechecks, and `bun run
 # typecheck` walks WORKSPACE PACKAGES only — so every script here, including every
 # gate in this lane, was checked by nothing. Two accessor defects came straight out
 # of that gap in one session: a property read that does not exist on the type, so it
@@ -639,10 +639,13 @@ gate_pack_ts() { # gate_pack_ts <name>
 # cannot be resolved (every uncertainty widens), or when MO_CI_PACKS_BLOCKING=1.
 pack_is_blocking() {
   [ "${MO_CI_PACKS_BLOCKING:-0}" = "1" ] && return 0
-  local base mb
+  local base mb paths
   base="${MO_CI_AFFECTED_BASE:-$(default_base)}"
   [ -n "$base" ] && mb="$(git merge-base HEAD "$base" 2>/dev/null)" || return 0
-  changed_paths "$mb" | grep -q "^packs/$1/"
+  # Captured, not piped: under pipefail, `grep -q` exiting on its first match can kill the
+  # writer with SIGPIPE and turn a match into "not blocking"; a failed listing widens.
+  paths="$(changed_paths "$mb")" || return 0
+  grep -q "^packs/$1/" <<<"$paths"
 }
 # The packs lane. A pack is a preview product on its own release line, so a core change that
 # turns one red must not block core: it is reported as a named SKIP (the canary) and the pack

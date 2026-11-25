@@ -25,7 +25,7 @@ Bun workspace — the workspace root is the **repository root** (run `bun instal
 ```bash
 bun install                          # once, at the repo root
 bun test                             # the server suite (from this directory)
-bun run --filter '*' typecheck       # whole workspace (from the repo root)
+bun run typecheck                    # core's workspace (from the repo root)
 ```
 
 ## CLI

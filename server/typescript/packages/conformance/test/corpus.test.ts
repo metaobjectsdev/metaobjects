@@ -58,3 +58,19 @@ test("requireProviders fails a scenario whose providers.json leaves the provider
   expect(r.fixtures.map((f) => `${f.name}:${f.status}`)).toEqual(["names:pass", "omits:fail"]);
   expect(r.fixtures[1]?.problems[0]).toContain('providers.json must name "metaobjects-demo"');
 });
+
+test("a corpus with nothing runnable does not pass, and an adapter that throws fails one scenario", async () => {
+  const empty = await corpus({});
+  expect((await runCorpus({ corpusRoot: empty, adapter: fake, errorCodes: [] })).passed).toBe(false);
+  const root = await corpus({ a: { "expected.json": '{"ok":true}' }, b: { "expected.json": '{"ok":true}' } });
+  const throwing: ConformanceAdapter = {
+    ...fake,
+    async loadFixture(inputDir, providers) {
+      if (inputDir.includes("/a/")) throw new Error('unknown provider "x"');
+      return fake.loadFixture(inputDir, providers);
+    },
+  };
+  const r = await runCorpus({ corpusRoot: root, adapter: throwing, errorCodes: [] });
+  expect(r.fixtures.map((f) => `${f.name}:${f.status}`)).toEqual(["a:fail", "b:pass"]);
+  expect(r.fixtures[0]?.problems[0]).toContain("the adapter threw: unknown provider");
+});
