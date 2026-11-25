@@ -40,11 +40,15 @@ import java.util.Optional;
 /**
  * The port-neutral subset of {@code .metaobjects/config.json}.
  *
- * <p>Reads only {@code schema_version}, {@code sources}, {@code dependencies} (FR-023, the
+ * <p>Reads {@code schema_version}, {@code sources}, {@code dependencies} (FR-023, the
  * declared cross-repo metadata dependencies), {@code scope.include} and {@code migrate.scope}
  * (read only for the dependency-exclusion rules), {@code naming} (ADR-0058, the project's
- * physical-naming rules) and {@code wire} (ADR-0019 Amendment 2, the output form of a
- * generated REST surface). The file also carries TypeScript-owned keys
+ * physical-naming rules), {@code wire} (ADR-0019 Amendment 2, the output form of a
+ * generated REST surface), {@code enums}, {@code api}, {@code requirements.inherit} and
+ * {@code rules}/{@code verify}, plus the TypeScript-owned
+ * {@code migrate.dialect}/{@code conventions}/{@code foreignKeyIndexes} read LENIENTLY
+ * (a wrong type reads as absent; {@code meta migrate} owns and validates those keys).
+ * The file also carries TypeScript-owned keys
  * ({@code pending_in_git}, {@code confidence_thresholds}, {@code extract}, the rest of
  * {@code migrate} and {@code scope}); those are IGNORED rather than modeled, so a new TS-only
  * key never becomes a five-port change. Like Python, this port never applies {@code scope} to
