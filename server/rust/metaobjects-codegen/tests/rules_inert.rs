@@ -11,7 +11,9 @@
 //! (`service`) is the enforcing shell, so it also changes files it writes either way: the
 //! package's manifest and library (its dependencies and traits) and the lifecycle entity's file (its commands and state
 //! checks), and it adds the declared operations' file; every other file changes only in its
-//! `impl` header, which gains the policy and bodies type parameters.
+//! `impl` header, which gains the policy and bodies type parameters. The transport
+//! (`service-routes`) mounts what the service holds, so it changes only its manifest and its
+//! router, which gain the commands' and declared operations' routes.
 //!
 //! The model pair is `fixtures/codegen-noop/rules/{with,without}`, shared with the other
 //! ports (the table in that directory's README lists each port's test).
@@ -38,6 +40,9 @@ const DATA_ACCESS: &[&str] = &["repository"];
 /// The service layer (ADR-0067 layer 4): the enforcing shell, which acts on the vocabulary.
 const SERVICE: &[&str] = &["service"];
 
+/// The transport (ADR-0067 layer 5): it mounts the service's operations as routes.
+const TRANSPORT: &[&str] = &["service-routes"];
+
 /// Which shipped generators a call runs.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Pick {
@@ -45,6 +50,7 @@ enum Pick {
     Layers,
     DataAccess,
     Service,
+    Transport,
 }
 
 fn pick_of(name: &str) -> Pick {
@@ -54,6 +60,8 @@ fn pick_of(name: &str) -> Pick {
         Pick::DataAccess
     } else if SERVICE.contains(&name) {
         Pick::Service
+    } else if TRANSPORT.contains(&name) {
+        Pick::Transport
     } else {
         Pick::Flat
     }
@@ -194,6 +202,34 @@ fn the_service_layer_adds_the_operations_and_changes_only_the_library_and_the_li
                 )
                 .replace("<D, A, P, B, H, E>", "<D, A, H, E>");
             assert_eq!(&header, text, "{path}");
+        }
+    }
+}
+
+#[test]
+fn the_transport_writes_the_same_files_and_changes_only_its_manifest_and_router() {
+    let with = emit("with", Pick::Transport);
+    let without = emit("without", Pick::Transport);
+    assert!(!without.is_empty(), "the stored entity has routes");
+    assert_eq!(
+        with.keys().collect::<Vec<_>>(),
+        without.keys().collect::<Vec<_>>()
+    );
+    let flat = emit("with", Pick::Flat);
+    // The manifest gains the contract crate the operations' inputs come from.
+    let changes = [
+        "acme_purchasing_http/Cargo.toml",
+        "acme_purchasing_http/src/lib.rs",
+    ];
+    for (path, text) in &without {
+        assert!(
+            !flat.contains_key(path),
+            "{path} is also a flat generator's file"
+        );
+        if changes.contains(&path.as_str()) {
+            assert_ne!(&with[path], text, "{path} acts on the vocabulary");
+        } else {
+            assert_eq!(&with[path], text, "{path}");
         }
     }
 }

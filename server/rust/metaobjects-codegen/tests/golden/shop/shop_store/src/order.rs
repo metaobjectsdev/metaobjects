@@ -24,6 +24,7 @@ pub const TABLE: Table = Table {
     ],
     writable: true,
     discriminator: None,
+    read: None,
 };
 
 /// The junction of `categories`: `OrderCategory` rows, stored in `order_categories`.

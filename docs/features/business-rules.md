@@ -29,8 +29,8 @@ each package's derived list, get, create, update and delete, every write in one 
 declared write rules, behind a thin Fastify transport (`service-routes`) or Hono transport
 (`service-routes-hono`) that answers the shared API tests as the flat routes do (see
 [The service layer](#the-service-layer-typescript)). The Rust `service` generator writes the same
-operations and checks over its generated store, with no HTTP transport yet
-([Rust port](../ports/rust.md)). It also writes a command per transition and a
+operations and checks over its generated store, behind the opt-in axum transport `service-routes`,
+which answers the same shared API tests ([Rust port](../ports/rust.md)). It also writes a command per transition and a
 shell per declared command and query, and enforces at run time what this page declares: the
 permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
 later 1.3.0 work. A lifecycle in a project that wires no service generator covering it is

@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use metaobjects::naming::{
     NamingCtx, NamingRegistry, is_tph_subtype, resolve_column_name, resolve_table_name,
-    resolve_table_schema,
+    resolve_table_schema, source_is_read_only, source_physical_name,
 };
 use metaobjects::node::{NodeId, Tree};
 use metaobjects::rules_names::rules_names_of;
@@ -26,9 +26,12 @@ const ATTR_STRING_VALUE_MAP: &str = "stringValueMap";
 const ATTR_STORAGE: &str = "storage";
 const STORAGE_FLATTENED: &str = "flattened";
 const TYPE_ORIGIN: &str = "origin";
+const TYPE_SOURCE: &str = "source";
+const ATTR_SCHEMA: &str = "schema";
 const TYPE_RELATIONSHIP: &str = "relationship";
 
 /// One column of a stored entity, as `TABLE` describes it.
+#[derive(Debug, Clone)]
 pub struct ColumnPlan {
     pub field: String,
     pub column: String,
@@ -99,6 +102,16 @@ pub struct StoredEntity {
     pub lifecycles: Vec<LifecyclePlan>,
     /// Its many-to-many relationships, for an entity with a key.
     pub traversals: Vec<TraversalPlan>,
+    /// The view an entity that writes its table reads its rows from, when it declares one.
+    pub read: Option<ReadView>,
+}
+
+/// The read-only source an entity reads through: every field, the derived ones too.
+#[derive(Debug, Clone)]
+pub struct ReadView {
+    pub schema: Option<String>,
+    pub table: String,
+    pub columns: Vec<ColumnPlan>,
 }
 
 fn unsupported(message: String) -> GenError {
@@ -240,15 +253,37 @@ fn stored_entity(
 ) -> Result<StoredEntity, GenError> {
     let fail = |e: metaobjects::errors::MetaError| unsupported(e.to_string());
     let mut columns = Vec::new();
+    // ADR-0039 sanctioned own: the read view is a source the entity declares itself.
+    let view =
+        s.is_entity
+            .then(|| {
+                tree.own_children(s.node).iter().copied().find(|&c| {
+                    tree.node(c).type_name == TYPE_SOURCE && source_is_read_only(tree, c)
+                })
+            })
+            .flatten();
+    let mut read_columns = Vec::new();
     for f in &s.fields {
         let what = format!("{}.{}", s.name, f.wire);
-        // A derived field is computed on read by a projection; an entity stores none.
+        // A derived field is computed on read by a projection; an entity stores none, and
+        // reads it through its read view when it has one.
         if s.is_entity
             && tree
                 .children(f.node)
                 .iter()
                 .any(|&c| tree.node(c).type_name == TYPE_ORIGIN)
         {
+            if view.is_some() {
+                let (kind, array, map) = column_kind(tree, f, &what)?;
+                read_columns.push(ColumnPlan {
+                    field: f.wire.clone(),
+                    column: resolve_column_name(tree, f.node, naming).map_err(fail)?,
+                    kind,
+                    array,
+                    map,
+                    stored_as: None,
+                });
+            }
             continue;
         }
         if f.kind == Kind::Object
@@ -281,6 +316,17 @@ fn stored_entity(
             stored_as,
         });
     }
+    let read = match view {
+        Some(v) => Some(ReadView {
+            schema: tree
+                .attr(v, ATTR_SCHEMA)
+                .and_then(|a| a.as_str())
+                .map(str::to_string),
+            table: source_physical_name(tree, v, naming).map_err(fail)?,
+            columns: columns.iter().cloned().chain(read_columns).collect(),
+        }),
+        None => None,
+    };
     let primary: Vec<&FieldPlan> = s.fields.iter().filter(|f| f.primary).collect();
     let key_field = match primary.as_slice() {
         [only] => Some(only.wire.clone()),
@@ -328,6 +374,7 @@ fn stored_entity(
         discriminator: discriminator(tree, s.node),
         lifecycles: cycles,
         traversals: Vec::new(),
+        read,
     })
 }
 

@@ -110,9 +110,18 @@ pub struct Table {
     /// For a subtype of a single-table hierarchy: the discriminator field and this subtype's
     /// stored value. Every read and write is scoped to it, and a create sets it.
     pub discriminator: Option<(&'static str, &'static str)>,
+    /// The view the rows are read from, when it is not this table (an entity that writes a
+    /// table and reads a view, carrying the derived fields the table does not store). Every
+    /// read goes to it, and a write reads its row back from it.
+    pub read: Option<&'static Table>,
 }
 
 impl Table {
+    /// What the rows are read from: the read view, else the table itself.
+    pub fn reader(&self) -> &Table {
+        self.read.unwrap_or(self)
+    }
+
     /// The column of a model field.
     pub fn column(&self, field: &str) -> Result<&Column, StoreError> {
         self.columns.iter().find(|c| c.field == field).ok_or_else(|| StoreError::UnknownField {
@@ -258,11 +267,24 @@ impl Op {
     }
 }
 
-/// A condition on a model's fields. Several conditions compose with AND.
+/// A condition on a model's fields.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Filter {
-    Field { field: String, op: Op, value: Value },
+    Field {
+        field: String,
+        op: Op,
+        value: Value,
+    },
+    /// Every one holds; none is always true.
     And(Vec<Filter>),
+    /// At least one holds; none is always false.
+    Or(Vec<Filter>),
+    /// A case-insensitive substring match of `term` on any of `fields` (text), the list
+    /// route's `?search`. `%` and `_` in the term keep their `LIKE` meaning.
+    Search {
+        term: String,
+        fields: Vec<String>,
+    },
 }
 
 impl Filter {
@@ -270,20 +292,22 @@ impl Filter {
         Filter::Field { field: field.into(), op, value: value.into() }
     }
 
-    /// The filter of its JSON form: `{ "<field>": { "<op>": value }, "and": [ ... ] }`, each
-    /// key one more condition ANDed with the rest.
+    /// The filter of its JSON form: `{ "<field>": { "<op>": value }, "and": [ ... ], "or": [ ... ] }`,
+    /// each key one more condition ANDed with the rest.
     pub fn from_json(value: &Value) -> Result<Filter, StoreError> {
         let Value::Object(map) = value else {
             return Err(bad("filter", "a filter is an object"));
         };
         let mut all = Vec::new();
         for (key, v) in map {
-            if key == "and" {
+            if key == "and" || key == "or" {
                 let Value::Array(items) = v else {
-                    return Err(bad("and", "`and` is a list of filters"));
+                    return Err(bad(key, format!("`{key}` is a list of filters")));
                 };
-                for item in items {
-                    all.push(Filter::from_json(item)?);
+                let items = items.iter().map(Filter::from_json).collect::<Result<Vec<_>, _>>()?;
+                match key.as_str() {
+                    "and" => all.extend(items),
+                    _ => all.push(Filter::Or(items)),
                 }
                 continue;
             }
@@ -1086,13 +1110,36 @@ mod sqlite {
 fn where_filter(sql: &mut Sql, table: &Table, f: &Filter) -> Result<(), StoreError> {
     match f {
         Filter::And(all) if all.is_empty() => sql.push("1 = 1"),
-        Filter::And(all) => {
+        Filter::Or(any) if any.is_empty() => sql.push("1 = 0"),
+        Filter::And(all) | Filter::Or(all) => {
+            let joiner = if matches!(f, Filter::And(_)) { " AND " } else { " OR " };
             sql.push("(");
             for (i, f) in all.iter().enumerate() {
                 if i > 0 {
-                    sql.push(" AND ");
+                    sql.push(joiner);
                 }
                 where_filter(sql, table, f)?;
+            }
+            sql.push(")");
+        }
+        Filter::Search { fields, .. } if fields.is_empty() => sql.push("1 = 0"),
+        Filter::Search { term, fields } => {
+            // Postgres' ILIKE ignores case; SQLite's LIKE already does, for ASCII.
+            let like = match sql.engine {
+                Engine::Postgres => "ILIKE",
+                Engine::Sqlite => "LIKE",
+            };
+            sql.push("(");
+            for (i, field) in fields.iter().enumerate() {
+                let c = *table.column(field)?;
+                if c.kind != Kind::Text || c.array {
+                    return Err(bad(field, "a search matches text"));
+                }
+                if i > 0 {
+                    sql.push(" OR ");
+                }
+                sql.push(&format!("{} {like} ", quote(c.column)));
+                sql.param(Bind::Text(format!("%{term}%")), &c);
             }
             sql.push(")");
         }
@@ -1134,9 +1181,18 @@ fn where_filter(sql: &mut Sql, table: &Table, f: &Filter) -> Result<(), StoreErr
                     if c.kind != Kind::Text {
                         return Err(bad(field, "`like` applies to text"));
                     }
-                    let b = scalar_bind(sql.engine, field, c.kind, value)?;
-                    sql.push(&format!("{col} LIKE "));
-                    sql.param(b, &c);
+                    // `like` is case-sensitive (ADR-0049). SQLite's LIKE ignores ASCII case,
+                    // so there the pattern runs as the GLOB it means.
+                    match (sql.engine, scalar_bind(sql.engine, field, c.kind, value)?) {
+                        (Engine::Sqlite, Bind::Text(pattern)) => {
+                            sql.push(&format!("{col} GLOB "));
+                            sql.param(Bind::Text(like_to_glob(&pattern)), &c);
+                        }
+                        (_, b) => {
+                            sql.push(&format!("{col} LIKE "));
+                            sql.param(b, &c);
+                        }
+                    }
                 }
                 _ => {
                     let b = scalar_bind(sql.engine, field, c.kind, value)?;
@@ -1147,6 +1203,22 @@ fn where_filter(sql: &mut Sql, table: &Table, f: &Filter) -> Result<(), StoreErr
         }
     }
     Ok(())
+}
+
+/// A `LIKE` pattern as the GLOB that matches the same text, case-sensitively.
+fn like_to_glob(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len());
+    for ch in pattern.chars() {
+        match ch {
+            '%' => out.push('*'),
+            '_' => out.push('?'),
+            '*' => out.push_str("[*]"),
+            '?' => out.push_str("[?]"),
+            '[' => out.push_str("[[]"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn where_condition(sql: &mut Sql, table: &Table, cond: &Condition) -> Result<(), StoreError> {
@@ -1291,8 +1363,16 @@ pub async fn get<T: DeserializeOwned, C: Conn + ?Sized>(
     key: impl Serialize,
 ) -> Result<Option<T>, StoreError> {
     let key = serde_json::to_value(key).map_err(|e| bad(table.object, e.to_string()))?;
+    get_value(c, table.reader(), &key).await
+}
+
+async fn get_value<T: DeserializeOwned, C: Conn + ?Sized>(
+    c: &mut C,
+    table: &Table,
+    key: &Value,
+) -> Result<Option<T>, StoreError> {
     let mut sql = select(c.engine(), table);
-    key_where(&mut sql, table, &key)?;
+    key_where(&mut sql, table, key)?;
     let rows = c.rows(&sql.text, sql.binds, table.columns).await?;
     Ok(rows_into(table, rows)?.into_iter().next())
 }
@@ -1313,7 +1393,12 @@ pub async fn get_for_update<T: DeserializeOwned, C: Conn + ?Sized>(
         sql.push(" FOR UPDATE");
     }
     let rows = c.rows(&sql.text, sql.binds, table.columns).await?;
-    Ok(rows_into(table, rows)?.into_iter().next())
+    let row = rows_into(table, rows)?.into_iter().next();
+    match table.read {
+        // Locked through the table; read, with what it derives, through the view.
+        Some(read) if row.is_some() => get_value(c, read, &key).await,
+        _ => Ok(row),
+    }
 }
 
 /// The `target` rows related through `through` to the row whose key is `key`, in no order (a
@@ -1325,6 +1410,7 @@ pub async fn related<T: DeserializeOwned, C: Conn + ?Sized>(
     key: impl Serialize,
 ) -> Result<Vec<T>, StoreError> {
     let key = serde_json::to_value(key).map_err(|e| bad(target.object, e.to_string()))?;
+    let target = target.reader();
     let engine = c.engine();
     let (s, t) = (&through.source, &through.target);
     let junction = match through.schema {
@@ -1368,6 +1454,7 @@ pub async fn list<T: DeserializeOwned, C: Conn + ?Sized>(
     table: &Table,
     query: &Query,
 ) -> Result<Vec<T>, StoreError> {
+    let table = table.reader();
     let mut sql = select(c.engine(), table);
     scope(&mut sql, table, true)?;
     if let Some(f) = &query.filter {
@@ -1406,6 +1493,7 @@ pub async fn count<C: Conn + ?Sized>(
     table: &Table,
     filter: Option<&Filter>,
 ) -> Result<u64, StoreError> {
+    let table = table.reader();
     let mut sql = Sql::new(c.engine());
     sql.push(&format!("SELECT COUNT(*) FROM {}", table_ref(table)));
     scope(&mut sql, table, true)?;
@@ -1461,9 +1549,15 @@ pub async fn create<T: DeserializeOwned, B: Serialize, C: Conn + ?Sized>(
     }
     sql.push(&format!(" RETURNING {}", select_list(engine, table)));
     let rows = c.rows(&sql.text, sql.binds, table.columns).await?;
-    rows_into(table, rows)?.into_iter().next().ok_or_else(|| {
-        StoreError::Unsupported(format!("{}: the insert returned no row", table.object))
-    })
+    let none = || StoreError::Unsupported(format!("{}: the insert returned no row", table.object));
+    let row = rows.into_iter().next().ok_or_else(none)?;
+    match table.read {
+        Some(read) => {
+            let key = row.get(table.key_column()?.field).cloned().unwrap_or(Value::Null);
+            get_value(c, read, &key).await?.ok_or_else(none)
+        }
+        None => rows_into(table, vec![row])?.into_iter().next().ok_or_else(none),
+    }
 }
 
 /// Sets the members `patch` carries on the row with key `key` and reads it back; `None` when
@@ -1483,7 +1577,7 @@ pub async fn update<T: DeserializeOwned, B: Serialize, C: Conn + ?Sized>(
         }
     }
     if body.is_empty() {
-        return get(c, table, key).await;
+        return get_value(c, table.reader(), &key).await;
     }
     let engine = c.engine();
     let mut sql = Sql::new(engine);
@@ -1500,7 +1594,10 @@ pub async fn update<T: DeserializeOwned, B: Serialize, C: Conn + ?Sized>(
     key_where(&mut sql, table, &key)?;
     sql.push(&format!(" RETURNING {}", select_list(engine, table)));
     let rows = c.rows(&sql.text, sql.binds, table.columns).await?;
-    Ok(rows_into(table, rows)?.into_iter().next())
+    match table.read {
+        Some(read) if !rows.is_empty() => get_value(c, read, &key).await,
+        _ => Ok(rows_into(table, rows)?.into_iter().next()),
+    }
 }
 
 /// Deletes the row with key `key`; `false` when there was none.

@@ -9,7 +9,8 @@ pub enum OrderCommand {
         /// Repeat it to add tests. Fields: createdAt, status, total, taxRate, type.
         #[arg(long, value_name = "FIELD:OP=VALUE")]
         filter: Vec<String>,
-        /// Sort by a field: `field`, `field:asc` or `field:desc`. Fields: createdAt, status, total.
+        /// Sort by a field: `field`, `field:asc` or `field:desc`. Fields: createdAt, status, total,
+        /// taxRate, type.
         #[arg(long, value_name = "FIELD[:asc|desc]")]
         sort: Option<String>,
         /// Return at most this many rows.

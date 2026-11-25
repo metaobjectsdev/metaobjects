@@ -74,3 +74,7 @@ key), so the TypeScript mounts parse with a depth sized to the cap.
   To regenerate after an intended change, run
   `UPDATE_LIST_QUERY_FIXTURES=1 bun test test/list-query-conformance.test.ts`, then review every
   changed answer, because the answers are the cross-port contract.
+- C#: `server/csharp/MetaObjects.Codegen.Tests/ListQueryConformanceTests.cs`.
+- Rust: `server/rust/metaobjects-codegen/tests/list_query_conformance.rs`, against the parser the
+  generated `meta_http` crate ships, with the allowlist derived by the `service-routes` generator's
+  own derivation.

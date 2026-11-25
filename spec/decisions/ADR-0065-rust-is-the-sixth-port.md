@@ -343,3 +343,45 @@ refused (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`), as ruling 6 already stated. The por
 `fixtures/verify-conformance/` (all 45 cases), `fixtures/response-verify-conformance/` (all 7) and
 `fixtures/reference-source-conformance/` (all 6); `docs/features/cli.md` and `docs/ports/rust.md`
 carry the command surface.
+
+## Amendment 7: the server stack is built, and what is not (2026-11-25)
+
+Amendments 3 and 4 made Rust a full language of 1.3.0. This amendment records what that now means
+in code, the one shared version line it ships on, and what is still not built, so that no page has
+to infer it.
+
+1. **The six ADR-0067 layers are generators, and the stack serves HTTP.** `entity`, `rules-names`,
+   `contract-types`, `repository` (sqlx, Postgres and SQLite), `service` and `service-routes`
+   (axum) ship beside `client`, `commands` and the three prompt-tier generators: eleven in all,
+   each a `rust` entry of `fixtures/generator-registry-conformance/registry.json`, each writing
+   through the engine's one write path, each ejectable. `service-routes` is the one transport
+   generator; its `router(service, actor)` mounts the generated service, and the routes check
+   nothing of the rules themselves, which stay the service's (ADR-0067).
+2. **The transport is opt-in.** It is the one generator a project with no `metaobjects.config.json`
+   does not run, and the one `cargo meta init` leaves out of the list unless asked
+   (`cargo meta init --transport`); `gen --list` marks it `[opt-in]`. Serving HTTP is a choice the
+   project makes: a project that wants the service in its own server, or a CLI over the store,
+   generates no web framework. Amendment 3's "a project with no such file runs every generator" is
+   narrowed by that one exception.
+3. **Conformance.** The transport runs the api-contract corpus's generated lane over HTTP
+   (`metaobjects-codegen/tests/api_contract.rs`): `core`, `write-through`, `secret-fields`,
+   `list-query` and `rules` with its three settings variants, 77 scenarios. The list parser the
+   transport ships runs all 95 cases of `fixtures/list-query-conformance/`. The store runs all 56
+   persistence scenarios. There is no hand-rolled reference-server lane in Rust: the lane that tests
+   a generator is the generated one, and a hand-written server would pass by construction. Rust is a
+   column in `docs/CONFORMANCE.md`.
+4. **The shared version line.** The workspace is versioned on the line every port shares (it reads
+   `1.3.0` with the rest of the 1.3.0 build), and `scripts/release.mjs` publishes it with the other
+   registries. Publishing still waits for the owner's go (Amendment 3): nothing is on crates.io.
+5. **What is not built**, each stated in `docs/ports/rust.md` and none of it a defect of what is:
+   - the api-contract sub-corpora on the runner's ledger: `tph` and `secret-fields/tph`, `m2m`,
+     `jsonb`, `projection`, `report`, `decimal`, `duration`, `api-settings` and `enum-default`. The
+     runner fails on a sub-corpus that is neither run nor ledgered, and the ledger only shrinks;
+   - routes, clients and commands for `object.projection` and `object.report`;
+   - a documentation generator, and with it the docs-page corpus (G-RS-1);
+   - the requirement gate and ledger in `verify` (RS-V2), on which G-RS-1 also waits;
+   - `fmt`, a three-way merge, and a metadata-driven runtime (`ObjectManager`).
+6. **The stand-in estate.** `examples/rust-service/` is a whole service built this way, a tasks API
+   with a lifecycle and a policy. The `rust` lane checks its committed generated crates with a
+   forced `verify` and runs its HTTP test. It stands in for an adopter estate until one runs the
+   Rust port; it is not one, and G3d (ADR-0035 Amendment 3) is not met by it.

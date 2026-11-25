@@ -46,6 +46,10 @@ pub struct Reference {
     pub layer: &'static str,
     /// The shipped generators it builds on: a project's generator list names them too.
     pub needs: &'static [&'static str],
+    /// Run only when the project's generator list names it: `cargo meta init` leaves it out
+    /// unless asked, and a project with no list does not run it. The transport is one: it
+    /// brings a web framework into the build.
+    pub opt_in: bool,
     /// One line for `gen --list`.
     pub summary: &'static str,
     /// The shipped source, which is also the owned copy's text.
@@ -74,6 +78,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "entity",
         tier: "native",
+        opt_in: false,
         layer: "model",
         module: "entity",
         type_name: "EntityGenerator",
@@ -85,6 +90,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "rules-names",
         tier: "native",
+        opt_in: false,
         layer: "model",
         module: "rules_names",
         type_name: "RulesNamesGenerator",
@@ -97,6 +103,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "contract-types",
         tier: "native",
+        opt_in: false,
         layer: "model",
         module: "contract_types",
         type_name: "ContractTypesGenerator",
@@ -109,6 +116,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "repository",
         tier: "native",
+        opt_in: false,
         layer: "persistence",
         module: "repository",
         type_name: "RepositoryGenerator",
@@ -121,6 +129,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "service",
         tier: "native",
+        opt_in: false,
         layer: "service",
         module: "service",
         type_name: "ServiceGenerator",
@@ -132,8 +141,29 @@ pub const REFERENCES: &[Reference] = &[
         source: include_str!("service.rs"),
     },
     Reference {
+        name: "service-routes",
+        tier: "native",
+        opt_in: true,
+        layer: "api",
+        module: "service_routes",
+        type_name: "ServiceRoutesGenerator",
+        needs: &[
+            "entity",
+            "rules-names",
+            "contract-types",
+            "repository",
+            "service",
+        ],
+        summary: "transport crates, one per package with a service: an axum router whose each \
+                  route reads its request, calls one service operation and sends what it \
+                  answered, under the shared REST contract (ADR-0067 layer 5; needs service and \
+                  the four it builds on)",
+        source: include_str!("service_routes.rs"),
+    },
+    Reference {
         name: "client",
         tier: "native",
+        opt_in: false,
         layer: "client",
         module: "client",
         type_name: "ClientGenerator",
@@ -145,6 +175,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "commands",
         tier: "native",
+        opt_in: false,
         layer: "client",
         module: "commands",
         type_name: "CommandsGenerator",
@@ -156,6 +187,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "render-helper",
         tier: "native",
+        opt_in: false,
         layer: "capability",
         module: "render_helper",
         type_name: "RenderHelperGenerator",
@@ -168,6 +200,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "output-parser",
         tier: "native",
+        opt_in: false,
         layer: "capability",
         module: "output_parser",
         type_name: "OutputParserGenerator",
@@ -180,6 +213,7 @@ pub const REFERENCES: &[Reference] = &[
     Reference {
         name: "output-prompt",
         tier: "native",
+        opt_in: false,
         layer: "capability",
         module: "output_prompt",
         type_name: "OutputPromptGenerator",

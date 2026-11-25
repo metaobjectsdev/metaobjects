@@ -199,7 +199,8 @@ async fn over_http(order: &Order, order_json: &str) {
     assert!(matches!(&refused, meta_cli::Error::Usage(m) if m.contains("currency is not a field")), "{refused}");
     let refused = command(&client, &["order", "list", "--filter", "status:gt=NEW"]).await.unwrap_err();
     assert!(matches!(&refused, meta_cli::Error::Usage(m) if m.contains("does not take gt")), "{refused}");
-    let refused = command(&client, &["order", "list", "--sort", "type"]).await.unwrap_err();
+    // `type` is sortable: a `@filterable` field with no `@sortable` is. `tags` is neither.
+    let refused = command(&client, &["order", "list", "--sort", "tags"]).await.unwrap_err();
     assert!(matches!(&refused, meta_cli::Error::Usage(_)), "{refused}");
     let empty_street = body.replace("1 Main", "");
     let refused = command(&client, &["order", "create", "--json", &empty_street, "--status", "NEW"])

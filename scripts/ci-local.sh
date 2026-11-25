@@ -968,7 +968,17 @@ gate_conf_rust() {
       && cargo test --locked -q -- --nocapture \
       && gate_rust_load_bench \
       && gate_rust_gen_bench \
-      && gate_rust_publish_dry_run )
+      && gate_rust_publish_dry_run ) \
+    && gate_rust_example
+}
+# The worked service example (examples/rust-service/): its committed generated crates must be
+# what `cargo meta gen` writes now (a forced verify, which renders), and its app's HTTP test runs
+# over them. Built into server/rust/target/, this checkout's own.
+gate_rust_example() {
+  ( cd server/rust \
+      && cargo run --locked -q -p metaobjects-cli --bin cargo-meta -- meta verify --full --project ../../examples/rust-service ) \
+    && CARGO_TARGET_DIR="$PWD/server/rust/target/examples" \
+      cargo test --locked -q --manifest-path examples/rust-service/Cargo.toml
 }
 # The crates are publishable (ADR-0065 Amendment 3), so a change that would make `cargo publish`
 # refuse them fails here, not on the day somebody publishes: package all three, build each

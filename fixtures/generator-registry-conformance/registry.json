@@ -126,11 +126,11 @@
       "ports": ["typescript", "rust"]
     },
     "service-routes": {
-      "concept": "A thin REST transport over the service layer (ADR-0067 layer 5), one per metadata package: each route parses the request, calls one service operation and sends what it answered, and holds no rules. It answers the shared REST contract as `routes` does. TypeScript (Fastify) so far.",
+      "concept": "A thin REST transport over the service layer (ADR-0067 layer 5), one per metadata package: each route parses the request, calls one service operation and sends what it answered, and holds no rules. It answers the shared REST contract as `routes` does. TypeScript (Fastify) and Rust (axum, one router per package with an actor extractor; opt-in at `cargo meta init --transport`, because it brings a web framework into the build).",
       "tier": "native",
       "layer": "api",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "rust"]
     },
     "service-routes-hono": {
       "concept": "The `service-routes` transport on Hono: the same routes over the service layer (ADR-0067 layer 5), mounted on a Hono app, answering the shared REST contract the same way. TYPESCRIPT ONLY by design, as `routes-hono` is: Hono is a TypeScript framework.",

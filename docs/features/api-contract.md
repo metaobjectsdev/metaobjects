@@ -197,8 +197,8 @@ TypeScript's wire names unchanged. Two corpora hold every port to them:
 
 The decision is recorded in [ADR-0068](../../spec/decisions/ADR-0068-list-query-cross-port-contract.md).
 
-**Conformance status:** TypeScript and C# pass both corpora; Java, Kotlin, Python and Rust are
-pending until their 1.3.0 REST-standard work lands. Each port's change flips its own entry, and its
+**Conformance status:** TypeScript, C# and Rust pass both corpora (Rust over its generated axum
+transport); Java, Kotlin and Python are pending until their 1.3.0 REST-standard work lands. Each port's change flips its own entry, and its
 runner holds it to them from then on; [`docs/CONFORMANCE.md`](../CONFORMANCE.md) says which ports
 run them today.
 

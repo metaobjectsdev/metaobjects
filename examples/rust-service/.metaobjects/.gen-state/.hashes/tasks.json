@@ -1,0 +1,6 @@
+{
+  "generated/tasks/src/task.rs": "c9494e046f1d9ec89cd5441247211303e2b26191bc4eed85f78f415b50a2b2e9",
+  "generated/tasks_http/src/task.rs": "f2c1bebac5452927c39a0c74c22e67ec2da699d5845d7e9bcccb6316f084b32e",
+  "generated/tasks_service/src/task.rs": "11fba25fd503ae858bcf6e3395c95b30ebcca1e4444dc4cfba1926c7fc8cfd11",
+  "generated/tasks_store/src/task.rs": "ae56db0385964c1f68b676bb0e29c3c10c5339cbfd3165e239b10a635fef5bda"
+}

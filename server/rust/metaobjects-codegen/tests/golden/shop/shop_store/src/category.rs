@@ -17,6 +17,7 @@ pub const TABLE: Table = Table {
     ],
     writable: true,
     discriminator: None,
+    read: None,
 };
 
 /// The `Category` rows the query selects, in its order and page.

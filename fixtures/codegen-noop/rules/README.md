@@ -40,7 +40,9 @@ transports (the new routes). The test pins both lists, and every other file stay
 The Rust `service` adds the declared operations' file and changes the service crate's manifest
 (the rules and contract crates it names), its library (the policy, the bodies and the move types)
 and the lifecycle entity's file (its commands and state checks); every other file it writes changes
-only in its `impl` header, which gains the policy and bodies type parameters.
+only in its `impl` header, which gains the policy and bodies type parameters. The Rust
+`service-routes` changes only its transport crate's manifest (the rules crate it names) and its
+library (the transition and operation routes).
 
 A generator that started reading an operation or a transition by accident would emit
 something half-built; these tests are what notice:

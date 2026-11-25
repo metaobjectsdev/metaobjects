@@ -3,9 +3,12 @@
 The Rust port is a full language of 1.3.0 ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md)).
 It reads a project, validates it, serializes it and generates code from it, and it is held to the
 same shared conformance corpora as the other five ports. Its command, `cargo meta`, runs the whole
-codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen`, `verify --templates` and `eject`. Three generators
-ship: `entity`, `client` and `commands`, and a project chooses which of them run in
-`metaobjects.config.json`. The four crates are **ready to publish but not published**: they package and
+codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen`, `verify --templates` and `eject`. Eleven
+generators ship, from the model crate through the store, the rules, the service and its axum routes
+to a typed client and its commands, and a project chooses which of them run in
+`metaobjects.config.json`. A generated service passes the shared API-contract corpus over HTTP
+(see [Conformance](#conformance)); [`examples/rust-service/`](../../examples/rust-service/README.md)
+is a whole app built that way. The four crates are **ready to publish but not published**: they package and
 build from their packages (a `cargo publish --dry-run` runs in the `rust` lane), and there is no release
 on crates.io yet, so there is nothing to `cargo add` or `cargo install` from a registry. You work from a
 checkout of this repository until the first release.
@@ -32,7 +35,7 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
 | Report shapes | `metaobjects::report_shape::report_shape` derives an `object.report`'s fields (FR-044 Table B, with Table C's `required`): each dimension and measure, its subtype, and the `@of` field it takes its type from. It byte-matches `fixtures/persistence-conformance/report-shapes.json`, as every port does. |
-| Code generation (`cargo meta`) | The run engine, ten generators (`entity`, `rules-names`, `contract-types`, `repository`, `service`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
+| Code generation (`cargo meta`) | The run engine, eleven generators (`entity`, `rules-names`, `contract-types`, `repository`, `service`, `service-routes`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
 
 ## The command: `cargo meta`
 
@@ -52,7 +55,7 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 
 | Command | What it does |
 |---|---|
-| `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
+| `cargo meta init [--project <dir>] [--transport]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). `--transport` adds the opt-in `service-routes` generator to that list. It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
 | `cargo meta gen [ENTITY...]` | Generates the crates. It skips the whole run when the model, the project config and the generators are unchanged ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)), writes only files whose bytes changed, removes a generated file nothing emits any more, and refuses to overwrite or delete a generated file that was edited by hand. It prints what it created, updated and removed, and the crates to re-check. |
 | `cargo meta verify [--codegen] [--templates] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. `--templates` is the template drift gate: each `template.*` body (under `prompts/`, or `--prompts <dir>`) against its payload value object, and each prompt's `@responseRef` reply; a bare `verify` runs it too, and a Jinja body is refused (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`). A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db` and `--deps` exit 2 with the reason and where that check lives. |
 | `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. An existing copy is refused; `--force` replaces it with the reference, and leaves a copy that already matches untouched. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
@@ -64,8 +67,9 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 
 The generators a project runs are the list in `metaobjects.config.json` at the project root, the way the
 other ports choose theirs (`metaobjects.config.ts`, `codegen/Generators.cs`, the pom,
-`metaobjects.config.yaml`). `cargo meta init` writes every shipped generator; delete a line to stop
-running one, and no eject is needed:
+`metaobjects.config.yaml`). `cargo meta init` writes every shipped generator but the opt-in
+transport, `service-routes`, which `cargo meta init --transport` adds; delete a line to stop running
+one, and no eject is needed:
 
 ```json
 { "generators": ["entity", "client", "commands", "render-helper", "output-parser", "output-prompt"] }
@@ -76,11 +80,12 @@ name, or `{"name": "<generator>", "options": {...}}` for a generator that takes 
 generator's `configure` reads them and refuses a key it does not know (`ERR_UNKNOWN_GENERATOR_OPTION`,
 naming the options it takes). The shipped generators take none, so any option given to one fails the
 run, also a run `--generators` narrows to other generators. A project with no such file runs every
-generator. A generator that leaves the list has its files removed
+generator but `service-routes`, which runs only when it is listed: an HTTP server is a choice the
+project makes, not a default. A generator that leaves the list has its files removed
 on the next `gen` (a file somebody edited is refused by name instead), and the run fails, naming the
 file, for a name nothing offers, a duplicate, an unknown key, or a generator listed without one it
-builds on (`client`, `render-helper` and `output-parser` need `entity`; `commands` needs `entity` and `client`). `cargo meta gen --list` shows each generator
-as `[configured]` or `[not configured]`, and `--generators` narrows one run to some of the list.
+builds on (`client`, `render-helper` and `output-parser` need `entity`; `commands` needs `entity` and `client`; each layer needs the one beneath it, up to `service-routes`, which needs `service`). `cargo meta gen --list` shows each generator
+as `[configured]` or `[not configured]`, marks the opt-in one `[opt-in]`, and `--generators` narrows one run to some of the list.
 
 **Exit codes** are the ones every port's tool uses: 0 success, 1 the run failed (a model that does not
 load, a refused file, drift), 2 a usage error. An unknown flag names the flags the command takes.
@@ -109,16 +114,18 @@ generated/
   shop_contract/  contract-types  each operation's input, output and errors (when the package declares operations)
   shop_store/     repository list, count, get, create, update, delete and the guarded update per stored entity, on sqlx
   shop_service/   service    each operation in one transaction, with the rules checks, over the store
+  shop_http/      service-routes  the axum routes over the service (when listed)
   meta_support/   entity     exact decimals, durations, patch helpers, the validation checks
   meta_client/    client     the HTTP transport (reqwest), errors, the query builder
   meta_cli/       commands   what a command uses to build a body and a query
   meta_store/     repository the table descriptor, filters, and the Postgres and SQLite statements
   meta_service/   service    the error codes and statuses, the transaction and the guarded move
+  meta_http/      service-routes  the list query parser, the body checks and the error responses
 ```
 
 The generated crates depend on each other by path and on ordinary crates.io crates (`serde`,
-`serde_json`, `reqwest`, `clap`). **The model, client and command crates import nothing from
-MetaObjects**: the shared code is written into the three `meta_*` crates as source you can read and
+`serde_json`, `reqwest`, `clap`, `sqlx`, `axum`). **The model, client and command crates import nothing from
+MetaObjects**: the shared code is written into the `meta_*` crates as source you can read and
 change. The three prompt-tier crates import `metaobjects-render`, an ordinary Apache-2.0 library (the
 render engine and the reply parser), as every port's prompt tier imports its render package. It is not
 on crates.io yet, so until it is, point a `[patch.crates-io]` entry at a checkout's
@@ -205,7 +212,8 @@ The transport is `reqwest` with its default features plus `json` and `query`, wr
 `meta_client` crate. A project that wants another HTTP stack or TLS backend changes that one crate,
 which it owns.
 
-Not generated yet: clients (and commands) for `object.projection` and `object.report` routes. No Rust transport serves them yet, so they wait for it.
+Not generated yet: clients (and commands) for `object.projection` and `object.report` routes. The
+Rust transport serves neither yet (see [What does not exist yet](#what-does-not-exist-yet)), so they wait for it.
 
 ### `commands`: command-line commands over the client
 
@@ -432,8 +440,46 @@ Amendment 1). Every error is a `ServiceError`, whose `code()` and `status()` are
 
 `tests/service.rs` runs the rules corpus's scenarios (`fixtures/api-contract-conformance/rules/`)
 through the generated service on SQLite, with the README's policy, bodies, hook and audit event, and
-checks the settings variants in the generated text; an HTTP transport, and the shared API tests over
-it, come next.
+checks the settings variants in the generated text. The same scenarios run again over HTTP through
+the routes below.
+
+### `service-routes`: the service over HTTP, on axum
+
+`service-routes` (ADR-0067 layer 5) writes a `<package>_http` crate per package with a service, and
+the shared `meta_http` crate. It is the one transport generator, and it is **opt-in**: it runs only
+when `metaobjects.config.json` lists it, which `cargo meta init --transport` does. Its
+`router(service, actor)` returns an `axum::Router` to mount under the API root (`apiPrefix`, say
+`/api`):
+
+```rust
+let app = axum::Router::new().nest("/api", tasks_http::router(
+    TasksService::new(pool, Team),            // the generated service, with the app's policy
+    meta_http::ActorFn(|headers: &HeaderMap| user(headers)),
+));
+```
+
+`actor` is an `ActorSource<A>`: the app's own authentication, a function of the request's headers
+(`ActorFn`), or `()`, which reads no one. The routes hand the actor to the service untouched; they
+check nothing of the rules themselves. Each entity gets `GET` and `POST` on `/<plural>`, `GET`,
+`PATCH`, `PUT` and `DELETE` on `/<plural>/{id}`, `GET /<plural>/{id}/<relation>` for each traversal,
+`POST /<plural>/{id}/<transition>` for each transition command, and each declared operation its
+`binding.rest` route. An entity that cannot be written answers its write verbs with 405
+`method_not_allowed`.
+
+The list query is the REST standard every port serves: `filter[<field>][<op>]=` with the nine
+operators and `or`/`and` groups, `q` searching the search fields, `sort=<field>:asc|desc`,
+`limit` and `offset` (page size 50 unless `api.pagination` says otherwise; a limit over its `maxLimit`
+is a 400 `limit_too_large`), and `withCount=true` for the total. The allowlist is the model's: a field is filterable
+with `@filterable`, sortable with `@sortable` (or, with no `@sortable`, when it is filterable), and a
+field with a password view is neither. Every refusal is a named 400 (`invalid_filter_field`,
+`invalid_sort`, `pagination.invalid_value`, and the rest of `fixtures/list-query-conformance/`). A body is
+checked before the service sees it: `invalid_json`, `unknown_fields` (unless `api.unknownFields`
+is `drop`), `validation` with every issue, and `constraint_violation` for a unique key the store
+refused. A credential field (one with a password view) is written but never returned, on any route.
+
+An entity whose source has a read-only view beside its table (`source.rdb @kind: view` in the read
+role) is written to the table and read back through the view, so the fields that view derives
+(`origin.*`) are in every answer, a write's included.
 
 ### Owning a generator
 
@@ -509,12 +555,10 @@ outright.
 | `validation-conformance` | every case, through the generated `validate()`: each payload is read into the generated create body by a probe the real compiler builds |
 | `decimal-wire`, `duration-wire` | every vector, against the code the support crate carries |
 | `writer-conformance` | every `core` and `rust` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)); each `rust` case is a rustfmt fixed point |
-| `render-conformance` | every case, through `metaobjects_render::render`: escaping per format, partials, `has<Field>` and `-last`, the `maxChars` budget |
 | `template-output-render-conformance` | the welcome page and email, the nested payload and the cross-package payloads, rendered through generated `render-helper` crates that a probe builds; the drift cases fail `gen`, and a body edited after generation fails the render |
 | `verify-conformance` | all 45 cases through `cargo meta verify --templates`'s check. Two (`verify-set-delimiter-clean`, `verify-set-delimiter-drift`) carry a Rust expectation file, as other ports' files do where their engine reads a set-delimiter tag differently. |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
 | `render-conformance` | every case but the three the ledger holds — `render-shadowed-dotted-prefix`, `render-list-length`, `render-zero-falsiness` (`mustache-ng` has its own name lookup, data model and truthiness); a ledgered case must still differ, the rest render byte-identical through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
-| `verify-conformance` | all 45 cases, through `metaobjects_render::verify`, with no ledgered case |
 | `response-verify-conformance` | all 7 cases: the reply check the template gate adds — `ERR_RESPONSE_UNRESOLVED`, and, for an xml prompt, `ERR_RESPONSE_TAG_UNDECLARED` |
 | `extract-conformance` | all 58 cases, through `metaobjects_render::extract::extract` |
 | `output-prompt-conformance` | all 17 cases in all three `@promptStyle` styles, with the extract round trip, through `metaobjects_render::prompt::render_output_format` |
@@ -539,9 +583,13 @@ Three gates have no corpus of their own:
   generated code (terminal messages, hash input, JSON), each with a reason. The list only shrinks: the
   test compares it with the copy at the branch's merge base.
 
-Rust is not yet a column in the [per-corpus table](../CONFORMANCE.md#per-corpus-totals); it joins
-when the port runs the persistence and API-contract corpora, which need a service tier the port does
-not have yet. It runs the render, extract and output-format corpora today.
+The API corpora run too, with no ledger in the list-query one:
+
+| Corpus | Rust today |
+|---|---|
+| `persistence-conformance` | all 56 scenarios, through the generated `repository` crates (see [`repository`](#repository-data-access-on-sqlx)) |
+| `list-query-conformance` | all 95 cases, through the list parser `meta_http` ships, with the allowlist derived from the fixture's model as the generator derives it (`tests/list_query_conformance.rs`) |
+| `api-contract-conformance` | the generated lane: each sub-corpus's model generated into a project, its routes served on SQLite and every scenario sent over HTTP (`tests/api_contract.rs`). `core` 34 scenarios, `write-through` 2, `secret-fields` 3, `list-query` 21, `rules` 14 and one in each of its three settings variants: 77 scenarios, 151 requests. Its ledger lists the sub-corpora not built yet (see [What does not exist yet](#what-does-not-exist-yet)), and a sub-corpus neither run nor ledgered fails the test. There is no hand-rolled reference-server lane: the generated lane is the one that tests a generator. |
 
 ### Load benchmark
 
@@ -556,16 +604,22 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 ## What does not exist yet
 
-- **Other generators.** There is no server-side route generator yet (the service has no HTTP
-  transport) and no documentation generator. Projections and reports
-  get no client or commands yet, and a template over a
-  sourceless `object.projection` payload gets no render function.
+- **Other generators.** There is no documentation generator. Projections and reports get no route,
+  client or commands yet, and a template over a sourceless `object.projection` payload gets no
+  render function.
+- **The rest of the API-contract corpus.** The transport passes `core`, `write-through`,
+  `secret-fields`, `list-query` and `rules` with its settings variants. These sub-corpora are not
+  built yet and are on the runner's ledger (`metaobjects-codegen/tests/api_contract.rs`): `tph` and
+  `secret-fields/tph` (single-table inheritance), `m2m` (many-to-many traversal), `jsonb` (object
+  fields stored as JSON), `projection`, `report`, `decimal`, `duration`, `api-settings` and
+  `enum-default`.
 - **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones
   it has. There is no requirement gate and no `fmt`.
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
-- **The service tier.** No `ObjectManager` and no web adapters; data access is the generated
-  store crates, and the generated `service` crates run the rules over them.
+- **A metadata-driven runtime.** No `ObjectManager` and no web adapter over it: data access is the
+  generated store crates, the generated `service` crates run the rules over them, and the generated
+  `service-routes` crates serve them.
 - **Publication.** The crates are publishable and the lane proves they package (`cargo publish
   --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
   the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).
@@ -631,6 +685,14 @@ assert!(read_errors.is_empty() && result.errors.is_empty());
 
 The API carries no stability promise and may change; read `server/rust/metaobjects/tests/project_load.rs` for a
 working call.
+
+## A whole service: `examples/rust-service/`
+
+[`examples/rust-service/`](../../examples/rust-service/README.md) is the port's stand-in estate: a
+tasks API with a lifecycle, whose model, store, rules, service and axum routes are generated from one
+YAML file, and whose hand-written part is the policy, the caller and the table. The `rust` lane
+checks that its committed `generated/` crates are what `gen` writes today (`verify --full`) and runs
+its HTTP test.
 
 ## A worked codegen exercise: `examples/tasks-axi-rust/`
 

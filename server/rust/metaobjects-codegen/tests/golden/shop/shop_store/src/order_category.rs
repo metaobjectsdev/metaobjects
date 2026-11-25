@@ -14,6 +14,7 @@ pub const TABLE: Table = Table {
     ],
     writable: true,
     discriminator: None,
+    read: None,
 };
 
 /// The `OrderCategory` rows the query selects, in its order and page.

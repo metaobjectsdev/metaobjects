@@ -619,9 +619,10 @@ fn prepare<'g>(
     // offered generator's place; a generator refuses an option it does not take.
     let mut selected: Vec<Selected<'g>> = Vec::with_capacity(generators.len());
     for g in generators {
-        let in_list = listed
-            .as_ref()
-            .is_none_or(|l| l.iter().any(|n| n == g.name()));
+        let in_list = match &listed {
+            Some(l) => l.iter().any(|n| n == g.name()),
+            None => generator_list::runs_unlisted(g.name()),
+        };
         let flagged = opts
             .generators
             .as_ref()

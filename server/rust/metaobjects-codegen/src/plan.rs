@@ -1100,8 +1100,22 @@ impl Plan {
                     && !derived
                     && !is_pinned
                     && !matches!(mutability, MUTABILITY_READ_ONLY | MUTABILITY_WRITE_ONCE);
+                // A filter or an order on a secret leaks it, so a credential (a field with a
+                // `view.password`) is on neither allowlist, whatever the model marks.
+                let credential = tree
+                    .children(f)
+                    .iter()
+                    .any(|&c| is_a(tree, c, TYPE_VIEW, VIEW_PASSWORD));
                 let filterable = bool_attr(tree, f, ATTR_FILTERABLE)
+                    && !credential
                     && !matches!(kind, Kind::Object | Kind::Map);
+                // `@sortable` when the model says, else sortable exactly when filterable: the
+                // rule every port's sort allowlist follows.
+                let sortable = !credential
+                    && tree
+                        .attr(f, ATTR_SORTABLE)
+                        .and_then(Value::as_bool)
+                        .unwrap_or(bool_attr(tree, f, ATTR_FILTERABLE));
                 fields.push(FieldPlan {
                     node: f,
                     wire: fnode.name.clone(),
@@ -1114,10 +1128,7 @@ impl Plan {
                     doc: str_attr(tree, f, ATTR_DESCRIPTION).map(str::to_string),
                     required,
                     primary: is_primary,
-                    credential: tree
-                        .children(f)
-                        .iter()
-                        .any(|&c| is_a(tree, c, TYPE_VIEW, VIEW_PASSWORD)),
+                    credential,
                     local_time: bool_attr(tree, f, ATTR_LOCAL_TIME),
                     create,
                     patch,
@@ -1127,7 +1138,7 @@ impl Plan {
                     } else {
                         Vec::new()
                     },
-                    sortable: bool_attr(tree, f, ATTR_SORTABLE),
+                    sortable,
                 });
             }
             check_fields(&owner_key, &fields)?;

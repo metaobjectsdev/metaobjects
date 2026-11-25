@@ -13,7 +13,8 @@
 //! refuses an option it does not take, so a misspelt one fails the run instead of being
 //! ignored. The shipped generators take none yet. The list carries no layer or set settings,
 //! because a layer is only a generator. A project with no such file runs every generator its host
-//! offers, which is what a project did before the file existed. A list may leave a generator
+//! offers but the opt-in ones (the `service-routes` transport, which brings a web framework into
+//! the build), which is what a project did before the file existed. A list may leave a generator
 //! out; generated files of a generator that left the list are swept like those of any
 //! generator that stops emitting them (an edited one is refused by name).
 //!
@@ -175,10 +176,14 @@ pub fn check(names: &[String], available: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-/// Every shipped generator's name, in the order a run applies them: the list `cargo meta init`
-/// writes.
+/// Every shipped generator's name, in the order a run applies them.
 pub fn shipped_names() -> Vec<&'static str> {
     eject::REFERENCES.iter().map(|r| r.name).collect()
+}
+
+/// Whether a project with no list runs the generator `name`: every one but a shipped opt-in.
+pub fn runs_unlisted(name: &str) -> bool {
+    !eject::reference(name).is_some_and(|r| r.opt_in)
 }
 
 fn example() -> String {
@@ -192,12 +197,14 @@ fn example() -> String {
     )
 }
 
-/// The text `cargo meta init` writes: every shipped generator, so a new project generates what
-/// it always has and removes one by deleting a line.
-pub fn scaffold() -> String {
-    let items = shipped_names()
+/// The text `cargo meta init` writes: every shipped generator but the opt-in ones, and those
+/// too with `opt_in`, so a new project generates what it always has and removes one by deleting
+/// a line.
+pub fn scaffold(opt_in: bool) -> String {
+    let items = eject::REFERENCES
         .iter()
-        .map(|n| format!("    \"{n}\""))
+        .filter(|r| opt_in || !r.opt_in)
+        .map(|r| format!("    \"{}\"", r.name))
         .collect::<Vec<_>>()
         .join(",\n");
     format!("{{\n  \"{KEY}\": [\n{items}\n  ]\n}}\n")
@@ -214,7 +221,7 @@ mod tests {
     #[test]
     fn the_scaffold_parses_and_names_every_shipped_generator_in_run_order() {
         assert_eq!(
-            names(&parse(&scaffold()).unwrap()),
+            names(&parse(&scaffold(false)).unwrap()),
             s(&[
                 "entity",
                 "rules-names",
@@ -228,7 +235,11 @@ mod tests {
                 "output-prompt"
             ])
         );
-        assert!(check(&names(&parse(&scaffold()).unwrap()), &shipped_names()).is_ok());
+        assert!(check(&names(&parse(&scaffold(false)).unwrap()), &shipped_names()).is_ok());
+        let all = names(&parse(&scaffold(true)).unwrap());
+        assert_eq!(all, s(&shipped_names()));
+        assert!(check(&all, &shipped_names()).is_ok());
+        assert!(!runs_unlisted("service-routes") && runs_unlisted("entity"));
     }
 
     #[test]
@@ -290,7 +301,7 @@ mod tests {
         let e = check(&s(&["entity", "nope"]), &available).unwrap_err();
         assert!(
             e.contains("\"nope\"")
-                && e.contains("available: entity, rules-names, contract-types, repository, service, client, commands, render-helper, output-parser, output-prompt"),
+                && e.contains("available: entity, rules-names, contract-types, repository, service, service-routes, client, commands, render-helper, output-parser, output-prompt"),
             "{e}"
         );
         let e = check(&s(&["client"]), &available).unwrap_err();
