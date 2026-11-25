@@ -1,0 +1,10 @@
+{
+  "id": "metaobjects-delivery",
+  "version": "0.1.0",
+  "stability": "preview",
+  "description": "What runs where, and what differs per environment: environments, builds, runtime processes, deployments and value bindings.",
+  "requires": { "metamodel": ">=1.3 <2", "packs": { "metaobjects-systems": ">=0.1.0 <0.2.0" } },
+  "ports": {
+    "typescript": { "package": "@metaobjectsdev/pack-delivery", "core": ">=1.3.0 <2.0.0", "publish": false }
+  }
+}

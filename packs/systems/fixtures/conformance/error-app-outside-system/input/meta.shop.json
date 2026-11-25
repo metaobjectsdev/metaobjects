@@ -1,0 +1,12 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "app.service": {
+          "name": "api"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "codes": {
+    "ERR_DELIVERY_UNRESOLVED_REF": "A deployment's @app or @environment, or a value.ref's @producedBy, names no node, or names a node of the wrong kind (@app takes an app.*, @environment an environment.*, @producedBy a resource.* or an app.*).",
+    "ERR_DELIVERY_DUPLICATE_SETTING": "A deployment holds two value.* nodes for one @setting. An estate overlay that overrides a value must reuse the value node's name so it merges.",
+    "ERR_DELIVERY_DUPLICATE_DEPLOYMENT": "Two deployments target the same (@app, @environment), compared as resolved nodes."
+  }
+}

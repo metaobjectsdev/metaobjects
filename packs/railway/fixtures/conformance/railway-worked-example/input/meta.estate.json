@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::estate",
+    "children": [
+      { "environment.standing": { "name": "staging" } },
+      { "deployment.railway": {
+          "name": "server-staging",
+          "@description": "A deployment the app's own model never declared.",
+          "@app": "acme::game::Game.server",
+          "@environment": "staging",
+          "@project": "game",
+          "@service": "game",
+          "@domains": ["staging.example.com"]
+      } }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_TOO_MANY_OCCURRENCES",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['system.internal'].children[1]['app.service'].children[0]['build.static']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -1,0 +1,103 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.client": {
+                "name": "storefront",
+                "children": [
+                  {
+                    "build.static": {
+                      "name": "site",
+                      "@directory": "dist",
+                      "@command": "npm run build",
+                      "@watchExclude": [
+                        "docs/**"
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "app.service": {
+                "name": "api",
+                "children": [
+                  {
+                    "build.command": {
+                      "name": "jar",
+                      "@command": "./gradlew bootJar"
+                    }
+                  },
+                  {
+                    "runtime.process": {
+                      "name": "web",
+                      "@command": "java -jar app.jar",
+                      "@port": 8080,
+                      "@healthPath": "/health",
+                      "@healthTimeoutSeconds": 120,
+                      "@drainSeconds": 30,
+                      "@restart": "always"
+                    }
+                  },
+                  {
+                    "runtime.process": {
+                      "name": "worker",
+                      "@command": "java -jar app.jar --worker",
+                      "@restart": "onFailure"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "app.job": {
+                "name": "nightlyExport",
+                "@schedule": "0 3 * * *",
+                "children": [
+                  {
+                    "build.dockerfile": {
+                      "name": "image",
+                      "@path": "jobs/Dockerfile",
+                      "@context": "jobs"
+                    }
+                  },
+                  {
+                    "runtime.process": {
+                      "name": "run",
+                      "@restart": "never"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "staging"
+        }
+      },
+      {
+        "environment.ephemeral": {
+          "name": "preview"
+        }
+      },
+      {
+        "environment.local": {
+          "name": "workstation"
+        }
+      }
+    ]
+  }
+}

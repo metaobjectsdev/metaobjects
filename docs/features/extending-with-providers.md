@@ -160,6 +160,14 @@ but is not yet core vocabulary. The contract the provider is written against (`i
 `dependencies`, `registerTypes`, `register`, `extend`, `registerCommonAttrs` and the definition
 file format) is covered by core's package version (`docs/compatibility-policy.md`).
 
+**From a definition file.** A provider can keep its vocabulary as data, in the
+`spec/metamodel/*.json` format, and register it with `applyProviderDefinition(registry, definition,
+factories, validators?)` from `@metaobjectsdev/metadata`. `factories` maps each
+`"<type>.<subType>"` to the function that constructs its node; the optional `validators` map gives
+a type a `NodeValidator`, for a rule the data cannot state (a reference to a nested node, say).
+The bundled packs register this way, and so do the independent packs: `packs/systems/` is a
+worked example.
+
 ## Two registration modes
 
 ### `register` — declare a new `(type, subType)`

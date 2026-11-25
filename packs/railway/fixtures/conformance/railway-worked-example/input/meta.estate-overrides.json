@@ -1,0 +1,13 @@
+{
+  "metadata.root": {
+    "package": "acme::game",
+    "children": [
+      { "deployment.railway": {
+          "name": "server-production",
+          "overlay": true,
+          "@notes": "The estate overrides what differs: two replicas in production.",
+          "@replicas": 2
+      } }
+    ]
+  }
+}

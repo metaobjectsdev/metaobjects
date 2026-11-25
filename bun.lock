@@ -150,6 +150,43 @@
         "typescript": "^5.6.0",
       },
     },
+    "packs/delivery/typescript": {
+      "name": "@metaobjectsdev/pack-delivery",
+      "version": "0.1.0",
+      "dependencies": {
+        "@metaobjectsdev/pack-systems": "workspace:*",
+      },
+      "devDependencies": {
+        "@metaobjectsdev/metadata": "workspace:*",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
+    "packs/railway/typescript": {
+      "name": "@metaobjectsdev/pack-railway",
+      "version": "0.1.0",
+      "dependencies": {
+        "@metaobjectsdev/pack-delivery": "workspace:*",
+        "@metaobjectsdev/pack-systems": "workspace:*",
+      },
+      "devDependencies": {
+        "@metaobjectsdev/metadata": "workspace:*",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
+    "packs/systems/typescript": {
+      "name": "@metaobjectsdev/pack-systems",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@metaobjectsdev/metadata": "workspace:*",
+      },
+      "peerDependencies": {
+        "@metaobjectsdev/metadata": ">=1.3.0 <2.0.0",
+      },
+    },
     "server/typescript/packages/ai-runtime": {
       "name": "@metaobjectsdev/ai-runtime",
       "version": "1.3.0",
@@ -751,6 +788,12 @@
     "@metaobjectsdev/metadata": ["@metaobjectsdev/metadata@workspace:server/typescript/packages/metadata"],
 
     "@metaobjectsdev/migrate-ts": ["@metaobjectsdev/migrate-ts@workspace:server/typescript/packages/migrate-ts"],
+
+    "@metaobjectsdev/pack-delivery": ["@metaobjectsdev/pack-delivery@workspace:packs/delivery/typescript"],
+
+    "@metaobjectsdev/pack-railway": ["@metaobjectsdev/pack-railway@workspace:packs/railway/typescript"],
+
+    "@metaobjectsdev/pack-systems": ["@metaobjectsdev/pack-systems@workspace:packs/systems/typescript"],
 
     "@metaobjectsdev/react": ["@metaobjectsdev/react@workspace:client/web/packages/react"],
 
