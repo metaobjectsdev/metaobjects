@@ -49,6 +49,7 @@ check "$ALL"             "$(lanes docs/features/cli.md)"                        
 check "$ALL"             "$(lanes docs/ports/java.md)"                                    "the java port doc is read by a java test"
 check "$ALL"             "$(lanes examples/foo/README.md)"                                "markdown outside the named root files is unmapped"
 check ""                 "$(lanes README.md CHANGELOG.md CONTRIBUTING.md)"                "root prose only: no test lane, the gates lane checks it"
+check ""                 "$(lanes changelog.d/some-fix.md)"                               "a changelog fragment is prose: no test lane"
 check "python"           "$(lanes server/python/README.md)"                               "a port's own markdown still selects the port"
 check ""                 "$(lanes)"                                                       "empty diff: no test lane"
 

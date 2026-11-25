@@ -437,6 +437,15 @@ unexplained `meta gen` diff after `npm update`; the changelog flag + the planned
 gen-state engine-version stamp (see the tracking issue) are how you keep every such
 diff explained.
 
+**Entries arrive as fragments.** A pull request does not edit `CHANGELOG.md`. It adds one file
+per change under `changelog.d/`, in the format given in
+[`changelog.d/README.md`](../changelog.d/README.md), so that parallel PRs never edit the same
+lines. The conventions above apply to a fragment as they do to a CHANGELOG entry.
+`scripts/release.mjs` places every fragment at the top of `## [Unreleased]` and deletes the
+files before it promotes that section. To write a release section by hand ahead of the cut, run
+`node scripts/changelog-fragments.mjs --assemble` first, so the entries you are arranging are in
+`CHANGELOG.md`. The release then still ships one changelog.
+
 ## Prerequisites
 
 - The JS/TS **workspace root is the repo root** (`/package.json`), globbing

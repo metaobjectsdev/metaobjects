@@ -39,7 +39,7 @@ Do not bump or publish anything until every check is green. Print each result.
 | **CI green on the exact release SHA** | `gh run list --branch main --limit 5`; `gh pr checks <#>` | all required checks `pass` on `HEAD` — not "passed sometime" |
 | Published vs local version | `npm view @metaobjectsdev/cli dist-tags.latest`; compare to `package.json` | you know current `latest` and the target bump |
 | **Target version is free** | `npm view @metaobjectsdev/cli@<version> version` (a 404 = free); `git tag -l v<version>` | the target version is NOT already published or tagged (npm versions are permanent — a taken version can never be reused) |
-| CHANGELOG ready | `sed -n '1,20p' CHANGELOG.md` | an entry exists or you will add one (see Phase 8) |
+| CHANGELOG ready | `sed -n '1,20p' CHANGELOG.md`; `ls changelog.d/` | an entry or a fragment exists, or you will add one (see Phase 8). `release.mjs` assembles the `changelog.d/` fragments into `[Unreleased]`; `node scripts/changelog-fragments.mjs --assemble` does it by hand |
 | **`metamodelVersion` moved if the metamodel did** | `node scripts/check-metamodel-version.mjs` | exit 0. It diffs `expected-registry.json` against the last release tag and fails if the vocabulary changed without the version moving. Read its PROSE warning too — a rule can change with no machine-readable footprint (#210 changed only a `rules` string). Fix with `--set <version>`; detail with `--explain`. |
 | **You CAN publish** | `npm whoami` | prints your username (see the note under this table) |
 

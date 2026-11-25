@@ -319,6 +319,10 @@ gate_publish_intent() { scripts/check-publish-intent.sh; }
 # could see it. Both paths now read scripts/publish-set.mjs, which also asserts the
 # set is tier-ordered and closed over its own sibling deps. Offline (manifests only).
 gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-publish-set.mjs; }
+# Changelog entries are one file per change under changelog.d/, folded into CHANGELOG.md by
+# release.mjs, so parallel PRs do not conflict on the top of [Unreleased]. This checks each
+# fragment has the shape assembly expects, and tests the assembly itself.
+gate_changelog_fragments() { node scripts/changelog-fragments.mjs --check && node scripts/test-changelog-fragments.mjs; }
 
 # ── no root script may be another root script's lifecycle hook ───────────────
 # npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. So
@@ -1335,6 +1339,7 @@ run_gates_offline() {
   if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
   if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
   if want gates; then step    "publish-set parity"               gate_publish_set;            fi
+  if want gates; then step    "changelog fragments"              gate_changelog_fragments;    fi
   if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
   if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
   if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi
