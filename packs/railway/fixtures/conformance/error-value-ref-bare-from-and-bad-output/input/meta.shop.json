@@ -1,0 +1,47 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.service": {
+                "name": "api"
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "api-production",
+          "@app": "Shop.api",
+          "@environment": "production",
+          "@project": "shop",
+          "children": [
+            {
+              "value.ref": {
+                "name": "dbUrl",
+                "@setting": "Database.url",
+                "@from": "db",
+                "@output": "connectionString"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

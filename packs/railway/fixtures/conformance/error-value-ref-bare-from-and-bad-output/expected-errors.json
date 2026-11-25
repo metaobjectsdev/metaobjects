@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_DELIVERY_UNRESOLVED_REF",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['deployment.railway'].children[0]['value.ref']"
+      }
+    },
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['deployment.railway'].children[0]['value.ref']"
+      }
+    }
+  ],
+  "warnings": []
+}

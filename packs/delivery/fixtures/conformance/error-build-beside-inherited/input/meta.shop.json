@@ -1,0 +1,41 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.service": {
+                "name": "base",
+                "children": [
+                  {
+                    "build.command": {
+                      "name": "jar",
+                      "@command": "./gradlew bootJar"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "app.service": {
+                "name": "api",
+                "extends": "Shop.base",
+                "children": [
+                  {
+                    "build.static": {
+                      "name": "site",
+                      "@directory": "dist"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

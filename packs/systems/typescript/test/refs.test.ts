@@ -54,4 +54,17 @@ describe("resolveSystemRef", () => {
     expect(resolveSystemRef(api(root), "Billing.nope")).toBeUndefined();
     expect(resolveSystemRef(api(root), "Dns")).toBeUndefined();
   });
+
+  test("given the kinds wanted, a bare name prefers the sibling of that kind when an app and a resource share it", async () => {
+    const SAME = { "metadata.root": { package: "acme::shop", children: [
+      { "system.internal": { name: "Shop", children: [
+        { "app.service": { name: "worker", "@needs": ["worker"] } },
+        { "resource.queue": { name: "worker" } },
+      ] } },
+    ] } };
+    const loader = new MetaDataLoader({ registry: composeRegistry([...coreProviders, provider]), strict: true });
+    const { root } = await loader.load([new InMemoryStringSource(JSON.stringify(SAME), { id: "meta.shop.json" })]);
+    const app = root.children()[0]!.children().find((c) => c.type === "app")!;
+    expect(resolveSystemRef(app, "worker", "needs", ["resource"])?.type).toBe("resource");
+  });
 });

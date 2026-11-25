@@ -33,17 +33,29 @@ function enclosingSystem(node: MetaData): MetaData | undefined {
  * the package of the node that wrote it (ADR-0059 R3), so an inherited reference means
  * what it meant where it was written.
  */
-export function resolveSystemRef(from: MetaData, ref: string, attr?: string): MetaData | undefined {
+export function resolveSystemRef(
+  from: MetaData,
+  ref: string,
+  attr?: string,
+  kinds?: readonly string[],
+): MetaData | undefined {
   const top = topLevelNodeOf(from);
   const root = top.parent;
   if (root === undefined) return undefined;
   const pkg = attr === undefined ? effectivePackageOf(top) : referrerPackageFor(from, attr);
   if (!ref.includes(CHILD_REF_SEPARATOR) && !ref.includes(PACKAGE_SEPARATOR)) {
     // ADR-0039: resolving, so a system that `extends` another sees its inherited children.
-    const sibling = enclosingSystem(from)?.children().find((c) => c.name === ref);
+    // An app and a resource may share a name; given the kinds wanted, prefer one of them.
+    const named = enclosingSystem(from)?.children().filter((c) => c.name === ref) ?? [];
+    const sibling = (kinds === undefined ? undefined : named.find((c) => isKind(c, kinds))) ?? named[0];
     if (sibling !== undefined) return sibling;
   }
   return resolveRef(root, ref, pkg).node;
+}
+
+/** Whether `node` is one of `kinds` (each a type, or a `type.subType`). */
+function isKind(node: MetaData, kinds: readonly string[]): boolean {
+  return kinds.some((k) => k === node.type || k === `${node.type}.${node.subType}`);
 }
 
 /** The string entries of a string or string-array attribute (absent: none). */
@@ -65,12 +77,16 @@ export function checkRefs(
   ctx: ValidationContext,
 ): void {
   for (const ref of refList(node, attr)) {
-    const target = resolveSystemRef(node, ref, attr);
+    const target = resolveSystemRef(node, ref, attr, kinds);
     const label = `${node.type}.${node.subType} "${node.name}" @${attr} "${ref}"`;
     const want = kinds.join(" or ");
     if (target === undefined) {
-      ctx.error(code, node, `${label} does not resolve to a ${want}.`);
-    } else if (!kinds.some((k) => k === target.type || k === `${target.type}.${target.subType}`)) {
+      // A bare name finds a node of the referrer's own system or a top-level node; one
+      // inside another system, or seen from outside any system, needs its system's name.
+      const bare = !ref.includes(CHILD_REF_SEPARATOR) && !ref.includes(PACKAGE_SEPARATOR);
+      const hint = bare ? ` A node inside a system is named System.${ref}.` : "";
+      ctx.error(code, node, `${label} does not resolve to a ${want}.${hint}`);
+    } else if (!isKind(target, kinds)) {
       ctx.error(code, node, `${label} resolves to ${target.type}.${target.subType}, not a ${want}.`);
     }
   }

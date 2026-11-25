@@ -31,8 +31,11 @@ the config pack and the deployment names its vault in `@secrets`. The full defin
 
 - `@app` names an app as `System.app`, or `pkg::System.app` from another package.
 - `@environment` names an `environment.*` node.
-- `value.ref`'s `@from` names a `resource.*` or `app.*` the same way; `@output` says which of its
-  values (url, host, port, privateUrl, ...), for a platform generator to map. This is how an address
+- `value.ref`'s `@from` names a `resource.*` or `app.*` the same way. A deployment sits at the
+  document root, in no system, so these are always written `System.child`: a bare name finds
+  only a top-level node. `@output` says which of its
+  values (`url`, `host`, `port`, `user`, `password`, `privateUrl`, `publicUrl`), for a platform
+  generator to map. This is how an address
   stays out of a repository: it is named, never written.
 
 Each fails the load with `ERR_DELIVERY_UNRESOLVED_REF` when it resolves to nothing or to the wrong

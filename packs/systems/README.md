@@ -26,8 +26,9 @@ The full definition, with every attribute's description, is [`metamodel/systems.
 
 Apps and resources are children of a system, so they are addressed the way the loader addresses
 any nested node (ADR-0059): `System.child` (`Shop.db`), or `pkg::System.child` from another
-package. A bare name means a node of the referrer's own system, then a top-level node of that name
-in the referrer's package.
+package. A bare name means a node of the referrer's own system (of the kind the attribute wants,
+when an app and a resource share the name), then a top-level node of that name in the
+referrer's package. This bare-name rule is the systems packs' convention, not the loader's.
 
 - `@needs` must name `resource.*` nodes, and `@calls` must name `app.*` or `system.external` nodes.
   A name that resolves to nothing, or to the wrong kind of node, fails the load with

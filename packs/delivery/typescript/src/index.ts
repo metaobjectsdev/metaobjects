@@ -52,15 +52,23 @@ const refuseAbstractDeployment: NodeValidator = (node, ctx) => {
 
 // An app has at most one build. The registry enforces a child rule's upper bound only per
 // subtype (`maxOccurs`), and a dockerfile beside a build command is two subtypes, so the
-// bound across build.* is checked here, on every build after the first.
+// bound across build.* is checked here. The bound is on the app's effective builds: one it
+// declares beside one it inherits through `extends` is two. The error lands on the declared
+// build that makes the second: the later of two declared here, or one declared beside an
+// inherited build.
 const validateBuild: NodeValidator = (node, ctx) => {
-  // ADR-0039: own: the bound is on what this app declares; an inherited build was counted where it was declared.
-  const builds = node.parent?.ownChildren().filter((c) => c.type === TYPE_BUILD) ?? [];
-  if (builds.length > 1 && builds[0] !== node) {
+  const app = node.parent;
+  if (app === undefined) return;
+  // ADR-0039: resolving, so a build inherited through `extends` counts.
+  const others = app.children().filter((c) => c.type === TYPE_BUILD && c !== node);
+  // ADR-0039: own: the builds this app declares, to find the first of them.
+  const declared = app.ownChildren().filter((c) => c.type === TYPE_BUILD);
+  const inherited = others.some((c) => !declared.includes(c));
+  if (inherited || declared[0] !== node) {
     ctx.error(
       "ERR_TOO_MANY_OCCURRENCES",
       node,
-      `${node.type}.${node.subType} "${node.name}" is a second build of ${node.parent?.type}.${node.parent?.subType} "${node.parent?.name}": an app has at most one build.`,
+      `${node.type}.${node.subType} "${node.name}" is a second build of ${app.type}.${app.subType} "${app.name}": an app has at most one build.`,
     );
   }
 };

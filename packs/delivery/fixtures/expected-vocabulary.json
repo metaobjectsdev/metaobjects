@@ -310,6 +310,15 @@
           "valueType": "string",
           "isArray": false,
           "required": true,
+          "allowedValues": [
+            "url",
+            "host",
+            "port",
+            "user",
+            "password",
+            "privateUrl",
+            "publicUrl"
+          ],
           "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply."
         },
         {
