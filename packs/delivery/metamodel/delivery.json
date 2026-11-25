@@ -103,7 +103,7 @@
       "description": "The setting takes a value another node produces at deploy time: a database's connection URL, another app's private address. This is how an address stays out of a repository: it is named, never written.",
       "whenToUse": "A setting whose value only the platform knows once the resource or app exists.",
       "children": [
-        { "type": "attr", "subType": "string", "name": "from", "min": 1, "max": 1, "description": "The node that produces the value: a resource.* or app.*, as `System.child` (`Shop.db`, or `pkg::System.child`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)." },
+        { "type": "attr", "subType": "string", "name": "producedBy", "min": 1, "max": 1, "description": "The node that produces the value: a resource.* or app.*, as `System.child` (`Shop.db`, or `pkg::System.child`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)." },
         { "type": "attr", "subType": "string", "name": "output", "min": 1, "max": 1, "allowedValues": ["url", "host", "port", "user", "password", "privateUrl", "publicUrl"], "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply." }
       ]
     }

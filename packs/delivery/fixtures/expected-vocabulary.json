@@ -299,13 +299,6 @@
       "whenToUse": "A setting whose value only the platform knows once the resource or app exists.",
       "attrs": [
         {
-          "name": "from",
-          "valueType": "string",
-          "isArray": false,
-          "required": true,
-          "description": "The node that produces the value: a resource.* or app.*, as `System.child` (`Shop.db`, or `pkg::System.child`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
-        },
-        {
           "name": "output",
           "valueType": "string",
           "isArray": false,
@@ -320,6 +313,13 @@
             "publicUrl"
           ],
           "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply."
+        },
+        {
+          "name": "producedBy",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The node that produces the value: a resource.* or app.*, as `System.child` (`Shop.db`, or `pkg::System.child`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
         },
         {
           "name": "setting",

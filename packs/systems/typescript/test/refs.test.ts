@@ -68,3 +68,55 @@ describe("resolveSystemRef", () => {
     expect(resolveSystemRef(app, "worker", "needs", ["resource"])?.type).toBe("resource");
   });
 });
+
+async function loadModel(children: unknown[]): Promise<MetaData> {
+  const loader = new MetaDataLoader({ registry: composeRegistry([...coreProviders, provider]), strict: true });
+  const doc = { "metadata.root": { package: "acme::game", children } };
+  const { root } = await loader.load([new InMemoryStringSource(JSON.stringify(doc), { id: "meta.game.json" })]);
+  return root;
+}
+
+describe("resolveSystemRef binds by type and kind", () => {
+  test("a dotted ref binds the system, not a same-named entity declared first", async () => {
+    const root = await loadModel([
+      { "object.entity": { name: "Game" } },
+      { "system.internal": { name: "Game", children: [{ "app.service": { name: "server" } }] } },
+      { "system.internal": { name: "Other", children: [{ "app.job": { name: "j", "@calls": ["Game.server"] } }] } },
+    ]);
+    const job = root.children().find((c) => c.name === "Other")!.children()[0]!;
+    expect(resolveSystemRef(job, "Game.server", "calls", ["app", "system.external"])?.type).toBe("app");
+    expect(resolveSystemRef(job, "acme::game::Game.server", "calls", ["app"])?.type).toBe("app");
+  });
+
+  test("a top-level name prefers a node of the wanted kind over a same-named object declared first", async () => {
+    const root = await loadModel([
+      { "object.entity": { name: "Mail" } },
+      { "system.external": { name: "Mail" } },
+      { "system.internal": { name: "Shop", children: [{ "app.service": { name: "api", "@calls": ["Mail"] } }] } },
+    ]);
+    const api = root.children().find((c) => c.name === "Shop")!.children()[0]!;
+    expect(resolveSystemRef(api, "Mail", "calls", ["app", "system.external"])?.type).toBe("system");
+  });
+
+  test("a top-level name of no wanted kind still resolves, so the caller can name the wrong kind", async () => {
+    const root = await loadModel([
+      { "object.entity": { name: "Mail" } },
+      { "system.internal": { name: "Shop", children: [{ "app.service": { name: "api" } }] } },
+    ]);
+    const api = root.children().find((c) => c.name === "Shop")!.children()[0]!;
+    expect(resolveSystemRef(api, "Mail", "calls", ["app", "system.external"])?.type).toBe("object");
+  });
+
+  test("a dotted ref prefers the wanted kind when a resource and an app share the name", async () => {
+    const root = await loadModel([
+      { "system.internal": { name: "Shop", children: [
+        { "resource.queue": { name: "worker" } },
+        { "app.job": { name: "worker" } },
+      ] } },
+      { "system.internal": { name: "Other", children: [{ "app.service": { name: "api" } }] } },
+    ]);
+    const api = root.children().find((c) => c.name === "Other")!.children()[0]!;
+    expect(resolveSystemRef(api, "Shop.worker", "calls", ["app"])?.type).toBe("app");
+    expect(resolveSystemRef(api, "Shop.worker", "needs", ["resource"])?.type).toBe("resource");
+  });
+});

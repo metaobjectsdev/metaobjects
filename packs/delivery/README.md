@@ -19,7 +19,7 @@ in one environment on one platform, and holds only what differs there.
 | `runtime.process` | under an `app.*` | How one of its processes runs | `@command`, `@port`, `@healthPath`, `@healthTimeoutSeconds`, `@drainSeconds`, `@restart` (`always`, `onFailure`, `never`) |
 | `deployment.<platform>` | document root | An app in an environment on a platform. A **platform pack** registers the subtype (the [`railway`](../railway/README.md) pack registers `deployment.railway`) | `@app`, `@environment`, `@domains`, `@replicas`, `@region`, `@branch`, `@secrets`, plus the platform's own |
 | `value.literal` | under a deployment | A setting's fixed value there | `@setting`, `@literal` |
-| `value.ref` | under a deployment | A setting's value produced by another node at deploy time | `@setting`, `@from`, `@output` |
+| `value.ref` | under a deployment | A setting's value produced by another node at deploy time | `@setting`, `@producedBy`, `@output` |
 
 `deployment.base` is the abstract anchor platform packs specialise (`extendsBase: true`); this pack
 registers no concrete deployment, and an authored `deployment.base` fails to load
@@ -31,12 +31,20 @@ the config pack and the deployment names its vault in `@secrets`. The full defin
 
 - `@app` names an app as `System.app`, or `pkg::System.app` from another package.
 - `@environment` names an `environment.*` node.
-- `value.ref`'s `@from` names a `resource.*` or `app.*` the same way. A deployment sits at the
+- `value.ref`'s `@producedBy` names a `resource.*` or `app.*` the same way. A deployment sits at the
   document root, in no system, so these are always written `System.child`: a bare name finds
   only a top-level node. `@output` says which of its
   values (`url`, `host`, `port`, `user`, `password`, `privateUrl`, `publicUrl`), for a platform
   generator to map. This is how an address
   stays out of a repository: it is named, never written.
+
+## Uniqueness
+
+- A deployment holds at most one `value.*` per `@setting` (`ERR_DELIVERY_DUPLICATE_SETTING`). An estate
+  overlay that overrides a value has to reuse the value node's name so the overlay merges it; a
+  second, differently named value for the same setting is an error.
+- A model holds at most one deployment per (`@app`, `@environment`), compared as resolved nodes, so
+  `Game.server` and `acme::game::Game.server` collide (`ERR_DELIVERY_DUPLICATE_DEPLOYMENT`).
 
 Each fails the load with `ERR_DELIVERY_UNRESOLVED_REF` when it resolves to nothing or to the wrong
 kind of node. A platform pack holds its deployments to the same rule by passing

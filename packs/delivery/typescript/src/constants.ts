@@ -31,8 +31,14 @@ export const VALUE_SUBTYPE_LITERAL = "literal";
 export const VALUE_SUBTYPE_REF = "ref";
 export const VALUE_ATTR_SETTING = "setting";
 export const VALUE_ATTR_LITERAL = "literal";
-export const VALUE_ATTR_FROM = "from";
+export const VALUE_ATTR_PRODUCED_BY = "producedBy";
 export const VALUE_ATTR_OUTPUT = "output";
 
-/** Raised when a deployment's @app / @environment or a value.ref's @from names nothing, or the wrong kind of node. */
+/** Raised when a deployment's @app / @environment or a value.ref's @producedBy names nothing, or the wrong kind of node. */
 export const ERR_DELIVERY_UNRESOLVED_REF = "ERR_DELIVERY_UNRESOLVED_REF";
+
+/** Raised when a deployment holds two values for one @setting. */
+export const ERR_DELIVERY_DUPLICATE_SETTING = "ERR_DELIVERY_DUPLICATE_SETTING";
+
+/** Raised when two deployments target the same (@app, @environment). */
+export const ERR_DELIVERY_DUPLICATE_DEPLOYMENT = "ERR_DELIVERY_DUPLICATE_DEPLOYMENT";

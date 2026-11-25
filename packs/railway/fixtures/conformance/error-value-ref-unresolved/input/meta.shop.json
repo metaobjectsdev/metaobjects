@@ -47,7 +47,7 @@
               "value.ref": {
                 "name": "dbUrl",
                 "@setting": "Database.url",
-                "@from": "Shop.database",
+                "@producedBy": "Shop.database",
                 "@output": "url"
               }
             },
@@ -55,7 +55,7 @@
               "value.ref": {
                 "name": "payments",
                 "@setting": "Payments.url",
-                "@from": "Shop.Payments",
+                "@producedBy": "Shop.Payments",
                 "@output": "url"
               }
             }

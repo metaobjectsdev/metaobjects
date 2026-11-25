@@ -1,0 +1,46 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.service": {
+                "name": "api"
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db",
+                "@engine": "postgres"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "api-production",
+          "@app": "Shop.api",
+          "@environment": "production",
+          "@project": "shop"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "api-production-again",
+          "@app": "acme::shop::Shop.api",
+          "@environment": "production",
+          "@project": "shop"
+        }
+      }
+    ]
+  }
+}

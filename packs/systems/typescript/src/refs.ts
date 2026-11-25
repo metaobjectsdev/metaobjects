@@ -14,11 +14,12 @@ import {
   effectivePackageOf,
   referrerPackageFor,
   resolveRef,
+  splitChildTail,
   topLevelNodeOf,
   type MetaData,
   type ValidationContext,
 } from "@metaobjectsdev/metadata";
-import { TYPE_SYSTEM } from "./constants.js";
+import { TYPE_APP, TYPE_RESOURCE, TYPE_SYSTEM } from "./constants.js";
 
 /** The nearest enclosing system of `node`, or undefined when it sits in none. */
 function enclosingSystem(node: MetaData): MetaData | undefined {
@@ -50,6 +51,20 @@ export function resolveSystemRef(
     const sibling = (kinds === undefined ? undefined : named.find((c) => isKind(c, kinds))) ?? named[0];
     if (sibling !== undefined) return sibling;
   }
+  if (splitChildTail(ref).tail !== "") {
+    // `System.child`: the owner is a system, and among the owner's children of that name the
+    // wanted kind wins, as it does for a bare sibling.
+    const hit = resolveRef(root, ref, pkg, { ownerType: TYPE_SYSTEM }).node;
+    if (hit === undefined || kinds === undefined || isKind(hit, kinds)) return hit;
+    return hit.parent?.children().find((c) => c.name === hit.name && isKind(c, kinds)) ?? hit;
+  }
+  // A top-level name: a node of the wanted kinds wins over a same-named node of another type.
+  // None of those: take any node, so the caller reports the wrong kind it found.
+  const types = kinds === undefined ? [] : [...new Set(kinds.map((k) => k.split(".")[0]!))];
+  for (const ownerType of types) {
+    const hit = resolveRef(root, ref, pkg, { ownerType }).node;
+    if (hit !== undefined && isKind(hit, kinds!)) return hit;
+  }
   return resolveRef(root, ref, pkg).node;
 }
 
@@ -79,15 +94,16 @@ export function checkRefs(
   for (const ref of refList(node, attr)) {
     const target = resolveSystemRef(node, ref, attr, kinds);
     const label = `${node.type}.${node.subType} "${node.name}" @${attr} "${ref}"`;
-    const want = kinds.join(" or ");
+    const want = kinds.map((k) => `${/^[aeiou]/.test(k) ? "an" : "a"} ${k}`).join(" or ");
     if (target === undefined) {
       // A bare name finds a node of the referrer's own system or a top-level node; one
       // inside another system, or seen from outside any system, needs its system's name.
       const bare = !ref.includes(CHILD_REF_SEPARATOR) && !ref.includes(PACKAGE_SEPARATOR);
-      const hint = bare ? ` A node inside a system is named System.${ref}.` : "";
-      ctx.error(code, node, `${label} does not resolve to a ${want}.${hint}`);
+      const inSystem = kinds.some((k) => k === TYPE_APP || k === TYPE_RESOURCE || k.startsWith(`${TYPE_APP}.`) || k.startsWith(`${TYPE_RESOURCE}.`));
+      const hint = bare && inSystem ? ` A node inside a system is named System.${ref}.` : "";
+      ctx.error(code, node, `${label} does not resolve to ${want}.${hint}`);
     } else if (!isKind(target, kinds)) {
-      ctx.error(code, node, `${label} resolves to ${target.type}.${target.subType}, not a ${want}.`);
+      ctx.error(code, node, `${label} resolves to ${target.type}.${target.subType}, not ${want}.`);
     }
   }
 }

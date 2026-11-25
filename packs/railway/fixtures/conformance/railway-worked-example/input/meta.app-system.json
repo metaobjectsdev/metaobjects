@@ -45,7 +45,7 @@
           "@domains": ["app.example.com", "play.example.com"],
           "@secrets": "keys",
           "children": [
-            { "value.ref": { "name": "dbUrl", "@setting": "Database.url", "@from": "Game.db", "@output": "url" } },
+            { "value.ref": { "name": "dbUrl", "@setting": "Database.url", "@producedBy": "Game.db", "@output": "url" } },
             { "value.literal": { "name": "profile", "@setting": "Spring.profile", "@literal": "prod" } }
           ]
       } }

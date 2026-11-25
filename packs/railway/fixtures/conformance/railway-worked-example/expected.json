@@ -112,8 +112,8 @@
             {
               "value.ref": {
                 "name": "dbUrl",
-                "@from": "Game.db",
                 "@output": "url",
+                "@producedBy": "Game.db",
                 "@setting": "Database.url"
               }
             },
