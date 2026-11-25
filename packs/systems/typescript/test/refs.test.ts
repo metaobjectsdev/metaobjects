@@ -119,4 +119,27 @@ describe("resolveSystemRef binds by type and kind", () => {
     expect(resolveSystemRef(api, "Shop.worker", "calls", ["app"])?.type).toBe("app");
     expect(resolveSystemRef(api, "Shop.worker", "needs", ["resource"])?.type).toBe("resource");
   });
+
+  test("a bare name skips a sibling of the wrong kind for a top-level node of the wanted kind", async () => {
+    const root = await loadModel([
+      { "system.internal": { name: "Shop", children: [
+        { "resource.cache": { name: "Mail" } },
+        { "app.service": { name: "api", "@calls": ["Mail"] } },
+      ] } },
+      { "system.external": { name: "Mail" } },
+    ]);
+    const api = root.children().find((c) => c.name === "Shop")!.children().find((c) => c.type === "app")!;
+    expect(resolveSystemRef(api, "Mail", "calls", ["app", "system.external"])?.type).toBe("system");
+  });
+
+  test("a bare name with only a wrong-kind sibling still resolves to it, so the caller can name the wrong kind", async () => {
+    const root = await loadModel([
+      { "system.internal": { name: "Shop", children: [
+        { "resource.cache": { name: "Mail" } },
+        { "app.service": { name: "api" } },
+      ] } },
+    ]);
+    const api = root.children().find((c) => c.name === "Shop")!.children().find((c) => c.type === "app")!;
+    expect(resolveSystemRef(api, "Mail", "calls", ["app", "system.external"])?.type).toBe("resource");
+  });
 });

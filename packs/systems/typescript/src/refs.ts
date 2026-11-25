@@ -44,12 +44,18 @@ export function resolveSystemRef(
   const root = top.parent;
   if (root === undefined) return undefined;
   const pkg = attr === undefined ? effectivePackageOf(top) : referrerPackageFor(from, attr);
+  let wrongKindSibling: MetaData | undefined;
   if (!ref.includes(CHILD_REF_SEPARATOR) && !ref.includes(PACKAGE_SEPARATOR)) {
     // ADR-0039: resolving, so a system that `extends` another sees its inherited children.
     // An app and a resource may share a name; given the kinds wanted, prefer one of them.
     const named = enclosingSystem(from)?.children().filter((c) => c.name === ref) ?? [];
-    const sibling = (kinds === undefined ? undefined : named.find((c) => isKind(c, kinds))) ?? named[0];
-    if (sibling !== undefined) return sibling;
+    if (kinds === undefined) {
+      if (named[0] !== undefined) return named[0];
+    } else {
+      const sibling = named.find((c) => isKind(c, kinds));
+      if (sibling !== undefined) return sibling;
+      wrongKindSibling = named[0];
+    }
   }
   if (splitChildTail(ref).tail !== "") {
     // `System.child`: the owner is a system, and among the owner's children of that name the
@@ -59,13 +65,13 @@ export function resolveSystemRef(
     return hit.parent?.children().find((c) => c.name === hit.name && isKind(c, kinds)) ?? hit;
   }
   // A top-level name: a node of the wanted kinds wins over a same-named node of another type.
-  // None of those: take any node, so the caller reports the wrong kind it found.
+  // None of those: take a sibling or node of another kind, so the caller reports the wrong kind it found.
   const types = kinds === undefined ? [] : [...new Set(kinds.map((k) => k.split(".")[0]!))];
   for (const ownerType of types) {
     const hit = resolveRef(root, ref, pkg, { ownerType }).node;
     if (hit !== undefined && isKind(hit, kinds!)) return hit;
   }
-  return resolveRef(root, ref, pkg).node;
+  return wrongKindSibling ?? resolveRef(root, ref, pkg).node;
 }
 
 /** Whether `node` is one of `kinds` (each a type, or a `type.subType`). */
