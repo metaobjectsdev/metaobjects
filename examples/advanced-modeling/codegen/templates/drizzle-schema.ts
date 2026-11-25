@@ -2,7 +2,7 @@
 // with FK .references() on FK columns derived from relationship children,
 // plus the relations() block auto-emitted at the end.
 
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { code, imp, type Code } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaObject, MetaField, MetaIndex, isMetaObject } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION, IDENTITY_ATTR_SEQUENCE_START, IDENTITY_ATTR_SEQUENCE_NAME,
@@ -29,10 +29,11 @@ import {
 import { resolveTableSchema, resolveIndexName, storedEnumValue, VALIDATOR_ATTR_CONSTRAINT_NAME } from "@metaobjectsdev/metadata";
 import { fitPgIdentifier } from "@metaobjectsdev/codegen-ts/engine";
 import { intValueMapOf } from "@metaobjectsdev/codegen-ts/engine";
-import { renderEnumIntCustomType } from "./enum-int-codec.js";
-import { renderDurationCustomType } from "./duration-wire-helper.js";
-import { renderRelationsBlock } from "./relations-block.js";
-import { renderDocsFor } from "./jsdoc.js";
+import { writeEnumIntCustomType } from "./enum-int-codec.js";
+import { writeDurationCustomType } from "./duration-wire-helper.js";
+import { writeRelationsBlock } from "./relations-block.js";
+import { arr, TsWriter } from "@metaobjectsdev/codegen-ts/engine";
+import { writeDocsFor } from "./jsdoc.js";
 import { collectTphSubtypeFields, tphConcreteSubtypes, tphPlan } from "./tph-discriminator.js";
 import { tphStorageObject } from "@metaobjectsdev/codegen-ts/engine";
 import { flattenedMembersOf } from "@metaobjectsdev/codegen-ts/engine";
@@ -63,6 +64,18 @@ export function renderDrizzleSchema(
    */
   declaredEnumIntCodecs?: Set<string>,
 ): Code {
+  const w = new TsWriter();
+  writeDrizzleSchema(w, obj, ctx, declaredEnumIntCodecs);
+  return w.toCode();
+}
+
+/** Write {@link renderDrizzleSchema}'s codecs, table and relations block into `w`. */
+export function writeDrizzleSchema(
+  w: TsWriter,
+  obj: MetaObject,
+  ctx: RenderContext,
+  declaredEnumIntCodecs?: Set<string>,
+): void {
   const dialect = ctx.dialect;
   const { tableFn, core: importModule } = dialectModule(dialect);
   const tableFnSym = imp(`${tableFn}@${importModule}`);
@@ -189,7 +202,8 @@ export function renderDrizzleSchema(
   // is exactly the arm migrate mirrors.
   const secondaryIdentities = obj.secondaryIdentities();
 
-  const columnLines: Code[] = [];
+  /** Each column, written into the table's column object: its docs, then its line. */
+  const columnWriters: Array<(w: TsWriter) => void> = [];
   // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
   const checkConstraints: CheckEntry[] = [];
   /**
@@ -270,9 +284,8 @@ export function renderDrizzleSchema(
       const dbExpr: Code = names !== undefined && named !== undefined
         ? code`${names.symbol}.fields.${owner.name}.members.${m.member.name}.column`
         : code`${JSON.stringify(m.column)}`;
-      columnLines.push(
-        renderColumn(spec, dbExpr, m.member, ctx, false, undefined, undefined, isComposite, pkg, obj.name, false, m.key),
-      );
+      const column = renderColumn(spec, dbExpr, m.member, ctx, false, undefined, undefined, isComposite, pkg, obj.name, false, m.key);
+      columnWriters.push((w) => writeColumn(w, column));
     }
   };
   for (const child of obj.fields()) {
@@ -298,9 +311,8 @@ export function renderDrizzleSchema(
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     if (spec.durationCustomType !== undefined) usesDurationCodec = true;
-    const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name, false, child.name, pkSequence);
-    columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
+    const column = renderColumn(spec, columnNameExpr(child, spec.dbName), child, ctx, isPk, pkGeneration, fkInfo, isComposite, pkg, obj.name, false, child.name, pkSequence);
+    columnWriters.push((w) => writeColumn(w, column, child));
     if (spec.checkConstraint !== undefined) checkConstraints.push(checkEntry(child, spec));
   }
 
@@ -319,11 +331,10 @@ export function renderDrizzleSchema(
       enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
     }
     if (spec.durationCustomType !== undefined) usesDurationCodec = true;
-    const fieldDocs = renderDocsFor(child);
-    const columnLine = renderColumn(
+    const column = renderColumn(
       spec, columnNameExpr(child, spec.dbName), child, ctx, false, undefined, fkMap.get(child.name), isComposite, pkg, obj.name, true,
     );
-    columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
+    columnWriters.push((w) => writeColumn(w, column, child));
     // Enum CHECK constraints stay valid under TPH: `NULL IN (...)` is NULL
     // (not false), so other-subtype rows with NULL pass the check. Sibling subtypes that
     // declare this column with DIFFERENT checks (rc.21 fix round, I1) each get their own,
@@ -491,40 +502,38 @@ export function renderDrizzleSchema(
     callbackEntries.push(code`${checkSym}(${name}, ${sqlSym}\`${expr}\`)`);
   }
 
-  let tableBlock: Code;
-  if (callbackEntries.length > 0) {
-    tableBlock = code`
-export const ${varName} = ${tableCall}(${tableNameExpr}, {
-${joinCode(columnLines, { on: ",\n", trim: false })}
-}, (table) => [
-  ${joinCode(callbackEntries, { on: ",\n  ", trim: false })}
-]);
-`;
-  } else {
-    tableBlock = code`
-export const ${varName} = ${tableCall}(${tableNameExpr}, {
-${joinCode(columnLines, { on: ",\n", trim: false })}
-});
-`;
-  }
-
-  // Emit the relations() block (returns null if no relations).
-  const relationsBlock = renderRelationsBlock(obj, ctx);
-
   // Int-backed enum codecs are declared BEFORE the table that references them.
   // Sorted by const name so output is deterministic regardless of field order.
-  const enumIntBlocks = [...enumIntTypes.values()]
-    .sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))
-    .map((t) => renderEnumIntCustomType(t, importModule));
   if (declaredEnumIntCodecs !== undefined) {
     for (const name of enumIntTypes.keys()) declaredEnumIntCodecs.add(name);
     if (usesDurationCodec) declaredEnumIntCodecs.add(DURATION_COLUMN_FN);
   }
+  if (usesDurationCodec) writeDurationCustomType(w, dialect, importModule);
+  for (const t of [...enumIntTypes.values()].sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))) {
+    writeEnumIntCustomType(w, t, importModule);
+  }
 
-  const durationBlocks = usesDurationCodec ? [renderDurationCustomType(dialect, importModule)] : [];
-  const blocks: Code[] = [...durationBlocks, ...enumIntBlocks, tableBlock];
-  if (relationsBlock !== null) blocks.push(relationsBlock);
-  return blocks.length === 1 ? blocks[0]! : joinCode(blocks, { on: "\n" });
+  w.blank();
+  w.open("export const ", varName, " = ", tableCall, "(", tableNameExpr, ", {");
+  for (const write of columnWriters) write(w);
+  if (callbackEntries.length > 0) w.close("}, (table) => ", arr(callbackEntries), ");");
+  else w.close("});");
+
+  // The relations() block (nothing when the entity has no relations).
+  writeRelationsBlock(w, obj, ctx);
+}
+
+/** One column of the table: its leading comment and docs, then `<key>: <column expression>,`. */
+function writeColumn(w: TsWriter, column: ColumnEntry, docsFor?: MetaField): void {
+  if (docsFor !== undefined) writeDocsFor(w, docsFor);
+  if (column.leadingComment !== undefined) w.line(`// ${column.leadingComment}`);
+  w.line(column.line, ",");
+}
+
+/** A rendered column: the `<key>: <expression>` line and the comment the mapper put above it. */
+interface ColumnEntry {
+  readonly line: Code;
+  readonly leadingComment?: string | undefined;
 }
 
 interface FkInfo {
@@ -598,10 +607,20 @@ function buildCompositeKeyCallback(
 export function inlineObjectLiteral(obj: Record<string, unknown>): string {
   const entries = Object.entries(obj).map(([k, v]) => {
     const name = /^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k);
-    const lit = JSON.stringify(v);
+    const lit = inlineLiteral(v);
     return Array.isArray(v) ? `${name}: ${lit} as const` : `${name}: ${lit}`;
   });
   return `{ ${entries.join(", ")} }`;
+}
+
+/** A JSON value as a one-line TypeScript literal, spaced as it is written: `["a", "b"]`, `{ a: 1 }`. */
+function inlineLiteral(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(inlineLiteral).join(", ")}]`;
+  if (v !== null && typeof v === "object") {
+    const members = Object.entries(v).map(([k, x]) => `${/^[A-Za-z_$][\w$]*$/.test(k) ? k : JSON.stringify(k)}: ${inlineLiteral(x)}`);
+    return members.length === 0 ? "{}" : `{ ${members.join(", ")} }`;
+  }
+  return JSON.stringify(v);
 }
 
 /** Render one column line (field name + Drizzle column expression). */
@@ -633,7 +652,7 @@ function renderColumn(
   keyName: string = field.name,
   // An increment key's declared `@sequenceStart` / `@sequenceName` (#544); absent, none.
   pkSequence: { start?: number | undefined; name?: string | undefined } = {},
-): Code {
+): ColumnEntry {
   // An int-backed field.enum's column function is a LOCAL generated const (the
   // customType helper emitted into this same file), so it must not be imported
   // from drizzle-orm/*-core like a built-in column type would be.
@@ -848,10 +867,10 @@ function renderColumn(
     }
   }
 
-  const columnLine = code`  ${keyName}: ${baseCall}${dollarTypeSegment}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`;
-  return spec.leadingComment !== undefined
-    ? code`  // ${spec.leadingComment}\n${columnLine}`
-    : columnLine;
+  return {
+    line: code`${keyName}: ${baseCall}${dollarTypeSegment}${modifiersStr}${autoSetSuffix}${sqlDefaultSegment ?? ""}${fkRefSegment ?? ""}`,
+    leadingComment: spec.leadingComment,
+  };
 }
 
 /**

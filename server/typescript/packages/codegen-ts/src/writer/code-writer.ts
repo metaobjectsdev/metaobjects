@@ -130,6 +130,17 @@ export class CodeWriter {
   }
 
   /**
+   * The body one level in, with no opening or closing line: a block delimited by indentation
+   * alone, as a SQL clause list or a YAML mapping is.
+   */
+  indented(body: () => void): this {
+    this.openers.push("");
+    body();
+    this.openers.pop();
+    return this;
+  }
+
+  /**
    * A multi-line snippet written as it should read. Its common left margin is removed and
    * it is re-indented to the current level; a blank line in it is a blank-line request.
    * Every line is re-indented, including lines inside a multi-line string literal.

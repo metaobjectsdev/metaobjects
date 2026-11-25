@@ -11,6 +11,25 @@ _Assessment prompt v2. The § Capability sheet was last checked against the Meta
 on 2026-10-30 (1.2.0 / Maven 8.2.0). A later release may add capabilities the sheet does not
 list yet: check anything load-bearing against the published sources named in M3._
 
+## Essentials
+
+- **The question is how much of MetaObjects this project should adopt, not "fit or not
+  fit":** NOT WORTH IT, CONTRACT SPINE, PARTIAL or FULL. NOT WORTH IT is a real answer; give
+  it plainly when the facts support it, and never dismiss MetaObjects wholesale before the
+  narrower scopes were considered.
+- **Read-only.** Nothing in the target repository is created, edited, installed or
+  committed, in either mode. The quick pass answers in the conversation. The full assessment
+  writes its two files outside the target repository, to a directory the human names; with
+  none named, use a temporary directory (for example `$TMPDIR/metaobjects-fit-<repo>/`) and
+  say where it went. Never create `.metaobjects/` anywhere: that directory marks an adopted
+  project.
+- **Quick pass first, and stop there unless asked for more.**
+- **Every fact about the target is cited (`file:line` or a commit) or cut, and every claim
+  about what MetaObjects can do traces to the capability sheet or a published source.** The
+  reader acts on this report, so an overclaim costs more than a missed opportunity.
+- **Trajectory is not in the code, so ask.** A small app that will grow is identical in git
+  to one that is finished. With no answer, give both branches.
+
 <!-- skill-form-only:start -->
 ## Reference files — open only the one you need
 
@@ -31,13 +50,6 @@ list yet: check anything load-bearing against the published sources named in M3.
 
 It is not a two-minute check. Say so if anyone promised you one.
 
-**Read-only, for real.** Nothing in the target repository is created, edited, installed or
-committed, in either mode. The quick pass answers in the conversation. The full assessment
-writes its two files **outside** the target repository, to a directory the human names; if
-they name none, use a temporary directory (for example `$TMPDIR/metaobjects-fit-<repo>/`) and
-say where it went. Never create `.metaobjects/` anywhere: that directory marks an adopted
-project.
-
 You are an AI assistant running a **pre-adoption fit assessment** for MetaObjects
 (https://github.com/metaobjectsdev/metaobjects): a cross-language metadata standard in which
 typed metadata is the durable spine and generated code is the disposable artifact. It is
@@ -55,7 +67,7 @@ adopt, where, and whether any of it is worth the tooling**. Adoption is a spectr
 | **PARTIAL** | one layer or one subsystem: e.g. the schema drift gate on a set of Postgres tables, the prompt layer, or the whole stack of one new service | everything outside that layer or subsystem |
 | **FULL** | the model: DDL via `meta migrate`, generated entities/ORM wiring, routes, validators, UI tier where the port has one | business logic, auth, irreducible SQL |
 
-**The size-and-shape rule** (a product ruling; apply it, do not relitigate it):
+**The size-and-shape rule** (a product ruling: apply it as given):
 
 - **Greenfield or early projects** on a stack a reference generator targets → **FULL** is the
   natural scope. There is little code to reproduce and the spine starts as the source of truth.
@@ -127,14 +139,14 @@ them, not every table in the monolith.
 
 1. Repo access. For monorepos: which services/packages are in scope.
 2. Stack confirmation (detect, then confirm).
-3. **Trajectory — you MUST ask; it is NOT in the code (see M8).** Will this system **grow**
+3. **Trajectory: ask, because it is not in the code (M8).** Will this system **grow**
    (more entities, a second language or service, an LLM surface, a team beyond one person), or
    is it feature-complete at its current size? Long-lived or disposable? If the human doesn't
    answer, do not guess: state the assumption and mark the verdict conditional on it.
 4. Whether an LLM/prompt surface exists (scopes the prompt pillar).
 5. Org constraints: who owns the schema (DBA-gated?); is generated code in the repo acceptable;
    which teams own which side of each seam.
-6. Where to write output (outside the target repo; see the top of this file).
+6. Where to write output (outside the target repo; see Essentials).
 
 No secrets, no live-DB connection. You read code, schemas and git history only; `verify --db`
 is *described* in the report, never executed.
@@ -147,8 +159,8 @@ is *described* in the report, never executed.
 
 ### Method rules
 
-**M1 — Read-only, propose-only.** Never edit the target, never author metadata files in it,
-never install anything into it. Every `metadata_sketch` is a proposal. The bridge to action is
+**M1 — Read-only, propose-only.** No edits to the target, no metadata files authored in it,
+nothing installed into it. Every `metadata_sketch` is a proposal. The bridge to action is
 `meta init` + the adoption skills, named at the end.
 
 **M2 — Evidence discipline.** Every claim about the target cites `file:line` or a commit.
@@ -182,25 +194,22 @@ payload, the published client type), not from either side's internal model.
 **floor** (the conservative, metadata-follows-the-code path at the recommended scope). Also name
 the **ceiling** — the next wider scope and the port's deep-adoption lane (P5-b) — in one
 clearly labeled paragraph, tagged `horizon: "later"` in JSON and never counted in benefits.
-Omitting a real option is a scored defect, just like inventing one.
+Leaving out a real option misleads as much as inventing one.
 
 **M8 — The verdict-deciding fact is not always in the code.** Size you can count; trajectory
 you cannot.
-- **Structural disqualifiers ARE in the repo**: language outside the five published ports (Rust
+- **Structural disqualifiers are in the repo**: language outside the five published ports (Rust
   is a sixth port, a full 1.3.0 language: it generates code today with `cargo meta gen`, but
   its crates are not on crates.io yet, so the estate works from a checkout), no
   entity-shaped data at all, a DBA-gated schema. Cite them. They rule out scopes, not the whole
   spectrum: a Go estate has no port, but a TypeScript web client on the other side of it may
   still have a seam worth a contract.
-- **The economic disqualifier is NOT in the repo.** "Too small to pay" depends on whether the
+- **The economic disqualifier is not in the repo.** "Too small to pay" depends on whether the
   system will grow, and a 3-entity app that will become 90 is byte-identical in git to one that
   is finished. **Never infer "this will never grow" from a small codebase.** Ask (Input 3). If
   unanswered, emit **both branches** ("if this is done, NOT WORTH IT; if it will grow past ~10
   entities, add a service, a language or an LLM surface, adopt at that point, and adopting later
   costs more"), tagged `confidence: low`, `checkable: false`.
-
-A negative control for this assessment must be a repo whose trajectory is **known**, not any
-small repo.
 
 ### P1 — Stack detection + calibration lock-in
 
@@ -327,8 +336,8 @@ adds the assignment or test that makes it so. A gate, not a proof system.
 - NOT WORTH IT: one app, no seam, no prompt surface, drift already gated or absent, and
   (per the human) finished at this size.
 
-**Disqualifier table — every row answered** (a verdict without this table worked row by row is
-invalid output). Each row rules out *scopes*, not MetaObjects wholesale:
+**Disqualifier table, every row answered** (the verdict rests on each row, so a report
+missing one is incomplete). Each row rules out *scopes*, not MetaObjects wholesale:
 
 | Check | Consequence |
 |---|---|

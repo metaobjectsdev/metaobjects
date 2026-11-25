@@ -97,4 +97,7 @@ export interface AgentSchemaInput {
   readonly columnType: (column: SchemaColumnLike) => string;
   /** `migrate-ts`'s `qualifiedDbName` — the ONE key the provenance map is built with. */
   readonly qualify: (obj: { name: string; schema?: string | undefined }) => string;
+  /** The project chose a `meta migrate` dialect (`migrate.dialect`): the page names the reference
+   *  migration helper as the way to change the schema. Otherwise it names the project's own tool. */
+  readonly migrate: boolean;
 }

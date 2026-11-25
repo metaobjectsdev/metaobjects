@@ -1,0 +1,15 @@
+[
+  {
+    "path": "ExportsAreResumable",
+    "depth": 0,
+    "subType": "functional",
+    "level": 4,
+    "status": "planned",
+    "disposition": "deferred",
+    "trackedBy": [],
+    "statement": "true",
+    "counterexample": "A 2 GB export that restarts from zero after a dropped connection",
+    "implementedBy": [],
+    "claimedConcerns": []
+  }
+]

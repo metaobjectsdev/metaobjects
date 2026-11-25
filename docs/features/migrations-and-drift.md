@@ -340,13 +340,13 @@ base's identity extended twice, say) is refused when the schema is built
 
 ### Java
 
-Schema migrations for Java projects are owned by the **TypeScript toolchain**
-(`@metaobjectsdev/cli migrate`). The Java Maven plugin's `meta:migrate` goal was
-removed, and per ADR-0015 the OMDB runtime auto-create path was removed too —
-OMDB is pure data-access (CRUD/query/codec/transactions). Provision the schema by
-applying the TS-produced DDL/migrations to the database the Java service connects to.
+A Java project migrates with its own tool (Flyway, Liquibase), handed the expected schema
+`meta schema` prints, or with the reference migration helper, `meta migrate` (one option;
+`--migration-format flyway` writes Flyway-named files). The Java Maven plugin's `meta:migrate`
+goal was removed, and per ADR-0015 the OMDB runtime auto-create path was removed too —
+OMDB is pure data-access (CRUD/query/codec/transactions).
 
-Use the TS CLI against the same database the Java service connects to:
+The reference helper runs against the same database the Java service connects to:
 
 ```bash
 meta migrate --db postgresql://... --slug initial   # emit migration SQL
@@ -355,9 +355,10 @@ meta migrate --db postgresql://... --apply          # apply pending migrations
 
 ### Kotlin
 
-Kotlin schema migrations follow the same story as Java: the Java Maven plugin's
-`meta:migrate` mojo was removed and there is no Kotlin-specific migrate command.
-Schema migrations are owned by the TS toolchain:
+Kotlin follows the same story as Java: its own tool (Exposed's migration support, Flyway)
+handed the schema `meta schema` prints, or the reference migration helper. The Java Maven
+plugin's `meta:migrate` mojo was removed and there is no Kotlin-specific migrate command. The
+reference helper:
 
 ```bash
 meta migrate --db postgresql://... --slug initial
@@ -366,10 +367,11 @@ meta migrate --db postgresql://... --apply
 
 ### C#
 
-Schema migrations for C# projects are owned by the **TypeScript toolchain**
-(`@metaobjectsdev/cli migrate`). Per ADR-0015 the C# migrate engine and the
+A C# project's native path is EF Core Migrations, `dotnet ef migrations add` over the generated
+`AppDbContext` (ADR-0015 Amendment 1, [C# port](../ports/csharp.md)); the reference migration
+helper, `meta migrate`, is the other option. Per ADR-0015 the C# migrate engine and the
 `--from-db` introspection surface were removed — the C# CLI (`dotnet meta`) is
-`gen` / `verify` only. Use the TS CLI against the same database the C# service
+`gen` / `verify` only. The reference helper runs against the same database the C# service
 connects to:
 
 ```bash
@@ -379,11 +381,11 @@ meta migrate --db postgresql://... --apply          # apply pending migrations
 
 ### Python
 
-Schema migrations for Python projects are owned by the **TypeScript toolchain**
-(`@metaobjectsdev/cli migrate`). Per ADR-0015 the Python `migrate` module was
-removed — the `metaobjects` console script is `gen` / `verify` only (the runtime is
-pure data-access via ObjectManager). Use the TS CLI against the same database the
-Python service connects to:
+A Python project migrates with its own tool (Alembic, say), handed the expected schema
+`meta schema` prints, or with the reference migration helper, `meta migrate`. Per ADR-0015 the
+Python `migrate` module was removed — the `metaobjects` console script is `gen` / `verify` only
+(the runtime is pure data-access via ObjectManager). The reference helper runs against the same
+database the Python service connects to:
 
 ```bash
 meta migrate --db postgresql://... --slug initial   # emit migration SQL
@@ -881,8 +883,9 @@ A drop and a create of the same view needs no `--allow`. It has two costs a repl
   dependent.
 
 Plan with `--from-db` to get the in-place replace when it is legal, which keeps the view's
-owner and its dependents. Migrations are TypeScript-owned (ADR-0015): no other port writes a
-migration, so this is the only port that carries privileges over.
+owner and its dependents. The reference migration helper is the only MetaObjects tool that
+writes a migration (ADR-0015), so it is the only one that carries privileges over; a project on
+its own migration tool carries them in that tool.
 
 A view whose definition does **not** change is dropped and created too, when the migration
 retypes, drops or renames a column the view reads: Postgres refuses to retype or drop it

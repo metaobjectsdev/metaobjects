@@ -59,12 +59,14 @@ SERVED_REPORT_FILES: dict[str, list[str]] = {
 
 
 def _code_generators() -> list[GeneratorEntry]:
-    """Every registered generator but ``api-docs``. Since 1.1.0 ``gen`` runs ``api-docs`` like
+    """Every registered generator but the docs layer. Since 1.1.0 ``gen`` runs ``api-docs`` like
     any other entry; its pages document the model, so a served report changes the index and
     the agent page as well as adding its own. That is held to its own test,
     :func:`test_api_docs_gain_only_the_served_report`, which compares those two pages modulo
-    the report; the tests here pin what the vocabulary does to generated code."""
-    return [e for e in list_generators() if e.name != "api-docs"]
+    the report; the tests here pin what the vocabulary does to generated code. The
+    ``requirements`` and ``agent-docs`` pages document the model the same way (the schema page
+    lists a report's view), and are held by ``tests/conformance/test_docs_page_conformance.py``."""
+    return [e for e in list_generators() if e.layer != "docs"]
 
 
 def _load(variant: str):

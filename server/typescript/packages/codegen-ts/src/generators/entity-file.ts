@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type EmittedFile, type GenContext, type Generator, type GeneratorFactory } from "../generator.js";
-import { renderEntityFile } from "../templates/entity-file.js";
+import { EntityFileWriter, type EntityFileWriterClass } from "../templates/entity-file.js";
 import { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "../templates/enums-file.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityOutputPath } from "../import-path.js";
 import { isAbstract } from "../instance-artifacts.js";
@@ -25,10 +25,16 @@ export interface EntityFileOpts {
    * client-side type with no runtime-ts dependency.
    */
   allowlists?: boolean;
+  /**
+   * The composer: `EntityFileWriter`, or a subclass that overrides one method per section it
+   * changes (spec/code-writer.md, "Extension by subclassing").
+   */
+  writer?: EntityFileWriterClass;
 }
 
 export const entityFile = function entityFile(opts?: EntityFileOpts): Generator {
   const allowlists = opts?.allowlists ?? true;
+  const Writer = opts?.writer ?? EntityFileWriter;
   const perEntityEmit = perEntity(async (entity, ctx) => {
     if (!ctx.renderContext) {
       throw new Error("entity-file: renderContext is required (provided by runGen)");
@@ -44,13 +50,13 @@ export const entityFile = function entityFile(opts?: EntityFileOpts): Generator 
     claimModuleNames(ctx, entity);
     return {
       path: entityOutputPath(ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT, effectivePackage(entity), `${entity.name}.ts`),
-      content: renderEntityFile(entity, ctx.renderContext, { allowlists }),
+      content: new Writer(entity, ctx.renderContext, { allowlists }).compose().toString(),
     };
   });
 
   const generator: Generator = {
     name: "entity-file",
-    emitsEntityModule: true,
+    provides: { entityModule: true },
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
       const files = await perEntityEmit(ctx);
       // FR-019: emit the shared-enums module ONCE per run, into the entity-module

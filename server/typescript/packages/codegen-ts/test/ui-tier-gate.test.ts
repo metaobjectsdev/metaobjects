@@ -46,7 +46,7 @@ describe("warnUnmarkedUiGenerators", () => {
     warnUnmarkedUiGenerators([gen("entity-file"), gen("tanstack-grid")], (m) => msgs.push(m));
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toContain("'tanstack-grid'");
-    expect(msgs[0]).toContain("emitsUiTier: true");
+    expect(msgs[0]).toContain("provides: { uiTier: true }");
   });
 
   test("self-extinguishing — a marked suite is silent", () => {

@@ -52,6 +52,7 @@ agent-context-shipped/* | ALL           | the static agent files every port's pa
 docs/*                | ALL             | port tests read it: Java walks every page for <generators> blocks and reads docs/ports, TypeScript and Python read the recipes and docs/features pages, so a page edit is not prose-only
 README.md             | NONE            | root prose; the gates lane checks its claims, examples and test references
 CHANGELOG.md          | NONE            | root prose, same gates
+changelog.d/*         | NONE            | changelog fragments, assembled into CHANGELOG.md at release; the gates lane checks their shape
 CONTRIBUTING.md       | NONE            | root prose, same gates
 AGENTS.md             | NONE            | root prose, same gates
 CLAUDE.md             | NONE            | root prose, same gates

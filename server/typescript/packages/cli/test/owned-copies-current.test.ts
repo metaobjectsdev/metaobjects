@@ -2,10 +2,9 @@
 //
 // `meta init` / `meta eject` hand an adopter a generator and the template modules it calls
 // (ADR-0034 Amendment 8): `codegen/generators/<name>.ts` and `codegen/templates/`. This repo
-// carries owned copies of its own — the `test-generators` package, and one set per example
-// under `examples/*/codegen/` that owns a reference copy (an example of bespoke generators
-// owns none; `ownedTiers()` decides) — because 1.0 removed the four ownable generators from
-// `@metaobjectsdev/codegen-ts/generators`. If a copy drifts, the suites and examples keep
+// carries owned copies of its own — one set per example under `examples/*/codegen/` that owns
+// a reference copy (an example of bespoke generators owns none; `ownedTiers()` decides). If a
+// copy drifts, the suites and examples keep
 // passing while proving nothing about what an adopter runs. That is ADR-0034's byte-identity
 // blindness one level out, so it gets the same treatment.
 //

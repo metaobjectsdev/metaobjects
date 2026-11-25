@@ -15,9 +15,10 @@ import {
   DURATION_REGEX_LITERAL,
   DURATION_WRITE_HELPER_DECL,
   ZOD_DURATION_WRITE_EXPR,
-  durationColumnDeclParts,
+  writeDurationColumnDecl,
 } from "../src/templates/duration-wire-helper.js";
 import type { Dialect } from "../src/metaobjects-config.js";
+import { CodeWriter } from "../src/writer/code-writer.js";
 
 interface Vectors {
   wire: {
@@ -53,8 +54,9 @@ interface Codec { dataType(): string; toDriver(v: string): string | number | big
 
 /** The column codec exactly as a generated module spells it; `customType` hands back its config. */
 function columnCodec(dialect: Dialect): Codec {
-  const [before, after] = durationColumnDeclParts(dialect);
-  const js = transpiler.transformSync(`${before}customType${after}\nexport const codec = ${DURATION_COLUMN_FN};`);
+  const w = new CodeWriter();
+  writeDurationColumnDecl(w, dialect, "customType");
+  const js = transpiler.transformSync(`${w.toString()}export const codec = ${DURATION_COLUMN_FN};`);
   const body = js.replace(/export const codec =/, "return");
   return new Function("customType", body)((cfg: Codec) => cfg) as Codec;
 }

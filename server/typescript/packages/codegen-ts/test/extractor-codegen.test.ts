@@ -228,7 +228,7 @@ describe("Extractor codegen — source shape", () => {
     expect(extractorSrc).toContain("m.priority! as OrderPriority");
     expect(extractorSrc).toContain(") as OrderLabels[]");
     // The union aliases are imported from the payload module so the cast target resolves.
-    expect(extractorSrc).toContain("OrderPriority, OrderLabels");
+    expect(extractorSrc).toContain("Order, OrderLabels, OrderPriority");
 
     const dir = mkdtempSync(join(import.meta.dir, "extractor-tsc-"));
     TEMP_DIRS.push(dir);

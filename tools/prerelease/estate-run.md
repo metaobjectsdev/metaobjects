@@ -40,8 +40,8 @@ are in the `case` block of `estate-run.sh`; `--install-cmd`, `--gen-cmd`, `--ver
 2. Regenerate. Then regenerate again: **the second run must write zero files.** *(script)*
 3. `verify` with the drift gate on. Build. Run the estate's tests. *(script, given the commands)*
 4. On an estate with a database: `meta migrate --dry-run` and, on Postgres, `meta verify --db`.
-   Schema is owned by the Node `meta` in every port, so a non-TypeScript estate runs these from a
-   TypeScript install. *(script, given `--db-cmd`)*
+   Both are Node `meta` commands, so a non-TypeScript estate that uses the reference migration
+   helper runs these from a TypeScript install. *(script, given `--db-cmd`)*
 5. Boot the app and compare a few API answers with the released version. *(by hand or agent)*
 6. Record: files changed, time taken, every failure with its message. Unlink. *(script)*
 

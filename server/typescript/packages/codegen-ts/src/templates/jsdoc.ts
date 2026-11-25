@@ -6,6 +6,7 @@ import {
   DOC_ATTR_SEE_ALSO,
   DOC_ATTR_TITLE,
 } from "@metaobjectsdev/metadata";
+import { CodeWriter } from "../writer/code-writer.js";
 
 export interface DocAttrs {
   description?: string;
@@ -19,17 +20,17 @@ export interface DocAttrs {
 }
 
 /**
- * Render the seven doc common attrs as a JSDoc block. Returns "" if no
- * relevant attrs are set. `notes` is intentionally NEVER emitted — it is
- * the internal-only rationale slot per the Documentation Provider design
- * (D5).
+ * The lines of the JSDoc block for the seven doc common attrs, or `[]` when no relevant attr is
+ * set. `notes` is intentionally NEVER emitted — it is the internal-only rationale slot per the
+ * Documentation Provider design (D5). One body line and no tags is the one-line `/** … *\/`
+ * form; otherwise a block, with an empty ` *` line between the body and the tags.
  */
-export function renderJsDocBlock(attrs: DocAttrs): string {
+export function jsDocLines(attrs: DocAttrs): string[] {
   const bodyLines: string[] = [];
 
   // Description (primary text), falling back to title-only if no description.
   if (attrs.description) {
-    bodyLines.push(...attrs.description.split("\n"));
+    bodyLines.push(...attrs.description.split(/\r\n?|\n/));
   } else if (attrs.title) {
     bodyLines.push(attrs.title);
   }
@@ -43,11 +44,11 @@ export function renderJsDocBlock(attrs: DocAttrs): string {
   for (const url of attrs.seeAlso ?? []) tagLines.push(`@see ${url}`);
   for (const alias of attrs.aliases ?? []) tagLines.push(`@alias ${alias}`);
 
-  if (bodyLines.length === 0 && tagLines.length === 0) return "";
+  if (bodyLines.length === 0 && tagLines.length === 0) return [];
 
   // One-line shorthand: single body line + no tags
   if (bodyLines.length === 1 && tagLines.length === 0) {
-    return `/** ${bodyLines[0]} */`;
+    return [`/** ${bodyLines[0]} */`];
   }
 
   const out: string[] = ["/**"];
@@ -55,7 +56,22 @@ export function renderJsDocBlock(attrs: DocAttrs): string {
   if (bodyLines.length > 0 && tagLines.length > 0) out.push(" *");
   for (const line of tagLines) out.push(` * ${line}`);
   out.push(" */");
-  return out.join("\n");
+  return out;
+}
+
+/** Write a node's JSDoc block (nothing when it has no doc attrs), one line at a time. */
+export function writeDocsFor(w: CodeWriter, node: { attr: (n: string) => unknown }): void {
+  for (const l of jsDocLines(readDocAttrs(node))) w.line(l);
+}
+
+/**
+ * The block as text, for a template still built from `code` fragments: laid out by the writer,
+ * with no final line break. Returns "" if no relevant attrs are set.
+ */
+export function renderJsDocBlock(attrs: DocAttrs): string {
+  const w = new CodeWriter();
+  for (const l of jsDocLines(attrs)) w.line(l);
+  return w.toString().trimEnd();
 }
 
 /** Read the seven doc attrs from a MetaData node's `.attrs()` (effective). */

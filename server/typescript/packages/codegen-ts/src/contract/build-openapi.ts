@@ -14,6 +14,7 @@
 // validation issues.
 
 import { flatSurfaceFields } from "../flattened.js";
+import { compareCodeUnits } from "../code-unit-order.js";
 import {
   type ApiPagination,
   DEFAULT_PAGE_LIMIT,
@@ -77,12 +78,8 @@ export interface OpenApiBuildInput extends OpenApiDocumentOptions {
   readonly reportExport: boolean;
 }
 
-function compareNames(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
 function byName(a: MetaObject, b: MetaObject): number {
-  return compareNames(a.name, b.name);
+  return compareCodeUnits(a.name, b.name);
 }
 
 function componentName(obj: MetaObject, shape: ContractShape): string {
@@ -523,7 +520,7 @@ function collectSchemas(input: OpenApiBuildInput, refs: PathRefs): Record<string
       maxLimit: { type: "integer", description: "The largest page the server serves, on limit_too_large." },
     },
   };
-  return Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => compareNames(a, b)));
+  return Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => compareCodeUnits(a, b)));
 }
 
 /** The whole document, in the key order it is written. */

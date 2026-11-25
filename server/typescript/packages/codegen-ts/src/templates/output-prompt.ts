@@ -19,6 +19,7 @@ import {
 import { specLiteral } from "./output-format-spec-emitter.js";
 import { responseShape } from "./find-inbound.js";
 import { templateSymbolBase } from "../naming.js";
+import { TsWriter } from "../writer/ts-writer.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 function findTemplate(root: MetaData, name: string): MetaData | undefined {
@@ -64,25 +65,24 @@ export function renderOutputPrompt(root: MetaData, templateName: string): string
   const specName = `${symbolBase}FormatSpec`;
   const fnName = `render${symbolBase}Format`;
 
-  return `import {
-  renderOutputFormat,
-  Format,
-  FieldKind,
-  PromptStyle,
-  type OutputFormatSpec,
-  type PromptOverrides,
-} from "@metaobjectsdev/render";
-
-const ${specName}: OutputFormatSpec = ${spec};
-
-/**
- * The response-format instruction fragment for the ${templateName} template.prompt
- * ("produce your answer like this"). Comment-free — guidance lives in prose /
- * inline placeholders / a filled skeleton. Pass \`overrides\` to override the style
- * or per-field example/instruction at render time.
- */
-export function ${fnName}(overrides?: PromptOverrides): string {
-  return renderOutputFormat(${specName}, overrides ?? {});
-}
-`;
+  const w = new TsWriter();
+  const from = "@metaobjectsdev/render";
+  const render = w.use("renderOutputFormat", from);
+  // The spec literal names these three without importing them.
+  w.use("Format", from);
+  w.use("FieldKind", from);
+  w.use("PromptStyle", from);
+  const specType = w.useType("OutputFormatSpec", from);
+  const overridesType = w.useType("PromptOverrides", from);
+  w.line(`const ${specName}: ${specType} = ${spec};`);
+  w.blank().doc(
+    `The response-format instruction fragment for the ${templateName} template.prompt`,
+    `("produce your answer like this"). Comment-free — guidance lives in prose /`,
+    "inline placeholders / a filled skeleton. Pass `overrides` to override the style",
+    "or per-field example/instruction at render time.",
+  );
+  w.block(`export function ${fnName}(overrides?: ${overridesType}): string {`, () => {
+    w.line(`return ${render}(${specName}, overrides ?? {});`);
+  });
+  return w.toString();
 }

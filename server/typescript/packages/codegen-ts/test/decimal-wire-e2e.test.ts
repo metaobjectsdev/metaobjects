@@ -19,7 +19,7 @@ import { MetaDataLoader, InMemoryStringSource, type MetaObject } from "@metaobje
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/hono";
 import { renderZodValidators } from "../src/templates/zod-validators.js";
 import { renderFilterAllowlist } from "../src/templates/filter-allowlist.js";
-import { decimalColumnsLine, decimalFieldNames } from "../src/api-surface.js";
+import { decimalColumnsLine, decimalColumnsMembers, decimalFieldNames } from "../src/api-surface.js";
 import { removeTree } from "../src/scratch-dir.js";
 
 const MODEL = {
@@ -94,7 +94,9 @@ describe("generated decimal write schema and route, SQLite", () => {
 
   test("the route is given every decimal field name", () => {
     expect(decimalFieldNames(entry)).toEqual(["amount", "weight", "readings"]);
-    expect(decimalColumnsLine(entry, "    ")).toBe('\n    decimalColumns: ["amount","weight","readings"],');
+    expect(decimalColumnsMembers(entry)).toEqual(['decimalColumns: ["amount", "weight", "readings"],']);
+    // The deprecated 1.2 string form an owned routes copy still splices in.
+    expect(decimalColumnsLine(entry, "    ")).toBe('\n    decimalColumns: ["amount", "weight", "readings"],');
   });
 
   test("a string and a number are accepted, and answered as the canonical string", async () => {

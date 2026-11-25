@@ -9,19 +9,20 @@
 //
 // WHY VENDORED: ts-poet `require`s `dprint-node` when it loads, and dprint-node ships all
 // seven of its platform binaries in one package (~25 MB on every CLI install, of which a
-// machine can run one). This copy formats with the SAME dprint TypeScript plugin, built to
-// WebAssembly (`@dprint/typescript`, pinned to 0.87.1 — the plugin dprint-node 1.0.8
-// compiles in), configured exactly as ts-poet configured dprint-node, so the generated text
-// is byte-identical to what ts-poet printed. Bump that pin only together with the goldens.
+// machine can run one).
+//
+// NO FORMATTER (1.3.0): the shipped generators write through the code writer (src/writer/,
+// ADR-0063), which harvests these nodes' imports and text but never formats them. Until 1.3.0
+// `toString()` ran dprint over the file; it now returns the printed text as composed. The
+// primitives stay exported so a generator copied out with `meta eject` in 1.2 (and the
+// templates copied with it) still loads; a copy that wants its output formatted runs its own
+// formatter, as ADR-0063 item 2 says.
 //
 // ONE COPY PER PROCESS: a `Code` placeholder is recognised by `instanceof`, so every module
 // that composes `Code` must import it from here (inside this package) or from
 // `@metaobjectsdev/codegen-ts/engine` (everywhere else) — the 0.21.6 split-tree defect.
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import * as path from "node:path";
-import { createFromBuffer, type Formatter } from "@dprint/formatter";
 
 /** Options for `toString`, i.e. for the top-level, per-file output. */
 export interface ToStringOpts {
@@ -29,7 +30,10 @@ export interface ToStringOpts {
   path?: string;
   /** How to handle file extensions in imports: kept (`true`), dropped (`false`), or rewritten to `.js` / `.ts`. */
   importExtensions?: boolean | "ts" | "js";
-  /** Whether to run the dprint pass (default `true`). */
+  /**
+   * Ignored: no formatter runs (see the file header). Kept so a 1.2 caller that passes it still compiles.
+   * @deprecated
+   */
   format?: boolean;
 }
 
@@ -68,10 +72,9 @@ export class Code extends Node {
     super();
   }
 
-  /** Returns the formatted code, with imports. */
+  /** Returns the code with its imports, as composed: no formatter runs. */
   override toString(opts: ToStringOpts = {}): string {
-    this.codeWithImports ??= this.generateCodeWithImports(opts);
-    return opts.format === false ? this.codeWithImports : maybePretty(this.codeWithImports);
+    return (this.codeWithImports ??= this.generateCodeWithImports(opts));
   }
 
   get childNodes(): unknown[] {
@@ -551,46 +554,6 @@ function sameModule(path1: string, path2: string): boolean {
   // TypeScript: import paths ending in .js and .ts are resolved to the .ts file.
   const [basePath1, basePath2] = [path1, path2].map((p) => p.replace(extensionRegex, "")) as [string, string];
   return basePath1 === basePath2 || path.resolve(basePath1) === path.resolve(basePath2);
-}
-
-// ---------------------------------------------------------------------------
-// formatting
-// ---------------------------------------------------------------------------
-
-// ts-poet's dprint configuration, unchanged: "prettier-ish", plus forced braces and new
-// lines because the pre-formatted output is all bunched together. `deno: true` is the base
-// dprint-node applied before these overrides.
-const DPRINT_CONFIG = {
-  deno: true,
-  useTabs: false,
-  useBraces: "always",
-  singleBodyPosition: "nextLine",
-  "arrowFunction.useParentheses": "force",
-  "module.sortImportDeclarations": "caseSensitive",
-  lineWidth: 120,
-  preferSingleLine: true,
-};
-
-let formatter: Formatter | undefined;
-
-function dprint(): Formatter {
-  if (formatter === undefined) {
-    const wasm = readFileSync(createRequire(import.meta.url).resolve("@dprint/typescript/plugin.wasm"));
-    formatter = createFromBuffer(wasm);
-    formatter.setConfig({}, DPRINT_CONFIG);
-  }
-  return formatter;
-}
-
-function maybePretty(input: string): string {
-  // Loading the formatter stays outside the try: a missing or broken @dprint/typescript must
-  // fail loudly (as dprint-node's import-time load did), not silently emit unformatted code.
-  const fmt = dprint();
-  try {
-    return fmt.formatText({ filePath: "file.ts", fileText: input.trim() });
-  } catch {
-    return input; // assume it's invalid syntax and ignore
-  }
 }
 
 // ---------------------------------------------------------------------------

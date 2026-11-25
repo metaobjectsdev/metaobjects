@@ -1464,12 +1464,12 @@ describe("ADR-0034 Amendments 7 and 9 — the docs and api-docs references write
       const ref = PAIRS[name].ref();
       const builtin = PAIRS[name].builtin();
       const facts = (g: Generator) => JSON.stringify({
-        name: g.name, target: g.target, emitsModelDocs: g.emitsModelDocs, emitsApiDocs: g.emitsApiDocs,
+        name: g.name, target: g.target, provides: g.provides,
       });
       expect(facts(ref), name).toBe(facts(builtin));
     }
-    expect(refDocs().emitsModelDocs).toBe(true);
-    expect(refApiDocs({ subDir: "reference/ts/" }).emitsApiDocs).toEqual({ subDir: "reference/ts" });
+    expect(refDocs().provides?.modelDocs).toBe(true);
+    expect(refApiDocs({ subDir: "reference/ts/" }).provides?.apiDocs).toEqual({ subDir: "reference/ts" });
     for (const make of [refDocs, refApiDocs, refRequirements, refAgentDocs, refMetamodelDocs]) {
       expect(make().target).toBe("docs");
       expect(make({ target: "site" }).target).toBe("site");
@@ -1512,6 +1512,7 @@ describe("ADR-0034 Amendments 8 and 9 — the requirements and agent-docs refere
       provenance: built.provenance,
       columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
       qualify: qualifiedDbName,
+      migrate: true,
     };
   }
 

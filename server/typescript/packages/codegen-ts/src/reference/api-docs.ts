@@ -11,7 +11,7 @@
 //                `routesFileHono` is wired, the Hono ones, the prompt and output helpers);
 //                they import nothing. The entity module, the queries and the routes are
 //                described only when a generator in the run writes them
-//                (`emitsEntityModule`, `emitsQueries`, `mountsRoutes`, or a copy of the
+//                (`provides.entityModule`, `.queries`, `.routes`, or a copy of the
 //                stock one by name); a generator of your own that writes them under
 //                another name needs the marker, or its surface is left out.
 // use-when:      you want to change the API reference: which units get a page, where the
@@ -38,7 +38,7 @@
 //
 // HOW IT RUNS. Like every generator: list it in `generators` in metaobjects.config.ts, with
 // a `docs` target declared, and `meta gen` writes the pages (`meta verify --codegen` checks
-// them). The `emitsApiDocs` marker tells the model pages in the same target where these are.
+// them). The `provides.apiDocs` declaration tells the model pages in the same target where these are.
 //
 // Everything below imports the engine from `@metaobjectsdev/codegen-ts` (the generator base, the
 // model walks, the naming tables) and the code that writes the pages from `../generators/`.
@@ -86,7 +86,7 @@ export function apiDocsFile(opts?: ApiDocsFileOpts): Generator {
     name: "api-docs",
     target: opts?.target ?? DOCS_TARGET_NAME,
     // Tells the model pages in the same target where these pages are.
-    emitsApiDocs: { subDir: apiDir },
+    provides: { apiDocs: { subDir: apiDir } },
     generate(ctx) {
       const provider = projectProvider(docsTemplateRoot(ctx));
       // Pages are keyed by package (DOCS_PAGE_LAYOUT), whatever the target's outputLayout:

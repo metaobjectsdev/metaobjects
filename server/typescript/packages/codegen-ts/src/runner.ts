@@ -16,7 +16,7 @@ import { assertNoCollectionNameCollisions } from "./naming/collection-name-colli
 import { NameClaims } from "./naming/name-claims.js";
 import { dbEmittingObjects, missingDialectMessage } from "./db-emitting.js";
 import { generatableObjects, hasAnyRdbSource } from "./source-detect.js";
-import type { Generator, GenContext, EmittedFile, RunOutputFile } from "./generator.js";
+import { providesOf, type Generator, type GenContext, type EmittedFile, type RunOutputFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, assertCodegenDialect, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
 import type { ResolvedTarget } from "./import-path.js";
@@ -653,7 +653,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Validate all target references up front.
   for (const g of config.generators) targetOf(g);
 
-  const entityGen = config.generators.find((g) => g.emitsEntityModule);
+  const entityGen = config.generators.find((g) => providesOf(g).entityModule === true);
   const entityModuleTarget = entityGen ? targetOf(entityGen) : targets[DEFAULT_TARGET_NAME]!;
 
   // Refuse before any generator runs: a name two objects claim in the scope it lives in
@@ -721,7 +721,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // Per-target scoping for the report-export generator: the routes import `./<Report>.export`
   // relative to themselves, so the module must land in the route file's own target.
   const reportExportTargets = new Set(
-    config.generators.filter((g) => g.emitsReportExport === true).map((g) => targetOf(g).name),
+    config.generators.filter((g) => providesOf(g).reportExport === true).map((g) => targetOf(g).name),
   );
   // §A6 — same auto-detection for the OPT-IN names generator. The entity tier may only
   // REFERENCE `<Entity>Names` when something in this run actually emits it; the names
@@ -738,7 +738,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // to it), so `entityFile({ target: "db" })` beside a default-target `namesFile()` would
   // otherwise emit `./<Entity>.names` from a directory that does not hold one.
   const namesTargets = new Set(
-    config.generators.filter((g) => g.emitsNames === true).map((g) => targetOf(g).name),
+    config.generators.filter((g) => providesOf(g).names === true).map((g) => targetOf(g).name),
   );
 
   // A declared template.prompt with no prompt generator wired emits nothing and, before

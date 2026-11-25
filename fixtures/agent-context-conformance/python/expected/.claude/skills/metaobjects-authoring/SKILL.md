@@ -5,16 +5,34 @@ description: Use when authoring or modifying MetaObjects metadata — fields, en
 
 # Authoring MetaObjects metadata
 
-MetaObjects metadata is the durable spine of your app: typed entity declarations
-that drive code generation, runtime behavior, and drift detection. You author it,
-the loader reads it, the codegen emits idiomatic per-language code from it. This
-skill is the procedure for writing it correctly.
+Metadata is the typed declaration of the application's model. The loader reads it, codegen
+emits code in each language from it, and the drift gates check everything against it.
 
-Metadata lives in files under the project's metadata directory (`metaobjects/` unless
-the project's configuration names another: `sources` in `.metaobjects/config.json`, or the
-port's own setting), one file per domain
-concept (`meta.commerce.json`, `meta.users.yaml`, …). Each file declares a
-`package` on its root node. Files in the same `package` with the same object
+## Essentials
+
+- **Declare it; do not hand-write it.** Persistence, data access, validation, APIs and UI
+  scaffolding are derived from metadata. When you reach for a hand-written query, route,
+  validator, relationship or aggregate, that is usually metadata nobody has declared yet:
+  look for the construct first (`meta types <term>`).
+- **Adoption reverses the direction.** When working code or a populated schema already
+  exists, it is the specification and the metadata reproduces it: its names, types and
+  nullability. Read `references/adopting-existing-code.md` before modeling anything.
+- **Every node is `{ "<type>.<subType>": { <body> } }`.** Reserved keys (`name`, `isArray`,
+  `children`, …) are bare; every attribute is `@`-prefixed in JSON and bare in YAML.
+- **Never invent a subtype or attribute.** The loader is strict, so an unregistered name
+  fails the load. `meta types` says what exists; vocabulary of your own is a provider class.
+- **Choose a field's shape by what the value is, not how it is stored**: a UUID is
+  `field.uuid`, money is `field.currency`, a list is `isArray: true`, and a JSON column takes
+  the type its writer already declares. The canonical-form table below covers the common
+  cases.
+- **A relationship's subtype sets the default delete action, and the FK-owning (child) side
+  governs.** Modeling every link as `composition` arms cascades nobody asked for.
+- **In YAML, quote any scalar that looks like a boolean, number, date or null.**
+
+Metadata lives in files under the project's metadata directory (`metaobjects/` unless the
+project's configuration names another: `sources` in `.metaobjects/config.json`, or the port's
+own setting), one file per domain concept (`meta.commerce.json`, `meta.users.yaml`, …). Each
+file declares a `package` on its root node. Files in the same `package` with the same object
 `name` are merged by the loader.
 
 ## Reference files — open only the one your task needs
@@ -40,66 +58,48 @@ This file covers what almost every model needs. The topics below live in
 | `references/reporting.md` | what a declared report gives you: what columns a report gets, time grains, null rules, rows with no facts (`@spine`), defaults (`@default`), engine differences |
 | `references/requirements.md` | you add, change or review a `requirement.*` node |
 
-## The operating principle: model-first, generate-first
+## Model first, then generate
 
-You are not hand-writing an application — you are **declaring the model it is
-generated from.** Persistence, data access, validation, APIs, and UI scaffolding are
-**derived from metadata, never authored by hand.** Model-first is the default for
-*every* capability; hand-writing one of these layers is an exception you must
-**justify**, not a convenience you reach for.
+You are declaring the model the application is generated from: the question is "what is this
+resource, and what is true about it?", and codegen owns the "how". Hand-writing a layer the
+model can describe is the exception, because a hand-written copy is checked by nothing and
+drifts the day the model changes.
 
-**This requires thinking differently.** Imperative code asks *"how do I implement
-this endpoint?"* Model-first asks *"what is this resource, and what is true about
-it?"* — and lets codegen own the *how*. **Describe WHAT, not HOW.** The metadata is
-the source of truth; generated code is a disposable, regenerable artifact — delete
-it and `meta gen` restores it identically.
+When you are about to hand-write something data-shaped, find the model for it:
 
-**Before you hand-write anything data-shaped, STOP and find the model.** The moment
-you reach for a hand-written query, route, validator, form, relationship, or
-aggregate — that is almost always **metadata you have not declared yet.** In order:
-1. **Check whether the design already ships.** `meta gen --list --format json`
-   carries `kind: "library"` rows — declared design MetaObjects ships, each with a
-   `useWhen`. If one matches the capability you are about to declare, opt in and adapt
-   rather than author it from scratch: you inherit its entities, its requirements, and
-   the rulings recorded with them. The bare name is the core layer (sourceless — no
-   tables, no generated code); `<lib>/db` is the separate opt-in that adds the schema.
-2. **Search the vocabulary** — `meta types <term>`, or `meta types --all
-   <what-it-does>` to search by behavior. There are field subtypes, relationships,
-   projections, origins, identities, sources, and attributes you may not know exist.
-   Find the construct that models it. Add `--detail` for one construct's valid
-   `@attrs`, or `--format json` for the same answer as one machine-readable document
-   — that form carries every match (`--limit` never truncates it) with each attr's
-   `allowedValues`, so you read the accepted values rather than guessing them.
-3. **Declare it and generate** — then *consume* the generated query/type/route;
-   never reimplement it alongside.
-4. **If the model is right but the generated OUTPUT is wrong, change your generator.**
-   Naming, file layout, imports, framework, signatures are generator concerns, not
-   reasons to hand-write. The generators are in *your* repo and are yours to edit — a
-   standing rule not to change the MetaObjects repo does not reach them; they are a
-   different repository. Editing one is ordinary work, not an escalation. (See
-   `metaobjects-codegen` → "Your generators are yours".)
-5. **Only if no construct can express it** — and you have actually looked —
-   hand-write it, wired to generated types. Business algorithms, external
-   integrations, and bespoke interactions are legitimately hand-written; CRUD,
-   validation, finders, relationships, and derived/aggregate data are not.
+1. **Check whether the design already ships.** `meta gen --list --format json` carries
+   `kind: "library"` rows, each with a `useWhen`. If one matches, opt in and adapt it: you
+   inherit its entities, requirements and recorded rulings. The bare name is the core layer
+   (sourceless: no tables, no generated code); `<lib>/db` adds the schema.
+2. **Search the vocabulary.** `meta types <term>`, or `meta types --all <what-it-does>` to
+   search by behavior; there are subtypes, origins, identities and attributes you may not
+   know exist. `--detail` shows one construct's valid `@attrs`; `--format json` gives every
+   match with each attr's `allowedValues`, so you read the accepted values, not guess them.
+3. **Declare it, generate, and consume the generated query, type or route.** Do not
+   reimplement it alongside.
+4. **If the model is right and the generated output is wrong, change your generator.**
+   Naming, file layout, imports, framework and signatures are generator concerns. The
+   generators are in your repo and yours to edit; a rule against changing MetaObjects itself
+   does not reach them (`metaobjects-codegen`, "When generated output does not fit").
+5. **Hand-write only what no construct can express**, wired to the generated types: business
+   algorithms, external integrations, bespoke interactions. CRUD, validation, finders,
+   relationships and derived or aggregate data are not in that group.
 
-Rule of thumb: **if the metadata could describe it, declaring it is never the wrong
-call** — even when a one-off hand-write would be faster today.
+If the metadata could describe it, declaring it is the right call even when a one-off
+hand-write would be faster today (`references/model-first-rationale.md`).
 
-## Adopting onto an existing codebase — metadata FOLLOWS the code
+## Adopting onto an existing codebase: metadata follows the code
 
-The principle above is the **greenfield** default. **Adoption reverses the direction:** when
-working code or a populated schema already exists for what you are modeling, that code is the
-specification, and the metadata's first job is to reproduce it — its native types, column and
-table names, nullability, and the types its JSON writers already declare. Tune the generator to
-match the code before you change the code, and default to the choice that changes the least
-existing code. **Read `references/adopting-existing-code.md` before you model anything in an
-adoption.**
+Model-first is the greenfield default. When working code or a populated schema already exists
+for what you are modeling, that code is the specification and the metadata's first job is to
+reproduce it: its native types, column and table names, nullability, and the types its JSON
+writers already declare. Tune the generator to match the code before you change the code.
+`references/adopting-existing-code.md` has the rules; read it before modeling.
 
-## The fused-key encoding (non-negotiable)
+## The fused-key encoding
 
 Every node is `{ "<type>.<subType>": { <body> } }`. The wrapper key fuses type and
-subtype — there is **no** separate `subType` body key.
+subtype; there is no separate `subType` body key.
 
 ```json
 { "object.entity": { "name": "User" } }
@@ -165,16 +165,12 @@ name   package   extends   abstract   overlay   isArray   children   value
   load with `ERR_RESERVED_ATTR`. Use the bare `isArray: true` (YAML) or the `[]`
   key-suffix sugar (`field.long[]: weekIds`).
 
-## Two violation rules — internalize these
+## Declare each attribute once
 
-1. **Attribute-name uniqueness within a node.** A node body must not declare the
-   same attribute name twice. `{ "field.string": { "name": "x", "@maxLength": 10,
-   "@maxLength": 20 } }` is malformed.
-
-2. **An inline `@attr` IS an `attr` child — never both.** An inline attribute and
-   a child `attr.*` node with the same name are the same slot expressed two ways.
-   Declare a given attribute once, in one form. Don't set `@required` inline AND
-   also add an `attr.boolean` child named `required` — that's a double-declaration.
+A node body must not declare the same attribute name twice. An inline `@attr` and a child
+`attr.*` node with the same name are the same slot written two ways, so use one form: setting
+`@required` inline and also adding an `attr.boolean` child named `required` is a double
+declaration.
 
 ## Field subtypes (closed vocabulary)
 
@@ -199,23 +195,16 @@ name   package   extends   abstract   overlay   isArray   children   value
 Common field attributes: `@required`, `@maxLength`, `@column` (physical column
 name), `@default`, `@filterable`, `@sortable`. On temporal fields
 (`field.date`/`field.time`/`field.timestamp`) `@autoSet` stamps the value
-automatically (see "Four rules behind those rows" below).
+automatically (`references/choosing-a-shape.md`).
 
-#### What `@required` actually means
+#### What `@required` means
 
-`@required: true` is **NOT NULL** (presence). Two consequences that are easy to
-get wrong:
-
-1. **On a non-array string it also rejects `""` — but only at the wire tier.**
-   Generated *input* validation (the create/patch models behind POST/PATCH)
-   rejects the empty string by default; whitespace-only IS accepted. Generated
-   in-process read models never enforce this at construction, so reading an
-   existing row containing `""` does not throw.
-2. **To say "must be provided, but may be empty", author an explicit
-   `validator.length` with `@min: 0`.** An explicitly authored `@min` is always
-   authoritative over that implicit non-empty floor; the floor applies only when
-   no `@min` is authored at all. Dropping `@required` is NOT the way to express
-   this — that makes the field optional and loses presence typing.
+`@required: true` is NOT NULL (presence). On a non-array string, generated *input* validation
+(the create and patch models behind POST and PATCH) also rejects `""`; whitespace-only is
+accepted, and read models never enforce it, so reading an existing row containing `""` does
+not throw. To say "must be provided, but may be empty", author a `validator.length` with
+`@min: 0`: an authored `@min` always wins over the implicit non-empty floor. Dropping
+`@required` is not the way to say it, because that makes the field optional.
 
 ```jsonc
 // must be provided; empty string allowed
@@ -233,7 +222,7 @@ Reach for these before inventing anything. When no row fits, run the decision pr
 
 | Need | Author it as | Note |
 |---|---|---|
-| IDs / unique keys / **any UUID column** | `field.uuid` | native UUID type. **NEVER `field.string` + `@dbColumnType: uuid`** — see "Four rules behind those rows" below |
+| IDs / unique keys / any UUID column | `field.uuid` | native UUID type. `field.string` + `@dbColumnType: uuid` generates a string over a uuid column: a smell no drift gate catches |
 | Money | `field.currency` | integer minor units; never a float |
 | Closed set of symbols | `field.enum` | `@values` required |
 | Instant / event time (created/updated) | `field.timestamp` + `@autoSet` | instant / tz-aware by default (Postgres `timestamptz`; native `Instant`/`DateTimeOffset`/aware `datetime`); `@autoSet: onCreate` for `createdAt`, `@autoSet: onUpdate` for `updatedAt` — never hand-stamp |
@@ -247,13 +236,6 @@ Reach for these before inventing anything. When no row fits, run the decision pr
 | IP address | `field.inet` | native IP type; Postgres `inet` column; strict IPv4/IPv6-literal validation (add `@lenient: true` for a plain-string `text` column) |
 | Elapsed time / timeout / delay | `field.duration` | native `TimeSpan`/`Duration`/`timedelta`; Postgres `interval` column; wire form is the port's native one by default, canonical ISO-8601 (`PT1H30M`) under `wire.durations: iso`. Not for a calendar span ("every 3 months"): that is an int and a unit. Never a string or a count of seconds |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
-
-Four rules behind those rows, in short (full text: `references/choosing-a-shape.md`):
-**a UUID is `field.uuid`** — `field.string` + `@dbColumnType: uuid` generates a `String` over a
-uuid column and is a smell; **`field.timestamp` is an instant**, and `@localTime: true` is the
-opt-out for a wall clock; **`field.uri` / `field.inet` are strict**, and `@lenient: true` stores
-any string; **`@autoSet: onCreate` / `onUpdate`** stamps created/updated times, so never set them
-by hand.
 
 ### Currency
 
@@ -307,15 +289,15 @@ generated Postgres column is typed `.$type<VO[]>()` and the Zod schema is
 
 ### A JSON column — choose the rung by the type the WRITER already declares
 
-**"Add a jsonb column and cast on read" is the ORM-tutorial reflex, and it is the one column
-shape this metamodel exists to replace.** Every other subtype binds a native type in five
-languages; `field.string` + `@dbColumnType: jsonb` binds `unknown` / `Any` / `Object` — so every
-reader casts, the keys live in N call sites instead of one declaration, and no gate can see it
-(`verify --db` sees a jsonb column that matches; `--codegen` sees output that is correct for a
-bag). **The cast you write on read is the shape you declined to declare.**
+"Add a jsonb column and cast on read" is the habit to drop here. Every other subtype binds a
+native type in five languages; `field.string` + `@dbColumnType: jsonb` binds `unknown` / `Any`
+/ `Object`, so every reader casts, the keys live in each call site and not in one
+declaration, and no gate can see it (`verify --db` sees a jsonb column that matches;
+`--codegen` sees output that is correct for a bag). The cast you write on read is the shape
+you did not declare.
 
-**The test is mechanical and language-agnostic: read the signature of the function that WRITES
-the column.** It already names the type — that is the metadata. Take the first rung that fits:
+**The test: read the signature of the function that writes the column.** It already names the
+type, and that is the metadata. Take the first rung that fits:
 
 | The writer's type | Author it as | What comes back |
 |---|---|---|
@@ -411,12 +393,10 @@ no Drizzle `many()` member; reverse navigation is the generated finder
 Reverse finders (`find<Source>By<FkField>` and the batched `…In`) are **generated** for every
 FK, so never hand-write a `WHERE fk = ?` helper.
 
-**Adoption footgun — pin BOTH actions.** `@onDelete` defaults *per subtype* (above)
-and `@onUpdate` defaults to `cascade` — but a plain SQL foreign key is `NO ACTION` on
-both. If you're adopting an existing database (matching metadata to a live schema),
-leaving these implicit makes the metadata declare a referential action the DB doesn't
-have — a perpetual `verify --db` drift. Pin **both** explicitly to the DB's real
-behavior:
+**Adopting an existing database: pin both actions.** `@onDelete` defaults per subtype
+(above) and `@onUpdate` defaults to `cascade`, but a plain SQL foreign key is `NO ACTION` on
+both. Left implicit, the metadata declares a referential action the database does not have,
+which is a permanent `verify --db` drift. Pin both to what the database really does:
 
 ```json
 { "relationship.association": { "name": "author", "@objectRef": "User",
@@ -461,27 +441,42 @@ Several variants of one thing sharing **one table**: the base `object.entity` de
 `@discriminatorValue`. Codegen emits per-subtype routes with the discriminator injected and
 immutable. Supported in all five ports; the worked example is in `references/inheritance-tph.md`.
 
-## Your own vocabulary — a provider class, in every language
+## Your own vocabulary: a provider class, in every language
 
-A subtype or attribute the core does not ship (a `layout.picker`, `@searchable` on fields) is registered by a **provider class** in the project's own language — never a side file, never a loosened `strict`. Decide the shape first (`references/choosing-a-shape.md`, which also has the register/extend rules). List the provider once in the port's project configuration and every command that loads metadata — gen and its docs generators, verify, fmt — composes it. Where each port lists it, plus a worked example: `references/typescript-providers.md`, `references/python-providers.md`, `references/csharp-providers.md`, `references/java-providers.md`, `references/kotlin-providers.md` (only this stack's are installed).
+A subtype or attribute the core does not ship (a `layout.picker`, `@searchable` on fields) is
+registered by a **provider class** in the project's own language, never a side file and
+never a loosened `strict`. Decide the shape first (`references/choosing-a-shape.md`, which
+also has the register and extend rules). List the provider once in the port's project
+configuration and every command that loads metadata (gen and its docs generators, verify,
+fmt) composes it. Where each port lists it, with a worked example:
+`references/typescript-providers.md`, `references/python-providers.md`,
+`references/csharp-providers.md`, `references/java-providers.md`,
+`references/kotlin-providers.md` (only this stack's are installed).
 
-**Every port whose tools load the metadata needs its own copy**: a TypeScript-only provider leaves the Java, Python or C# side, and its docs build, failing with `ERR_UNKNOWN_SUBTYPE` / `ERR_UNKNOWN_ATTR`.
+Every port whose tools load the metadata needs its own copy: a TypeScript-only provider
+leaves the Java, Python or C# side, and its docs build, failing with `ERR_UNKNOWN_SUBTYPE` /
+`ERR_UNKNOWN_ATTR`.
 
-## Requirements — capability ledger (opt-in)
+## Requirements: a capability ledger (opt-in)
 
-**This capability exists whether or not the project uses it yet.** `requirement.functional` and `requirement.architectural` are registered metadata types, declared in the metadata directory beside the entities they describe and loaded by the same loader — no side file, no bespoke parser. They record *why* each part of the model exists, so a field with no reason to exist becomes visible as one.
+`requirement.functional` and `requirement.architectural` are registered metadata types,
+declared beside the entities they describe and loaded by the same loader, available whether
+or not the project uses them yet. They record why each part of the model exists, so a field
+with no reason to exist becomes visible. Reach for them when the project needs to answer:
 
-Reach for it when the project needs to answer any of:
+- **"Why is this field here?"** A requirement binds a claim to a specific member.
+- **"What is broken but known?"** `@status: partial` plus `@disposition: accepted | deferred`.
+  No disposition means undecided, and `meta verify` counts those.
+- **"What have we committed to build and not built yet?"** `@status: planned`: the one status
+  where a dangling `@implementedBy` is correct. It never counts toward object coverage.
+- **"Which ticket covers this?"** `@trackedBy`.
 
-- **"Why is this field here?"** — an L5 requirement binds a claim to a specific member. Authoring these exhaustively is what surfaces columns nothing reads and vocabularies nobody documented.
-- **"What is broken but known?"** — `@status: partial` plus `@disposition: accepted | deferred`. Absent disposition means *undecided*, and `meta verify` counts those: the gaps nobody has ruled on.
-- **"What did we say we would build and have not?"** — `@status: planned` is the one status where a dangling `@implementedBy` is *correct*, because the entry precedes the nodes.
-- **"What have we committed to build?"** — `@status: planned`. Its references may dangle, and it never counts toward object coverage.
-- **"Which ticket covers this?"** — `@trackedBy`.
+Every requirement must be violable: if you cannot say what breaking it looks like, it is a
+description, not a requirement.
 
-Every requirement must be **violable**: if you cannot say what breaking it looks like, it is a description, not a requirement.
-
-**A commit that adds, changes or removes behaviour updates the ledger in the same commit** (the new or changed claim, its `@status` and `@implementedBy`), or says in the commit message why it does not. `verify` checks that links resolve, not that the ledger is current.
+A commit that adds, changes or removes behaviour updates the ledger in the same commit (the
+claim, its `@status` and `@implementedBy`), or says in the commit message why it does not:
+`verify` checks that links resolve, not that the ledger is current.
 
 `references/requirements.md` has the full authoring rules. The shape of one node:
 
@@ -493,8 +488,3 @@ Every requirement must be **violable**: if you cannot say what breaking it looks
     counterexample: A row that can be inserted but never pointed at.
     implementedBy: [acme::shop::Order]
 ```
-
----
-
-For non-trivial schema design, use `/superpowers:brainstorming` if installed;
-otherwise proceed.

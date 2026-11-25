@@ -574,6 +574,9 @@ FLAGS:
                         metadata sources for the Node CLI from a Maven- or pip-rooted project
   --with-docs           Wire docsFile() and apiDocsFile() and a docs target in the scaffolded
                         config, so the first \`meta gen\` writes documentation
+  --with-services       Wire the recommended service list (entityFile(), rulesNamesFile(),
+                        contractTypes(), serviceFile(), serviceRoutesFile()) instead of an
+                        empty one: one transaction per write, the declared rules enforced
   --help, -h            Print this help
 `,
   "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/AGENTS.md + the metaobjects-* skills)

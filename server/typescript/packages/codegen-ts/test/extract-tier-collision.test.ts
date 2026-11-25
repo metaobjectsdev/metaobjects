@@ -244,7 +244,7 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
     // canonical resolveObjectRef, NOT the ambiguous bare root.findObject().
     expect(alphaOut).toContain('export const REPORTDOCALPHA_PAYLOAD_NAME = "acme::alpha::Report";');
     expect(alphaOut).toContain("resolveObjectRef(root, REPORTDOCALPHA_PAYLOAD_NAME, \"\").node");
-    expect(alphaOut).toContain('import { resolveObjectRef } from "@metaobjectsdev/metadata";');
+    expect(alphaOut).toContain('import { type MetaRoot, resolveObjectRef } from "@metaobjectsdev/metadata";');
 
     expect(betaOut).toContain('export const REPORTDOCBETA_PAYLOAD_NAME = "acme::beta::Report";');
     expect(betaOut).toContain("resolveObjectRef(root, REPORTDOCBETA_PAYLOAD_NAME, \"\").node");

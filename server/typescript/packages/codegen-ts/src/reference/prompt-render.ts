@@ -43,13 +43,10 @@ import {
   templateSymbolBase,
   GENERATED_HEADER,
   GENERATED_EDIT_NOTE,
+  TsWriter,
 } from "@metaobjectsdev/codegen-ts/engine";
 import { derivePayloadFieldTree, fieldTreeLiteral } from "../templates/render-helper.js";
-import {
-  valueObjectImport,
-  valueObjectImportLines,
-  type ValueObjectImport,
-} from "../templates/value-object-import.js";
+import { valueObjectImport } from "../templates/value-object-import.js";
 
 export interface PromptRenderOpts {
   /** Output file path relative to the target's outDir. Default: "prompts.ts". */
@@ -58,10 +55,12 @@ export interface PromptRenderOpts {
   target?: string;
 }
 
-const RENDER_IMPORT = `import { render, type Provider } from "@metaobjectsdev/render";`;
+const RENDER_MODULE = "@metaobjectsdev/render";
 
 // --- composition (OWNED) — one typed render handle per template.prompt. ---
-function renderHandle(tmpl: MetaData, payloadType: string, payloadVo: MetaData): string {
+function writeHandle(w: TsWriter, tmpl: MetaData, payloadType: string, payloadVo: MetaData): void {
+  const render = w.use("render", RENDER_MODULE);
+  const provider = w.useType("Provider", RENDER_MODULE);
   // Resolving accessors (ADR-0039): a template may inherit its refs/format via extends.
   const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
   const format = (tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
@@ -69,11 +68,9 @@ function renderHandle(tmpl: MetaData, payloadType: string, payloadVo: MetaData):
   // The payload field tree is baked in so render() checks the template it resolves at RUN time
   // against it: `{{nmae}}` for `name` raises ERR_VAR_NOT_ON_PAYLOAD instead of rendering empty.
   const verify = fieldTreeLiteral(derivePayloadFieldTree(payloadVo));
-  return [
-    `export function ${fn}(payload: ${payloadType}, provider: Provider): string {`,
-    `  return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${verify} });`,
-    "}",
-  ].join("\n");
+  w.blank().block(`export function ${fn}(payload: ${payloadType}, provider: ${provider}): string {`, () => {
+    w.line(`return ${render}({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${verify} });`);
+  });
 }
 
 export const promptRender = function promptRender(opts?: PromptRenderOpts): Generator {
@@ -82,8 +79,9 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
     name: "prompt-render",
     generate: oncePerRun((_entities, ctx) => {
       const prompts = findTemplates(ctx.loadedRoot, TEMPLATE_SUBTYPE_PROMPT);
-      const imports: ValueObjectImport[] = [];
-      const handles: string[] = [];
+      const w = new TsWriter();
+      w.header(`// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`);
+      let handles = 0;
       for (const t of prompts) {
         const ref = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof ref !== "string" || ref === "") continue;
@@ -91,20 +89,13 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
         const vo = refTarget(t, TEMPLATE_ATTR_PAYLOAD_REF);
         if (vo === undefined) continue;
         const imp = valueObjectImport(ctx.renderContext, vo, outFile, ctx.config.extStyle ?? "js");
-        imports.push(imp);
-        handles.push(renderHandle(t, imp.name, vo));
+        // The payload value object's own interface, imported type-only under its local name.
+        writeHandle(w, t, w.useType(imp.exported, imp.specifier, imp.name), vo);
+        handles++;
       }
-      if (handles.length === 0) return [];
+      if (handles === 0) return [];
 
-      const content = [
-        `// ${GENERATED_HEADER} — ${GENERATED_EDIT_NOTE}`,
-        "",
-        RENDER_IMPORT,
-        ...valueObjectImportLines(imports),
-        "",
-        handles.join("\n\n"),
-        "",
-      ].join("\n");
+      const content = w.toString();
       return [{ path: outFile, content }];
     }),
   };

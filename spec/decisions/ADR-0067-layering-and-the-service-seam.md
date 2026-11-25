@@ -217,8 +217,9 @@ The shell sits in layer 4, and only there:
   queue consumer or an agent tool that calls the service gets the same checks as an HTTP request.
 
 Today's flat generators have no service layer. A project that declares a lifecycle and wires no
-service generator will be advised by `verify` that the lifecycle is not enforced, once that check
-lands (it is not yet emitted); the flat routes enforce nothing. (This replaces the first version of this section, which promised the
+service generator covering it is advised by `verify` (rule `unenforced-lifecycle`, never an exit
+code) that the lifecycle is not enforced; the flat routes enforce nothing. Node `meta verify` emits
+it today, the first port with a service generator. (This replaces the first version of this section, which promised the
 guarded update and the `state_managed` refusal in the flat routes. That would have changed the
 output of five routes generators for projects that asked for nothing.)
 
@@ -261,7 +262,10 @@ permission model, and the model names where a decision is needed, never what the
 
 `meta init`, `dotnet meta init` and `metaobjects init` keep writing an **empty** generator list
 (ADR-0034 Amendment 2), with a comment naming the usual generators. One opt-in flag, on the
-pattern of the existing `--with-docs`, wires the recommended list of §5 instead. Rust's
+pattern of the existing `--with-docs`, wires the recommended list of §5 instead (TypeScript:
+`meta init --with-services`, writing `entityFile()`, `rulesNamesFile()`, `contractTypes()`,
+`serviceFile()` and `serviceRoutesFile()`, with `serviceFile({ interactiveTransactions: false })` on
+D1; `meta gen --list` names the same list under the catalog). Rust's
 `init` writes the project's list the same way. Java and Kotlin have no
 `init`: the documentation carries the recommended pom `<generators>` block.
 

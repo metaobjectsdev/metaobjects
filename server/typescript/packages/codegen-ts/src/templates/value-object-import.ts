@@ -14,6 +14,7 @@ import type { MetaData } from "@metaobjectsdev/metadata";
 import { effectivePackage } from "../docs-paths.js";
 import { DEFAULT_OUTPUT_LAYOUT, entityModuleSpecifier, entityOutputPath } from "../import-path.js";
 import { localTypeName, withExt, type ExtStyle, type RenderContext } from "../render-context.js";
+import type { TsWriter } from "../writer/ts-writer.js";
 
 /** A value object's type as a file imports it: `name`, the local binding the file uses;
  *  `exported`, the name its module declares; and the module specifier. */
@@ -81,4 +82,9 @@ export function valueObjectImportLines(imports: readonly ValueObjectImport[]): s
   return [...byModule].map(
     ([spec, names]) => `import type { ${[...names].sort().join(", ")} } from ${JSON.stringify(spec)};`,
   );
+}
+
+/** Record `imp` as a type-only import on `w`; returns the local name to write. */
+export function useValueObjectType(w: TsWriter, imp: ValueObjectImport): string {
+  return w.useType(imp.exported, imp.specifier, imp.name);
 }

@@ -130,6 +130,11 @@
 # ends, so output never interleaves. The summary lists every step with its time, the
 # slowest steps and each lane's wall time. Every step still runs and still fails the
 # run; only the order changes. --quick and --only run serially as before.
+# A waiting lane also starts only while the machine has MO_CI_LANE_MIN_FREE_MB of memory
+# available (MemAvailable, default 8192; 0 turns the check off), so the run never starts a
+# lane into a machine that is already short. The first lane always starts. Without this a
+# run on a busy machine drove memory to earlyoom's limit, and the SIGTERMs it sent showed
+# up as a crashed C# test host and SIGTERMed bun workers, not as a memory problem.
 # Worker counts inside the runners: MO_CI_PY_WORKERS (pytest-xdist, default 8),
 # MO_CI_TS_WORKERS (bun test --parallel for the integration suite and the codegen-ts suite
 # in conformance: typescript, default 6) and
@@ -198,6 +203,10 @@ done
 MO_CI_JOBS="${MO_CI_JOBS:-8}"
 case "$MO_CI_JOBS" in
   ''|*[!0-9]*|0) echo "MO_CI_JOBS must be a positive integer (got '${MO_CI_JOBS}')" >&2; exit 2 ;;
+esac
+MO_CI_LANE_MIN_FREE_MB="${MO_CI_LANE_MIN_FREE_MB:-8192}"
+case "$MO_CI_LANE_MIN_FREE_MB" in
+  ''|*[!0-9]*) echo "MO_CI_LANE_MIN_FREE_MB must be a non-negative integer (got '${MO_CI_LANE_MIN_FREE_MB}')" >&2; exit 2 ;;
 esac
 
 in_lane() { # in_lane <section> — true when the section is selected
@@ -319,6 +328,10 @@ gate_publish_intent() { scripts/check-publish-intent.sh; }
 # could see it. Both paths now read scripts/publish-set.mjs, which also asserts the
 # set is tier-ordered and closed over its own sibling deps. Offline (manifests only).
 gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-publish-set.mjs; }
+# Changelog entries are one file per change under changelog.d/, folded into CHANGELOG.md by
+# release.mjs, so parallel PRs do not conflict on the top of [Unreleased]. This checks each
+# fragment has the shape assembly expects, and tests the assembly itself.
+gate_changelog_fragments() { node scripts/changelog-fragments.mjs --check && node scripts/test-changelog-fragments.mjs; }
 
 # ── no root script may be another root script's lifecycle hook ───────────────
 # npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. So
@@ -356,7 +369,8 @@ gate_uv_lock_version() { scripts/check-uv-lock-version.sh; }
 # itself the one thing nothing tested. That is the worst place in the tree for an unrun
 # test — a wrong answer here does not fail, it silently stops testing a port.
 gate_ci_port_selection() {
-  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh
+  scripts/test-ci-affected-ports.sh && scripts/test-ci-ports-to-run.sh && scripts/test-ci-lane-selection.sh \
+    && scripts/test-ci-lane-memory.sh
 }
 
 # ── the no-magic-physical-names gate is wired in all five ports ───────────────
@@ -455,8 +469,8 @@ gate_owned_template_copies() { bun scripts/sync-owned-template-copies.ts --check
 # biome.json of its own, and the per-package reference-byte-identical gates compare
 # EMITTED OUTPUT, which is unchanged whether a template asserts non-null or narrows.
 # Discovery keys on the "REFERENCE TEMPLATE — copy this into your repo" header rather
-# than a path, so it reaches all 22 copies (three src/reference dirs, test-generators,
-# and both examples/ scaffolds) — every one carried the identical findings. Lint only,
+# than a path, so it reaches every copy (three src/reference dirs and both examples/
+# scaffolds) — every one carried the identical findings. Lint only,
 # deliberately not `biome check`: formatting is a diff the adopter's own formatter owns
 # and re-runs. bun_install FIRST — biome comes from the codegen packages' node_modules.
 gate_reference_templates_lint() {
@@ -993,10 +1007,24 @@ gate_completeness_diff() {
   stryker_run --mutate "$(echo "$changed" | paste -sd, -)"
 }
 gate_doc_template_drift() {
-  bash scripts/sync-doc-templates.sh \
-    && git diff --exit-code -- \
-        server/typescript/packages/codegen-ts/templates \
-        server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
+  local copies=(
+    server/typescript/packages/codegen-ts/templates
+    server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
+    server/python/src/metaobjects/render/bundled_templates
+  )
+  bash scripts/sync-doc-templates.sh || return 1
+  git diff --exit-code -- "${copies[@]}" || return 1
+  # `git diff` cannot see a copy the sync wrote that was never committed (a new template).
+  local untracked
+  untracked=$(git ls-files --others --exclude-standard -- "${copies[@]}")
+  if [ -n "$untracked" ]; then
+    echo "  untracked template copies (commit them):"; echo "$untracked" | sed 's/^/    /'
+    return 1
+  fi
+}
+# The Python wheel's copy of the shipped agent files must equal the repo-root tree.
+gate_python_agent_context_drift() {
+  diff -r -x README.md agent-context-shipped server/python/src/metaobjects/agent_context/shipped
 }
 gate_embedded_library_drift() {
   bun run scripts/generate-embedded-library.ts \
@@ -1293,9 +1321,27 @@ lane_start() { # lane_start <index>
   LANE_PID[$1]=$!
 }
 
+# mem_available_mb — MemAvailable in MiB, or nothing when it cannot be read (not Linux).
+mem_available_mb() { awk '/^MemAvailable:/ { print int($2 / 1024); exit }' /proc/meminfo 2>/dev/null; }
+
+# lane_has_memory <running> <recent> — true when another lane may start now. A lane started in
+# the last LANE_WARMUP_S seconds has not grown into its memory yet, so each of those <recent>
+# lanes holds one more MO_CI_LANE_MIN_FREE_MB in reserve; otherwise every lane would pass the
+# check in the same second. The first lane always may start, so a machine that never has the
+# headroom still runs every lane, one at a time.
+LANE_WARMUP_S=30
+lane_has_memory() {
+  local avail
+  [ "$1" -eq 0 ] && return 0
+  [ "$MO_CI_LANE_MIN_FREE_MB" -eq 0 ] && return 0
+  avail="$(mem_available_mb)"
+  [ -z "$avail" ] && return 0
+  [ "$avail" -ge $((MO_CI_LANE_MIN_FREE_MB * ($2 + 1))) ]
+}
+
 run_lanes() {
-  local max="$MO_CI_JOBS" n=${#LANE_NAMES[@]} i d ready running=0 left
-  local -a st=()
+  local max="$MO_CI_JOBS" n=${#LANE_NAMES[@]} i d ready running=0 left held=0 now recent t
+  local -a st=() started_at=()
   left=$n
   for ((i = 0; i < n; i++)); do st[i]=wait; done
   while [ "$left" -gt 0 ]; do
@@ -1311,7 +1357,14 @@ run_lanes() {
       ready=1
       for d in ${LANE_AFTER[i]//,/ }; do [ -e "$CI_TMP/lane-$d.done" ] || ready=0; done
       [ "$ready" -eq 1 ] || continue
-      lane_start "$i"; st[i]=run; running=$((running + 1))
+      now="$(date +%s)"; recent=0
+      for t in "${started_at[@]:-}"; do [ -n "$t" ] && [ $((now - t)) -lt "$LANE_WARMUP_S" ] && recent=$((recent + 1)); done
+      if ! lane_has_memory "$running" "$recent"; then
+        [ "$held" -eq 1 ] || echo "  ▸ lane ${LANE_NAMES[i]} waits: less than ${MO_CI_LANE_MIN_FREE_MB} MiB of memory available"
+        held=1; break
+      fi
+      held=0
+      lane_start "$i"; st[i]=run; running=$((running + 1)); started_at+=("$now")
       echo "  ▸ lane ${LANE_NAMES[i]} started${LANE_AFTER[i]:+ (after ${LANE_AFTER[i]})}"
     done
     [ "$left" -gt 0 ] && sleep 1
@@ -1335,6 +1388,7 @@ run_gates_offline() {
   if want gates; then step    "uv.lock version parity"           gate_uv_lock_version;        fi
   if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
   if want gates; then step    "publish-set parity"               gate_publish_set;            fi
+  if want gates; then step    "changelog fragments"              gate_changelog_fragments;    fi
   if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
   if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
   if want gates; then step    "ci lane selection"                gate_ci_port_selection;      fi
@@ -1345,6 +1399,7 @@ run_gates_offline() {
   if want gates; then step    "positioning claims"               gate_positioning_claims;     fi
   if want gates; then step    "hosted assess prompt builds"      gate_assess_prompt;          fi
   if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
+  if want gates; then step    "python agent-context copy"        gate_python_agent_context_drift; fi
 }
 # Every gate below runs bun over workspace TypeScript, and on a FRESH CI checkout there is
 # no node_modules — so a bare `@metaobjectsdev/*` specifier either fails to resolve (what

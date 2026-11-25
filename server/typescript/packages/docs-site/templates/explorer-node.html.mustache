@@ -1,0 +1,28 @@
+<div class="crumbs">{{{crumbsHtml}}}</div>
+<h1>{{{name}}} {{#isAbstract}}<span class="chip">abstract</span>{{/isAbstract}}</h1>
+<span hidden data-pagefind-filter="kind">{{{kindLabel}}}</span>
+{{#description}}<div class="sub">{{{description}}}</div>{{/description}}
+<div class="sub mono meta-line">{{{kindLabel}}}{{#extendsHtml}} · extends {{{extendsHtml}}}{{/extendsHtml}}</div>
+<div class="grid side page">
+<div>
+  <h2>Why it exists</h2>
+  {{#hasWhy}}<div class="tablewrap"><table><tr><th>Capability</th><th>Requirement</th><th>Level</th><th>Status</th><th>On</th></tr>
+  {{#whyRows}}<tr><td>{{{capabilityHtml}}}</td><td>{{{reqHtml}}}<div class="sub small">{{{statement}}}</div></td><td>{{{levelHtml}}}</td><td>{{{statusHtml}}}</td><td>{{{onHtml}}}</td></tr>
+  {{/whyRows}}</table></div>{{/hasWhy}}
+  {{^hasWhy}}<div class="note">{{{whyEmptyHtml}}}</div>{{/hasWhy}}
+  {{#hasAttrs}}<h2>Attributes</h2>
+  <div class="card"><table class="kv">{{#attrs}}<tr><th class="mono">@{{{name}}}</th><td>{{{valueHtml}}}</td></tr>{{/attrs}}</table></div>{{/hasAttrs}}
+  {{#hasMembers}}<h2>Members</h2>
+  <div class="tablewrap"><table><tr><th>Name</th><th>Type</th><th>Attributes</th></tr>
+  {{#members}}<tr id="{{{anchor}}}"><td class="mono">{{{nameHtml}}}{{#below}} <span class="pill">+{{below}}</span>{{/below}}</td><td class="mono">{{{kind}}}</td><td>{{{attrsHtml}}}</td></tr>
+  {{/members}}</table></div>{{/hasMembers}}
+</div>
+<aside>
+  <h3>Neighbourhood</h3>
+  <div class="sub">This page is generic: the explorer draws no diagram for <span class="mono">{{{kindLabel}}}</span> yet.</div>
+  {{#referencedByHtml}}<h3>Referenced by</h3><div>{{{referencedByHtml}}}</div>{{/referencedByHtml}}
+  <h3>Generated from this node</h3>
+  {{#hasGenerated}}{{#generated}}<div class="gen"><span class="pill">{{{generator}}}</span>{{#files}}<div class="mono sub">{{{.}}}</div>{{/files}}</div>{{/generated}}{{/hasGenerated}}
+  {{^hasGenerated}}<div class="sub">{{{generatedNote}}}</div>{{/hasGenerated}}
+</aside>
+</div>
