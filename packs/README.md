@@ -6,6 +6,7 @@ that is not part of core, built and versioned as if it were its own repository
 
 | Pack | What it declares | Requires | Ports |
 |---|---|---|---|
+| [`config`](config/README.md) | settings groups, `@secret` / `@envName` / `@phase`, vaults (Infisical) and their scopes; `.env.example`, key manifest and `.keys-axi.toml` generators | core | TypeScript |
 | [`systems`](systems/README.md) | systems, apps (service, client, job), resources | core | TypeScript |
 | [`delivery`](delivery/README.md) | environments, builds, runtime processes, deployments, value bindings | `systems` | TypeScript |
 | [`railway`](railway/README.md) | `deployment.railway` (vocabulary only; the emitter is later work) | `delivery` | TypeScript |

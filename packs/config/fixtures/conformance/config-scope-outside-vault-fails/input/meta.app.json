@@ -1,0 +1,3 @@
+{ "metadata.root": { "package": "acme::app", "children": [
+  { "scope.env": { "name": "dev", "@project": "acme-app" } }
+]}}

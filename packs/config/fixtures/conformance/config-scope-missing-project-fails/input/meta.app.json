@@ -1,0 +1,5 @@
+{ "metadata.root": { "package": "acme::app", "children": [
+  { "vault.infisical": { "name": "keys", "children": [
+    { "scope.env": { "name": "dev" } }
+  ]}}
+]}}
