@@ -20,7 +20,7 @@
         { "type": "attr", "subType": "string", "name": "jobs", "isArray": true, "min": 0, "max": 1, "description": "The app.job nodes this Worker runs on their @schedule (its scheduled handler), as `System.job`. Each must resolve to an app.job with a @schedule; each schedule is a cron trigger." },
         { "type": "attr", "subType": "string", "name": "tokenSecret", "min": 1, "max": 1, "description": "The name, in the vault, of the narrow Cloudflare API token the deploy scripts use for this Worker. The scripts map it to CLOUDFLARE_API_TOKEN and unset the global-key variables. The vault entry CLOUDFLARE_ACCOUNT_ID sits beside it." },
         { "type": "attr", "subType": "string", "name": "tokenVault", "min": 0, "max": 1, "description": "The vault (a vault.* of the config pack, by name) whose scope for this environment holds @tokenSecret and CLOUDFLARE_ACCOUNT_ID. Absent means the @secrets vault." },
-        { "type": "attr", "subType": "string", "name": "extra", "min": 0, "max": 1, "description": "A JSON object of Wrangler configuration keys this pack does not model, copied into the environment's block as written. The escape hatch: a key the generator writes itself is refused." },
+        { "type": "attr", "subType": "string", "name": "extra", "min": 0, "max": 1, "description": "A JSON object of Wrangler configuration keys this pack does not model, copied into the environment's block as written. The escape hatch: a key the generator writes itself is refused, and a key Wrangler fills into an env block that omits it (`observability`, `placement`, ...) is set in every environment or in none." },
         { "type": "cloudflare", "subType": ["d1", "kv", "r2", "queue", "ratelimit"], "name": "*", "min": 0, "max": null }
       ]
     },
@@ -28,7 +28,7 @@
       "type": "deployment",
       "subType": "pages",
       "extendsBase": true,
-      "description": "An app deployed as a Cloudflare Pages site in one environment: the directory of its build.static, uploaded by `wrangler pages deploy`. Takes every deployment.base attribute; @branch is the branch the upload is recorded on (the project's production branch, or a preview branch).",
+      "description": "An app deployed as a Cloudflare Pages site in one environment: the directory of its build.static, uploaded by `wrangler pages deploy`. Takes every deployment.base attribute; @branch is the branch the upload is recorded on (the project's production branch, or a preview branch). A Pages project has two environments, production and preview, each with its own variables: the upload of the production branch serves production and every other upload serves preview, and the secret sync writes to the environment the @branch serves. The model states the production branch with the @branch of the deployment.pages in the environment named `production`; when it states none, a deployment that reads a secret is refused.",
       "whenToUse": "Each (app, environment) pair that ships as a Cloudflare Pages site.",
       "children": [
         { "type": "attr", "subType": "string", "name": "project", "min": 1, "max": 1, "description": "The Pages project's name." },

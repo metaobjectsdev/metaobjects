@@ -1,8 +1,9 @@
 // What the model reader does with each fixture, and what it refuses: every refusal names the
 // node, and every problem in a model is reported at once.
 import { describe, expect, test } from "bun:test";
-import { CloudflareModelError, parseGeneratedJsonc, readCloudflare, type WorkerDeployment } from "../src/index.js";
+import { CloudflareModelError, parseGeneratedJsonc, readCloudflare, type PagesDeployment, type WorkerDeployment } from "../src/index.js";
 import { editFixture, emit, loadModels, type Source } from "./model.js";
+import { wranglerSchemaErrors } from "./wrangler-schema.js";
 
 type Node = Record<string, Record<string, unknown>>;
 type Root = { "metadata.root": { children: Node[] } };
@@ -37,6 +38,8 @@ async function read(sources: readonly Source[], opts: Parameters<typeof readClou
 
 const ENVS = "cloudflare-worker-environments";
 const TRIPS = "cloudflare-worker-cron-ratelimits";
+const PAGES = "cloudflare-pages-site";
+const PAGES_SECRETS = "cloudflare-pages-secrets";
 
 describe("reading", () => {
   test("an abstract deployment is a base, never deployed; each environment resolves what it inherits", async () => {
@@ -68,6 +71,75 @@ describe("reading", () => {
     const config = parseGeneratedJsonc((await emit(await loadModels(sources))).get("wrangler.jsonc")!) as Record<string, unknown>;
     expect(config["placement"]).toEqual({ mode: "smart" });
     expect(config["observability"]).toEqual({ enabled: true });
+    expect(wranglerSchemaErrors(config)).toEqual([]);
+    expect(wranglerSchemaErrors({ ...config, placement: { mode: "bogus" } })).toContain("/placement/mode must be equal to one of the allowed values");
+  });
+
+  test("a value.ref takes another Cloudflare-deployed app's publicUrl with its @path", async () => {
+    const sources = editFixture(TRIPS, (r) => {
+      children(child(r, "system.internal", "Trips")).push({ "app.service": { name: "api" } });
+      children(child(r, "object.settings", "Notify")).push({ "field.string": { "name": "apiBase", "@envName": "NOTIFY_API_BASE" } });
+      r["metadata.root"].children.push({
+        "deployment.worker": { name: "apiProduction", "@app": "Trips.api", "@environment": "production", "@compatibilityDate": "2026-07-01", "@tokenSecret": "T", "@domains": ["api.example.com"] },
+      });
+      children(child(r, "deployment.worker", "webProduction")).push({ "value.ref": { name: "apiBase", "@setting": "Notify.apiBase", "@producedBy": "Trips.api", "@output": "publicUrl", "@path": "/v1" } });
+    });
+    const web = (await read(sources, { app: "Trips.web" })).deployments[0] as WorkerDeployment;
+    expect(web.vars.find((v) => v.name === "NOTIFY_API_BASE")).toEqual({ name: "NOTIFY_API_BASE", value: "https://api.example.com/v1", from: "value.ref apiBase" });
+  });
+
+  test("a value.ref an app cannot supply is refused with what to ask it for instead", async () => {
+    const sources = editFixture(TRIPS, (r) => {
+      children(child(r, "system.internal", "Trips")).push({
+        "app.service": { name: "api", "children": [{ "runtime.process": { name: "web", "@port": 8080 } }] },
+      });
+      children(child(r, "object.settings", "Notify")).push({ "field.string": { "name": "apiBase", "@envName": "NOTIFY_API_BASE" } });
+      children(child(r, "deployment.worker", "webProduction")).push({ "value.ref": { name: "apiBase", "@setting": "Notify.apiBase", "@producedBy": "Trips.api", "@output": "port" } });
+    });
+    expect(await problems(sources)).toEqual([
+      "deployment.worker acme::trips::webProduction value.ref apiBase: Cloudflare resolves no reference at deploy time; a value.ref can only take another Cloudflare-deployed app's host or publicUrl (from its @domains), not an app's port. Ask for its host or publicUrl, or give the setting a value.literal",
+    ]);
+  });
+
+  test("a Worker's @branch is held by no file and is listed; a Pages site's is carried by its upload", async () => {
+    const worker = await read(editFixture(ENVS, () => {}));
+    expect(worker.deployments.map((d) => d.unexpressed.find((f) => f.fact.startsWith("@branch")))).toEqual([
+      { fact: "@branch `main`", how: "Deploys run from deploy/cloudflare/deploy.sh, not on a push to the branch, so no file holds it." },
+      { fact: "@branch `staging`", how: "Deploys run from deploy/cloudflare/deploy.sh, not on a push to the branch, so no file holds it." },
+    ]);
+    const pages = await read(editFixture(PAGES, () => {}));
+    expect(pages.deployments.every((d) => d.unexpressed.every((f) => !f.fact.startsWith("@branch")))).toBe(true);
+  });
+
+  test("a build-time value.literal a Pages site's deploy script exports is not listed as unexpressed", async () => {
+    const sources = editFixture(PAGES, (r) => {
+      children(child(r, "deployment.pages", "siteProduction")).push({ "value.literal": { name: "url", "@setting": "Site.url", "@literal": "https://production.docs.example.com" } });
+    });
+    const production = (await read(sources)).deployments[0] as PagesDeployment;
+    expect(production.buildVars).toEqual([{ name: "SITE_URL", value: "https://production.docs.example.com", from: "value.literal url" }]);
+    expect(production.unexpressed.map((f) => f.fact)).toEqual(["Build-time settings `SITE_URL`", "Custom domains `docs.example.com`"]);
+  });
+
+  test("the build-time settings row says whether the deploy script runs a build", async () => {
+    const fact = "Build-time settings `SITE_URL`";
+    const withCommand = (await read(editFixture(PAGES, () => {}))).deployments[0]!;
+    expect(withCommand.unexpressed.find((f) => f.fact === fact)?.how).toBe(
+      "Read by the build, which runs on the deploying machine: deploy/cloudflare/deploy.sh exports each one the model gives a value (a value already in the environment wins) and runs the build there. They never reach Cloudflare as settings.",
+    );
+    const committed = editFixture(PAGES, (r) => {
+      const [site] = children(child(r, "system.internal", "Docs")) as { "app.client"?: { children?: { "build.static"?: Record<string, unknown> }[] } }[];
+      const [pages] = site!["app.client"]!.children!;
+      delete pages!["build.static"]!["@command"];
+    });
+    expect((await read(committed)).deployments[0]!.unexpressed.find((f) => f.fact === fact)?.how).toBe(
+      "Read by whatever builds site, from the environment it runs in: deploy/cloudflare/deploy.sh runs no build (site declares no build command) and exports each one the model gives a value (a value already in the environment wins) for what it runs next. They never reach Cloudflare as settings.",
+    );
+    const deploy = (await emit(await loadModels(committed))).get("deploy/cloudflare/deploy.sh")!;
+    expect(deploy.split("\n").filter((l) => l.includes("build"))).toEqual([
+      "#   2. uploads the build to the environment's Pages project and branch, recording the commit.",
+      "# Build-time settings are read from this machine's environment by whatever builds site; deploy.sh runs no",
+      "# build (the app declares no build command), and exports the values the model gives first; a value already",
+    ]);
   });
 
   test("a model that deploys nothing to Cloudflare gets no files", async () => {
@@ -124,6 +196,37 @@ describe("refusals", () => {
     });
     expect(await problems(sources)).toEqual([
       "app.service acme::quiz::Quiz.site: @main is set in production and not in staging; Wrangler would fill the gap from the top level, so set it in every environment or none",
+    ]);
+  });
+
+  test("an inheritable @extra key set in one environment and not another: Wrangler would fill the gap", async () => {
+    const extra = JSON.stringify({ observability: { enabled: true } });
+    const oneEnvironment = editFixture(ENVS, (r) => {
+      child(r, "deployment.worker", "siteProduction")["@extra"] = extra;
+    });
+    expect(await problems(oneEnvironment)).toEqual([
+      "app.service acme::quiz::Quiz.site: @extra observability is set in production and not in staging; Wrangler would fill the gap from the top level, so set it in every environment or none",
+    ]);
+    const everyEnvironment = editFixture(ENVS, (r) => {
+      child(r, "deployment.worker", "siteBase")["@extra"] = extra;
+    });
+    expect((await read(everyEnvironment)).deployments.map((d) => (d as WorkerDeployment).extra)).toEqual([
+      { observability: { enabled: true } },
+      { observability: { enabled: true } },
+    ]);
+  });
+
+  test("a build-time secret setting and a build-time value.ref, each refused by its setting", async () => {
+    const sources = editFixture(TRIPS, (r) => {
+      children(child(r, "object.settings", "Notify")).push(
+        { "field.string": { "name": "contentKey", "@envName": "CONTENT_API_KEY", "@secret": true, "@phase": "build" } },
+        { "field.string": { "name": "apiBase", "@envName": "NOTIFY_API_BASE", "@phase": "build" } },
+      );
+      children(child(r, "deployment.worker", "webProduction")).push({ "value.ref": { name: "apiBase", "@setting": "Notify.apiBase", "@producedBy": "Trips.photos", "@output": "url" } });
+    });
+    expect(await problems(sources)).toEqual([
+      "deployment.worker acme::trips::webProduction: acme::trips::Notify.contentKey (CONTENT_API_KEY) is @secret and @phase build; the scripts copy a secret to a Worker or to a Pages project, never to a build on this machine. Mark it @phase runtime if the Worker reads it; otherwise build by hand under keys-axi run and deploy with --no-build",
+      "deployment.worker acme::trips::webProduction value.ref apiBase: Notify.apiBase is @phase build, and a build on the deploying machine has no reference to resolve; give it a value.literal or a @default",
     ]);
   });
 
@@ -197,5 +300,58 @@ describe("refusals", () => {
       "the model deploys 2 apps to Cloudflare (app.service acme::quiz::Quiz.site, app.service acme::trips::Trips.web); one wrangler.jsonc and one set of scripts are for one app, so pass { app } to the generators",
     ]);
     expect((await read(both, { app: "Trips.web" })).name).toBe("web");
+  });
+});
+
+describe("a Pages site's environments", () => {
+  const secretRow = "Secret values: `SEARCH_API_KEY`";
+
+  test("a deployment serves Pages production when its branch is the production branch, else preview", async () => {
+    const app = await read(editFixture(PAGES_SECRETS, () => {}));
+    expect(app.deployments.map((d) => [d.environment, d.branch, (d as PagesDeployment).pagesEnvironment])).toEqual([
+      ["production", "main", "production"],
+      ["preview", "preview", "preview"],
+    ]);
+    expect(app.deployments.map((d) => d.unexpressed.find((f) => f.fact === secretRow)?.how)).toEqual([
+      "Never in a file. deploy/cloudflare/sync-secrets.sh copies them from the vault scope `acme-help/prod`; deploy/cloudflare/doctor.sh checks the names are in the vault and on the Pages project's production environment.",
+      "Never in a file. deploy/cloudflare/sync-secrets.sh copies them from the vault scope `acme-help-preview/preview`; deploy/cloudflare/doctor.sh checks the names are in the vault and on the Pages project's preview environment.",
+    ]);
+  });
+
+  test("a deployment that reads a secret is refused when the model does not say which branch is production", async () => {
+    const withoutProduction = (r: Root): void => {
+      r["metadata.root"].children = r["metadata.root"].children.filter((c) => c["deployment.pages"]?.["@environment"] !== "production");
+    };
+    const noProduction = editFixture(PAGES_SECRETS, withoutProduction);
+    expect(await problems(noProduction)).toEqual([
+      'deployment.pages acme::help::sitePreview: site reads 1 secret setting(s) (SEARCH_API_KEY) and the model does not say whether this deployment serves the Pages project\'s production or its preview environment, each of which keeps its own: no deployment.pages of site in an environment named "production" declares a @branch, the project\'s production branch',
+    ]);
+    const noBranch = editFixture(PAGES_SECRETS, (r) => {
+      delete child(r, "deployment.pages", "siteProduction")["@branch"];
+    });
+    expect(await problems(noBranch)).toEqual([
+      "deployment.pages acme::help::siteProduction: site reads 1 secret setting(s) (SEARCH_API_KEY) and the model does not say whether this deployment serves the Pages project's production or its preview environment, each of which keeps its own: it has no @branch",
+      'deployment.pages acme::help::sitePreview: site reads 1 secret setting(s) (SEARCH_API_KEY) and the model does not say whether this deployment serves the Pages project\'s production or its preview environment, each of which keeps its own: no deployment.pages of site in an environment named "production" declares a @branch, the project\'s production branch',
+    ]);
+    // With no secret to place, a deployment needs no Pages environment.
+    const noSecrets = editFixture(PAGES_SECRETS, (r) => {
+      withoutProduction(r);
+      delete child(r, "deployment.pages", "siteBase")["@secrets"];
+      for (const c of children(child(r, "object.settings", "Search"))) delete c["field.string"]!["@secret"];
+    });
+    expect((await read(noSecrets)).deployments.map((d) => (d as PagesDeployment).pagesEnvironment)).toEqual([undefined]);
+  });
+
+  test("two deployments that read secrets and serve one Pages environment", async () => {
+    const sources = editFixture(PAGES_SECRETS, (r) => {
+      r["metadata.root"].children.push(
+        { "environment.standing": { "name": "staging" } },
+        { "deployment.pages": { name: "siteStaging", extends: "siteBase", "@environment": "staging", "@branch": "staging" } },
+      );
+      children(child(r, "vault.infisical", "keys")).push({ "scope.env": { "name": "staging", "@project": "acme-help-staging", "@env": "staging" } });
+    });
+    expect(await problems(sources)).toEqual([
+      "deployment.pages acme::help::siteStaging: serves the Pages preview environment, as acme::help::sitePreview does, and each copies the same secrets there; Pages keeps one value per name in an environment, so model one deployment per Pages environment",
+    ]);
   });
 });

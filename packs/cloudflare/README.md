@@ -38,7 +38,8 @@ environment.
 
 `@extra` is the escape hatch: a JSON object of Wrangler keys this pack does not model
 (`placement`, `observability`, ...), copied into the environment's block. A key the generator
-writes itself is refused.
+writes itself is refused. A key Wrangler fills into an env block that omits it (`observability`,
+`placement`, `limits`, `rules`, ...) is set in every environment or in none, like `@main`.
 
 ### One abstract deployment, one per environment
 
@@ -56,8 +57,8 @@ and they skip the abstract base.
 | `wranglerConfigFile()` | `wrangler.jsonc` | The Worker's configuration (Workers only) |
 | `cloudflareRunnerScript()` | `deploy/cloudflare/wrangler.sh` | Runs wrangler as the environment's narrow token: `keys-axi run` reads it and `CLOUDFLARE_ACCOUNT_ID`, the global-key variables `CLOUDFLARE_EMAIL` and `CLOUDFLARE_API_KEY` and any `CLOUDFLARE_API_TOKEN` the shell holds are unset, the vault's token becomes `CLOUDFLARE_API_TOKEN`, and `npx wrangler@4.168.0` runs (`WRANGLER_VERSION` overrides) |
 | `cloudflareDeployScript()` | `deploy/cloudflare/deploy.sh` | Exports the build-time settings the model gives values, builds (the app's `build.command` or `build.static @command`), syncs the secrets, then `wrangler deploy [--env <name>]` or `wrangler pages deploy <dir> --project-name --branch --commit-hash` |
-| `cloudflareSyncSecretsScript()` | `deploy/cloudflare/sync-secrets.sh` | Copies each secret setting from its vault scope to the Worker (`wrangler secret put`) or the Pages project (`wrangler pages secret put`), the value through a pipe |
-| `cloudflareDoctorScript()` | `deploy/cloudflare/doctor.sh` | Checks, by name only, that the token, the account id and each secret are in the vault, that each secret is on Cloudflare, that the configuration builds (`wrangler deploy --dry-run`), and that each domain answers |
+| `cloudflareSyncSecretsScript()` | `deploy/cloudflare/sync-secrets.sh` | Copies each secret setting from its vault scope to the Worker (`wrangler secret put`) or to the Pages project's environment the deployment serves (`wrangler pages secret put --env production` or `preview`), the value through a pipe |
+| `cloudflareDoctorScript()` | `deploy/cloudflare/doctor.sh` | Checks, by name only, that the token, the account id and each secret are in the vault, that each secret is on Cloudflare (the Worker, or the Pages project's environment the deployment serves), that the configuration builds (`wrangler deploy --dry-run`), and that each domain answers |
 | `cloudflareUnexpressedFile()` | `deploy/cloudflare/unexpressed.md` | Per deployment, each fact the files do not hold and how it is carried instead |
 | `cloudflareFiles()` | all six | The six generators with the same options |
 
@@ -79,7 +80,8 @@ each other and the configuration by those paths, so pass every generator the sam
 | the app's non-secret runtime settings | `vars`: a `value.literal` here, else the `@default`; a required one with neither is refused |
 | the app's `@secret` runtime settings | `secrets.required` (names only; the sync script copies the values) |
 | `cloudflare.d1` / `.kv` / `.r2` / `.queue` / `.ratelimit` | `d1_databases`, `kv_namespaces`, `r2_buckets`, `queues.producers`, `ratelimits` |
-| `value.ref` of another Cloudflare-deployed app's `host` / `publicUrl` | its first `@domains` entry in the same environment |
+| `value.ref` of another Cloudflare-deployed app's `host` / `publicUrl` | its first `@domains` entry in the same environment (`publicUrl` is `https://` and the domain, with the ref's `@path` appended) |
+| the app's build-time settings | not in the file: `deploy.sh` exports each one the model gives a value, for the build to read |
 
 Wrangler does not inherit `vars`, `secrets` or any binding into an `env` block, and a key it does
 inherit is easy to forget. So every env block is written in full: every key the top level has,
@@ -91,17 +93,34 @@ A Pages site has no `wrangler.jsonc`: `wrangler pages deploy` takes the director
 branch as arguments, and the Pages project keeps its environment variables and domains in its own
 settings (both are listed in `unexpressed.md`).
 
+A Pages project has two environments, `production` and `preview`, each with its own variables and
+secrets. The upload of the project's production branch serves `production` and every other upload
+serves `preview`. The model states the production branch with the `@branch` of the
+`deployment.pages` in the environment named `production`: a deployment serves `production` when
+its `@branch` is that branch, and `preview` otherwise. The scripts pass that environment to
+`wrangler pages secret put|list --env`, so one environment's secrets never land in another's.
+
+Build-time settings (`@phase: build`) are not Cloudflare settings. `deploy.sh` exports each one
+the model gives a value (a `value.literal`, else the `@default`) and then runs the app's build
+command, when it has one; whatever builds an app without one reads them from its own environment.
+A build-time `@secret` and a build-time `value.ref` are refused: the scripts copy a secret to
+Cloudflare, never to a build, and resolve no reference on the deploying machine.
+
 ### Checks
 
 The generators refuse, naming each node, a model Cloudflare could not deploy: a binding for a
 resource the app does not need, a needed resource with no binding in some environment, a binding
 name used twice in the Worker's env, a rate limiter period other than 10 or 60, a required setting
 with no value, a value for a secret setting or for a setting the app does not read, a `value.ref`
-Cloudflare cannot resolve, `@jobs` that are not scheduled jobs, both worker-first forms, asset
-attributes with no `build.static`, a Worker with neither `@main` nor assets, a secret setting with
-no vault, a vault with no scope for an environment, `@main`, `@workersDev` or assets set in some environments and not others (Wrangler would fill the gap from the top level), an `@extra` that is not a JSON object or sets a
-generated key, two environments deploying one Worker, one app deployed both as a Worker and as a
-Pages site, several apps without `app`, and several environments with no top level.
+Cloudflare cannot resolve, a build-time secret setting or a build-time `value.ref`, `@jobs` that
+are not scheduled jobs, both worker-first forms, asset attributes with no `build.static`, a Worker
+with neither `@main` nor assets, a secret setting with no vault, a vault with no scope for an
+environment, `@main`, `@workersDev`, assets or an inheritable `@extra` key set in some
+environments and not others (Wrangler would fill the gap from the top level), an `@extra` that is
+not a JSON object or sets a generated key, two environments deploying one Worker, one app deployed
+both as a Worker and as a Pages site, a Pages deployment that reads a secret when the model does
+not say which branch is the production branch, two Pages deployments that read secrets and serve
+one Pages environment, several apps without `app`, and several environments with no top level.
 
 ### Wiring
 
@@ -136,6 +155,9 @@ export default defineConfig({
   directory, R2, five rate limiters, three plain settings and five secrets, off workers.dev.
 - [`cloudflare-pages-site/`](fixtures/conformance/cloudflare-pages-site/): a static site on Pages,
   production and a preview branch from one abstract `deployment.pages`.
+- [`cloudflare-pages-secrets/`](fixtures/conformance/cloudflare-pages-secrets/): a Pages site
+  whose Pages Functions read a secret, with one value for the production branch and one for a
+  preview branch: each `deploy.sh <environment>` copies to that environment.
 - `error-*`: a concrete Worker missing `@compatibilityDate`, an unknown `@notFound`, a binding
   under a Pages site, an authored `cloudflare.base`, an `@app` that resolves to nothing.
 

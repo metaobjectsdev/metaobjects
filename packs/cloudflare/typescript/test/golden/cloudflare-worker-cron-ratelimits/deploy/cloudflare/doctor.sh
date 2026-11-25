@@ -27,7 +27,7 @@ in_vault() {
   names=$("$KEYS_AXI" ls --project "$1" --env "$2" --json | jq -r '.secrets[].name') || { bad "cannot list vault scope $1/$2"; return; }
   local where="$1/$2"; shift 2
   for n in "$@"; do
-    if grep -qx "$n" <<<"$names"; then ok "$n is in the vault ($where)"; else bad "$n is not in the vault ($where)"; fi
+    if grep -Fxq -e "$n" <<<"$names"; then ok "$n is in the vault ($where)"; else bad "$n is not in the vault ($where)"; fi
   done
 }
 
@@ -38,7 +38,7 @@ on_cloudflare() {
   names=$(bash deploy/cloudflare/wrangler.sh "$ENVIRONMENT" secret list $1 --format json | jq -r '.[].name') || { bad "cannot list the Worker's secrets"; return; }
   shift
   for n in "$@"; do
-    if grep -qx "$n" <<<"$names"; then ok "$n is set on the Worker"; else bad "$n is declared and not set on the Worker (run deploy/cloudflare/sync-secrets.sh)"; fi
+    if grep -Fxq -e "$n" <<<"$names"; then ok "$n is set on the Worker"; else bad "$n is declared and not set on the Worker (run deploy/cloudflare/sync-secrets.sh)"; fi
   done
 }
 
@@ -58,7 +58,7 @@ answers() {
 
 case "$ENVIRONMENT" in
   production)
-    in_vault deploy dev CLOUDFLARE_WORKERS_TOKEN_TRIPS CLOUDFLARE_ACCOUNT_ID
+    in_vault acme-deploy dev ACME_WORKERS_TOKEN CLOUDFLARE_ACCOUNT_ID
     in_vault trips prod SESSION_SECRET RESEND_API_KEY PASSPHRASE_PEPPER RECOVERY_ENC_KEY RECOVERY_HMAC_KEY
     on_cloudflare '--config wrangler.jsonc' SESSION_SECRET RESEND_API_KEY PASSPHRASE_PEPPER RECOVERY_ENC_KEY RECOVERY_HMAC_KEY
     builds '--config wrangler.jsonc'

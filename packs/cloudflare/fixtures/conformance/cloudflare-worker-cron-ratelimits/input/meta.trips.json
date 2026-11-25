@@ -52,7 +52,7 @@
           "name": "deployKeys",
           "@defaultScope": "dev",
           "children": [
-            { "scope.env": { "name": "dev", "@project": "deploy" } }
+            { "scope.env": { "name": "dev", "@project": "acme-deploy" } }
           ]
       } },
       { "environment.standing": { "name": "production" } },
@@ -72,7 +72,7 @@
           "@jobs": ["Trips.coverCleanup"],
           "@secrets": "keys",
           "@tokenVault": "deployKeys",
-          "@tokenSecret": "CLOUDFLARE_WORKERS_TOKEN_TRIPS",
+          "@tokenSecret": "ACME_WORKERS_TOKEN",
           "children": [
             { "cloudflare.d1": { "name": "db", "@databaseName": "trips", "@databaseId": "00000000-0000-4000-8000-000000000003", "@migrationsDir": ".metaobjects/migrations" } },
             { "cloudflare.r2": { "name": "photos", "@bucketName": "trips-photos" } },

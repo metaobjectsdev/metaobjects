@@ -39,6 +39,7 @@ import {
   TYPE_VALUE,
   VALUE_ATTR_LITERAL,
   VALUE_ATTR_OUTPUT,
+  VALUE_ATTR_PATH,
   VALUE_ATTR_PRODUCED_BY,
   VALUE_ATTR_SETTING,
   VALUE_SUBTYPE_LITERAL,
@@ -72,6 +73,8 @@ import {
   DEPLOYMENT_SUBTYPE_WORKER,
   KV_ATTR_NAMESPACE_ID,
   PAGES_ATTR_PROJECT,
+  PAGES_ENV_PRODUCTION,
+  PAGES_ENV_PREVIEW,
   QUEUE_ATTR_QUEUE,
   R2_ATTR_BUCKET_NAME,
   RATELIMIT_ATTR_LIMIT,
@@ -90,6 +93,7 @@ import {
   WORKER_ATTR_WORKERS_DEV,
   WORKER_ATTR_WORKER_FIRST,
   WORKER_ATTR_WORKER_FIRST_PATHS,
+  type PagesEnvironment,
 } from "./constants.js";
 import { bindableKinds, bindingKindFor, describeResource, isExternal, resourceKindOf } from "./resources.js";
 
@@ -187,6 +191,8 @@ export interface PagesDeployment extends DeploymentCommon {
   readonly kind: typeof DEPLOYMENT_SUBTYPE_PAGES;
   readonly project: string;
   readonly directory: string;
+  /** The Pages environment this deployment serves: production when its @branch is the project's production branch, else preview. Absent when the model does not say. */
+  readonly pagesEnvironment?: PagesEnvironment;
 }
 
 export type CloudflareDeployment = WorkerDeployment | PagesDeployment;
@@ -217,6 +223,17 @@ const DEFAULT_TOP_LEVEL = "production";
 export const GENERATED_WRANGLER_KEYS: readonly string[] = [
   "$schema", "name", "main", "compatibility_date", "compatibility_flags", "workers_dev", "assets", "routes", "triggers",
   "vars", "secrets", "d1_databases", "kv_namespaces", "r2_buckets", "queues", "ratelimits", "env",
+];
+
+/**
+ * The keys `@extra` may set that Wrangler fills into an env block which omits them, from the
+ * top level (Wrangler 4.168.0's `EnvironmentInheritable`, less those the generator writes):
+ * so each is set in every environment or none.
+ */
+export const INHERITED_WRANGLER_KEYS: readonly string[] = [
+  "account_id", "find_additional_modules", "preserve_file_names", "base_dir", "preview_urls", "route", "tsconfig", "jsx_factory", "jsx_fragment",
+  "migrations", "exports", "limits", "rules", "build", "no_bundle", "minify", "keep_names", "first_party_worker", "logfwdr", "logpush",
+  "upload_source_maps", "placement", "observability", "access", "cache", "compliance_region", "python_modules", "previews",
 ];
 
 function text(v: unknown): string | undefined {
@@ -319,12 +336,15 @@ function referenceValue(value: MetaData, env: MetaData, ctx: Context, where: str
   if (target.type === TYPE_APP && (output === OUTPUT_HOST || output === OUTPUT_PUBLIC_URL)) {
     const d = deploymentOf(target, env, ctx.all);
     const domain = d === undefined ? undefined : refList(d, DEPLOYMENT_ATTR_DOMAINS)[0];
-    if (domain !== undefined) return output === OUTPUT_HOST ? domain : `https://${domain}`;
+    if (domain !== undefined) return output === OUTPUT_HOST ? domain : `https://${domain}${text(value.attr(VALUE_ATTR_PATH)) ?? ""}`;
     problems.push(`${where}: app "${target.name}" has no Cloudflare deployment with @domains in environment ${env.name}, so its ${output} is not known`);
     return undefined;
   }
+  const only = "a value.ref can only take another Cloudflare-deployed app's host or publicUrl (from its @domains)";
   problems.push(
-    `${where}: Cloudflare resolves no reference at deploy time; a value.ref can only take another Cloudflare-deployed app's host or publicUrl (from its @domains). Bind ${target.type}.${target.subType} "${target.name}" (a cloudflare.* child) or give the setting a value.literal or the vault (@secret)`,
+    target.type === TYPE_APP
+      ? `${where}: Cloudflare resolves no reference at deploy time; ${only}, not an app's ${output}. Ask for its host or publicUrl, or give the setting a value.literal`
+      : `${where}: Cloudflare resolves no reference at deploy time; ${only}. Bind ${target.type}.${target.subType} "${target.name}" (a cloudflare.* child) or give the setting a value.literal or the vault (@secret)`,
   );
   return undefined;
 }
@@ -341,13 +361,24 @@ function readCommon(
   problems: string[],
 ): { app: MetaData; env: MetaData; where: string; settings: Setting[]; common: Omit<DeploymentCommon, "unexpressed" | "token"> & { token?: DeploymentCommon["token"] } } | undefined {
   const where = `deployment.${node.subType} ${node.resolutionKey()}`;
-  const appRef = refList(node, DEPLOYMENT_ATTR_APP)[0];
-  const envRef = refList(node, DEPLOYMENT_ATTR_ENVIRONMENT)[0];
-  const app = appRef === undefined ? undefined : resolveSystemRef(node, appRef, DEPLOYMENT_ATTR_APP, [TYPE_APP]);
-  const env = envRef === undefined ? undefined : resolveSystemRef(node, envRef, DEPLOYMENT_ATTR_ENVIRONMENT, [TYPE_ENVIRONMENT]);
+  const app = appOf(node);
+  const env = environmentOf(node);
   if (app === undefined || env === undefined) return undefined; // the delivery pack reports it at load
 
   const settings = groupsNamed(refList(app, APP_ATTR_SETTINGS), ctx.groups, appKeyOf(app), problems).flatMap((g) => g.settings);
+  for (const s of settings) {
+    if (s.secret && s.phase === PHASE_BUILD) {
+      problems.push(
+        `${where}: ${s.setting} (${s.envName}) is @secret and @phase build; the scripts copy a secret to a Worker or to a Pages project, never to a build on this machine. Mark it @phase runtime if the Worker reads it; otherwise build by hand under keys-axi run and deploy with --no-build`,
+      );
+    }
+  }
+  for (const v of node.children().filter((c) => c.type === TYPE_VALUE && c.subType !== VALUE_SUBTYPE_LITERAL)) {
+    const ref = text(v.attr(VALUE_ATTR_SETTING)) ?? "";
+    if (settingNamed(ref, ctx.groups)?.phase === PHASE_BUILD) {
+      problems.push(`${where} value.ref ${v.name}: ${ref} is @phase build, and a build on the deploying machine has no reference to resolve; give it a value.literal or a @default`);
+    }
+  }
   // Build-time settings with a value: a value.literal here (resolving, so the base's counts), else the @default.
   const buildVars: CloudflareVar[] = [];
   for (const s of settings.filter((x) => x.phase === PHASE_BUILD && !x.secret)) {
@@ -396,8 +427,8 @@ function readCommon(
   };
 }
 
-/** Facts any Cloudflare deployment leaves to something else: processes, replicas, region, watch paths, build-time settings. */
-function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Setting[], secrets: readonly string[], vault: VaultPlace | undefined): UnexpressedFact[] {
+/** Facts any Cloudflare deployment leaves to something else: processes, replicas, region, watch paths, build-time settings. `secretsOn` is where the doctor finds the secrets on Cloudflare. */
+function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Setting[], secrets: readonly string[], vault: VaultPlace | undefined, secretsOn: string): UnexpressedFact[] {
   const out: UnexpressedFact[] = [];
   for (const p of readProcesses(app)) {
     // Each attribute the process sets: readProcesses names its fields after them.
@@ -422,13 +453,16 @@ function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Set
   if (buildPhase.length > 0) {
     out.push({
       fact: `Build-time settings ${buildPhase.map((n) => `\`${n}\``).join(", ")}`,
-      how: "Read by the build, which runs on the deploying machine: deploy/cloudflare/deploy.sh exports each one the model gives a value (a value already in the environment wins) and runs the build there. They never reach Cloudflare as settings.",
+      how:
+        b?.command === undefined
+          ? `Read by whatever builds ${app.name}, from the environment it runs in: deploy/cloudflare/deploy.sh runs no build (${app.name} declares no build command) and exports each one the model gives a value (a value already in the environment wins) for what it runs next. They never reach Cloudflare as settings.`
+          : "Read by the build, which runs on the deploying machine: deploy/cloudflare/deploy.sh exports each one the model gives a value (a value already in the environment wins) and runs the build there. They never reach Cloudflare as settings.",
     });
   }
   if (secrets.length > 0 && vault !== undefined) {
     out.push({
       fact: `Secret values: ${secrets.map((n) => `\`${n}\``).join(", ")}`,
-      how: `Never in a file. deploy/cloudflare/sync-secrets.sh copies them from the vault scope \`${vault.scope.project}/${vault.scope.env}\`; deploy/cloudflare/doctor.sh checks the names are in the vault and on Cloudflare.`,
+      how: `Never in a file. deploy/cloudflare/sync-secrets.sh copies them from the vault scope \`${vault.scope.project}/${vault.scope.env}\`; deploy/cloudflare/doctor.sh checks the names are in the vault and ${secretsOn}.`,
     });
   }
   return out;
@@ -438,7 +472,10 @@ function readWorker(node: MetaData, ctx: Context, problems: string[]): WorkerDep
   const read = readCommon(node, ctx, problems);
   if (read === undefined) return undefined;
   const { app, env, where, settings, common } = read;
-  const unexpressed = commonUnexpressed(node, app, settings, common.secrets, common.vault);
+  const unexpressed = commonUnexpressed(node, app, settings, common.secrets, common.vault, "on Cloudflare");
+  if (common.branch !== undefined) {
+    unexpressed.push({ fact: `@branch \`${common.branch}\``, how: "Deploys run from deploy/cloudflare/deploy.sh, not on a push to the branch, so no file holds it." });
+  }
 
   // vars: each value node, then each non-secret runtime setting's default.
   // ADR-0039: resolving, so a value the abstract base or an estate overlay declares counts.
@@ -456,6 +493,7 @@ function readWorker(node: MetaData, ctx: Context, problems: string[]): WorkerDep
       problems.push(`${vWhere}: ${ref} is @secret; its value comes from the vault, never from a value node`);
       continue;
     }
+    if (setting.phase === PHASE_BUILD) continue;
     const value = v.subType === VALUE_SUBTYPE_LITERAL ? (text(v.attr(VALUE_ATTR_LITERAL)) ?? "") : referenceValue(v, env, ctx, vWhere, problems);
     if (value !== undefined) fromValue.set(setting.envName, { name: setting.envName, value, from: `value.${v.subType} ${v.name}${declaredIn(v, node)}` });
   }
@@ -605,18 +643,44 @@ function readWorker(node: MetaData, ctx: Context, problems: string[]): WorkerDep
   };
 }
 
-function readPages(node: MetaData, ctx: Context, problems: string[]): PagesDeployment | undefined {
+/**
+ * The Pages project's production branch, as the model states it: the @branch of the app's
+ * deployment in the environment named `production` (the delivery pack's meaning of @branch is
+ * the branch whose pushes deploy there). Undefined when the model states none.
+ */
+function productionBranchOf(nodes: readonly MetaData[]): string | undefined {
+  const production = nodes.find((d) => environmentOf(d)?.name === PAGES_ENV_PRODUCTION);
+  return production === undefined ? undefined : text(production.attr(DEPLOYMENT_ATTR_BRANCH));
+}
+
+function readPages(node: MetaData, productionBranch: string | undefined, ctx: Context, problems: string[]): PagesDeployment | undefined {
   const read = readCommon(node, ctx, problems);
   if (read === undefined) return undefined;
   const { app, where, settings, common } = read;
-  const unexpressed = commonUnexpressed(node, app, settings, common.secrets, common.vault);
+  const pagesEnvironment =
+    common.branch === undefined || productionBranch === undefined
+      ? undefined
+      : common.branch === productionBranch
+        ? PAGES_ENV_PRODUCTION
+        : PAGES_ENV_PREVIEW;
+  if (common.secrets.length > 0 && pagesEnvironment === undefined) {
+    problems.push(
+      `${where}: ${app.name} reads ${common.secrets.length} secret setting(s) (${common.secrets.join(", ")}) and the model does not say whether this deployment serves the Pages project's production or its preview environment, each of which keeps its own: ${
+        common.branch === undefined ? "it has no @branch" : `no deployment.pages of ${app.name} in an environment named "${PAGES_ENV_PRODUCTION}" declares a @branch, the project's production branch`
+      }`,
+    );
+  }
+  const unexpressed = commonUnexpressed(node, app, settings, common.secrets, common.vault, `on the Pages project's ${pagesEnvironment} environment`);
   const build = common.build;
   if (build?.kind !== BUILD_SUBTYPE_STATIC || build.directory === undefined) {
     problems.push(`${where}: a Pages site uploads a directory of files: ${app.name} needs a build.static with @directory`);
   }
   const plain = settings.filter((s) => !s.secret && s.phase !== PHASE_BUILD).map((s) => s.envName);
   // ADR-0039: resolving, so a value the abstract base declares counts.
-  const values = node.children().filter((c) => c.type === TYPE_VALUE).map((v) => v.name);
+  const values = node
+    .children()
+    .filter((c) => c.type === TYPE_VALUE && settingNamed(text(c.attr(VALUE_ATTR_SETTING)) ?? "", ctx.groups)?.phase !== PHASE_BUILD)
+    .map((v) => v.name);
   if (plain.length > 0 || values.length > 0) {
     unexpressed.push({
       fact: `Non-secret settings${plain.length > 0 ? ` ${plain.map((n) => `\`${n}\``).join(", ")}` : ""}${values.length > 0 ? ` (value nodes ${values.map((n) => `\`${n}\``).join(", ")})` : ""}`,
@@ -633,6 +697,7 @@ function readPages(node: MetaData, ctx: Context, problems: string[]): PagesDeplo
     kind: DEPLOYMENT_SUBTYPE_PAGES,
     project: text(node.attr(PAGES_ATTR_PROJECT)) ?? "",
     directory: build?.directory ?? "",
+    ...(pagesEnvironment !== undefined ? { pagesEnvironment } : {}),
     unexpressed,
   };
 }
@@ -652,6 +717,12 @@ function configRead<T>(read: () => T, problems: string[], fallback: T): T {
 function appOf(d: MetaData): MetaData | undefined {
   const ref = refList(d, DEPLOYMENT_ATTR_APP)[0];
   return ref === undefined ? undefined : resolveSystemRef(d, ref, DEPLOYMENT_ATTR_APP, [TYPE_APP]);
+}
+
+/** The environment a deployment names, as its node, or undefined. */
+function environmentOf(d: MetaData): MetaData | undefined {
+  const ref = refList(d, DEPLOYMENT_ATTR_ENVIRONMENT)[0];
+  return ref === undefined ? undefined : resolveSystemRef(d, ref, DEPLOYMENT_ATTR_ENVIRONMENT, [TYPE_ENVIRONMENT]);
 }
 
 /**
@@ -694,8 +765,9 @@ export function readCloudflare(
     throw new CloudflareModelError([`${appKeyOf(app)} is deployed both as a Worker and as a Pages site; deploy one app one way (a Worker with static assets replaces a Pages site)`]);
   }
   const kind = nodes[0]!.subType === DEPLOYMENT_SUBTYPE_PAGES ? DEPLOYMENT_SUBTYPE_PAGES : DEPLOYMENT_SUBTYPE_WORKER;
+  const productionBranch = kind === DEPLOYMENT_SUBTYPE_PAGES ? productionBranchOf(nodes) : undefined;
   const deployments = nodes
-    .map((d) => (kind === DEPLOYMENT_SUBTYPE_PAGES ? readPages(d, ctx, problems) : readWorker(d, ctx, problems)))
+    .map((d) => (kind === DEPLOYMENT_SUBTYPE_PAGES ? readPages(d, productionBranch, ctx, problems) : readWorker(d, ctx, problems)))
     .filter((d): d is CloudflareDeployment => d !== undefined);
 
   const envs = deployments.map((d) => d.environment);
@@ -720,11 +792,27 @@ export function readCloudflare(
       }
     }
     // Wrangler inherits these into an env block that omits them: so every environment sets each, or none does.
-    const inherited: [string, (d: WorkerDeployment) => unknown][] = [["@main", (d) => d.main], ["@workersDev", (d) => d.workersDev], ["assets (the app's build.static)", (d) => d.assets]];
+    const inherited: [string, (d: WorkerDeployment) => unknown][] = [
+      ["@main", (d) => d.main],
+      ["@workersDev", (d) => d.workersDev],
+      ["assets (the app's build.static)", (d) => d.assets],
+      ...INHERITED_WRANGLER_KEYS.map((key): [string, (d: WorkerDeployment) => unknown] => [`@${WORKER_ATTR_EXTRA} ${key}`, (d) => d.extra?.[key]]),
+    ];
     for (const [what, get] of inherited) {
       const unset = workers.filter((d) => get(d) === undefined);
       if (unset.length > 0 && unset.length < workers.length)
         problems.push(`${appKeyOf(app)}: ${what} is set in ${workers.filter((d) => get(d) !== undefined).map((d) => d.environment).join(", ")} and not in ${unset.map((d) => d.environment).join(", ")}; Wrangler would fill the gap from the top level, so set it in every environment or none`);
+    }
+  } else {
+    const serving = new Map<PagesEnvironment, string>();
+    for (const d of deployments as PagesDeployment[]) {
+      if (d.secrets.length === 0 || d.pagesEnvironment === undefined) continue;
+      const other = serving.get(d.pagesEnvironment);
+      if (other === undefined) serving.set(d.pagesEnvironment, d.key);
+      else
+        problems.push(
+          `deployment.pages ${d.key}: serves the Pages ${d.pagesEnvironment} environment, as ${other} does, and each copies the same secrets there; Pages keeps one value per name in an environment, so model one deployment per Pages environment`,
+        );
     }
   }
   if (problems.length > 0 || topLevel === undefined) throw new CloudflareModelError(problems);

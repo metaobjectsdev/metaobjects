@@ -9,11 +9,9 @@
 // The generated files are also checked against Wrangler's own JSON schema (vendored in
 // wrangler-schema/), so a key Wrangler would reject fails here rather than on a deploy.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import Ajv from "ajv";
 import { parseGeneratedJsonc } from "../src/index.js";
 import { emitFixture } from "./model.js";
+import { wranglerSchemaErrors } from "./wrangler-schema.js";
 
 type Plain = string | number | boolean | null | Plain[] | { [k: string]: Plain };
 
@@ -79,7 +77,7 @@ export const WORKER_WITH_LIMITERS: Plain = {
 /** Its secrets, listed only in its .dev.vars.example (the local-only DEV_OPEN_ADMIN is not one). */
 export const WORKER_WITH_LIMITERS_SECRETS = ["SESSION_SECRET", "RESEND_API_KEY", "PASSPHRASE_PEPPER", "RECOVERY_ENC_KEY", "RECOVERY_HMAC_KEY"];
 /** Its deploy script: build, then deploy with the narrow token from the deploy vault scope. */
-export const WORKER_WITH_LIMITERS_DEPLOY = { build: "pnpm build", vaultProject: "deploy", vaultEnv: "dev", token: "CLOUDFLARE_WORKERS_TOKEN_TRIPS" };
+export const WORKER_WITH_LIMITERS_DEPLOY = { build: "pnpm build", vaultProject: "acme-deploy", vaultEnv: "dev", token: "ACME_WORKERS_TOKEN" };
 
 /** A Pages site's deploy: `npm run build`, then a pinned `wrangler pages deploy`. */
 export const PAGES_DEPLOY = {
@@ -88,9 +86,9 @@ export const PAGES_DEPLOY = {
   directory: "dist",
   project: "docs-site",
   branch: "main",
-  vaultProject: "deploy",
+  vaultProject: "acme-deploy",
   vaultEnv: "dev",
-  token: "CLOUDFLARE_PAGES_TOKEN_DOCS",
+  token: "ACME_PAGES_TOKEN",
 };
 
 /** Each leaf of `v` as [path, value]; an array of scalars is one leaf. */
@@ -103,10 +101,6 @@ function facts(v: Plain, path: string[] = []): [string[], Plain][] {
 function at(v: unknown, path: readonly string[]): unknown {
   return path.reduce<unknown>((o, k) => (o !== null && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), v);
 }
-
-const schema = JSON.parse(readFileSync(join(import.meta.dir, "wrangler-schema/config-schema.json"), "utf8"));
-// strict: false — the schema carries Wrangler's own `allowTrailingCommas` keyword.
-const validate = new Ajv({ strict: false, allErrors: true }).compile(schema);
 
 const generated = emitFixture;
 
@@ -184,11 +178,10 @@ describe("a Pages site (its deploy command)", () => {
 describe("Wrangler's own schema", () => {
   test.each(["cloudflare-worker-environments", "cloudflare-worker-cron-ratelimits"])("%s: wrangler.jsonc is valid", async (scenario) => {
     const config = parseGeneratedJsonc((await generated(scenario)).get("wrangler.jsonc")!);
-    const ok = validate(config);
-    expect(ok ? [] : validate.errors).toEqual([]);
+    expect(wranglerSchemaErrors(config)).toEqual([]);
   });
 
   test("the schema is strict enough to catch a key Wrangler does not have", () => {
-    expect(validate({ name: "x", compatibility_date: "2026-07-01", no_such_key: true })).toBe(false);
+    expect(wranglerSchemaErrors({ name: "x", compatibility_date: "2026-07-01", no_such_key: true })).not.toEqual([]);
   });
 });

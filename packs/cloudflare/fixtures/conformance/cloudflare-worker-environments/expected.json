@@ -134,7 +134,7 @@
             {
               "scope.env": {
                 "name": "dev",
-                "@project": "deploy"
+                "@project": "acme-deploy"
               }
             }
           ]
@@ -165,7 +165,7 @@
           "@notFound": "single-page-application",
           "@script": "quiz",
           "@secrets": "keys",
-          "@tokenSecret": "CLOUDFLARE_WORKERS_TOKEN_QUIZ",
+          "@tokenSecret": "ACME_WORKERS_TOKEN",
           "@tokenVault": "deployKeys",
           "@workerFirstPaths": [
             "/api/*",

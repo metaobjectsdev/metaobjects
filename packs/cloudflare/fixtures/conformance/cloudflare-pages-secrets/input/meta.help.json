@@ -1,0 +1,53 @@
+{
+  "metadata.root": {
+    "package": "acme::help",
+    "children": [
+      { "system.internal": {
+          "name": "Help",
+          "@description": "A help center on Cloudflare Pages: a static site whose Pages Functions read a secret, with one value per Pages environment.",
+          "children": [
+            { "app.client": {
+                "name": "site",
+                "@settings": ["Search"],
+                "children": [
+                  { "build.static": { "name": "pages", "@directory": "dist", "@command": "npm run build" } }
+                ]
+            } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Search",
+          "children": [
+            { "field.string": { "name": "apiKey", "@envName": "SEARCH_API_KEY", "@required": true, "@secret": true } }
+          ]
+      } },
+      { "vault.infisical": {
+          "name": "keys",
+          "children": [
+            { "scope.env": { "name": "production", "@project": "acme-help", "@env": "prod" } },
+            { "scope.env": { "name": "preview", "@project": "acme-help-preview", "@env": "preview" } }
+          ]
+      } },
+      { "vault.infisical": {
+          "name": "deployKeys",
+          "@defaultScope": "dev",
+          "children": [
+            { "scope.env": { "name": "dev", "@project": "acme-deploy" } }
+          ]
+      } },
+      { "environment.standing": { "name": "production" } },
+      { "environment.ephemeral": { "name": "preview" } },
+      { "deployment.pages": {
+          "name": "siteBase",
+          "abstract": true,
+          "@app": "Help.site",
+          "@project": "help-site",
+          "@secrets": "keys",
+          "@tokenVault": "deployKeys",
+          "@tokenSecret": "ACME_PAGES_TOKEN"
+      } },
+      { "deployment.pages": { "name": "siteProduction", "extends": "siteBase", "@environment": "production", "@branch": "main", "@domains": ["help.example.com"] } },
+      { "deployment.pages": { "name": "sitePreview", "extends": "siteBase", "@environment": "preview", "@branch": "preview" } }
+    ]
+  }
+}

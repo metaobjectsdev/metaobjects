@@ -10,7 +10,7 @@ import { editFixture, emit, emitFixture, loadModels } from "./model.js";
 const GOLDEN = join(import.meta.dir, "golden");
 /** `UPDATE_GOLDEN=1 bun test` rewrites the golden files from the generators. */
 const UPDATE = process.env["UPDATE_GOLDEN"] === "1";
-const SCENARIOS = ["cloudflare-worker-environments", "cloudflare-worker-cron-ratelimits", "cloudflare-pages-site"];
+const SCENARIOS = ["cloudflare-worker-environments", "cloudflare-worker-cron-ratelimits", "cloudflare-pages-site", "cloudflare-pages-secrets"];
 const HAS_SHELLCHECK = spawnSync("shellcheck", ["--version"]).status === 0;
 
 function walk(dir: string): string[] {

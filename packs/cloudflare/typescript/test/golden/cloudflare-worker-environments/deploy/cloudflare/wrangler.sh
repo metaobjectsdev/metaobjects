@@ -18,10 +18,10 @@ KEYS_AXI="${KEYS_AXI:-$(command -v keys-axi || echo "$HOME/.local/bin/keys-axi")
 
 case "$ENVIRONMENT" in
   production)
-    VAULT_PROJECT=deploy VAULT_ENV=dev TOKEN=CLOUDFLARE_WORKERS_TOKEN_QUIZ
+    VAULT_PROJECT=acme-deploy VAULT_ENV=dev TOKEN=ACME_WORKERS_TOKEN
     ;;
   staging)
-    VAULT_PROJECT=deploy VAULT_ENV=dev TOKEN=CLOUDFLARE_WORKERS_TOKEN_QUIZ
+    VAULT_PROJECT=acme-deploy VAULT_ENV=dev TOKEN=ACME_WORKERS_TOKEN
     ;;
   *) echo 'usage: bash deploy/cloudflare/wrangler.sh <environment> <wrangler arguments>... (environments: production, staging)' >&2; exit 2 ;;
 esac

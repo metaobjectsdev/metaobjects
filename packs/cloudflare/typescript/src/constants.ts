@@ -6,6 +6,11 @@ export const CLOUDFLARE_PROVIDER_ID = "metaobjects-cloudflare";
 export const DEPLOYMENT_SUBTYPE_WORKER = "worker";
 export const DEPLOYMENT_SUBTYPE_PAGES = "pages";
 
+/** The two environments a Pages project has, each with its own variables: what `pages secret put|list --env` takes. */
+export const PAGES_ENV_PRODUCTION = "production";
+export const PAGES_ENV_PREVIEW = "preview";
+export type PagesEnvironment = typeof PAGES_ENV_PRODUCTION | typeof PAGES_ENV_PREVIEW;
+
 export const WORKER_ATTR_SCRIPT = "script";
 export const WORKER_ATTR_MAIN = "main";
 export const WORKER_ATTR_COMPATIBILITY_DATE = "compatibilityDate";

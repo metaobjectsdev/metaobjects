@@ -111,12 +111,17 @@ export function renderRunner(app: CloudflareApp, header: string, paths: Cloudfla
 export function renderSyncSecrets(app: CloudflareApp, header: string, paths: CloudflarePaths): string {
   const usage = `bash ${paths.syncSecrets} <environment> [--dry-run]`;
   const pages = app.kind === DEPLOYMENT_SUBTYPE_PAGES;
-  const put = pages ? `pages secret put "$1" --project-name "$3"` : 'secret put "$1" $3';
+  const put = pages ? 'pages secret put "$1" --project-name "$3" --env "$4"' : 'secret put "$1" $3';
   const lines = [
     ...shellHead(
       header,
       [
-        `Copies every secret setting ${app.appKey} reads from the vault to Cloudflare, for one environment.`,
+        ...(pages
+          ? [
+              `Copies every secret setting ${app.appKey} reads from the vault to the Pages project's environment,`,
+              "for one environment: production when its branch is the project's production branch, else preview.",
+            ]
+          : [`Copies every secret setting ${app.appKey} reads from the vault to Cloudflare, for one environment.`]),
         `A value goes from keys-axi's environment through a pipe into \`wrangler ${pages ? "pages secret put" : "secret put"}\`:`,
         "it is never printed and never on a command line.",
         "",
@@ -137,24 +142,28 @@ export function renderSyncSecrets(app: CloudflareApp, header: string, paths: Clo
     "done",
     'KEYS_AXI="${KEYS_AXI:-$(command -v keys-axi || echo "$HOME/.local/bin/keys-axi")}"',
     "",
-    `# copy <vault project> <vault environment> <NAME> <${pages ? "Pages project" : "wrangler target arguments"}>`,
+    `# copy <vault project> <vault environment> <NAME> <${pages ? "Pages project> <Pages environment" : "wrangler target arguments"}>`,
     "copy() {",
-    '  if [ "$DRY_RUN" = 1 ]; then echo "would copy $3 from $1/$2 to Cloudflare ($ENVIRONMENT)"; return; fi',
+    pages
+      ? '  if [ "$DRY_RUN" = 1 ]; then echo "would copy $3 from $1/$2 to Pages project $4, $5 environment ($ENVIRONMENT)"; return; fi'
+      : '  if [ "$DRY_RUN" = 1 ]; then echo "would copy $3 from $1/$2 to Cloudflare ($ENVIRONMENT)"; return; fi',
     "  # shellcheck disable=SC2016 # the inner shell expands it: the value never enters this one",
     '  "$KEYS_AXI" run --project "$1" --env "$2" --only "$3" -- bash -c \'',
     '    [ -n "${!1+set}" ] || { echo "sync-secrets: $1 is not in the vault scope" >&2; exit 1; }',
     '    value="${!1}"',
     '    unset "$1"',
     `    printf %s "$value" | bash ${sh(paths.runner)} "$2" ${put} >/dev/null`,
-    `  ' sync-secret "$3" "$ENVIRONMENT" "$4"`,
-    '  echo "copied $3 to Cloudflare ($ENVIRONMENT)"',
+    `  ' sync-secret "$3" "$ENVIRONMENT" "$4"${pages ? ' "$5"' : ""}`,
+    pages
+      ? '  echo "copied $3 to Pages project $4, $5 environment ($ENVIRONMENT)"'
+      : '  echo "copied $3 to Cloudflare ($ENVIRONMENT)"',
     "}",
     "",
     ...caseBlock(
       app,
       (d) => {
         if (d.secrets.length === 0 || d.vault === undefined) return [`echo ${sh(`no secret settings to copy in ${d.environment}`)}`];
-        const target = d.kind === DEPLOYMENT_SUBTYPE_PAGES ? sh(d.project) : sh(workerTarget(app, d, paths));
+        const target = d.kind === DEPLOYMENT_SUBTYPE_PAGES ? `${sh(d.project)} ${sh(d.pagesEnvironment!)}` : sh(workerTarget(app, d, paths));
         return d.secrets.map((s) => `copy ${sh(d.vault!.scope.project)} ${sh(d.vault!.scope.env)} ${s} ${target}`);
       },
       usage,
@@ -183,8 +192,15 @@ export function renderDeploy(app: CloudflareApp, header: string, paths: Cloudfla
             ? "uploads the build to the environment's Pages project and branch, recording the commit."
             : `runs \`wrangler deploy\` with the environment's block of ${paths.config}.`,
         ].map((step, i) => `  ${i + 1}. ${step}`),
-        "Build-time settings are read by the build from this machine's environment; the values the model gives",
-        "are exported first, and a value already in the environment wins.",
+        ...(anyBuildVar
+          ? builds
+            ? ["Build-time settings are read by the build from this machine's environment; the values the model gives", "are exported first, and a value already in the environment wins."]
+            : [
+                `Build-time settings are read from this machine's environment by whatever builds ${app.name}; deploy.sh runs no`,
+                "build (the app declares no build command), and exports the values the model gives first; a value already",
+                "in the environment wins.",
+              ]
+          : []),
         "",
         `Needs: what ${paths.runner} needs${pages ? ", and git" : ""}.`,
       ],
@@ -238,7 +254,7 @@ export function renderDoctor(app: CloudflareApp, header: string, paths: Cloudfla
       [
         `Checks ${app.appKey} on Cloudflare against the model, for one environment, by name only:`,
         "the deploy token and account id are in the vault; every secret the model declares is in the vault",
-        pages ? "and on the Pages project; each domain answers." : `and on the Worker; ${paths.config} builds (\`wrangler deploy --dry-run\`); each domain answers.`,
+        pages ? "and on the Pages project's environment its branch serves (production or preview); each domain answers." : `and on the Worker; ${paths.config} builds (\`wrangler deploy --dry-run\`); each domain answers.`,
         "Exits 1 when a check fails. It prints names, never a value.",
         "",
         `Needs: keys-axi, jq, curl, and what ${paths.runner} needs.`,
@@ -264,20 +280,20 @@ export function renderDoctor(app: CloudflareApp, header: string, paths: Cloudfla
     `  names=$("$KEYS_AXI" ls --project "$1" --env "$2" --json | jq -r '.secrets[].name') || { bad "cannot list vault scope $1/$2"; return; }`,
     '  local where="$1/$2"; shift 2',
     '  for n in "$@"; do',
-    '    if grep -qx "$n" <<<"$names"; then ok "$n is in the vault ($where)"; else bad "$n is not in the vault ($where)"; fi',
+    '    if grep -Fxq -e "$n" <<<"$names"; then ok "$n is in the vault ($where)"; else bad "$n is not in the vault ($where)"; fi',
     "  done",
     "}",
     "",
     ...(anySecret
       ? pages
         ? [
-            "# on_cloudflare <Pages project> <NAME>...",
+            "# on_cloudflare <Pages project> <Pages environment> <NAME>...",
             "on_cloudflare() {",
             "  local names",
-            `  names=$(bash ${sh(paths.runner)} "$ENVIRONMENT" pages secret list --project-name "$1" 2>/dev/null | sed -n 's/^ *- \\([A-Za-z0-9_]*\\):.*/\\1/p') || { bad "cannot list the secrets of Pages project $1"; return; }`,
-            '  local where="Pages project $1"; shift',
+            `  names=$(bash ${sh(paths.runner)} "$ENVIRONMENT" pages secret list --project-name "$1" --env "$2" 2>/dev/null | sed -n 's/^ *- \\([A-Za-z0-9_]*\\):.*/\\1/p') || { bad "cannot list the secrets of Pages project $1, $2 environment"; return; }`,
+            '  local where="Pages project $1, $2 environment"; shift 2',
             '  for n in "$@"; do',
-            `    if grep -qx "$n" <<<"$names"; then ok "$n is set on $where"; else bad "$n is declared and not set on $where (run ${paths.syncSecrets})"; fi`,
+            `    if grep -Fxq -e "$n" <<<"$names"; then ok "$n is set on $where"; else bad "$n is declared and not set on $where (run ${paths.syncSecrets})"; fi`,
             "  done",
             "}",
             "",
@@ -290,7 +306,7 @@ export function renderDoctor(app: CloudflareApp, header: string, paths: Cloudfla
             `  names=$(bash ${sh(paths.runner)} "$ENVIRONMENT" secret list $1 --format json | jq -r '.[].name') || { bad "cannot list the Worker's secrets"; return; }`,
             "  shift",
             '  for n in "$@"; do',
-            `    if grep -qx "$n" <<<"$names"; then ok "$n is set on the Worker"; else bad "$n is declared and not set on the Worker (run ${paths.syncSecrets})"; fi`,
+            `    if grep -Fxq -e "$n" <<<"$names"; then ok "$n is set on the Worker"; else bad "$n is declared and not set on the Worker (run ${paths.syncSecrets})"; fi`,
             "  done",
             "}",
             "",
@@ -321,10 +337,10 @@ export function renderDoctor(app: CloudflareApp, header: string, paths: Cloudfla
     ...caseBlock(
       app,
       (d) => {
-        const body = [`in_vault ${sh(d.token.place.scope.project)} ${sh(d.token.place.scope.env)} ${d.token.secret} ${ACCOUNT_ID_SECRET}`];
+        const body = [`in_vault ${sh(d.token.place.scope.project)} ${sh(d.token.place.scope.env)} ${sh(d.token.secret)} ${ACCOUNT_ID_SECRET}`];
         if (d.secrets.length > 0 && d.vault !== undefined) {
           body.push(`in_vault ${sh(d.vault.scope.project)} ${sh(d.vault.scope.env)} ${d.secrets.join(" ")}`);
-          body.push(`on_cloudflare ${d.kind === DEPLOYMENT_SUBTYPE_PAGES ? sh(d.project) : sh(workerTarget(app, d, paths))} ${d.secrets.join(" ")}`);
+          body.push(`on_cloudflare ${d.kind === DEPLOYMENT_SUBTYPE_PAGES ? `${sh(d.project)} ${sh(d.pagesEnvironment!)}` : sh(workerTarget(app, d, paths))} ${d.secrets.join(" ")}`);
         }
         if (d.kind !== DEPLOYMENT_SUBTYPE_PAGES) body.push(`builds ${sh(workerTarget(app, d, paths))}`);
         for (const domain of d.domains) body.push(`answers ${sh(`https://${domain}/`)}`);
@@ -341,11 +357,11 @@ export function renderDoctor(app: CloudflareApp, header: string, paths: Cloudfla
 // ── deploy/cloudflare/unexpressed.md ─────────────────────────────────────────
 
 export function renderUnexpressed(app: CloudflareApp, header: string, paths: CloudflarePaths): string {
-  const what = app.kind === DEPLOYMENT_SUBTYPE_PAGES ? "the deploy scripts" : md(paths.config);
+  const [what, verb] = app.kind === DEPLOYMENT_SUBTYPE_PAGES ? ["the deploy scripts", "do not hold"] : [md(paths.config), "does not hold"];
   const lines = [
     header,
     "",
-    `# What ${what} does not hold: ${app.appKey}`,
+    `# What ${what} ${verb}: ${app.appKey}`,
     "",
     "Facts the model declares that Cloudflare's configuration cannot carry, or that it leaves to",
     "something else, each with how it is carried instead. Generated from the model: change the",

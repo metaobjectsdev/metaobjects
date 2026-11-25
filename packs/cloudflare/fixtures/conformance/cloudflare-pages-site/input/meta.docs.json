@@ -25,7 +25,7 @@
           "name": "deployKeys",
           "@defaultScope": "dev",
           "children": [
-            { "scope.env": { "name": "dev", "@project": "deploy" } }
+            { "scope.env": { "name": "dev", "@project": "acme-deploy" } }
           ]
       } },
       { "environment.standing": { "name": "production" } },
@@ -36,7 +36,7 @@
           "@app": "Docs.site",
           "@project": "docs-site",
           "@tokenVault": "deployKeys",
-          "@tokenSecret": "CLOUDFLARE_PAGES_TOKEN_DOCS"
+          "@tokenSecret": "ACME_PAGES_TOKEN"
       } },
       { "deployment.pages": { "name": "siteProduction", "extends": "siteBase", "@environment": "production", "@branch": "main", "@domains": ["docs.example.com"] } },
       { "deployment.pages": { "name": "sitePreview", "extends": "siteBase", "@environment": "preview", "@branch": "preview" } }

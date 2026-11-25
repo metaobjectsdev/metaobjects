@@ -119,7 +119,7 @@
     {
       "type": "deployment",
       "subType": "pages",
-      "description": "An app deployed as a Cloudflare Pages site in one environment: the directory of its build.static, uploaded by `wrangler pages deploy`. Takes every deployment.base attribute; @branch is the branch the upload is recorded on (the project's production branch, or a preview branch).",
+      "description": "An app deployed as a Cloudflare Pages site in one environment: the directory of its build.static, uploaded by `wrangler pages deploy`. Takes every deployment.base attribute; @branch is the branch the upload is recorded on (the project's production branch, or a preview branch). A Pages project has two environments, production and preview, each with its own variables: the upload of the production branch serves production and every other upload serves preview, and the secret sync writes to the environment the @branch serves. The model states the production branch with the @branch of the deployment.pages in the environment named `production`; when it states none, a deployment that reads a secret is refused.",
       "whenToUse": "Each (app, environment) pair that ships as a Cloudflare Pages site.",
       "attrs": [
         {
@@ -266,7 +266,7 @@
           "valueType": "string",
           "isArray": false,
           "required": false,
-          "description": "A JSON object of Wrangler configuration keys this pack does not model, copied into the environment's block as written. The escape hatch: a key the generator writes itself is refused."
+          "description": "A JSON object of Wrangler configuration keys this pack does not model, copied into the environment's block as written. The escape hatch: a key the generator writes itself is refused, and a key Wrangler fills into an env block that omits it (`observability`, `placement`, ...) is set in every environment or in none."
         },
         {
           "name": "jobs",

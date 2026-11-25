@@ -4,8 +4,6 @@
 #   1. builds it (`pnpm build`, skipped with --no-build),
 #   2. copies its secrets from the vault (deploy/cloudflare/sync-secrets.sh, skipped with --no-secrets),
 #   3. runs `wrangler deploy` with the environment's block of wrangler.jsonc.
-# Build-time settings are read by the build from this machine's environment; the values the model gives
-# are exported first, and a value already in the environment wins.
 #
 # Needs: what deploy/cloudflare/wrangler.sh needs.
 #

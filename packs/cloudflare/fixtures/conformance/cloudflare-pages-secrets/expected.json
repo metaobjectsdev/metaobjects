@@ -1,0 +1,122 @@
+{
+  "metadata.root": {
+    "package": "acme::help",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Help",
+          "@description": "A help center on Cloudflare Pages: a static site whose Pages Functions read a secret, with one value per Pages environment.",
+          "children": [
+            {
+              "app.client": {
+                "name": "site",
+                "@settings": [
+                  "Search"
+                ],
+                "children": [
+                  {
+                    "build.static": {
+                      "name": "pages",
+                      "@command": "npm run build",
+                      "@directory": "dist"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Search",
+          "children": [
+            {
+              "field.string": {
+                "name": "apiKey",
+                "@envName": "SEARCH_API_KEY",
+                "@required": true,
+                "@secret": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "vault.infisical": {
+          "name": "keys",
+          "children": [
+            {
+              "scope.env": {
+                "name": "production",
+                "@env": "prod",
+                "@project": "acme-help"
+              }
+            },
+            {
+              "scope.env": {
+                "name": "preview",
+                "@env": "preview",
+                "@project": "acme-help-preview"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "vault.infisical": {
+          "name": "deployKeys",
+          "@defaultScope": "dev",
+          "children": [
+            {
+              "scope.env": {
+                "name": "dev",
+                "@project": "acme-deploy"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "environment.ephemeral": {
+          "name": "preview"
+        }
+      },
+      {
+        "deployment.pages": {
+          "name": "siteBase",
+          "abstract": true,
+          "@app": "Help.site",
+          "@project": "help-site",
+          "@secrets": "keys",
+          "@tokenSecret": "ACME_PAGES_TOKEN",
+          "@tokenVault": "deployKeys"
+        }
+      },
+      {
+        "deployment.pages": {
+          "name": "siteProduction",
+          "extends": "acme::help::siteBase",
+          "@branch": "main",
+          "@domains": [
+            "help.example.com"
+          ],
+          "@environment": "production"
+        }
+      },
+      {
+        "deployment.pages": {
+          "name": "sitePreview",
+          "extends": "acme::help::siteBase",
+          "@branch": "preview",
+          "@environment": "preview"
+        }
+      }
+    ]
+  }
+}

@@ -13,6 +13,7 @@ From deployment.worker `acme::quiz::siteProduction`.
 | Fact | How it is carried |
 |---|---|
 | Secret values: `SEARCH_URL` | Never in a file. deploy/cloudflare/sync-secrets.sh copies them from the vault scope `quiz/prod`; deploy/cloudflare/doctor.sh checks the names are in the vault and on Cloudflare. |
+| @branch `main` | Deploys run from deploy/cloudflare/deploy.sh, not on a push to the branch, so no file holds it. |
 | DNS for `quiz.example.com`, `www.quiz.example.com` | Each domain is a custom domain route: Cloudflare creates its DNS record and certificate on deploy. The domain's zone must be on the same Cloudflare account. |
 
 ## staging
@@ -22,4 +23,5 @@ From deployment.worker `acme::quiz::siteStaging`.
 | Fact | How it is carried |
 |---|---|
 | Secret values: `SEARCH_URL` | Never in a file. deploy/cloudflare/sync-secrets.sh copies them from the vault scope `quiz/staging`; deploy/cloudflare/doctor.sh checks the names are in the vault and on Cloudflare. |
+| @branch `staging` | Deploys run from deploy/cloudflare/deploy.sh, not on a push to the branch, so no file holds it. |
 | DNS for `staging.quiz.example.com` | Each domain is a custom domain route: Cloudflare creates its DNS record and certificate on deploy. The domain's zone must be on the same Cloudflare account. |

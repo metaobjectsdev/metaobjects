@@ -3,6 +3,6 @@
     { "app.service": { "name": "site", "@needs": ["db"], "children": [ { "build.static": { "name": "assets", "@directory": "public" } } ] } },
     { "resource.database": { "name": "db" } } ] } },
   { "environment.standing": { "name": "production" } },
-  { "deployment.pages": { "name": "siteProduction", "@app": "Shop.site", "@environment": "production", "@project": "shop", "@tokenSecret": "CLOUDFLARE_PAGES_TOKEN_SHOP", "children": [
+  { "deployment.pages": { "name": "siteProduction", "@app": "Shop.site", "@environment": "production", "@project": "shop", "@tokenSecret": "ACME_PAGES_TOKEN", "children": [
     { "cloudflare.d1": { "name": "db", "@databaseName": "shop" } } ] } }
 ]}}

@@ -15,7 +15,8 @@ This pack's own changelog (ADR-0069). The root `CHANGELOG.md` records core only.
   narrow API token from the vault, the global-key variables unset, a pinned wrangler),
   `deploy.sh`, `sync-secrets.sh` (vault to Cloudflare through `keys-axi`, `wrangler secret put`
   from stdin), `doctor.sh` and `unexpressed.md`.
-- Fixtures `cloudflare-worker-environments`, `cloudflare-worker-cron-ratelimits` and
-  `cloudflare-pages-site` with golden output, five load-error fixtures, and a coverage test
-  that holds the output to every fact of the hand-written configurations the fixtures are
-  modelled on. TypeScript port.
+- Fixtures `cloudflare-worker-environments`, `cloudflare-worker-cron-ratelimits`,
+  `cloudflare-pages-site` and `cloudflare-pages-secrets` with golden output, five load-error
+  fixtures, a coverage test that holds the output to every fact of the hand-written configurations
+  the fixtures are modelled on, and tests that run the generated scripts against stubbed
+  `keys-axi` and `npx`. TypeScript port.

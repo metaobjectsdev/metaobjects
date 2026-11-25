@@ -50,7 +50,7 @@
           "name": "deployKeys",
           "@defaultScope": "dev",
           "children": [
-            { "scope.env": { "name": "dev", "@project": "deploy" } }
+            { "scope.env": { "name": "dev", "@project": "acme-deploy" } }
           ]
       } },
       { "environment.standing": { "name": "production" } },
@@ -69,7 +69,7 @@
           "@workerFirstPaths": ["/api/*", "/c/*"],
           "@secrets": "keys",
           "@tokenVault": "deployKeys",
-          "@tokenSecret": "CLOUDFLARE_WORKERS_TOKEN_QUIZ",
+          "@tokenSecret": "ACME_WORKERS_TOKEN",
           "children": [
             { "cloudflare.d1": { "name": "db", "@databaseName": "quiz", "@databaseId": "00000000-0000-4000-8000-000000000001", "@migrationsDir": "migrations" } },
             { "cloudflare.kv": { "name": "rateLimit", "@namespaceId": "00000000000000000000000000000001" } },

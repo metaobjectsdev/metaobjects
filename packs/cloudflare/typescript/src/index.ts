@@ -16,6 +16,7 @@ export * from "./constants.js";
 export {
   CloudflareModelError,
   GENERATED_WRANGLER_KEYS,
+  INHERITED_WRANGLER_KEYS,
   bindingName,
   isCloudflareDeployment,
   readCloudflare,
