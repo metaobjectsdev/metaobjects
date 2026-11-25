@@ -26,7 +26,7 @@ command surface splits in two:
 | Capability | Tool | Invocation | Notes |
 |---|---|---|---|
 | Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s). A new `.metaobjects/config.json` also carries `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" }`, the generated list routes' page size and the refusal of undeclared write keys ([api-contract.md](api-contract.md)); for `--dialect sqlite` it also adds `@libsql/kysely-libsql` to the project's `dependencies`, the SQLite driver the CLI's optional peer names (run your package manager's install afterwards); `--force` over an existing config does not add it. `--with-services` wires the recommended service list ([business-rules.md](business-rules.md#the-service-layer-typescript)) instead of the empty one, and `--with-docs` the two docs generators |
-| **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
+| **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); the Python CLI writes the same files itself (`metaobjects agent-docs`, no Node); the C# and Java/Kotlin CLIs still redirect here |
 | **Expected schema** (`schema`) | **Node `meta`** | `meta schema [--dialect <d>] [--as ddl\|json]` | **any backend** — read-only: prints the schema the metadata expects as DDL or as the neutral document ([schema-snapshot-format.md](schema-snapshot-format.md)); reads no database; writes nothing unless `--out` names a file |
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — the reference migration helper, one option beside each language's own tool (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
@@ -926,10 +926,16 @@ and Java with Kotlin, each with no client, React, React with TanStack or Angular
 committed at `agent-context-shipped/` (a manifest and each distinct file once), and a port's
 package embeds it so its command can copy one stack out with no Node on the path.
 `agent-context-shipped/README.md` is the contract that command follows, and the sdk's
-`shipped.test.ts` fails when the tree is stale. Until each port's command lands, the stubs
-below still redirect to the Node CLI.
+`shipped.test.ts` fails when the tree is stale. **Python's command has landed**:
+`metaobjects agent-docs [--server <lang>]... [--client <fw>]... [--out <dir>] [--no-wire-root]`
+copies one stack out of a committed copy of the tree inside the wheel (refreshed by
+`scripts/sync-python-agent-context.sh`, gated for drift), pins the guide links to the release
+tag, and keeps the Node CLI's re-run rules: an identical file is not rewritten, a hand-edited
+file gets the fresh text beside it as `<file>.new`, and the `.metaobjects/.agent-context.json`
+manifest is rewritten only when its text changed. `--skills-dir` and `--no-skills` stay with
+the Node CLI. Until the other ports' commands land, their stubs below still redirect.
 
-The C#, Java/Kotlin, and Python CLIs keep a **non-executing `agent-docs` pointer
+The C# and Java/Kotlin CLIs keep a **non-executing `agent-docs` pointer
 stub** that prints `agent-context scaffolding moved to the meta CLI — run: npx meta
 agent-docs --server <lang>` to stderr and exits non-zero. The **live staleness check**
 in `gen`/`verify` stays per-port (it only *reads* the scaffold to nudge when it drifts);
