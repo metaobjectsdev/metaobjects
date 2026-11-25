@@ -29,17 +29,21 @@ import {
   REPO_ROOT,
   derivePackVocabulary,
   emitPackVocabulary,
-  listPackDirs,
   loadPackClosure,
   packDir,
+  packNamesFromArgs,
   readPackManifest,
 } from "./lib/packs.js";
 
 export interface PackVocabularyCheck {
   readonly name: string;
+  /** Every problem: the core changes, then the pin's. */
   readonly problems: string[];
-  /** The freshly derived pin, as it would be written. */
+  /** The rows of the bundle the pack changes; `--write` refuses while any remain. */
+  readonly coreProblems: string[];
+  /** The freshly derived pin, as it would be written, and the committed one (undefined when absent). */
   readonly emitted: string;
+  readonly committed: string | undefined;
 }
 
 export async function checkPackVocabulary(name: string, root: string = REPO_ROOT): Promise<PackVocabularyCheck> {
@@ -47,39 +51,33 @@ export async function checkPackVocabulary(name: string, root: string = REPO_ROOT
   const pack = closure[closure.length - 1]!;
   const { vocabulary, coreChanges } = derivePackVocabulary(readPackManifest(name, root).id, closure.slice(0, -1), pack);
   const emitted = emitPackVocabulary(vocabulary);
-  const problems = coreChanges.map((c) => `does not leave core alone — ${c}`);
+  const coreProblems = coreChanges.map((c) => `does not leave core alone — ${c}`);
+  const problems = [...coreProblems];
   const pinPath = join(packDir(name, root), PACK_VOCABULARY);
   const committed = existsSync(pinPath) ? readFileSync(pinPath, "utf8").replace(/\r\n/g, "\n") : undefined;
   if (committed === undefined) problems.push(`${PACK_VOCABULARY} is missing — run: bun scripts/pack-vocabulary.ts ${name} --write`);
   else if (committed !== emitted) problems.push(`${PACK_VOCABULARY} is stale — the registered vocabulary changed; review it and run: bun scripts/pack-vocabulary.ts ${name} --write`);
-  return { name, problems, emitted };
-}
-
-function typescriptPacks(root: string): string[] {
-  return listPackDirs(root).filter((n) => existsSync(join(packDir(n, root), "typescript", "package.json")));
+  return { name, problems, coreProblems, emitted, committed };
 }
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const write = args.includes("--write");
-  const names = args.includes("--all") ? typescriptPacks(REPO_ROOT) : args.filter((a) => !a.startsWith("--"));
-  if (names.length === 0 && !args.includes("--all")) {
-    console.error("usage: bun scripts/pack-vocabulary.ts <name>|--all [--write]");
-    process.exit(2);
-  }
+  const names = packNamesFromArgs(args, "bun scripts/pack-vocabulary.ts <name>|--all [--write]");
   let failed = 0;
   for (const name of names) {
     const r = await checkPackVocabulary(name);
-    const core = r.problems.filter((p) => p.startsWith("does not leave core alone"));
-    if (write && core.length === 0) {
-      const path = join(packDir(name), PACK_VOCABULARY);
-      mkdirSync(dirname(path), { recursive: true });
-      const old = existsSync(path) ? readFileSync(path, "utf8") : undefined;
-      if (old !== r.emitted) writeFileSync(path, r.emitted);
-      console.log(`pack ${name}: ${old === r.emitted ? "pin unchanged" : `wrote ${PACK_VOCABULARY}`}`);
+    if (write && r.coreProblems.length === 0) {
+      const unchanged = r.committed === r.emitted;
+      if (!unchanged) {
+        const path = join(packDir(name), PACK_VOCABULARY);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, r.emitted);
+      }
+      console.log(`pack ${name}: ${unchanged ? "pin unchanged" : `wrote ${PACK_VOCABULARY}`}`);
       continue;
     }
-    const shown = write ? core : r.problems;
+    const shown = write ? r.coreProblems : r.problems;
     if (shown.length === 0) {
       console.log(`pack ${name}: vocabulary pinned, leaves core alone`);
     } else {

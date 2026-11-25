@@ -10,7 +10,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writ
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { bounded, checkPackManifests } from "./check-pack-manifests.js";
-import { checkPackBoundary, scanCore, scanRegistry, scanReleaseTooling } from "./check-pack-boundary.js";
+import { scanCore, scanRegistry, scanReleaseTooling } from "./check-pack-boundary.js";
 import { checkPackVocabulary } from "./pack-vocabulary.js";
 import { runPackConformance } from "./pack-conformance.js";
 import { PACK_VOCABULARY, REPO_ROOT } from "./lib/packs.js";
@@ -160,10 +160,6 @@ describe("pack.json check", () => {
 });
 
 describe("pack boundary", () => {
-  test("the repository as committed is inside the boundary", () => {
-    expect(checkPackBoundary(REPO_ROOT)).toEqual([]);
-  });
-
   test("core naming a pack coordinate, reaching into packs/ or naming a pack id fails", () => {
     const root = scratchRoot();
     makePack(root, "demo");

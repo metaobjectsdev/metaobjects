@@ -172,6 +172,16 @@ function checkRust(name: string, m: PackManifest, dir: string, out: Problems): v
   }
 }
 
+/** Each port's native-manifest check, one per port so a new port cannot fall through to another's. */
+const NATIVE_CHECKS: Record<PackPort, (name: string, m: PackManifest, dir: string, out: Problems) => void> = {
+  typescript: checkTypeScript,
+  java: (name, m, dir, out) => checkMaven("java", name, m, dir, out),
+  kotlin: (name, m, dir, out) => checkMaven("kotlin", name, m, dir, out),
+  python: checkPython,
+  csharp: checkCSharp,
+  rust: checkRust,
+};
+
 /** Every problem with every pack under `<root>/packs/`; empty when all agree. */
 export function checkPackManifests(root: string = REPO_ROOT): string[] {
   const out: Problems = [];
@@ -216,8 +226,8 @@ export function checkPackManifests(root: string = REPO_ROOT): string[] {
         continue;
       }
       if (!present) out.push(`packs/${name}/${port}: pack.json lists the port but the directory is missing`);
-      if (!packageMatches(port as PackPort, name, entry.package)) {
-        out.push(`${where}: ports.${port}.package is "${entry.package}", the naming rule gives "${expectedPackage(port as PackPort, name)}"`);
+      if (!packageMatches(port, name, entry.package)) {
+        out.push(`${where}: ports.${port}.package is "${entry.package}", the naming rule gives "${expectedPackage(port, name)}"`);
       }
       if (typeof entry.core !== "string" || !bounded(entry.core)) {
         out.push(`${where}: ports.${port}.core "${entry.core}" must be a range with an upper bound`);
@@ -225,11 +235,7 @@ export function checkPackManifests(root: string = REPO_ROOT): string[] {
       if (typeof entry.publish !== "boolean") out.push(`${where}: ports.${port}.publish must be true or false`);
       if (!present) continue;
       const dir = join(base, port);
-      if (port === "typescript") checkTypeScript(name, m, dir, out);
-      else if (port === "java" || port === "kotlin") checkMaven(port, name, m, dir, out);
-      else if (port === "python") checkPython(name, m, dir, out);
-      else if (port === "csharp") checkCSharp(name, m, dir, out);
-      else checkRust(name, m, dir, out);
+      NATIVE_CHECKS[port](name, m, dir, out);
     }
   }
   return out;

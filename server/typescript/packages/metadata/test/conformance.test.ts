@@ -12,13 +12,13 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import {
-	classifyAgainstLedger,
 	discoverFixtures,
 	isContractOnlyFixture,
 	isDocsOnlyFixture,
 	lintFixture,
+	loadErrorCodes,
 	loadLedger,
-	runFixture,
+	runAndClassify,
 } from "@metaobjectsdev/conformance";
 import { tsAdapter } from "./conformance/adapter.js";
 
@@ -29,13 +29,7 @@ const CORPUS =
 	process.env.METAOBJECTS_CONFORMANCE_CORPUS ??
 	join(import.meta.dir, "../../../../../fixtures/conformance");
 const LEDGER = join(import.meta.dir, "../conformance-expected-failures.json");
-const ERROR_CODES = Object.keys(
-	(
-		(await Bun.file(join(CORPUS, "ERROR-CODES.json")).json()) as {
-			codes: Record<string, string>;
-		}
-	).codes,
-);
+const ERROR_CODES = await loadErrorCodes(join(CORPUS, "ERROR-CODES.json"));
 
 const fixtures = await discoverFixtures(CORPUS);
 const ledger = await loadLedger(LEDGER);
@@ -54,18 +48,9 @@ for (const fix of fixtures) {
 		expect(lintFixture(fix, ERROR_CODES)).toEqual([]);
 	});
 	test(`conformance: ${fix.name}`, async () => {
-		const report = await runFixture(fix, tsAdapter);
-		const status = classifyAgainstLedger(
-			report.status === "pass" ? "pass" : "fail",
-			fix.name,
-			ledger,
-		);
+		const { status, problems } = await runAndClassify(fix, tsAdapter, ledger);
 		if (status === "fail" || status === "fixed-but-listed") {
-			const detail = report.checks
-				.filter((c) => !c.passed)
-				.map((c) => c.detail)
-				.join("; ");
-			throw new Error(`${fix.name} [${status}]: ${detail}`);
+			throw new Error(`${fix.name} [${status}]: ${problems.join("; ")}`);
 		}
 		expect(["pass", "known-gap"]).toContain(status);
 	});

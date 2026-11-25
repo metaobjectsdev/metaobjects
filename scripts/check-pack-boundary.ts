@@ -77,9 +77,10 @@ export function coreFiles(root: string): string[] {
 }
 
 /** Rule 1 and the source half of rule 2. */
-export function scanCore(root: string): string[] {
+export function scanCore(root: string, packs: Map<string, string> = packsById(root)): string[] {
   const out: string[] = [];
-  const ids = [...packsById(root).keys()];
+  const ids = [...packs.keys()];
+  const idRes = ids.map((id) => [id, new RegExp(`(^|[^A-Za-z0-9_-])${id}([^A-Za-z0-9_-]|$)`)] as const);
   for (const rel of coreFiles(root)) {
     const text = readFileSync(join(root, rel), "utf8");
     if (!PACK_COORDINATE.test(text) && !INTO_PACKS.test(text) && !ids.some((id) => text.includes(id))) continue;
@@ -88,8 +89,8 @@ export function scanCore(root: string): string[] {
       const at = `${rel}:${i + 1}`;
       if (PACK_COORDINATE.test(line)) out.push(`${at}: core names a pack coordinate — core may never depend on a pack`);
       else if (INTO_PACKS.test(line)) out.push(`${at}: core reaches into packs/ by path — core may never depend on a pack`);
-      for (const id of ids) {
-        if (new RegExp(`(^|[^A-Za-z0-9_-])${id}([^A-Za-z0-9_-]|$)`).test(line)) {
+      for (const [id, re] of idRes) {
+        if (line.includes(id) && re.test(line)) {
           out.push(`${at}: names the independent pack provider "${id}" — an independent pack is never in the default bundle`);
         }
       }
@@ -113,7 +114,7 @@ export function scanCore(root: string): string[] {
 }
 
 /** The registry half of rule 2: a type a pack pins is never in the bundle's manifest. */
-export function scanRegistry(root: string): string[] {
+export function scanRegistry(root: string, packs: Map<string, string> = packsById(root)): string[] {
   const out: string[] = [];
   const registryPath = join(root, "fixtures/registry-conformance/expected-registry.json");
   const providersPath = join(root, "fixtures/registry-conformance/providers.json");
@@ -123,7 +124,7 @@ export function scanRegistry(root: string): string[] {
   const bundleIds = existsSync(providersPath)
     ? new Set(Object.keys((JSON.parse(readFileSync(providersPath, "utf8")) as { providers: Record<string, unknown> }).providers))
     : new Set<string>();
-  for (const [id, name] of packsById(root)) {
+  for (const [id, name] of packs) {
     if (bundleIds.has(id)) out.push(`packs/${name}: provider id "${id}" is a bundled provider (fixtures/registry-conformance/providers.json)`);
     const pin = join(root, "packs", name, PACK_VOCABULARY);
     if (!existsSync(pin)) continue;
@@ -191,7 +192,8 @@ export function scanReleaseTooling(root: string): string[] {
 }
 
 export function checkPackBoundary(root: string = REPO_ROOT, opts: { releaseScan?: boolean } = {}): string[] {
-  return [...scanCore(root), ...scanRegistry(root), ...(opts.releaseScan === false ? [] : scanReleaseTooling(root))];
+  const packs = packsById(root);
+  return [...scanCore(root, packs), ...scanRegistry(root, packs), ...(opts.releaseScan === false ? [] : scanReleaseTooling(root))];
 }
 
 if (import.meta.main) {

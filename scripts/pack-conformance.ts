@@ -18,19 +18,14 @@
  *
  * Usage: bun scripts/pack-conformance.ts <name> | --all
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { runCorpus, loadLedger, type CorpusResult } from "../server/typescript/packages/conformance/src/index.js";
+import { runCorpus, loadErrorCodes, loadLedger, type CorpusResult } from "../server/typescript/packages/conformance/src/index.js";
 import { createTsAdapter } from "../server/typescript/packages/metadata/test/conformance/adapter.js";
 import type { MetaDataTypeProvider } from "../server/typescript/packages/metadata/src/index.js";
-import { PACK_CORPUS, REPO_ROOT, listPackDirs, loadPackClosure, packDir, readPackManifest } from "./lib/packs.js";
+import { PACK_CORPUS, REPO_ROOT, loadPackClosure, packDir, packNamesFromArgs, readPackManifest } from "./lib/packs.js";
 
 const ERROR_CODES = "ERROR-CODES.json";
-
-function codesIn(path: string): string[] {
-  if (!existsSync(path)) return [];
-  return Object.keys((JSON.parse(readFileSync(path, "utf8")) as { codes?: Record<string, string> }).codes ?? {});
-}
 
 /** The pack's corpus result, or undefined when the pack has no load fixtures yet. */
 export async function runPackConformance(name: string, root: string = REPO_ROOT): Promise<CorpusResult | undefined> {
@@ -40,8 +35,8 @@ export async function runPackConformance(name: string, root: string = REPO_ROOT)
   const extra: Record<string, MetaDataTypeProvider> = {};
   for (const p of closure) extra[p.id] = p;
   const errorCodes = [
-    ...codesIn(join(root, "fixtures/conformance", ERROR_CODES)),
-    ...codesIn(join(corpusRoot, ERROR_CODES)),
+    ...(await loadErrorCodes(join(root, "fixtures/conformance", ERROR_CODES))),
+    ...(await loadErrorCodes(join(corpusRoot, ERROR_CODES))),
   ];
   return runCorpus({
     corpusRoot,
@@ -53,14 +48,7 @@ export async function runPackConformance(name: string, root: string = REPO_ROOT)
 }
 
 if (import.meta.main) {
-  const args = process.argv.slice(2);
-  const names = args.includes("--all")
-    ? listPackDirs().filter((n) => existsSync(join(packDir(n), "typescript", "package.json")))
-    : args.filter((a) => !a.startsWith("--"));
-  if (names.length === 0 && !args.includes("--all")) {
-    console.error("usage: bun scripts/pack-conformance.ts <name>|--all");
-    process.exit(2);
-  }
+  const names = packNamesFromArgs(process.argv.slice(2), "bun scripts/pack-conformance.ts <name>|--all");
   let failed = 0;
   for (const name of names) {
     const r = await runPackConformance(name);

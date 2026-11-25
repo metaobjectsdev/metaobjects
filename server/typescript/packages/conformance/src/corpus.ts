@@ -12,7 +12,8 @@
 // providers.json. A scenario with no providers.json falls back to the default bundle,
 // which by definition does not carry an independent pack, and would test core instead.
 
-import { discoverFixtures, isContractOnlyFixture, isDocsOnlyFixture } from "./fixture.js";
+import { readFile } from "node:fs/promises";
+import { discoverFixtures, isContractOnlyFixture, isDocsOnlyFixture, type Fixture } from "./fixture.js";
 import type { ConformanceAdapter } from "./adapter.js";
 import { lintFixture } from "./fixture-lint.js";
 import { runFixture } from "./runner.js";
@@ -51,6 +52,33 @@ export interface CorpusResult {
   readonly passed: boolean;
 }
 
+/** The codes an `ERROR-CODES.json` defines (`{ "codes": { CODE: description } }`); none when it is absent. */
+export async function loadErrorCodes(path: string): Promise<string[]> {
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch {
+    return [];
+  }
+  return Object.keys((JSON.parse(raw) as { codes?: Record<string, string> }).codes ?? {});
+}
+
+/**
+ * Run one fixture and classify it against the ledger: the step every runner shares
+ * (the core metadata test, one `bun test` per fixture, and `runCorpus` below). The
+ * problems are the failed checks' details, or the ledger note for `fixed-but-listed`.
+ */
+export async function runAndClassify(
+  fix: Fixture,
+  adapter: ConformanceAdapter,
+  ledger: readonly string[],
+): Promise<{ status: FixtureStatus; problems: string[] }> {
+  const report = await runFixture(fix, adapter);
+  const status = classifyAgainstLedger(report.status === "pass" ? "pass" : "fail", fix.name, ledger);
+  if (status === "fixed-but-listed") return { status, problems: ["passes but is listed in the expected-failures ledger"] };
+  return { status, problems: report.checks.filter((c) => !c.passed).map((c) => c.detail ?? c.kind) };
+}
+
 /** Run every scenario under `corpusRoot` through `adapter`. */
 export async function runCorpus(opts: CorpusOptions): Promise<CorpusResult> {
   const ledger = opts.ledger ?? [];
@@ -71,22 +99,13 @@ export async function runCorpus(opts: CorpusOptions): Promise<CorpusResult> {
       results.push({ name: fix.name, status: "fail", problems });
       continue;
     }
-    let report: Awaited<ReturnType<typeof runFixture>>;
     try {
-      report = await runFixture(fix, opts.adapter);
+      results.push({ name: fix.name, ...(await runAndClassify(fix, opts.adapter, ledger)) });
     } catch (e) {
       // An adapter that throws (an unknown provider id, say) is this scenario's failure,
       // not the run's: every other scenario still gets its verdict.
       results.push({ name: fix.name, status: "fail", problems: [`the adapter threw: ${(e as Error).message}`] });
-      continue;
     }
-    const status = classifyAgainstLedger(report.status === "pass" ? "pass" : "fail", fix.name, ledger);
-    const failed = report.checks.filter((c) => !c.passed).map((c) => c.detail ?? c.kind);
-    results.push({
-      name: fix.name,
-      status,
-      problems: status === "fixed-but-listed" ? ["passes but is listed in the expected-failures ledger"] : failed,
-    });
   }
   const ran = results.some((r) => r.status !== "skipped");
   const passed = ran && results.every((r) => r.status !== "fail" && r.status !== "fixed-but-listed");

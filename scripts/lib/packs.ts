@@ -108,6 +108,22 @@ export function listPackDirs(root: string = REPO_ROOT): string[] {
     .sort();
 }
 
+/** The packs that carry a TypeScript port (the ones the packs lane runs). */
+export function typescriptPackNames(root: string = REPO_ROOT): string[] {
+  return listPackDirs(root).filter((n) => existsSync(join(packDir(n, root), "typescript", "package.json")));
+}
+
+/** The pack names a script's arguments select (`<name>...` or `--all`); exits 2 with `usage` when none is given. */
+export function packNamesFromArgs(args: readonly string[], usage: string): string[] {
+  if (args.includes("--all")) return typescriptPackNames();
+  const names = args.filter((a) => !a.startsWith("--"));
+  if (names.length === 0) {
+    console.error(`usage: ${usage}`);
+    process.exit(2);
+  }
+  return names;
+}
+
 export function packDir(name: string, root: string = REPO_ROOT): string {
   return join(root, PACKS_DIR, name);
 }

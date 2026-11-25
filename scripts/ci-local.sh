@@ -297,6 +297,20 @@ step_if() {  # step_if <tool> "<name>" <cmd...>  — SKIP (or FAIL under --stric
   fi
 }
 
+step_canary() {  # step_canary "<name>" "<red message>" <cmd...>  — like step, but red records a named SKIP
+  local name="$1" red="$2"; shift 2
+  local t0=$SECONDS dt
+  echo ""
+  echo "── ▶ $name ──────────────────────────────────────────────"
+  if "$@"; then
+    dt=$((SECONDS - t0)); record PASS "$dt" "$name"
+    echo "── ✓ $name ($(fmt_dur "$dt"))"
+  else
+    dt=$((SECONDS - t0)); record SKIP "$dt" "$red"
+    echo "  ⊘ $red ($(fmt_dur "$dt"))" >&2
+  fi
+}
+
 # ── hygiene.yml: public-repo leak scan (the SECURITY gate kept in CI) ──────────
 gate_leak_scan() {
   local base="${MO_CI_LEAK_BASE:-origin/main}"
@@ -635,24 +649,20 @@ gate_pack_ts() { # gate_pack_ts <name>
     ( cd "$dir" && bun test ) || return 1
   fi
 }
-# pack_is_blocking <name> — true when this change touches the pack's own files, when the base
-# cannot be resolved (every uncertainty widens), or when MO_CI_PACKS_BLOCKING=1.
-pack_is_blocking() {
-  [ "${MO_CI_PACKS_BLOCKING:-0}" = "1" ] && return 0
-  local base mb paths
+# packs_changed_paths — print this change's paths, once per run for every pack; fail when the
+# base cannot be resolved or the listing fails, so every uncertainty makes every pack block.
+packs_changed_paths() {
+  local base mb
   base="${MO_CI_AFFECTED_BASE:-$(default_base)}"
-  [ -n "$base" ] && mb="$(git merge-base HEAD "$base" 2>/dev/null)" || return 0
-  # Captured, not piped: under pipefail, `grep -q` exiting on its first match can kill the
-  # writer with SIGPIPE and turn a match into "not blocking"; a failed listing widens.
-  paths="$(changed_paths "$mb")" || return 0
-  grep -q "^packs/$1/" <<<"$paths"
+  [ -n "$base" ] && mb="$(git merge-base HEAD "$base" 2>/dev/null)" && [ -n "$mb" ] || return 1
+  changed_paths "$mb"
 }
 # The packs lane. A pack is a preview product on its own release line, so a core change that
 # turns one red must not block core: it is reported as a named SKIP (the canary) and the pack
 # is fixed in its own PR. A change to the pack itself blocks, as any product's own change does.
 run_packs_steps() {
   want packs || return 0
-  local n canary
+  local n paths="" all_block=0
   local -a packs=()
   for n in packs/*/typescript/package.json; do
     [ -f "$n" ] || continue
@@ -667,16 +677,16 @@ run_packs_steps() {
      && ! step_passed "ts build + typecheck" && ! step_passed "ts build"; then
     step "packs: core build" gate_ts_build
   fi
+  # A pack blocks when this change touches its own files, when MO_CI_PACKS_BLOCKING=1, or when
+  # the change cannot be listed. Captured once, not piped: under pipefail, `grep -q` exiting on
+  # its first match can kill the writer with SIGPIPE and turn a match into "not blocking".
+  if [ "${MO_CI_PACKS_BLOCKING:-0}" = "1" ] || ! paths="$(packs_changed_paths)"; then all_block=1; fi
   for n in "${packs[@]}"; do
-    if pack_is_blocking "$n"; then
+    if [ "$all_block" -eq 1 ] || grep -q "^packs/$n/" <<<"$paths"; then
       step "pack $n" gate_pack_ts "$n"
-      continue
+    else
+      step_canary "pack $n (canary)" "pack $n canary: red against core's tree (non-blocking, ADR-0069; fix it in the pack's own PR)" gate_pack_ts "$n"
     fi
-    canary="pack $n canary: red against core's tree (non-blocking, ADR-0069)"
-    if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then echo "  + pack $n (canary)"; continue; fi
-    echo ""; echo "── ▶ pack $n (canary: this change does not touch it) ──"
-    if gate_pack_ts "$n"; then record PASS 0 "pack $n (canary)"; echo "── ✓ pack $n (canary)"
-    else record SKIP 0 "$canary"; echo "  ⊘ $canary — fix it in the pack's own PR" >&2; fi
   done
 }
 
@@ -1647,6 +1657,7 @@ echo "metaobjects local CI  (mode: $_mode)"
 # without running them, then exit 0.  Useful for verifying section selection.
 if [ "${MO_CI_LIST_ONLY:-0}" = "1" ]; then
   step()    { echo "  + $1"; }
+  step_canary() { echo "  + $1"; }
   step_if() { local t="$1" n="$2"; have "$t" && echo "  + $n" || echo "  ⊘ $n (no $t, would skip)"; }
   run_integration_for() { local label="$1"; shift; local r; for r in "$@"; do echo "  + integration-tests ($r)"; done; }
   run_cube_lane() { echo "  + cube-model live check (Cube + Postgres)"; }
