@@ -1715,8 +1715,12 @@ api contract's timestamp spelling. Each file is the packaged source with one cha
 `Codegen.Runtime`, matching the folder the way `codegen/generators/` matches
 `Codegen.Generators`. The ejected `RoutesGenerator.cs` differs from the reference in one
 more line, its `HelperRuntimeNamespace` constant, so its output says
-`using Codegen.Runtime;`. Ejecting a generator whose output uses none of these, such as
-`entity` or `filter-allowlist`, copies nothing extra.
+`using Codegen.Runtime;`. The filter allowlist's output uses the helper types too (the rule
+table the routes hand to the list parser), so `routes` and `filter-allowlist` are owned
+together: ejecting either writes both, each with that constant changed, and
+`dotnet meta eject --undo routes` gives both back. One owned and one packaged would put two
+copies of the helper types in one build. Ejecting a generator whose output uses none of these,
+such as `entity` or `names`, copies nothing extra.
 
 Wire it in two places:
 

@@ -390,8 +390,34 @@ public sealed class EjectCommandTests : IDisposable
     [Fact]
     public void Ejecting_a_generator_whose_output_uses_no_helper_runtime_copies_none()
     {
-        EjectCommand.Run(["entity", "filter-allowlist", "names"], _root, force: false);
+        EjectCommand.Run(["entity", "names"], _root, force: false);
         Assert.False(Directory.Exists(RuntimeDir));
+    }
+
+    // The routes hand the allowlist's FilterFieldRule table to ListQueryParser: owning one and not the
+    // other would put two copies of the helper types in one build, so they are ejected together.
+    [Theory]
+    [InlineData("routes", "FilterAllowlistGenerator.cs")]
+    [InlineData("filter-allowlist", "RoutesGenerator.cs")]
+    public void Ejecting_one_helper_runtime_user_ejects_the_other_with_it(string named, string partnerFile)
+    {
+        var result = EjectCommand.Run([named], _root, force: false);
+        Assert.Equal(0, result.ExitCode);
+        var partner = File.ReadAllText(Path.Combine(GeneratorsDir, partnerFile));
+        Assert.Contains("HelperRuntimeNamespace = \"Codegen.Runtime\";", partner);
+        Assert.Contains(result.Out, l => l.Contains(partnerFile) && l.Contains("owned with them"));
+    }
+
+    [Fact]
+    public void A_partner_already_owned_is_kept_as_it_is()
+    {
+        Assert.Equal(0, EjectCommand.Run(["filter-allowlist"], _root, force: false).ExitCode);
+        var allowlist = Path.Combine(GeneratorsDir, "FilterAllowlistGenerator.cs");
+        File.AppendAllText(allowlist, "// mine\n");
+        File.Delete(Path.Combine(GeneratorsDir, "RoutesGenerator.cs"));
+
+        Assert.Equal(0, EjectCommand.Run(["routes"], _root, force: false).ExitCode);
+        Assert.EndsWith("// mine\n", File.ReadAllText(allowlist));
     }
 
     [Fact]

@@ -20,6 +20,12 @@ Update when a gap closes or a new one surfaces.
 
 ## Gaps
 
+### G10 — The list routes sort on more fields than the contract's sortable set
+
+**Contract.** `sort=<field>` names a field in the entity's sort allowlist: `@sortable: true`, or no `@sortable` and `@filterable: true` ([`api-contract.md` "Sort + pagination"](../../../../docs/features/api-contract.md)). The TypeScript routes serve exactly that set, and the C# `<Entity>FilterAllowlist.Sort` table lists it (the `list-query-conformance` corpus reads it).
+
+**Today.** The generated C# routes sort on every scalar, non-credential field (`SortRules` in `RoutesGenerator.cs`), whatever `@sortable` and `@filterable` say: a request TypeScript refuses with `invalid_sort` is served here, and `invalid_sort`'s `allowed` lists the wider set. Narrowing it is a breaking change for any C# client that sorts on an undeclared field (a grid column, say), so it waits on a ruling rather than riding in a REST-standard change.
+
 ### G3 — Multi-field sort
 
 **Contract.** Single sort key only in the default contract (`sort=<field>:asc|desc`). Multi-field sort is NOT in scope for the contract today.

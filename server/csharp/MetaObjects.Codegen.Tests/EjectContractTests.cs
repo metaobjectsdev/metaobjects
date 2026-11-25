@@ -251,9 +251,13 @@ public class EjectContractTests
         ];
     }
 
-    private static IGenerator Instantiate(Assembly owned, string? templateRoot)
+    private static IGenerator Instantiate(Assembly owned, string stableName, string? templateRoot)
     {
-        var type = owned.GetTypes().Single(t => typeof(IGenerator).IsAssignableFrom(t) && !t.IsAbstract);
+        // An eject can write more than one generator (the helper-runtime users are owned together),
+        // so the type is the one in the named generator's own file.
+        var className = Path.GetFileNameWithoutExtension(
+            EjectableGenerators.Entries().Single(e => e.Name == stableName).SourceFileName!);
+        var type = owned.GetTypes().Single(t => typeof(IGenerator).IsAssignableFrom(t) && !t.IsAbstract && t.Name == className);
         // The one generator constructed with an argument takes the template root.
         var takesTemplateRoot = type.GetConstructors().Any(c =>
             c.GetParameters() is [{ ParameterType: var p }] && p == typeof(string));
@@ -292,7 +296,7 @@ public class EjectContractTests
 
             var packaged = Run(SharedModelTestSupport.Configure(
                 GeneratorRegistry.Get(stableName)!.Factory(new GeneratorBuildContext(corpus.TemplateRoot))));
-            var owned = Run(SharedModelTestSupport.Configure(Instantiate(copy.Assembly, corpus.TemplateRoot)));
+            var owned = Run(SharedModelTestSupport.Configure(Instantiate(copy.Assembly, stableName, corpus.TemplateRoot)));
             emitted += packaged.Count;
             Assert.Equal(packaged.Select(f => System.IO.Path.GetFileName(f.Path)), owned.Select(f => System.IO.Path.GetFileName(f.Path)));
             for (var i = 0; i < packaged.Count; i++)

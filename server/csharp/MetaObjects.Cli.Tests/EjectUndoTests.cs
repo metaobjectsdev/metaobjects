@@ -20,6 +20,30 @@ public sealed class EjectUndoTests : IDisposable
 
     private void Edit(string rel) => File.AppendAllText(Owned(rel), "\n// my own edit\nvar mine = 1;\n");
 
+    // The helper-runtime users (routes, filter-allowlist) are owned together, so they go back together:
+    // one packaged and one owned would put two copies of the helper types in one build.
+    [Fact]
+    public void Naming_one_helper_runtime_user_gives_back_its_owned_partner_too()
+    {
+        Eject("routes");
+        Assert.True(File.Exists(Owned("codegen/generators/FilterAllowlistGenerator.cs")));
+
+        Assert.Equal(0, EjectCommand.Undo(["routes"], _root, force: false).ExitCode);
+        Assert.False(File.Exists(Owned("codegen/generators/RoutesGenerator.cs")));
+        Assert.False(File.Exists(Owned("codegen/generators/FilterAllowlistGenerator.cs")));
+    }
+
+    [Fact]
+    public void With_no_names_an_identical_helper_runtime_user_stays_while_its_partner_is_edited()
+    {
+        Eject("routes");
+        Edit("codegen/generators/FilterAllowlistGenerator.cs");
+
+        Assert.Equal(0, EjectCommand.Undo([], _root, force: false).ExitCode);
+        Assert.True(File.Exists(Owned("codegen/generators/RoutesGenerator.cs")));
+        Assert.True(File.Exists(Owned("codegen/generators/FilterAllowlistGenerator.cs")));
+    }
+
     [Fact]
     public void With_no_names_removes_every_identical_copy_and_keeps_the_edited_one()
     {

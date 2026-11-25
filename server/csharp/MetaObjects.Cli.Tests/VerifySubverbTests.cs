@@ -229,7 +229,8 @@ public sealed class VerifySubverbTests : IDisposable
             """);
         var gen = GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
         var genWarning = Assert.Single(gen.Result!.Warnings, w => w.Contains(HelperRuntime.PackageId));
-        Assert.Contains("SubscriberRoutes.g.cs imports MetaObjects.AspNetCore", genWarning);
+        // The allowlist (FilterFieldRule, SortFieldRule) and the routes both import it.
+        Assert.Contains("SubscriberFilterAllowlist.g.cs and 1 other generated file(s) import MetaObjects.AspNetCore", genWarning);
 
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
         Assert.Equal(0, r.ExitCode);

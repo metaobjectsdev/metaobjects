@@ -55,9 +55,10 @@ public static class HelperRuntimeReference
         var example = sorted.Count > 1 ? $"{sorted[0]} and {sorted.Count - 1} other generated file(s) import" : $"{sorted[0]} imports";
         return $"{example} {HelperRuntime.FormerNamespace} for the route helpers (FilterParser, EfCoreFilterDispatch, ...), which " +
             $"since 1.3.0 are in the {HelperRuntime.PackageId} package, namespace {HelperRuntime.PackagedNamespace}, so it will not compile. " +
-            $"The generator that wrote it is a copy owned from before 1.3.0: set its HelperRuntimeNamespace constant to " +
-            $"\"{HelperRuntime.PackagedNamespace}\" and reference the {HelperRuntime.PackageId} package, or run " +
-            $"`dotnet meta eject routes --force` to own the current generator and the helpers with it.";
+            $"Reference the {HelperRuntime.PackageId} package and run `dotnet meta gen`; the packaged generators write the " +
+            $"new import. If the generator that wrote it is a copy you own from before 1.3.0, also set its " +
+            $"HelperRuntimeNamespace constant to \"{HelperRuntime.PackagedNamespace}\", or run " +
+            $"`dotnet meta eject routes --force` to own the current generators and the helpers with them.";
     }
 
     /// <summary>

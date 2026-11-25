@@ -48,20 +48,12 @@ public static class LineTotalsRoutes
 
             // Pagination (report): every row up to the cap, refused above it.
             const int maxRows = 10000;
-            long? limit = null;
-            long offset = 0;
-            if (qs.TryGetValue("limit", out var limitRaw))
-            {
-                if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)
-                    return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = limitRaw.ToString(), expected = $"an integer from 1 to {maxRows}" });
-                if (parsedLimit > maxRows)
-                    return Results.BadRequest(new { error = "report_too_large", maxRows });
-                limit = parsedLimit;
-            }
-            if (qs.TryGetValue("offset", out var offsetRaw)
-                && (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))
-                return Results.BadRequest(new { error = "pagination.invalid_value", param = "offset", value = offsetRaw.ToString(), expected = "a non-negative integer (0 or more)" });
-            if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));
+            var limit = listQuery.Limit;
+            if (limit == 0)
+                return Results.BadRequest(new { error = "pagination.invalid_value", param = "limit", value = "0", expected = $"an integer from 1 to {maxRows}" });
+            if (limit > maxRows)
+                return Results.BadRequest(new { error = "report_too_large", maxRows });
+            if (listQuery.Offset is { } offset && offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));
             q = q.Take((int)(limit ?? maxRows + 1L));
 
             var rows = await q.ToListAsync();

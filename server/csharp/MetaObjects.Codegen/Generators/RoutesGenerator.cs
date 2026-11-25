@@ -179,20 +179,14 @@ public class RoutesGenerator : PerEntityGenerator
             w.Line("var maxRows = format is null ? listMaxRows : exportMaxRows;");
             tooLarge = "format is null ? " + tooLarge + " : ReportExportHttp.TooLarge(maxRows)";
         }
-        w.Line("long? limit = null;");
-        w.Line("long offset = 0;");
-        w.Line("if (qs.TryGetValue(\"limit\", out var limitRaw))");
-        w.Open("{");
-        w.Line("if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
-        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = limitRaw.ToString(), expected = $\"an integer from 1 to {maxRows}\" });");
-        w.Line("if (parsedLimit > maxRows)");
+        // ListQueryParser has refused a bound that is not a non-negative integer; a report also refuses
+        // limit=0 (a bad bound, not an empty answer) and a limit above the cap.
+        w.Line("var limit = listQuery.Limit;");
+        w.Line("if (limit == 0)");
+        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = \"0\", expected = $\"an integer from 1 to {maxRows}\" });");
+        w.Line("if (limit > maxRows)");
         using (w.Hanging()) w.Line($"return {tooLarge};");
-        w.Line("limit = parsedLimit;");
-        w.Close("}");
-        w.Line("if (qs.TryGetValue(\"offset\", out var offsetRaw)");
-        using (w.Hanging()) w.Line("&& (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))");
-        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"offset\", value = offsetRaw.ToString(), expected = \"a non-negative integer (0 or more)\" });");
-        w.Line("if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
+        w.Line("if (listQuery.Offset is { } offset && offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
         w.Line("q = q.Take((int)(limit ?? maxRows + 1L));");
         w.Blank();
         w.Line("var rows = await q.ToListAsync();");
