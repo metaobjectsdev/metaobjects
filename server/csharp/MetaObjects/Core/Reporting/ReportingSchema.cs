@@ -1,8 +1,8 @@
 // Reporting attribute schemas — the per-subtype attr sets for dimension.*, measure.* and
 // segment.*, plus the object.report attrs (FR-044).
 //
-// Colocated per ADR-0003. Mirrors the canonical spec/metamodel/reporting.json and the
-// object.report block of spec/metamodel/object.json (which this port embeds + reads):
+// Colocated per ADR-0003. Mirrors the canonical spec/metamodel/reporting.json, which
+// declares object.report too (the reporting pack; this port embeds + reads it):
 // DESCRIPTIONS are deliberately NOT hand-copied here — FR-033 sources every description
 // from the shared JSON via Registry.ApplySpecDescriptions. Only the facets the manifest
 // needs but the description pass does not carry (value type / array-ness / requiredness /

@@ -13,7 +13,7 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.report`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.exactlyOne`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.checkbox`, `view.currency`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.image`, `view.month`, `view.number`, `view.password`, `view.radio`, `view.text`, `view.textarea`, `view.web`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.exactlyOne`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.checkbox`, `view.currency`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.image`, `view.month`, `view.number`, `view.password`, `view.radio`, `view.text`, `view.textarea`, `view.web`
 
 **Contributes attributes:**
 
@@ -32,10 +32,9 @@ Core metaobjects metamodel types and subtypes.
 - `object.base`: `@object`, `@objectAdapter`
 - `object.entity`: `@collectionName`, `@discriminator`, `@discriminatorValue`
 - `object.projection`: `@collectionName`, `@filter`
-- `object.report`: `@collectionName`, `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`
-- `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
+- `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@via`
 - `origin.computed`: `@expr`
-- `origin.first`: `@filter`, `@of`, `@orderBy`, `@segment`, `@via`
+- `origin.first`: `@filter`, `@of`, `@orderBy`, `@via`
 - `origin.passthrough`: `@convert`, `@from`, `@via`
 - `relationship.aggregation`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.association`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
@@ -126,6 +125,35 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `field.uri`: `@example`, `@instruction`, `@xmlText`
 - `field.uuid`: `@example`, `@instruction`, `@xmlText`
 - `object.value`: `@normalize`
+
+## metaobjects-reporting
+
+Reporting (FR-044): object.report, dimension / measure / segment on an entity, and @segment on origin.aggregate and origin.first.
+
+**Owns (registers):** `dimension.attribute`, `dimension.time`, `measure.aggregate`, `measure.derived`, `measure.ratio`, `object.report`, `segment.filter`
+
+**Contributes attributes:**
+
+- `dimension.attribute`: `@of`, `@via`
+- `dimension.time`: `@grains`, `@of`, `@via`
+- `measure.aggregate`: `@agg`, `@default`, `@distinct`, `@filter`, `@of`, `@segment`
+- `measure.derived`: `@expr`
+- `measure.ratio`: `@default`, `@denominator`, `@numerator`
+- `object.report`: `@collectionName`, `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`
+- `origin.aggregate`: `@segment`
+- `origin.first`: `@segment`
+- `segment.filter`: `@filter`
+
+## metaobjects-requirements
+
+Requirements: requirement.functional and requirement.architectural, declared at the document root and checked by meta verify.
+
+**Owns (registers):** `requirement.architectural`, `requirement.functional`
+
+**Contributes attributes:**
+
+- `requirement.architectural`: `@counterexample`, `@disposition`, `@implementedBy`, `@level`, `@statement`, `@status`, `@supersededBy`, `@trackedBy`
+- `requirement.functional`: `@counterexample`, `@disposition`, `@implementedBy`, `@level`, `@statement`, `@status`, `@supersededBy`, `@trackedBy`
 
 ## metaobjects-rules
 

@@ -1,0 +1,1 @@
+{ "format": "text", "note": "0 is falsy for a section, as JavaScript truthiness reads it, and still prints as 0; a non-zero number renders the body once" }

@@ -1,0 +1,12 @@
+{
+  "user": {
+    "profile": {
+      "name": "Ada",
+      "email": "ada@example.test"
+    },
+    "roles": {
+      "primary": "admin"
+    }
+  },
+  "missing": {}
+}

@@ -10,6 +10,8 @@ The model never says *how* an operation works. That is code. The model says wher
 is needed, which moves are legal, and what a command may return, so all three can be checked.
 
 **What 1.3.0 ships.** The vocabulary, checked when it loads and by `verify`, in all five ports.
+It is a provider pack, composed by default: see
+[Where vocabulary lives](extending-with-providers.md#where-vocabulary-lives).
 The Rust port loads the vocabulary and runs the same loader rules, and its `verify` runs the
 same rules gate, held to `fixtures/rules-check-conformance/` ([Rust port](../ports/rust.md)).
 A requirement can claim an operation or a transition. The flat generators generate nothing from
@@ -197,11 +199,13 @@ setting `rules.permissions.names` makes `verify` warn about derived names, or fa
 | O4 | `ERR_OPERATION_UNKNOWN_TRANSITION` | A `transitions` name is not a transition of the target. |
 | O5 | `ERR_BAD_ATTR_VALUE` | An `errors` code is not lower snake case, is listed twice, or is one the route answers itself: `not_found`, `forbidden`, `invalid_transition`, `transition_condition_failed`, `state_managed`, `validation`, `invalid_json`, `invalid_id`, `method_not_allowed`, `constraint_violation`, `internal`. |
 | O6 | `ERR_TRANSITION_NAME_COLLISION` | Two operations of one package share a name, compared without case, in one API or across the package's APIs. One operation declared in two files merges and is not refused. Neither is one operation declared identically in two APIs (a `v1` beside a `v2`): same name, subtype and every operation attribute; only the bindings may differ. |
+| P3 | `ERR_TRANSITION_NAME_COLLISION` | Two permission points ask about one permission name and at least one name is derived: an operation named `Order.open`, or one declaring `permission: p.Order.open`, beside the `open` transition of `Order` in `p`. Names are compared exactly as the policy receives them: `::` and `.` are different things in the metadata, so an `open` operation in package `p::Order` (`p::Order.open`) does not collide with that transition (`p.Order.open`). Two declared `permission` values may be equal. |
 | B1 | `ERR_BINDING_PATH_MISMATCH` | A `binding.rest` `path` has the wrong placeholders. |
 | B2 | `ERR_BINDING_PATH_MISMATCH` | Two declared bindings of one API have the same method (declared or derived) and the same path, ignoring placeholder names. |
 
-Names are compared without case because each one becomes a command, a permission constant and a
-file, and those collide on a case-folding target.
+Names are compared without case (L5 and O0, L6, O6) because each one becomes a command, a permission
+constant and a file, and those collide on a case-folding target. P3 compares permission names
+exactly, as the policy receives them.
 
 Some refusals come from the registry:
 

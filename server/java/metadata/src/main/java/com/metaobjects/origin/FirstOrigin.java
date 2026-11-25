@@ -54,8 +54,7 @@ public class FirstOrigin extends MetaOrigin {
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_FILTER)
                .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
-            def.optionalAttributeWithConstraints(ATTR_SEGMENT)
-               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // @segment is projected onto this type by the reporting pack (reporting.json extends).
         });
     }
 }

@@ -266,16 +266,17 @@ root), and a git URL names a repository and an optional revision.
 
 ### Conformance
 
-The port runs the shared corpora below. Four of them keep a ledger: a fixture that fails and is not on
+The port runs the shared corpora below. Five of them keep a ledger: a fixture that fails and is not on
 the port's ledger prints a warning and does not fail the `rust` lane until ADR-0065 turns the warning off; a
-fixture that passed and regresses still fails it, because each ledger records how many fixtures must
-pass (`minPassing`) and may only shrink. The others have no ledger: each case asserts its result
+fixture that passed and regresses still fails it, because each ledger records what the port passes
+today — a `minPassing` count, or (the render corpus) the cases that must still differ — and may only
+shrink. The others have no ledger: each case asserts its result
 outright.
 
 | Corpus | Rust today |
 |---|---|
 | `registry-conformance` | byte-identical manifest |
-| `conformance` (the metamodel corpus) | **578 of 578**, and the ledger is empty |
+| `conformance` (the metamodel corpus) | **584 of 584**, and the ledger is empty |
 | `yaml-conformance` | 18 of 19. The one on the ledger, `yaml-ref-root-escape`, waits for the root-level `::` reference rules of [ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md), which are reference resolution, not a validation pass. |
 | `source-resolution-conformance` | all 28 cases |
 | `naming-conformance` | all of it |
@@ -285,7 +286,7 @@ outright.
 | `decimal-wire`, `duration-wire` | every vector, against the code the support crate carries |
 | `writer-conformance` | every `core` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)) |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
-| `render-conformance` | every case, byte-identical, through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
+| `render-conformance` | every case but the three the ledger holds — `render-shadowed-dotted-prefix`, `render-list-length`, `render-zero-falsiness` (`mustache-ng` has its own name lookup, data model and truthiness); a ledgered case must still differ, the rest render byte-identical through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
 | `extract-conformance` | all 58 cases, through `metaobjects_render::extract::extract` |
 | `output-prompt-conformance` | all 17 cases in all three `@promptStyle` styles, with the extract round trip, through `metaobjects_render::prompt::render_output_format` |
 

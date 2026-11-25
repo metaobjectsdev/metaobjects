@@ -35,6 +35,8 @@ const DEFAULT_PROVIDERS: &[&str] = &[
     "metaobjects-prompt",
     "metaobjects-ui",
     "metaobjects-ui-web",
+    "metaobjects-reporting",
+    "metaobjects-requirements",
 ];
 
 fn corpus() -> PathBuf {

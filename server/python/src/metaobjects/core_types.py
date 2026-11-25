@@ -244,10 +244,11 @@ def _register_subtypes(
 # NOT declared in any spec/metamodel/*.json provider file; both this port and the TS
 # reference HAND-CODE the root (the single documented hand-coded exception to the
 # JSON-sourced model). Its STRUCTURAL children must byte-match the cross-port golden:
-# description "Root metadata document" and EXACTLY the five genuinely-open structural
-# wildcards a document root legitimately holds — field / object / requirement /
-# template / validator
-# (mirrors the TS core-types.ts root def and the Java MetaRoot registration). Because
+# description "Root metadata document" and EXACTLY the four genuinely-open structural
+# wildcards core itself registers — field / object / template / validator
+# (mirrors the TS core-types.ts root def and the Java MetaRoot registration). A
+# `requirement` child is admitted by the requirements pack (requirement.json
+# `extends`), beside the entities it describes. Because
 # it is undeclared in the JSON, the strict-children pass leaves it untouched, so the
 # children registered HERE are emitted verbatim. The any-attr wildcard is intentionally
 # omitted — the golden carries attrs:[] for the root (no metadata-attr vocabulary).
@@ -260,8 +261,6 @@ core_provider.add(
         child_rules=[
             ChildRule(TYPE_FIELD, "*"),
             ChildRule(TYPE_OBJECT, "*"),
-            # Capability requirements are declared beside the entities they describe.
-            ChildRule(TYPE_REQUIREMENT, "*"),
             ChildRule(TYPE_TEMPLATE, "*"),
             ChildRule(TYPE_VALIDATOR, "*"),
         ],
@@ -317,6 +316,8 @@ _OBJECT_COMMON_ATTRS = [
 # TypeRegistry.extend (prompt.json declares it on object.value), matching the TS
 # promptProvider split. object.value carries only the shared object attrs in core.
 for _obj_sub in OBJECT_SUBTYPES:
+    if _obj_sub == OBJECT_SUBTYPE_REPORT:
+        continue  # object.report is the reporting pack's (reporting_provider)
     core_provider.add(
         TypeDefinition(
             type=TYPE_OBJECT,
@@ -350,147 +351,6 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
             )
         )
         break
-
-# FR-044 — object.report: declared dimensions x measures of ONE entity (@from),
-# compiled to a read-only view. Its fields and identity are DERIVED (the loader
-# refuses declared ones, R4), so it carries the projection's child set (no
-# relationship / template). object.json's report block (extendsBase) is the
-# strict graph the spec pass re-derives onto this def; it declares ONLY the five
-# report attrs, so the shared discriminator attrs are pruned exactly as on
-# projection. Mirrors the TS object provider.
-for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
-    if _def.type == TYPE_OBJECT and _def.sub_type == OBJECT_SUBTYPE_REPORT:
-        _def.child_rules[:] = list(_PROJECTION_CHILD_RULES)
-        _def.attrs.extend(
-            [
-                AttrSchema(name=OBJECT_REPORT_ATTR_FROM, value_type=ATTR_SUBTYPE_STRING, required=True),
-                AttrSchema(
-                    name=OBJECT_REPORT_ATTR_DIMENSIONS,
-                    value_type=ATTR_SUBTYPE_STRING,
-                    required=False,
-                    is_array=True,
-                ),
-                AttrSchema(
-                    name=OBJECT_REPORT_ATTR_MEASURES,
-                    value_type=ATTR_SUBTYPE_STRING,
-                    required=True,
-                    is_array=True,
-                ),
-                AttrSchema(name=OBJECT_REPORT_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
-                AttrSchema(name=OBJECT_REPORT_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
-                # R8: the to-one path from @from whose entity supplies the report's rows.
-                AttrSchema(name=OBJECT_REPORT_ATTR_SPINE, value_type=ATTR_SUBTYPE_STRING, required=False),
-            ]
-        )
-        break
-
-# FR-044 reporting vocabulary — dimension / measure / segment. Declared as
-# children of object.entity (spec/metamodel/object.json — the strict-children
-# pass derives the entity's dimension/measure/segment placements from it), never
-# root-level, so the root keeps its five wildcards. One vocabulary, one block: a
-# report names dimensions and measures, and both may reference a segment.
-# measure.derived is NOT registered (it waits for FR-037 R5). Attr scoping is
-# per-subtype exactly as spec/metamodel/reporting.json declares it.
-_DIMENSION_COMMON_ATTRS = [
-    AttrSchema(name=REPORTING_ATTR_OF, value_type=ATTR_SUBTYPE_STRING, required=True),
-    AttrSchema(name=REPORTING_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
-]
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_DIMENSION,
-        sub_type=DIMENSION_SUBTYPE_ATTRIBUTE,
-        factory=MetaDimension,
-        attrs=list(_DIMENSION_COMMON_ATTRS),
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_DIMENSION,
-        sub_type=DIMENSION_SUBTYPE_TIME,
-        factory=MetaDimension,
-        attrs=[
-            *_DIMENSION_COMMON_ATTRS,
-            # Weeks start Monday (ISO-8601) in every lowering; 'hour' is refused on
-            # a field.date by the loader (D4), not by the closed set.
-            AttrSchema(
-                name=REPORTING_ATTR_GRAINS,
-                value_type=ATTR_SUBTYPE_STRING,
-                required=True,
-                is_array=True,
-                allowed_values=TIME_GRAINS,
-            ),
-        ],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_MEASURE,
-        sub_type=MEASURE_SUBTYPE_AGGREGATE,
-        factory=MetaMeasure,
-        attrs=[
-            AttrSchema(
-                name=REPORTING_ATTR_AGG,
-                value_type=ATTR_SUBTYPE_STRING,
-                required=True,
-                allowed_values=MEASURE_AGGS,
-            ),
-            # isArray: a bare string coerces to a one-element list (the tuple form
-            # is a distinct count, M2). Optional (M0): only @agg any/all may omit
-            # it, to quantify their @filter/@segment over the rows instead of
-            # aggregating a column.
-            AttrSchema(
-                name=REPORTING_ATTR_OF,
-                value_type=ATTR_SUBTYPE_STRING,
-                required=False,
-                is_array=True,
-            ),
-            AttrSchema(name=REPORTING_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-            AttrSchema(name=REPORTING_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
-            AttrSchema(name=REPORTING_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
-            # What the measure reads when it would otherwise be null; M7/M8 decide where it is legal.
-            AttrSchema(name=REPORTING_ATTR_DEFAULT, value_type=ATTR_SUBTYPE_INT, required=False),
-        ],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_MEASURE,
-        sub_type=MEASURE_SUBTYPE_RATIO,
-        factory=MetaMeasure,
-        attrs=[
-            AttrSchema(name=REPORTING_ATTR_NUMERATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
-            AttrSchema(name=REPORTING_ATTR_DENOMINATOR, value_type=ATTR_SUBTYPE_STRING, required=True),
-            AttrSchema(name=REPORTING_ATTR_DEFAULT, value_type=ATTR_SUBTYPE_INT, required=False),
-        ],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-# FR-044 R13: measure.derived — FR-037 R5's first arithmetic wave; no @default.
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_MEASURE,
-        sub_type=MEASURE_SUBTYPE_DERIVED,
-        factory=MetaMeasure,
-        attrs=[
-            AttrSchema(name=REPORTING_ATTR_EXPR, value_type=ATTR_SUBTYPE_EXPRESSION, required=True),
-        ],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_SEGMENT,
-        sub_type=SEGMENT_SUBTYPE_FILTER,
-        factory=MetaSegment,
-        attrs=[
-            AttrSchema(name=REPORTING_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=True),
-        ],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
 
 # field.* (one factory, data_type by subtype)
 # Note: FIELD_SUBTYPE_ENUM is excluded from FIELD_SUBTYPES; it is registered
@@ -789,109 +649,6 @@ for _idx_sub in INDEX_SUBTYPES:
         )
     )
 
-# requirement.* (functional, architectural) — the capability ledger IS a metadata
-# model (requirements-as-metadata ruling, amendment 3), so it is registered
-# vocabulary rather than a hand-parsed side file: @status is an allowedValues enum
-# the LOADER refuses a typo on. The axis is CHECK POLARITY, a genuine behaviour
-# difference (ADR-0037 §2): `functional` is checked by EXISTENCE (nothing
-# implements it -> fail), `architectural` by UNIVERSALITY (something violates it
-# -> fail). Architectural carries no @level — levels come from
-# object-in-focus decomposition and an architectural requirement is
-# object-independent by definition.
-#
-# Hierarchy is NESTING, not a parent attr: requirement.functional admits nested
-# requirement children (the strict graph in spec/metamodel/requirement.json, which
-# _apply_strict_structural_children re-derives onto this registration).
-#
-# @implementedBy is deliberately NOT declared as a loader `references` descriptor.
-# That pass always ERRORS on an unresolved target, and a requirement with status
-# `planned` names nodes that do not exist YET — declaring
-# it here would make those entries fail to load. The loader owns what is
-# unconditional; `verify` owns @implementedBy resolution, whose severity depends on
-# @status.
-_REQUIREMENT_COMMON_ATTRS = [
-    AttrSchema(
-        name=REQUIREMENT_ATTR_STATUS,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=True,
-        allowed_values=REQUIREMENT_STATUSES,
-    ),
-    # What was DECIDED about the outstanding work -- a different question from
-    # whether the work is done, which is what @status answers. ABSENT means
-    # UNDECIDED, a real state and the one a review exists to find.
-    AttrSchema(
-        name=REQUIREMENT_ATTR_DISPOSITION,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-        allowed_values=REQUIREMENT_DISPOSITIONS,
-    ),
-    # Issue/ticket references for outstanding work. Free-form and never resolved:
-    # verify has no network, so nothing here is checked to exist.
-    AttrSchema(
-        name=REQUIREMENT_ATTR_TRACKED_BY,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-        is_array=True,
-    ),
-    AttrSchema(name=REQUIREMENT_ATTR_STATEMENT, value_type=ATTR_SUBTYPE_STRING, required=True),
-    AttrSchema(name=REQUIREMENT_ATTR_COUNTEREXAMPLE, value_type=ATTR_SUBTYPE_STRING, required=True),
-    # FR-039 -- the requirement that REPLACED a retired one. Declared BEFORE
-    # @implementedBy to match the canonical spec's child order, which the registry
-    # manifest emits verbatim and every port byte-matches.
-    AttrSchema(
-        name=REQUIREMENT_ATTR_SUPERSEDED_BY,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-    ),
-    AttrSchema(
-        name=REQUIREMENT_ATTR_IMPLEMENTED_BY,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-        is_array=True,
-    ),
-]
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_REQUIREMENT,
-        sub_type=REQUIREMENT_SUBTYPE_FUNCTIONAL,
-        factory=MetaRequirement,
-        attrs=[
-            # REQUIRED on functional: levels are the object-in-focus decomposition
-            # and a functional requirement always sits at one.
-            AttrSchema(name=REQUIREMENT_ATTR_LEVEL, value_type=ATTR_SUBTYPE_INT, required=True),
-            *_REQUIREMENT_COMMON_ATTRS,
-        ],
-        child_rules=[
-            ChildRule(TYPE_ATTR, "*"),
-            # Hierarchy IS nesting — an L1 solution contains its L2 segments.
-            ChildRule(TYPE_REQUIREMENT, "*"),
-        ],
-    )
-)
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_REQUIREMENT,
-        sub_type=REQUIREMENT_SUBTYPE_ARCHITECTURAL,
-        factory=MetaRequirement,
-        attrs=[
-            # OPTIONAL on architectural: absent means a flat, object-independent
-            # policy (the original and still the default form); present opts the
-            # node into a levelled tree, e.g. a quality taxonomy over the
-            # non-functional set. Opt-in precisely so that adding a taxonomy over
-            # existing flat policies cannot invalidate them.
-            AttrSchema(name=REQUIREMENT_ATTR_LEVEL, value_type=ATTR_SUBTYPE_INT, required=False),
-            *_REQUIREMENT_COMMON_ATTRS,
-        ],
-        child_rules=[
-            ChildRule(TYPE_ATTR, "*"),
-            # BOTH subtypes nest. Declaring this on `functional` only was an
-            # omission, not a design: it made an architectural node nestable under
-            # a FUNCTIONAL parent but never under another architectural one.
-            ChildRule(TYPE_REQUIREMENT, "*"),
-        ],
-    )
-)
-
 # relationship.* (base, association, aggregation, composition).
 # @onDelete / @onUpdate are validated against REFERENTIAL_ACTIONS — kebab-case
 # values (cascade / set-null / restrict / no-action). Defaults derive from the
@@ -1040,7 +797,6 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
             AttrSchema(name=ORIGIN_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
-            AttrSchema(name=ORIGIN_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -1072,7 +828,6 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
-            AttrSchema(name=ORIGIN_ATTR_SEGMENT, value_type=ATTR_SUBTYPE_STRING, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -1296,6 +1051,8 @@ from .meta.core.rules.rules_provider import rules_provider  # noqa: E402
 from .meta.persistence.view_expressions.view_expressions_provider import (  # noqa: E402
     view_expressions_provider,
 )
+from .meta.core.reporting.reporting_provider import reporting_provider  # noqa: E402
+from .meta.core.requirement.requirements_provider import requirements_provider  # noqa: E402
 
 core_providers: list[Provider] = [
     core_provider,
@@ -1310,6 +1067,9 @@ core_providers: list[Provider] = [
     # providers, in the default bundle so every existing model loads unchanged.
     rules_provider,
     view_expressions_provider,
+    # Reporting (FR-044) and requirements are their own packs too, in the default bundle.
+    reporting_provider,
+    requirements_provider,
 ]
 
 # #265 — the ids of the LIBRARY providers above, as a frozen set. Consulted by

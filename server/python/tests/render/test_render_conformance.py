@@ -8,7 +8,9 @@ Each fixture dir under ``fixtures/render-conformance/`` holds:
 - ``template.mustache`` the template body
 - ``partials/<name>.mustache`` optional partial bodies, referenced as
   ``{{> partials/<name>}}``
-- ``expected.txt``     the expected rendered output (byte-identical compare)
+- ``expected.txt``     the expected rendered output (byte-identical compare), or
+  ``expected-error.txt``: the render must fail, and its message must contain the
+  file's trimmed text
 
 The same (template + payload + partials + format) MUST yield byte-identical
 output in TS, C#, Java, and Python. 1:1 port of
@@ -24,6 +26,7 @@ import pytest
 
 from metaobjects.render.renderer import (
     InMemoryProvider,
+    RenderError,
     RenderRequest,
     render,
 )
@@ -57,16 +60,16 @@ def test_render_matches_expected(fixture_dir: Path) -> None:
     template_path = fixture_dir / "template.mustache"
     payload_path = fixture_dir / "payload.json"
     expected_path = fixture_dir / "expected.txt"
+    error_path = fixture_dir / "expected-error.txt"
     meta_path = fixture_dir / "meta.json"
     partials_dir = fixture_dir / "partials"
 
     assert template_path.is_file(), f"missing template: {template_path}"
     assert payload_path.is_file(), f"missing payload: {payload_path}"
-    assert expected_path.is_file(), f"missing expected: {expected_path}"
+    assert expected_path.is_file() or error_path.is_file(), f"missing expected: {expected_path}"
 
     template = template_path.read_text(encoding="utf-8")
     payload = json.loads(payload_path.read_text(encoding="utf-8"))
-    expected = expected_path.read_text(encoding="utf-8")
 
     meta: dict = {}
     if meta_path.is_file():
@@ -88,6 +91,13 @@ def test_render_matches_expected(fixture_dir: Path) -> None:
         format=format_,
         max_chars=max_chars,
     )
+    if error_path.is_file():
+        message = error_path.read_text(encoding="utf-8").strip()
+        with pytest.raises(RenderError) as err:
+            render(req)
+        assert message in str(err.value)
+        return
+    expected = expected_path.read_text(encoding="utf-8")
     actual = render(req)
 
     assert actual == expected, (
@@ -95,3 +105,29 @@ def test_render_matches_expected(fixture_dir: Path) -> None:
         f"--- expected ({len(expected)} chars) ---\n{expected!r}\n"
         f"--- actual ({len(actual)} chars) ---\n{actual!r}"
     )
+
+
+def test_a_missing_variable_raises_and_a_null_renders_empty() -> None:
+    provider = InMemoryProvider({})
+    with pytest.raises(RenderError, match=r"ERR_VAR_NOT_ON_PAYLOAD \(nmae\)"):
+        render(RenderRequest(payload={"name": "Ada"}, provider=provider, template="Hi {{nmae}}!"))
+    with pytest.raises(RenderError, match=r"ERR_VAR_NOT_ON_PAYLOAD \(nmae\)"):
+        render(RenderRequest(payload={}, provider=provider, template="Hi {{{nmae}}}!"))
+    assert render(RenderRequest(payload={"n": None}, provider=provider, template="Hi {{n}}!{{#x}}y{{/x}}")) == "Hi !"
+
+
+def test_names_resolve_and_sections_test_as_mustache_js_does() -> None:
+    # The reference (TypeScript on mustache.js) tries a dotted name whole against each
+    # context, reads a list's length as a property, and treats 0 as falsy.
+    provider = InMemoryProvider({})
+
+    def run(template: str, payload: dict) -> str:
+        return render(RenderRequest(payload=payload, provider=provider, template=template))
+
+    shadowed = {"a": {"b": 1}, "items": [{"a": {"c": 2}}]}
+    assert run("{{#items}}[{{a.b}}]{{/items}}", shadowed) == "[1]"
+    assert run("count: {{items.length}}", {"items": [1, 2, 3]}) == "count: 3"
+    assert run("{{#items.length}}has{{/items.length}}{{^items.length}}none{{/items.length}}", {"items": []}) == "none"
+    assert run("{{#n}}yes{{/n}}{{^n}}zero{{/n}}", {"n": 0}) == "zero"
+    with pytest.raises(RenderError, match=r"ERR_VAR_NOT_ON_PAYLOAD \(address.street\)"):
+        run("{{address.street}}", {"address": None})

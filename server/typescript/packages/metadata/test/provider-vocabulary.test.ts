@@ -74,15 +74,18 @@ describe("logical provider vocabulary", () => {
     for (const p of coreProviders) expect(Object.keys(canonical.providers)).toContain(p.id);
   });
 
-  test("only core and the two named packs declare types; the rest are pure projections", () => {
+  test("only core and the four named packs declare types; the rest are pure projections", () => {
     // The shape ADR-0050 describes, asserted rather than assumed. A type-declaring
-    // provider beyond these three appearing fails this loudly, which is the moment to
+    // provider beyond these five appearing fails this loudly, which is the moment to
     // decide whether the OWN/PROJECTED split still holds. The packs
-    // (metaobjects-rules, metaobjects-view-expressions) own their types and project
-    // onto core's; see GOVERNANCE.md, "Extension packs and the core metamodel".
+    // (metaobjects-reporting, metaobjects-requirements, metaobjects-rules,
+    // metaobjects-view-expressions) own their types and project onto core's; see
+    // GOVERNANCE.md, "Extension packs and the core metamodel".
     const declaring = Object.entries(canonical.providers).filter(([, v]) => v.declaresTypes);
     expect(declaring.map(([k]) => k)).toEqual([
       "metaobjects-core-types",
+      "metaobjects-reporting",
+      "metaobjects-requirements",
       "metaobjects-rules",
       "metaobjects-view-expressions",
     ]);

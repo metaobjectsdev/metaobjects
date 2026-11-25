@@ -1,11 +1,16 @@
 //! The shared render corpus (`fixtures/render-conformance/`): the same template, payload,
 //! partials and format give the same bytes in every port.
 //!
-//! Each case directory holds `template.mustache`, `payload.json`, `expected.txt`, an
+//! Each case directory holds `template.mustache`, `payload.json`, either `expected.txt`
+//! (byte-identical output) or `expected-error.txt` (the render must fail, with a message
+//! containing the file's trimmed text), an
 //! optional `meta.json` (`format`, `maxChars`) and optional `partials/<name>.mustache`,
 //! referenced as `{{> partials/<name>}}`. A sub-corpus with no `template.mustache` of its
 //! own (`template-generator/`, which drives the codegen `template` generator) has its own
 //! harness and is not a render case.
+//!
+//! [`KNOWN_DRIFT`] lists the cases the engine renders differently from the shared baseline. A
+//! listed case must STILL differ, so the ledger cannot go stale, and it only shrinks.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -13,6 +18,24 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use metaobjects_render::{Body, InMemoryProvider, RenderRequest, render};
+
+/// Cases the `mustache-ng` engine renders differently from the shared baseline, each with the
+/// rule it does not implement. Closing them means resolving names and section truthiness in this
+/// crate instead of the engine.
+const KNOWN_DRIFT: &[(&str, &str)] = &[
+    (
+        "render-shadowed-dotted-prefix",
+        "the engine stops a dotted name at the first context holding its first segment",
+    ),
+    (
+        "render-list-length",
+        "a list's `length` is not a property of the engine's data",
+    ),
+    (
+        "render-zero-falsiness",
+        "numbers reach the engine as text, so 0 is truthy",
+    ),
+];
 
 fn corpus() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/render-conformance")
@@ -26,7 +49,10 @@ fn run_case(dir: &Path) -> Result<(), String> {
     let template = read(&dir.join("template.mustache"));
     let payload: Value = serde_json::from_str(&read(&dir.join("payload.json")))
         .map_err(|e| format!("payload.json: {e}"))?;
-    let expected = read(&dir.join("expected.txt"));
+    let error_path = dir.join("expected-error.txt");
+    let expected_error = error_path
+        .is_file()
+        .then(|| read(&error_path).trim().to_string());
     let meta: Value = if dir.join("meta.json").is_file() {
         serde_json::from_str(&read(&dir.join("meta.json"))).map_err(|e| e.to_string())?
     } else {
@@ -49,13 +75,34 @@ fn run_case(dir: &Path) -> Result<(), String> {
         }
     }
     let provider = InMemoryProvider::new(partials);
-    let actual = render(
+    let result = render(
         &RenderRequest::new(Body::Inline(&template), &payload, &provider)
             .format(format)
             .max_chars(max_chars),
-    )
-    .map_err(|e| e.to_string())?;
+    );
+    if let Some(wanted) = expected_error {
+        return match result {
+            Err(e) if e.to_string().contains(&wanted) => Ok(()),
+            Err(e) => Err(format!(
+                "expected an error containing {wanted:?}\n  actual   {e}"
+            )),
+            Ok(out) => Err(format!(
+                "expected an error containing {wanted:?}\n  rendered {out:?}"
+            )),
+        };
+    }
+    let expected = read(&dir.join("expected.txt"));
+    let actual = result.map_err(|e| e.to_string())?;
+    let name = dir.file_name().unwrap().to_string_lossy();
+    let drift = KNOWN_DRIFT.iter().find(|(case, _)| *case == name);
     if actual == expected {
+        if let Some((_, rule)) = drift {
+            return Err(format!(
+                "matches the shared baseline; remove it from KNOWN_DRIFT ({rule})"
+            ));
+        }
+        Ok(())
+    } else if drift.is_some() {
         Ok(())
     } else {
         Err(format!("expected {expected:?}\n  actual   {actual:?}"))

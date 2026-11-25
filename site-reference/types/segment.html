@@ -52,6 +52,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>segment.filter</h3>
 <p>A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.</p>
+<p><strong>Owning provider:</strong> metaobjects-reporting</p>
 <p><strong>When to use:</strong> The same filter (e.g. &#39;active purchase&#39;) would otherwise be repeated in several measures or reports.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -72,7 +73,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>The row scope: a portable attr.filter over the declaring entity&#39;s fields. May use relative-date values.</td>
 </tr>
 </tbody></table>

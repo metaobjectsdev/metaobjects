@@ -395,6 +395,37 @@ here.**
   included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
   column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
   includes `like`.
+- **Reporting and requirements are vocabulary packs, out of core.** The reporting vocabulary
+  (`object.report`, `dimension.*`, `measure.*` including `measure.derived` and its `@expr`,
+  `segment.filter`, the entity's dimension, measure and segment children and `@segment` on
+  `origin.aggregate` and `origin.first`) is now registered by its own provider,
+  `metaobjects-reporting`. The requirements vocabulary (`requirement.functional`,
+  `requirement.architectural` and the root's `requirement.*` child) is registered by
+  `metaobjects-requirements`. Both are in the default bundle of every port, so a model that loads
+  today loads and generates the same. An embedder can leave either out, and a model that then uses
+  its types gets a loader error naming the unknown type or subtype (new fixtures
+  `error-packs-left-out-*-used`). The `verify` requirements gate reads the nodes the pack
+  registered: with the pack left out, a model with no requirements gets a silent ledger. The core
+  vocabulary pin loses these types and attributes, and the registry manifest changes in one row:
+  the root's `requirement` child rule now states `min: 0, max: null`, as `api` did when the rules
+  pack moved out. A subtype a pack declares with `extendsBase` may now fold a base another provider
+  registered (`object.report` folds `object.base`); those folded attributes stay owned by the base's
+  provider. GOVERNANCE.md now says an attribute promoted from a pack into core keeps its name and
+  meaning.
+- **A template that names a variable the payload lacks fails to render, in every render path.**
+  Mustache and Jinja raise `render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)` for a missing
+  variable or dotted path, where they used to render it empty. A variable that is present and null
+  still renders empty. The Rust `metaobjects-render` crate raises it too, so all six renderers
+  agree. Render fixtures may now carry `expected-error.txt` in place of `expected.txt`.
+- **Business rules: two operations or transitions whose permission names come out equal are
+  refused (rule P3).** A permission name is the declared `@permission`, or else the derived
+  `<package>.<path>`, compared exactly as the policy receives it, so `p::Order.open` and
+  `p.Order.open` are two names. When two permission points resolve to
+  the same name and at least one of the two names is derived, the loader reports
+  `ERR_TRANSITION_NAME_COLLISION` on the later one. Two equal declared names stay legal: that is a
+  shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared}` and
+  `rules-permission-name-package-separator-distinct`. Java now accepts dotted operation names
+  (`Order.open`), as TypeScript, C# and Python already did.
 - **Python: a primitive array persists on SQLite and MySQL.** The `ObjectManagerDb`'s SQLite and
   MySQL dialects bound no list, so an `isArray` string, number, date, uuid or enum field could not be
   written there. The column the TypeScript-owned schema gives it (`TEXT` on SQLite, `JSON` on MySQL)

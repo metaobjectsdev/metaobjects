@@ -52,6 +52,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>dimension.attribute</h3>
 <p>A named group-by attribute of the entity that declares it (FR-044). Groups report rows by a column value as-is. @of names Entity.field: the owning entity, or the @via terminal. @via may follow only to-one hops, so grouping by a related row&#39;s column can never multiply the measured rows.</p>
+<p><strong>Owning provider:</strong> metaobjects-reporting</p>
 <p><strong>When to use:</strong> A column a dashboard groups by: product, status, region. Declare it once on the fact entity and reference it by name from reports.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -72,7 +73,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Dotted Entity.field reference naming the grouped column (e.g. &#39;Purchase.programId&#39;, or &#39;Program.title&#39; with @via). Entity.field.member names a member of a value object stored with @storage: flattened (e.g. &#39;Payment.amount.currency&#39;), which has a column of its own.</td>
 </tr>
 <tr>
@@ -81,7 +82,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Optional dotted to-one relationship path from the owning entity to the entity @of names (e.g. &#39;Purchase.program&#39;). Every hop must be @cardinality: one or an identity.reference.</td>
 </tr>
 </tbody></table>
@@ -89,6 +90,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <p><em>No structural children.</em></p>
 <h3>dimension.time</h3>
 <p>A named time dimension (FR-044): groups report rows by a date or timestamp column truncated to a grain. @of names a field.date or field.timestamp. Weeks start on Monday (ISO-8601) in every lowering. A report names it as &#39;dimension:grain&#39; and the derived report field is <dimension><Grain> (e.g. purchasedAtDay).</p>
+<p><strong>Owning provider:</strong> metaobjects-reporting</p>
 <p><strong>When to use:</strong> Per-day, per-week or per-month series on a dashboard.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -109,7 +111,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td><code>hour</code>, <code>day</code>, <code>week</code>, <code>month</code>, <code>quarter</code>, <code>year</code></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>The grains this dimension supports. Weeks start Monday (ISO-8601). &#39;hour&#39; is refused on a field.date.</td>
 </tr>
 <tr>
@@ -118,7 +120,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>yes</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Dotted Entity.field reference naming the date or timestamp column, or Entity.field.member for a member of a flattened value object.</td>
 </tr>
 <tr>
@@ -127,7 +129,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-reporting</td>
 <td>Optional dotted to-one relationship path, as on dimension.attribute.</td>
 </tr>
 </tbody></table>

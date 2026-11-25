@@ -21,6 +21,7 @@ use serde_json::Value;
 
 use crate::accessors::with_derived_accessors;
 use crate::escapers::{self, FORMAT_TEXT};
+use crate::presence::{ERR_VAR_NOT_ON_PAYLOAD, first_missing};
 use crate::tags::{self, TagKind};
 
 /// How deep partials may nest before the render fails.
@@ -133,7 +134,8 @@ impl<'a> RenderRequest<'a> {
 /// # Errors
 /// An unknown format, an unresolved body or partial, a partial cycle or one nested deeper
 /// than [`MAX_DEPTH`], a Jinja partial, a template syntax error, a set-delimiter tag, a
-/// marker character in the template or payload, or output over the `maxChars` budget.
+/// marker character in the template or payload, an interpolated name the payload does
+/// not carry (`ERR_VAR_NOT_ON_PAYLOAD`), or output over the `maxChars` budget.
 pub fn render(request: &RenderRequest<'_>) -> Result<String, RenderError> {
     if !escapers::is_format(request.format) {
         return err(format!("unknown render format \"{}\"", request.format));
@@ -149,8 +151,14 @@ pub fn render(request: &RenderRequest<'_>) -> Result<String, RenderError> {
         }
     };
     let expanded = pre_expand_partials(&body, request.provider, &mut Vec::new())?;
-    let source = mark_escaped_tags(&expanded, request.format)?;
     let payload = with_derived_accessors(request.payload);
+    let found = tags::scan(&expanded).map_err(|e| syntax(&e))?;
+    if let Some(name) = first_missing(&found, &payload) {
+        return err(format!(
+            "render verify failed: {ERR_VAR_NOT_ON_PAYLOAD} ({name})"
+        ));
+    }
+    let source = mark_escaped_tags(&expanded, request.format)?;
     let data = to_data(&payload)?;
     let template = mustache::compile_str(&source)
         .map_err(|e| RenderError(format!("template syntax error: {e}")))?;

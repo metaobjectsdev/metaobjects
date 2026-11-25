@@ -1,1 +1,1 @@
-{ "format": "text", "note": "dotted-path interpolation {{user.profile.name}} walks nested objects" }
+{ "format": "text", "note": "dotted-path interpolation {{user.profile.name}} walks nested objects; a missing leaf or middle raises, see render-error-missing-dotted-path" }

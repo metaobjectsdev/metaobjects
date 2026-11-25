@@ -58,10 +58,13 @@ const DEFAULT_PROVIDERS = [
 	"metaobjects-ui",
 	// View.textarea @rows and the view.image attrs are cross-port vocabulary.
 	"metaobjects-ui-web",
-	// The business-rules and view-expressions packs are in the default bundle, so a
-	// fixture with no providers.json still loads every existing model.
+	// The business-rules, view-expressions, reporting and requirements packs are in
+	// the default bundle, so a fixture with no providers.json still loads every
+	// existing model.
 	"metaobjects-rules",
 	"metaobjects-view-expressions",
+	"metaobjects-reporting",
+	"metaobjects-requirements",
 ];
 
 export interface Fixture {
