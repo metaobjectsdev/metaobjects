@@ -44,8 +44,10 @@
 //                                      one the route answers itself (RESERVED_ERROR_CODES)
 //   P3 ERR_TRANSITION_NAME_COLLISION two permission points ask the policy about one permission name, and at
 //                                      least one of the two names is derived (ADR-0066 §1): an operation
-//                                      named "Order.open", one declaring @permission "p.Order.open", or one
-//                                      in package "p::Order", beside the "open" transition of Order in "p".
+//                                      named "Order.open", or one declaring @permission "p.Order.open",
+//                                      beside the "open" transition of Order in "p". Names are compared
+//                                      exactly: an "open" operation in package "p::Order" is "p::Order.open",
+//                                      a different name, and does not collide.
 //                                      Two DECLARED @permission values may be equal: that sharing is the point.
 //   B1 ERR_BINDING_PATH_MISMATCH      a binding.rest @path's placeholders are not the target's key fields
 //                                      (a keyed operation) or are not empty (an unkeyed one)
