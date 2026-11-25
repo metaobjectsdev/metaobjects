@@ -514,9 +514,9 @@ The verify corpus reuses `verify-conformance/`'s `payload.json` field-tree shape
 `ERR_TEMPLATE_SYNTAX` finding's path is the parser's own message, so runners compare it as
 empty.
 
-### `fixtures/verify-conformance/` (37)
+### `fixtures/verify-conformance/` (45)
 
-All 37 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
+All 45 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
 (template drift section — `Renderer.verify`). A node of a fixture's `payload.json` field tree
 may carry `"isArray": true`; with `fields` it is a list of objects, without it a list of
 scalars. The six `verify-positional-accessor-*` cases pin where `-last` is available.

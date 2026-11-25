@@ -3,7 +3,7 @@
 The Rust port is a full language of 1.3.0 ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md)).
 It reads a project, validates it, serializes it and generates code from it, and it is held to the
 same shared conformance corpora as the other five ports. Its command, `cargo meta`, runs the whole
-codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen` and `eject`. Three generators
+codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen`, `verify --templates` and `eject`. Three generators
 ship: `entity`, `client` and `commands`, and a project chooses which of them run in
 `metaobjects.config.json`. The four crates are **ready to publish but not published**: they package and
 build from their packages (a `cargo publish --dry-run` runs in the `rust` lane), and there is no release
@@ -278,7 +278,8 @@ outright.
 | `registry-conformance` | byte-identical manifest |
 | `conformance` (the metamodel corpus) | **584 of 584**, and the ledger is empty |
 | `yaml-conformance` | 18 of 19. The one on the ledger, `yaml-ref-root-escape`, waits for the root-level `::` reference rules of [ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md), which are reference resolution, not a validation pass. |
-| `source-resolution-conformance` | all 28 cases |
+| `source-resolution-conformance` | all 30 cases |
+| `reference-source-conformance` | all 6 cases: a `reference: true` source loads so references resolve against it, a node declared only in reference files is a reference node no generator emits, and a `template.*` declared only there is refused (`ERR_REFERENCE_SOURCE_TEMPLATE`) |
 | `naming-conformance` | all of it |
 | `codegen-skip-conformance` | every case the port can meet, on both columns (what `gen` must do and what a local `verify --codegen` may do), including an edited owned generator and a forced CI verify ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)). The three it cannot meet (two about templates, one about the three-way merge) are named with their reason in the runner. |
 | `rules-check-conformance` | all 16 cases: the diagnostics (severity, code, node address, message text) and the summary of the `verify` business-rules gate, under each case's `rules` and `verify` settings |
@@ -287,6 +288,8 @@ outright.
 | `writer-conformance` | every `core` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)) |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
 | `render-conformance` | every case but the three the ledger holds — `render-shadowed-dotted-prefix`, `render-list-length`, `render-zero-falsiness` (`mustache-ng` has its own name lookup, data model and truthiness); a ledgered case must still differ, the rest render byte-identical through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
+| `verify-conformance` | all 45 cases, through `metaobjects_render::verify`, with no ledgered case |
+| `response-verify-conformance` | all 7 cases: the reply check the template gate adds — `ERR_RESPONSE_UNRESOLVED`, and, for an xml prompt, `ERR_RESPONSE_TAG_UNDECLARED` |
 | `extract-conformance` | all 58 cases, through `metaobjects_render::extract::extract` |
 | `output-prompt-conformance` | all 17 cases in all three `@promptStyle` styles, with the extract round trip, through `metaobjects_render::prompt::render_output_format` |
 

@@ -216,7 +216,7 @@ with jinja2 (`pip install "metaobjects[jinja]"`), TypeScript with nunjucks, whic
   body includes Jinja templates. A partial whose file is the other engine's is refused with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, in `verify` and at render time, rather than spliced in
   as text the including engine would misread.
-- **Java, Kotlin and C# do not render Jinja.** Their providers refuse a Jinja-only body with
+- **Java, Kotlin, C# and Rust do not render Jinja.** Their providers refuse a Jinja-only body with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, and their `verify` reports it on that template, so a
   model that needs those ports keeps its bodies in Mustache.
 
