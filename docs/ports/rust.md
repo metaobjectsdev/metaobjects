@@ -3,7 +3,7 @@
 The Rust port is a full language of 1.3.0 ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md)).
 It reads a project, validates it, serializes it and generates code from it, and it is held to the
 same shared conformance corpora as the other five ports. Its command, `cargo meta`, runs the whole
-codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen` and `eject`. Three generators
+codegen loop on a JSON or YAML model: `init`, `gen`, `verify --codegen`, `verify --templates` and `eject`. Three generators
 ship: `entity`, `client` and `commands`, and a project chooses which of them run in
 `metaobjects.config.json`. The four crates are **ready to publish but not published**: they package and
 build from their packages (a `cargo publish --dry-run` runs in the `rust` lane), and there is no release
@@ -53,7 +53,7 @@ and the same `git` + `rev` on a `metaobjects` dependency). The candidate log
 |---|---|
 | `cargo meta init [--project <dir>]` | Scaffolds `.metaobjects/config.json`, `.metaobjects/.gitignore` (which keeps `.gen-state/.hashes/` committed), a first `metaobjects/meta.app.yaml` and `metaobjects.config.json`, the list of generators to run (see [Choosing generators](#choosing-generators)). It writes only what is missing, and never adds an empty metadata file to a project that already has metadata. |
 | `cargo meta gen [ENTITY...]` | Generates the crates. It skips the whole run when the model, the project config and the generators are unchanged ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)), writes only files whose bytes changed, removes a generated file nothing emits any more, and refuses to overwrite or delete a generated file that was edited by hand. It prints what it created, updated and removed, and the crates to re-check. |
-| `cargo meta verify [--codegen] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db`, `--templates` and `--deps` exit 2 with the reason and where that check lives. |
+| `cargo meta verify [--codegen] [--templates] [--full]` | The codegen drift gate: renders in memory, compares with disk, writes nothing, and exits 1 on drift, naming each file. Locally it may answer from the stored skip key; `--full`, or a set `CI` variable, always renders. `--codegen` runs that gate alone. `--templates` is the template drift gate: each `template.*` body (under `prompts/`, or `--prompts <dir>`) against its payload value object, and each prompt's `@responseRef` reply; a bare `verify` runs it too, and a Jinja body is refused (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`). A bare `verify` also runs the business-rules gate ([ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md)) on the loaded model, and prints nothing about it when the model declares no operation and no transition; an error-severity finding (a `rules.permissions.names` of `require`, or `verify.lifecycle.unreachable` of `error`) exits 1. `--db` and `--deps` exit 2 with the reason and where that check lives. |
 | `cargo meta eject <generator>...` | Copies a shipped generator into the project to own. An existing copy is refused; `--force` replaces it with the reference, and leaves a copy that already matches untouched. `--undo` takes back copies still identical to the shipped source; `--list` shows what can be ejected and how each owned copy compares. See [Owning a generator](#owning-a-generator). |
 
 `gen` and `verify` share `--project <dir>`, `--out <dir>` (default `generated`), `--generators <a,b>`,
@@ -278,7 +278,8 @@ outright.
 | `registry-conformance` | byte-identical manifest |
 | `conformance` (the metamodel corpus) | **584 of 584**, and the ledger is empty |
 | `yaml-conformance` | 18 of 19. The one on the ledger, `yaml-ref-root-escape`, waits for the root-level `::` reference rules of [ADR-0059](../../spec/decisions/ADR-0059-references-resolve-once-after-the-tree.md), which are reference resolution, not a validation pass. |
-| `source-resolution-conformance` | all 28 cases |
+| `source-resolution-conformance` | all 30 cases |
+| `reference-source-conformance` | all 6 cases: a `reference: true` source loads so references resolve against it, a node declared only in reference files is a reference node no generator emits, and a `template.*` declared only there is refused (`ERR_REFERENCE_SOURCE_TEMPLATE`) |
 | `naming-conformance` | all of it |
 | `codegen-skip-conformance` | every case the port can meet, on both columns (what `gen` must do and what a local `verify --codegen` may do), including an edited owned generator and a forced CI verify ([ADR-0064](../../spec/decisions/ADR-0064-skip-codegen-when-nothing-changed.md)). The three it cannot meet (two about templates, one about the three-way merge) are named with their reason in the runner. |
 | `rules-check-conformance` | all 16 cases: the diagnostics (severity, code, node address, message text) and the summary of the `verify` business-rules gate, under each case's `rules` and `verify` settings |
@@ -287,6 +288,8 @@ outright.
 | `writer-conformance` | every `core` case of the code writer ([ADR-0063](../../spec/decisions/ADR-0063-generators-own-layout.md)) |
 | `generator-registry-conformance` | the shipped generators are exactly the registry's `rust` entries, with its tier and layer, and the eject contract's census, completeness and depth hold (ADR-0034 Amendment 8) |
 | `render-conformance` | every case but the three the ledger holds — `render-shadowed-dotted-prefix`, `render-list-length`, `render-zero-falsiness` (`mustache-ng` has its own name lookup, data model and truthiness); a ledgered case must still differ, the rest render byte-identical through `metaobjects_render::render` (the Mustache engine underneath is `mustache-ng`) |
+| `verify-conformance` | all 45 cases, through `metaobjects_render::verify`, with no ledgered case |
+| `response-verify-conformance` | all 7 cases: the reply check the template gate adds — `ERR_RESPONSE_UNRESOLVED`, and, for an xml prompt, `ERR_RESPONSE_TAG_UNDECLARED` |
 | `extract-conformance` | all 58 cases, through `metaobjects_render::extract::extract` |
 | `output-prompt-conformance` | all 17 cases in all three `@promptStyle` styles, with the extract round trip, through `metaobjects_render::prompt::render_output_format` |
 
@@ -323,14 +326,14 @@ regeneration, peak memory), so a port's speed can be tracked per feature next to
 
 - **Other generators.** There is no server-side route, ORM or repository generator, no template
   generator and no documentation generator. Projections and reports get no client yet.
-- **Other gates.** `verify --codegen` and the business-rules gate are the ones it has. There is no
-  template gate, no requirement gate and no `fmt`.
+- **Other gates.** `verify --codegen`, `verify --templates` and the business-rules gate are the ones it has.
+  There is no requirement gate and no `fmt`.
 - **A three-way merge.** A hand-edited generated file is refused by name, as in every port but
   TypeScript; change the model or own the generator instead.
 - **The service tier.** No `ObjectManager`, no persistence drivers and no web adapters.
 - **Prompt codegen.** The render engine and the reply parser exist as a library; no generator yet
-  writes a template's payload type or its response parser from the model, and there is no template
-  gate in `verify`.
+  writes a template's payload type or its response parser from the model. (`verify --templates`
+  does check the bodies and the reply against the model.)
 - **Publication.** The crates are publishable and the lane proves they package (`cargo publish
   --dry-run`), but nothing is published: there is no crates.io release yet, and publishing waits for
   the owner's go ([ADR-0065](../../spec/decisions/ADR-0065-rust-is-the-sixth-port.md) Amendment 3).

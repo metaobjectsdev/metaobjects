@@ -301,6 +301,16 @@ public sealed class NeutralConfig
                     var d = new Dictionary<string, string>();
                     foreach (var p in s.EnumerateObject())
                     {
+                        // `reference` is the one boolean key a spec may carry beside `path`: the files
+                        // load so references resolve against them, and no generator emits what only
+                        // they declare. Carried on the spec as the string "true" (see SourceResolver.SourceKeyReference).
+                        if (p.Name == SourceResolver.SourceKeyReference)
+                        {
+                            if (p.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                                throw new MetaModelException($"{path}: \"sources\" entry \"{p.Name}\" must be a boolean", ErrorCode.ERR_BAD_ATTR_VALUE);
+                            if (p.Value.GetBoolean()) d[p.Name] = "true";
+                            continue;
+                        }
                         // Every source-spec value (`path`/`resource`/`package`) is a
                         // string — silently stringifying a non-string (the prior
                         // behavior) would let {"path": 123} load a directory
@@ -314,7 +324,9 @@ public sealed class NeutralConfig
                         d[p.Name] = value;
                     }
 
-                    if (d.Count != 1)
+                    // Exactly one source key (path/resource/package); `reference` rides along on a path.
+                    var keys = d.Count - (d.ContainsKey(SourceResolver.SourceKeyReference) ? 1 : 0);
+                    if (keys != 1 || (d.ContainsKey(SourceResolver.SourceKeyReference) && !d.ContainsKey("path")))
                         throw new MetaModelException($"{path}: each \"sources\" entry must have exactly one key", ErrorCode.ERR_BAD_ATTR_VALUE);
 
                     specs.Add(d);

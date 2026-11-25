@@ -113,6 +113,8 @@ public static class VerifyCommand
         /// was imported so the <c>--codegen</c> gate regenerates exactly what <c>gen</c> wrote. Null: none.
         /// </summary>
         public MetaObjects.Config.ImportScope? Imports { get; init; }
+        /// <summary>The reference files among <see cref="MetadataFiles"/> (<c>{ "path": ..., "reference": true }</c> sources); the load records the nodes only they declare so the <c>--codegen</c> gate skips them as <c>gen</c> does.</summary>
+        public IReadOnlySet<string>? ReferenceFiles { get; init; }
         /// <summary><c>csharp.providers</c>, instantiated; composed with the core providers on every load. Null: core only.</summary>
         public IReadOnlyList<IMetaDataTypeProvider>? Providers { get; init; }
         /// <summary>
@@ -286,7 +288,7 @@ public static class VerifyCommand
         // The same load `gen` runs (ResolvedMetadata.Load): libraries, then the dependency snapshots, then the
         // project's own files; ADR-0058 naming and the wire format set on the root; the imports recorded on it.
         return new MetaObjects.Config.ResolvedMetadata(
-            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports, null, opts.Providers) { Api = opts.Api }
+            opts.MetadataDir, opts.MetadataFiles, opts.Libraries, opts.Naming, opts.Wire, null, opts.Imports, null, opts.Providers) { Api = opts.Api, ReferenceFiles = opts.ReferenceFiles }
             .Load(opts.Strict);
     }
 
@@ -563,6 +565,14 @@ public static class VerifyCommand
 
         foreach (var tmpl in load.Root.OwnChildren().Where(c => c.Type == TYPE_TEMPLATE))
         {
+            // The reply (`@responseRef`): its field tree, and an xml prompt's tag contract against it.
+            // Independent of the payload check below, so it runs first.
+            foreach (var f in ResponseVerify.Findings(tmpl))
+            {
+                var finding = new Drift(tmpl.Name, KIND_PROMPT, f.Code, f.Path);
+                if (f.IsError) errors.Add(finding); else warnings.Add(finding);
+            }
+
             // ADR-0039: @payloadRef may be inherited via an abstract template (templates
             // CAN extend) → resolving Attr, not OwnAttr. Missing is a load error already.
             if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)

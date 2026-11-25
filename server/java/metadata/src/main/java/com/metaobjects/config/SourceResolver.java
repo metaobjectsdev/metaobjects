@@ -73,10 +73,27 @@ public final class SourceResolver {
      * is simultaneously unresolvable, which order-independence alone cannot pin.
      */
     public static List<Path> resolveSources(Path configDir, List<Map<String, String>> specs) {
+        return resolveSourceFiles(configDir, specs).files();
+    }
+
+    /**
+     * The resolved file set of {@link #resolveSources}, split into the files every reaching spec
+     * declares a REFERENCE source ({@code "reference": "true"} beside the {@code path}) and the
+     * rest. A file an ordinary spec also reaches is the project's own — ordinary wins.
+     *
+     * @param files     every resolved file, de-duplicated
+     * @param reference the subset of {@code files} only reference specs reach
+     */
+    public record ResolvedFiles(List<Path> files, java.util.Set<Path> reference) {}
+
+    /** {@link #resolveSources} that also reports which files are reference-only. */
+    public static ResolvedFiles resolveSourceFiles(Path configDir, List<Map<String, String>> specs) {
         // Pass 1 — kind validation across the WHOLE set, no filesystem I/O yet.
         List<String> pathSpecs = new ArrayList<>(specs.size());
+        java.util.Set<String> referencePaths = new java.util.HashSet<>();
+        java.util.Set<String> ordinaryPaths = new java.util.HashSet<>();
         for (Map<String, String> spec : specs) {
-            String rawPath = spec.get("path");
+            String rawPath = spec.get(NeutralConfig.SOURCE_KEY_PATH);
             if (rawPath == null) {
                 String kind = spec.keySet().stream().findFirst().orElse("<empty>");
                 throw new MetaDataException(
@@ -84,12 +101,16 @@ public final class SourceResolver {
                         ErrorCode.ERR_SOURCE_KIND_UNSUPPORTED);
             }
             pathSpecs.add(rawPath);
+            (Boolean.parseBoolean(spec.get(NeutralConfig.SOURCE_KEY_REFERENCE)) ? referencePaths : ordinaryPaths)
+                    .add(rawPath);
         }
         Collections.sort(pathSpecs);
 
         // Pass 2 — resolve each validated path spec against the filesystem.
         LinkedHashSet<Path> seen = new LinkedHashSet<>();
+        java.util.Set<Path> ordinary = new java.util.HashSet<>();
         for (String rawPath : pathSpecs) {
+            List<Path> found = new ArrayList<>();
             Path raw = Path.of(rawPath);
             Path target = raw.isAbsolute() ? raw : configDir.resolve(raw).normalize();
 
@@ -119,14 +140,21 @@ public final class SourceResolver {
                 // with no `close()` leaks it on every directory source resolved.
                 try (Stream<FileSource> stream =
                         new DirectorySource(target, new DirectorySource.Options().setExcludePending(true)).expand()) {
-                    stream.forEach(fs -> seen.add(fs.getPath().toAbsolutePath().normalize()));
+                    stream.forEach(fs -> found.add(fs.getPath().toAbsolutePath().normalize()));
                 }
             } else {
-                seen.add(target.toAbsolutePath().normalize());
+                found.add(target.toAbsolutePath().normalize());
             }
+            seen.addAll(found);
+            // A file is reference-only unless some ordinary spec reaches it.
+            if (ordinaryPaths.contains(rawPath)) ordinary.addAll(found);
         }
 
-        return new ArrayList<>(seen);
+        java.util.Set<Path> reference = new java.util.LinkedHashSet<>();
+        if (!referencePaths.isEmpty()) {
+            for (Path p : seen) if (!ordinary.contains(p)) reference.add(p);
+        }
+        return new ResolvedFiles(new ArrayList<>(seen), reference);
     }
 
     /**
@@ -135,6 +163,11 @@ public final class SourceResolver {
      * {@code ERR_SOURCE_UNRESOLVED}, a louder failure than "nothing declared".
      */
     public static List<Path> resolveCollection(Path root) {
+        return resolveCollectionFiles(root).files();
+    }
+
+    /** {@link #resolveCollection(Path)} that also reports which files are reference-only. */
+    public static ResolvedFiles resolveCollectionFiles(Path root) {
         Path base = root.toAbsolutePath().normalize();
         List<Map<String, String>> specs = NeutralConfig.read(base)
                 .map(NeutralConfig::getSources)
@@ -149,10 +182,10 @@ public final class SourceResolver {
                                 + ".metaobjects/config.json, or run 'meta init' to scaffold.",
                         ErrorCode.ERR_COLLECTION_NOT_FOUND);
             }
-            specs = List.of(Map.of("path", NeutralConfig.DEFAULT_METADATA_DIR));
+            specs = List.of(Map.of(NeutralConfig.SOURCE_KEY_PATH, NeutralConfig.DEFAULT_METADATA_DIR));
         }
 
-        return resolveSources(base, specs);
+        return resolveSourceFiles(base, specs);
     }
 
     /**
@@ -160,10 +193,16 @@ public final class SourceResolver {
      * leads the load.
      *
      * @param ownFiles     the project's own metadata files, as {@link #resolveCollection} returns them
+     *                     (reference files included: they load into the same root)
+     * @param referenceFiles the subset of {@code ownFiles} only reference sources reach
      * @param dependencies the verified dependencies and the predicates over them; {@link DependencySet#EMPTY}
      *                     when the project declares none
      */
-    public record ResolvedCollection(List<Path> ownFiles, DependencySet dependencies) {
+    public record ResolvedCollection(List<Path> ownFiles, DependencySet dependencies, java.util.Set<Path> referenceFiles) {
+
+        public ResolvedCollection(List<Path> ownFiles, DependencySet dependencies) {
+            this(ownFiles, dependencies, java.util.Set.of());
+        }
 
         /**
          * Every file the load reads, in order: dependency artifacts (in dependency-NAME order)
@@ -185,8 +224,8 @@ public final class SourceResolver {
      */
     public static ResolvedCollection resolveCollectionWithDependencies(Path root) {
         Path base = root.toAbsolutePath().normalize();
-        List<Path> own = resolveCollection(base);
-        return new ResolvedCollection(own, DependencySet.resolve(base));
+        ResolvedFiles own = resolveCollectionFiles(base);
+        return new ResolvedCollection(own.files(), DependencySet.resolve(base), own.reference());
     }
 
     /**

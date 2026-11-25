@@ -147,9 +147,13 @@ so they are not re-derived.
    (`docs/features/cli.md`): exit 0 on success, 1 when the run failed (a model that does not load,
    a refused file, drift), 2 for a usage error; an unknown flag names the flags the command takes.
    `verify` is the one verb of ADR-0021 D2, and `--codegen` is the only gate this port ships, so a
-   bare `verify` runs it. `--db`, `--templates` and `--deps` exit 2 and say where that check lives.
+   bare `verify` runs it. *(Gates superseded by Amendment 6: the port now ships `verify --templates`
+   too, and a bare `verify` runs the codegen, template and rules gates.)* `--db`, `--templates` and
+   `--deps` exit 2 and say where that check lives. *(The `--templates` refusal is superseded by
+   Amendment 6; `--db` and `--deps` still exit 2.)*
    This corrects Decision 6, which listed `fmt`: the command today is `init`, `gen`, `verify
    --codegen` and `eject`. `fmt` and the template gate come with the phases that need them.
+   *(The template gate has arrived — Amendment 6; there is still no `fmt`.)*
    **No `migrate` and no `verify --db`, permanently** (ADR-0015): `init` and `--help` both say that
    the schema is the Node `meta` tool's.
 5. **An owned generator is a crate the project builds.** Rust is compiled, so a generator cannot
@@ -324,3 +328,18 @@ replaced; the first half stands.
 
 `docs/ports/rust.md` says this where it describes the owned crate. The T7-RS row adds the
 name-level snapshot test.
+
+## Amendment 6: the template gate shipped (2026-11-25)
+
+Ruling 4 said `--codegen` was the only gate the port ships, that `--templates` exits 2, and that
+`fmt` and the template gate "come with the phases that need them". The template phase has arrived
+without a template *generator*: `cargo meta
+verify --templates` checks every `template.*` body (Mustache, under `prompts/` or `--prompts <dir>`)
+against its payload value object and checks each prompt's `@responseRef` reply, through the new
+`verify` module of `metaobjects-render`. A bare `verify` runs the codegen, template and rules gates;
+`--codegen` or `--templates` alone runs that one gate. `--db` and `--deps` still exit 2, and there is
+still no `fmt`, no `migrate`, no `verify --db` (ADR-0015) and no template generator. A Jinja body is
+refused (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`), as ruling 6 already stated. The port runs
+`fixtures/verify-conformance/` (all 45 cases), `fixtures/response-verify-conformance/` (all 7) and
+`fixtures/reference-source-conformance/` (all 6); `docs/features/cli.md` and `docs/ports/rust.md`
+carry the command surface.

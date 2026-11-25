@@ -72,6 +72,7 @@ from metaobjects.config.dependencies import (
     Collection,
     imported_from,
     refuse_library_package_misuse,
+    reference_nodes_of,
     refuse_unowned_packages,
 )
 from metaobjects.config.dependencies import read_lock
@@ -179,6 +180,7 @@ from metaobjects.naming import (
     removed_naming_source_message,
 )
 from metaobjects.render.engine import template_engine_of
+from metaobjects.response_verify import SEVERITY_ERROR, response_findings
 from metaobjects.render.filesystem_provider import FilesystemProvider
 from metaobjects.render.verify import (
     ERR_REQUIRED_SLOT_UNUSED,
@@ -607,6 +609,9 @@ def _load_collection_result(
         # ejected copy, still opted in) and one it does not (a new node in someone
         # else's package).
         refuse_library_package_misuse(result.root, all_libraries)
+        # Reference sources: the nodes only `reference: true` files declare (codegen skips them).
+        if collection.reference_ids:
+            result.root.reference_nodes = reference_nodes_of(result.root, collection.reference_ids)
         # ADR-0058 Decision 3 — the resolved `Collection` already carries this
         # project's ONE naming setting (read at the same rung as `libraries`); attach
         # it to the loaded root so codegen, the runtime and `verify` agree.
@@ -2969,14 +2974,15 @@ def _verify_templates(args: argparse.Namespace) -> int:
         print("metaobjects verify --templates: no template.* nodes found.")
         return 0
 
-    error_count = 0
-    checked = 0
-    for tmpl in sorted(templates, key=lambda c: c.name):
+    def _verify_body(tmpl: MetaData) -> tuple[int, int]:
+        """One template's body against its payload: ``(drift errors, refs checked)``."""
+        error_count = 0
+        checked = 0
         payload_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
         if not isinstance(payload_ref, str) or not payload_ref:
             print(f"error: [{tmpl.name}] missing @payloadRef.", file=sys.stderr)
             error_count += 1
-            continue
+            return error_count, checked
         vo = bound_payload_vo(tmpl, tc.TEMPLATE_ATTR_PAYLOAD_REF)
         if vo is None:
             print(
@@ -2985,7 +2991,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             error_count += 1
-            continue
+            return error_count, checked
 
         fields: list[PayloadField] = _derive_payload_field_tree(root, vo, frozenset())
 
@@ -3002,7 +3008,7 @@ def _verify_templates(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             error_count += 1
-            continue
+            return error_count, checked
 
         # #193/#230: @requiredSlots/@requiredTags are a template.prompt concept — enforced ONLY on
         # the prompt path (the email/document output gate does not apply them per-part; the #193
@@ -3037,6 +3043,29 @@ def _verify_templates(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
                 error_count += 1
+        return error_count, checked
+
+    error_count = 0
+    checked = 0
+    for tmpl in sorted(templates, key=lambda c: c.name):
+        # The reply (`@responseRef`): its field tree, and an xml prompt's tag contract against
+        # it. Independent of the payload check, so it runs first.
+        reply_error = False
+        for finding in response_findings(root, tmpl):
+            line = f"[{tmpl.name}] (reply) {finding.code}: {finding.path}"
+            if finding.severity == SEVERITY_ERROR:
+                print(f"error: {line}", file=sys.stderr)
+                error_count += 1
+                reply_error = True
+            else:
+                print(f"warning: {line}", file=sys.stderr)
+        body_errors, body_checked = _verify_body(tmpl)
+        error_count += body_errors
+        checked += body_checked
+        # As TypeScript counts: a template the body check did not engage with still counts
+        # when its reply check raised an error.
+        if body_checked == 0 and reply_error:
+            checked += 1
 
     if error_count > 0:
         print(

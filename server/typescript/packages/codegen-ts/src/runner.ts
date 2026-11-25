@@ -474,7 +474,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const afterEntityFilter = entityFilter
     ? allObjects.filter((o) => entityFilter.includes(o.name))
     : allObjects;
-  const scope = opts.scope;
+  // Reference nodes (declared only by `{ "path": …, "reference": true }` sources) load
+  // so references resolve against them, and another run owns their generated types — so
+  // they leave the selection here, at the single choke point, and `select` (which every
+  // whole-root render reads) excludes them too. With no reference source this is
+  // `opts.scope` unchanged.
+  const referenceNodes = root.referenceNodes;
+  const scope: ((fqn: string) => boolean) | undefined =
+    referenceNodes.size === 0
+      ? opts.scope
+      : (fqn: string): boolean => !referenceNodes.has(fqn) && (opts.scope?.(fqn) ?? true);
   const filtered = scope
     ? afterEntityFilter.filter((o) => scope(o.resolutionKey()))
     : afterEntityFilter;
@@ -501,6 +510,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       reason = "root has no object children";
     } else if (afterEntityFilter.length === 0) {
       reason = "no object children match the provided entityFilter";
+    } else if (afterEntityFilter.every((o) => referenceNodes.has(o.resolutionKey()))) {
+      // Only reference nodes remained: name the reference sources, not a `scope` the
+      // project may never have written.
+      reason = "every object is declared only in a reference source";
     } else {
       reason = "no object children match the configured scope";
     }

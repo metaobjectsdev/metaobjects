@@ -38,6 +38,7 @@ import { scanForRemovedProps, type RemovedPropFinding } from "../lib/removed-pro
 import { replayRemedy } from "../lib/replay-remedy.js";
 import { FileProvider, templateReferenceLine } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
+import { responseFindings } from "../lib/response-verify.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, RemovedNamingConfigError, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { collectionLoadOptions } from "../lib/collection-load-options.js";
 import { schemaBuildOptions, type SchemaBuildOptions } from "../lib/schema-build-options.js";
@@ -144,6 +145,7 @@ import {
   WIRE_KEY_NULL_MEMBERS,
   WIRE_KEY_DURATIONS,
   type WireFormat,
+  type MetaData,
 } from "@metaobjectsdev/metadata";
 import {
   verify,
@@ -1280,12 +1282,31 @@ export async function verifyCommand(
     let checkedTemplates = 0;
 
     for (const tmpl of templates) {
+      // The reply (`@responseRef`): its field tree, and an xml prompt's tag contract
+      // against it. Independent of the payload check below, so it runs first.
+      let replyError = false;
+      for (const f of responseFindings(tmpl)) {
+        const line = `[${tmpl.name}] (reply) ${f.code}: ${f.path}`;
+        if (f.severity === "error") {
+          log.error(line);
+          errorCount++;
+          replyError = true;
+        } else {
+          log.warn(line);
+          warnCount++;
+        }
+      }
+      if (verifyTemplateBody(tmpl) || replyError) checkedTemplates++;
+    }
+
+    // One template's body against its payload; true when the check engaged with it.
+    function verifyTemplateBody(tmpl: MetaData): boolean {
       // ADR-0039: effective attrs — @payloadRef may be inherited via an abstract template.
       const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
       // A typeless/absent @payloadRef is a loader-schema concern, not verify's. Every
       // renderable template needs it (do NOT gate on @textRef — an @kind=email output
       // has no @textRef, and gating on it silently skipped email drift; #193).
-      if (typeof payloadRef !== "string") continue;
+      if (typeof payloadRef !== "string") return false;
 
       // @payloadRef must resolve to a loaded object.value (drives the field tree
       // every render-engine drift check runs against).
@@ -1296,8 +1317,7 @@ export async function verifyCommand(
             `@payloadRef "${payloadRef}" did not resolve to a loaded object.value`,
         );
         errorCount++;
-        checkedTemplates++;
-        continue;
+        return true;
       }
 
       // Collect every renderable mustache ref for this template + whether the
@@ -1328,12 +1348,12 @@ export async function verifyCommand(
           if (typeof textRef === "string") refs = [{ label: "document", ref: textRef }];
         }
       } else {
-        continue; // unknown subtype — loader-schema concern.
+        return false; // unknown subtype — loader-schema concern.
       }
 
       // No renderable body ref present — absent required refs are a loader-schema
       // concern, not verify's (mirrors the pre-#193 behavior for a bodyless template).
-      if (refs.length === 0) continue;
+      if (refs.length === 0) return false;
 
       // Slot/tag requirements are a template.prompt concept; the render-helper's
       // email/document gate does NOT apply them per part (they would false-flag a
@@ -1381,7 +1401,7 @@ export async function verifyCommand(
           }
         }
       }
-      if (anyBodyChecked || anyErrorHere) checkedTemplates++;
+      return anyBodyChecked || anyErrorHere;
     }
 
     if (errorCount > 0) {

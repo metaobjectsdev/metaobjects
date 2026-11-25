@@ -63,6 +63,10 @@ public final class NeutralConfig {
      */
     public static final String DEFAULT_METADATA_DIR = "metaobjects";
 
+    /** The {@code sources} key naming a path source, and the boolean modifier that makes it a reference source. */
+    public static final String SOURCE_KEY_PATH = "path";
+    public static final String SOURCE_KEY_REFERENCE = "reference";
+
     private static final String METAOBJECTS_DIR = ".metaobjects";
     private static final String CONFIG_FILE = "config.json";
     private static final int SUPPORTED_SCHEMA_VERSION = 1;
@@ -93,7 +97,8 @@ public final class NeutralConfig {
     /**
      * Each entry is a raw source spec (e.g. {@code {"path": "model"}},
      * {@code {"resource": "com/acme/model"}}) — kind interpretation belongs to
-     * {@link SourceResolver}, not here.
+     * {@link SourceResolver}, not here. A reference source carries {@code "reference": "true"}
+     * beside its {@code path} ({@code false} is the same as absent).
      */
     public List<Map<String, String>> getSources() {
         return sources;
@@ -292,13 +297,29 @@ public final class NeutralConfig {
                             ErrorCode.ERR_BAD_ATTR_VALUE);
                 }
                 JsonObject entry = el.getAsJsonObject();
-                if (entry.size() != 1) {
+                // `reference` is a modifier on a path source, not a kind of its own: it does not
+                // count toward "exactly one key", and it must be a JSON boolean.
+                JsonElement reference = entry.get(SOURCE_KEY_REFERENCE);
+                if (reference != null
+                        && !(reference.isJsonPrimitive() && reference.getAsJsonPrimitive().isBoolean())) {
+                    throw new MetaDataException(
+                            origin + ": \"sources\" entry \"" + SOURCE_KEY_REFERENCE + "\" must be a boolean",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                }
+                if (entry.size() - (reference != null ? 1 : 0) != 1) {
                     throw new MetaDataException(
                             origin + ": each \"sources\" entry must have exactly one key",
                             ErrorCode.ERR_BAD_ATTR_VALUE);
                 }
+                if (reference != null && !entry.has(SOURCE_KEY_PATH)) {
+                    throw new MetaDataException(
+                            origin + ": \"" + SOURCE_KEY_REFERENCE + "\" is only valid on a \"" + SOURCE_KEY_PATH
+                                    + "\" source",
+                            ErrorCode.ERR_BAD_ATTR_VALUE);
+                }
                 Map<String, String> spec = new LinkedHashMap<>();
                 for (Map.Entry<String, JsonElement> e : entry.entrySet()) {
+                    if (SOURCE_KEY_REFERENCE.equals(e.getKey())) continue;
                     JsonElement v = e.getValue();
                     if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isString()) {
                         // Every source-spec value (`path`/`resource`/`package`) is a
@@ -318,6 +339,7 @@ public final class NeutralConfig {
                     }
                     spec.put(e.getKey(), value);
                 }
+                if (reference != null && reference.getAsBoolean()) spec.put(SOURCE_KEY_REFERENCE, "true");
                 specs.add(spec);
             }
         }

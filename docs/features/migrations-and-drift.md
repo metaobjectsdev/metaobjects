@@ -769,7 +769,9 @@ Postgres's text. If the metadata does not load, the baseline is written as befor
 ## Drift verify commands per port
 
 A bare `verify` runs the same default gate set in every port: **codegen drift**,
-**prompt-template drift**, the **requirement ledger** and the **business-rules gate**. What a check does when the run has
+**prompt-template drift**, the **requirement ledger** and the **business-rules gate** — one
+exception: Rust has no requirement gate, so a bare `cargo meta verify` runs the codegen,
+template and business-rules gates ([the Rust port page](../ports/rust.md)). What a check does when the run has
 no configuration for it differs by port. TypeScript, Java and Python skip it with a one-line
 note and do not fail: TypeScript skips the codegen gate when there is no `metaobjects.config.ts`
 (and its template gate passes with a note when the model has no `template.*` nodes), Java skips
@@ -786,10 +788,11 @@ needs a `prompts/` (else `templates/`) directory, or `--templates <root>`, and e
 | Kotlin | `mvn metaobjects:verify` (the same goal as Java) | As Java. `MetadataStartupValidator` adds a startup check. | As Java |
 | C# | `dotnet meta verify` | Codegen: an output directory (`csharp.outDir` in `.metaobjects/config.json`, or `--out <dir>`) and `codegen/Generators.cs`. Templates: `--templates <root>`, or a `prompts/` (else `templates/`) directory in the working directory; with neither, a bare run exits 2. | `dotnet meta verify --codegen`, `dotnet meta verify --templates <root>` |
 | Python | `metaobjects verify` | Codegen: `metaobjects.config.yaml`. Templates: `metaobjects.config.yaml` or `--prompts <dir>`. | `metaobjects verify --codegen`, `metaobjects verify --templates` |
+| Rust | `cargo meta verify` | Codegen: `.metaobjects/config.json` and the project's generator list (`metaobjects.config.json`; every generator runs when it is absent). Templates: a `prompts/` (else `--prompts <dir>`) directory under the project root. | `cargo meta verify --codegen`, `cargo meta verify --templates` |
 
 Schema drift is a separate, opt-in check and Node-only (ADR-0015): `meta verify --db <url>`
-introspects the live database and reports database-versus-metadata drift. The other four
-ports reject `--db` (C#, Python and the Maven goal exit 2 or fail with a pointer to the
+introspects the live database and reports database-versus-metadata drift. The other five
+ports reject `--db` (C#, Python, Rust and the Maven goal exit 2 or fail with a pointer to the
 TypeScript CLI); the live-DB-schema `metaobjects:verify` goal was removed along with the
 runtime auto-create validator.
 

@@ -27,12 +27,14 @@ import type { Collection, LoadMemoryOptions } from "@metaobjectsdev/sdk";
  */
 export function collectionLoadOptions(
   collection: Collection,
-): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "libraries" | "physicalNaming" | "wireFormat" | "enumDefaults" | "apiPagination" | "apiUnknownFields" | "rulesSettings">> {
+): Required<Pick<LoadMemoryOptions, "files" | "fileIds" | "importedPackages" | "importedNodes" | "referenceIds" | "libraries" | "physicalNaming" | "wireFormat" | "enumDefaults" | "apiPagination" | "apiUnknownFields" | "rulesSettings">> {
   return {
     files: collection.files,
     fileIds: collection.fileIds,
     importedPackages: collection.importedPackages,
     importedNodes: collection.importedNodes,
+    // Reference sources: their nodes land in MetaRoot.referenceNodes, which codegen skips.
+    referenceIds: collection.referenceIds,
     // FR-043 — the shipped-library selection moved here from metaobjects.config.ts, so
     // it now rides the same helper as everything else the collection contributes. That
     // is the point of the move as much as the neutrality is: `libraries` used to be

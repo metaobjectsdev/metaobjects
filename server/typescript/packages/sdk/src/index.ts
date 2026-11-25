@@ -99,7 +99,7 @@ export type { ForgeType, ForgeAttr } from "./forge-types.js";
 // Memory loader — read a project's resolved metadata into a MetaData tree.
 // Where those files come from is `resolveCollection`'s decision (below), which
 // `loadMemory` calls when the caller supplies no explicit file set.
-export { loadErrors, loadMemory, loadMemoryWithFindings, unknownAttributeFindings, defaultLoadMemoryProviders } from "./memory.js";
+export { loadErrors, loadMemory, loadMemoryWithFindings, unknownAttributeFindings, defaultLoadMemoryProviders, referenceNodesOf, ERR_REFERENCE_SOURCE_TEMPLATE } from "./memory.js";
 export type { LoadMemoryOptions } from "./memory.js";
 
 // Default project layout — the DEFAULT value of `sources` (applied by
@@ -121,7 +121,7 @@ export { discoverCollectionRoot, resolveConfigDir } from "./discovery.js";
 export type { DiscoveredRoot } from "./discovery.js";
 
 // Collection — the single authority on where a project's metadata lives
-export { resolveCollection } from "./collection.js";
+export { resolveCollection, REFERENCE_ID_PREFIX } from "./collection.js";
 export type { Collection } from "./collection.js";
 
 // DEPRECATED (removed in 2.0) — workspace discovery over the v0.3 package.meta.json

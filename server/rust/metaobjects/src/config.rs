@@ -569,27 +569,62 @@ fn parse_sources(v: &Value, issues: &mut Issues) -> Vec<SourceSpec> {
             issues.add(&at, expected("object", entry));
             continue;
         };
-        let spec = (o.len() == 1)
-            .then(|| o.iter().next())
-            .flatten()
-            .and_then(|(k, v)| {
-                let s = v.as_str().filter(|s| !s.is_empty())?.to_string();
-                match k.as_str() {
-                    "path" => Some(SourceSpec::Path(s)),
-                    "resource" => Some(SourceSpec::Resource(s)),
-                    "package" => Some(SourceSpec::Package(s)),
-                    _ => None,
-                }
-            });
-        match spec {
-            Some(s) => out.push(s),
-            None => issues.add(
-                &at,
-                "expected exactly one of \"path\", \"resource\" or \"package\", set to a non-empty string",
-            ),
-        }
+        let spec = parse_source_spec(o, &at, issues);
+        out.extend(spec);
     }
     out
+}
+
+/// The `reference` flag of a `path` source: loads the files so references resolve against
+/// them, and leaves the nodes only they declare to another run.
+const SOURCE_REFERENCE_KEY: &str = "reference";
+
+/// One `sources` entry. A `resource` or `package` entry takes exactly its one key; a `path`
+/// entry may add `reference`, which must be a boolean. Every problem is reported on `issues`.
+fn parse_source_spec(
+    o: &serde_json::Map<String, Value>,
+    at: &str,
+    issues: &mut Issues,
+) -> Option<SourceSpec> {
+    let shape =
+        "expected exactly one of \"path\", \"resource\" or \"package\", set to a non-empty string";
+    let non_empty = |v: &Value| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
+    if let Some(path) = o.get("path") {
+        let Some(path) = non_empty(path) else {
+            issues.add(at, shape);
+            return None;
+        };
+        return match o.get(SOURCE_REFERENCE_KEY) {
+            None if o.len() == 1 => Some(SourceSpec::Path(path)),
+            Some(Value::Bool(flag)) if o.len() == 2 => Some(SourceSpec::PathFlagged(path, *flag)),
+            Some(v) if !v.is_boolean() => {
+                issues.add(
+                    &format!("{at}.{SOURCE_REFERENCE_KEY}"),
+                    expected("boolean", v),
+                );
+                None
+            }
+            _ => {
+                issues.add(at, shape);
+                None
+            }
+        };
+    }
+    let spec = (o.len() == 1)
+        .then(|| o.iter().next())
+        .flatten()
+        .and_then(|(k, v)| {
+            let s = non_empty(v)?;
+            match k.as_str() {
+                "resource" => Some(SourceSpec::Resource(s)),
+                "package" => Some(SourceSpec::Package(s)),
+                _ => None,
+            }
+        });
+    if spec.is_none() {
+        issues.add(at, shape);
+    }
+    spec
 }
 
 fn dependency_name_ok(name: &str) -> bool {

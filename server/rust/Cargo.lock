@@ -113,6 +113,7 @@ version = "0.1.0"
 dependencies = [
  "metaobjects",
  "metaobjects-codegen",
+ "metaobjects-render",
  "serde_json",
 ]
 

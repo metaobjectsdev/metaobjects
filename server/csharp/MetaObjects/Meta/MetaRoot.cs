@@ -57,7 +57,18 @@ public class MetaRoot(TypeId typeId, string name) : MetaData(typeId, name)
     /// ledger's denominator)? False for an object a dependency owns, unless the project's
     /// <c>scope.include</c> names its package. Always true when nothing is imported.
     /// </summary>
-    public bool InScope(MetaObject obj) => ImportScope?.InScope(obj.ResolutionKey()) ?? true;
+    public bool InScope(MetaObject obj) => !IsReference(obj) && (ImportScope?.InScope(obj.ResolutionKey()) ?? true);
+
+    /// <summary>
+    /// The resolution keys of the top-level nodes only REFERENCE sources declare
+    /// (<c>{ "path": ..., "reference": true }</c> in <c>.metaobjects/config.json</c>). They load and resolve
+    /// like any node, and no generator emits them: another run owns them. Set by the project-aware load;
+    /// empty for a tree loaded with no reference source.
+    /// </summary>
+    public IReadOnlySet<string> ReferenceNodes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>Is <paramref name="obj"/> a reference node (<see cref="ReferenceNodes"/>)?</summary>
+    public bool IsReference(MetaData obj) => ReferenceNodes.Count > 0 && ReferenceNodes.Contains(obj.ResolutionKey());
 
     /// <summary>Object entities defined at this root level.</summary>
     public IReadOnlyList<MetaObject> Objects()

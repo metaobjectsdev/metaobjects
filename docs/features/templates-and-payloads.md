@@ -216,7 +216,7 @@ with jinja2 (`pip install "metaobjects[jinja]"`), TypeScript with nunjucks, whic
   body includes Jinja templates. A partial whose file is the other engine's is refused with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, in `verify` and at render time, rather than spliced in
   as text the including engine would misread.
-- **Java, Kotlin and C# do not render Jinja.** Their providers refuse a Jinja-only body with
+- **Java, Kotlin, C# and Rust do not render Jinja.** Their providers refuse a Jinja-only body with
   `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, and their `verify` reports it on that template, so a
   model that needs those ports keeps its bodies in Mustache.
 
@@ -559,6 +559,12 @@ parser, the render function, the output-format fragment, the extractor — is na
 the template. The tolerant tier's all-nullable mirror is named after the value object
 (`<Vo>Extracted`).
 
+**When another run already generates the reply type**, declare its files as a *reference
+source* (`{ "path": "replies", "reference": true }` in `sources`; `<referenceSources>` in
+Maven). The reply type loads, so `@responseRef` resolves, and no value-object generator emits
+it — the parser imports the type the other run generates, by the same name. See
+[metadata-sources.md](metadata-sources.md#reference-sources--loaded-to-resolve-against-never-generated).
+
 `meta verify` walks both subtypes, catching payload ↔ template drift at build time.
 
 **On malformed metadata, generators behave slightly differently** — TS throws
@@ -728,11 +734,24 @@ Java, Kotlin and C#; `verify=` in Python) also checks names against the declared
 [`fixtures/template-output-render-conformance/runtime-drift/`](../../fixtures/template-output-render-conformance/runtime-drift/),
 and by the `render-error-missing-variable` and `render-error-missing-dotted-path` render fixtures.
 
+**The reply is checked too.** For every `template.prompt` carrying `@responseRef`, `verify`
+reports `ERR_RESPONSE_UNRESOLVED` (an error) when the reply type has no field a parser could
+read, and, for an `@responseFormat: xml` prompt, `ERR_RESPONSE_TAG_UNDECLARED` (a warning)
+for each `@requiredTags` tag that names neither the reply type nor any field in its tree. The
+body is already held to those tags (`ERR_OUTPUT_TAG_MISSING`); this ties them to the type the
+extractor reads, so renaming a reply field without renaming the tag the prompt asks for is
+caught. Pinned by [`fixtures/response-verify-conformance/`](../../fixtures/response-verify-conformance/)
+in TypeScript, Java (and so Kotlin), C#, Python and Rust.
+
 A bare `verify` also checks generated code and the requirement ledger; name the template
 check to run it alone. Java and Python skip this check with a note when no template root is
 configured; C# does not skip, and a bare run with no `prompts/` or `templates/` directory
 (and no `--templates <root>`) exits 2
 ([cli.md](cli.md#verify-is-one-verb-with-explicit-subverbs-adr-0021-d2)).
+
+Rust's check reads Mustache bodies only: a body resolving to a `.jinja` / `.j2` file is
+reported as `ERR_TEMPLATE_ENGINE_UNSUPPORTED`. Its engine, `verify` in `metaobjects-render`,
+is held to `fixtures/verify-conformance/` with no ledgered case.
 
 | Port | Bare command (runs this check) | This check alone |
 |---|---|---|
@@ -741,6 +760,7 @@ configured; C# does not skip, and a bare run with no `prompts/` or `templates/` 
 | Kotlin | `mvn metaobjects:verify` (same Maven goal) | `-Dmeta.verify.mode=templates` |
 | C# | `dotnet meta verify` (needs a `prompts/` or `templates/` directory, else exits 2) | `dotnet meta verify --templates <root>` |
 | Python | `metaobjects verify` (needs `metaobjects.config.yaml` or `--prompts <dir>`) | `metaobjects verify --templates` |
+| Rust | `cargo meta verify` (bodies under `prompts/`, or `--prompts <dir>`; a project with no `template.*` node prints nothing) | `cargo meta verify --templates` |
 
 ## Determinism contract
 

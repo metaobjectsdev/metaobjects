@@ -292,6 +292,23 @@ public class MetaRoot extends MetaData implements com.metaobjects.database.Physi
     }
 
     /**
+     * The resolution keys (FQNs) of the top-level nodes only REFERENCE sources declare
+     * ({@code {"path": ..., "reference": true}}). They load and resolve like any other node; no
+     * generator emits them, because another run owns them. Set by the project-aware load.
+     */
+    private transient java.util.Set<String> referenceNodes = java.util.Set.of();
+
+    /** The reference nodes of this tree; empty when no reference source was loaded. Never {@code null}. */
+    public java.util.Set<String> getReferenceNodes() {
+        return referenceNodes;
+    }
+
+    /** Sets the reference nodes ({@code null} restores the empty set). */
+    public void setReferenceNodes(java.util.Set<String> referenceNodes) {
+        this.referenceNodes = (referenceNodes != null) ? java.util.Set.copyOf(referenceNodes) : java.util.Set.of();
+    }
+
+    /**
      * Returns all {@code object} children of this root node.
      *
      * @return list of MetaObject children; empty list if none

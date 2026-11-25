@@ -841,19 +841,27 @@ fn field_rules(
 impl Plan {
     /// The plan of the model a generator was handed.
     pub fn of(ctx: &GenContext<'_>) -> Result<Plan, GenError> {
-        Plan::build(ctx.tree, ctx.root, ctx.collection)
+        Plan::build(ctx.tree, ctx.root, ctx.collection, ctx.reference_nodes)
     }
 
-    pub fn build(tree: &Tree, root: NodeId, collection: &Collection) -> Result<Plan, GenError> {
+    pub fn build(
+        tree: &Tree,
+        root: NodeId,
+        collection: &Collection,
+        reference: &BTreeSet<String>,
+    ) -> Result<Plan, GenError> {
         // Every concrete entity and value object, in model order.
         let mut structs: Vec<StructPlan> = Vec::new();
         let mut by_node: HashMap<NodeId, usize> = HashMap::new();
         let index = ObjectIndex::build(tree, root);
+        // A reference node loads and resolves but another run owns it (`reference` is the
+        // set the load computed and already vetted).
         for &id in tree.own_children(root) {
             let n = tree.node(id);
             if n.type_name != TYPE_OBJECT
                 || !matches!(n.sub_type.as_str(), OBJECT_ENTITY | OBJECT_VALUE)
                 || n.is_abstract
+                || reference.contains(&tree.resolution_key(id))
             {
                 continue;
             }

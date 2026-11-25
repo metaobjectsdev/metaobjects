@@ -106,6 +106,17 @@ def run_gen(
     if not isinstance(metadata, MetaRoot):
         raise ValueError("run_gen: metadata must be a loaded MetaRoot.")
 
+    # Reference nodes (declared only by `{"path": ..., "reference": true}` sources) load so
+    # references resolve against them, and another run owns their generated types - so they
+    # leave the selection here, at the single choke point. With no reference source this is
+    # ``select`` unchanged.
+    reference_nodes = metadata.reference_nodes
+    if reference_nodes:
+        outer_select = select
+
+        def select(fqn: str) -> bool:  # noqa: F811 - the composed selection replaces the argument
+            return fqn not in reference_nodes and (outer_select is None or outer_select(fqn))
+
     objs = _objects(metadata)
     model_has_objects = bool(objs)
     # The WHOLE model in scope. `entity_filter` narrows what is written, never what a
