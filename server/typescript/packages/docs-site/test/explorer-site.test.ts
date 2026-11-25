@@ -14,6 +14,7 @@ import {
   readPromptTexts,
   type ExplorerJson,
 } from "../src/index.js";
+import { CUSTOM_VOCABULARY_MODEL, CUSTOM_VOCABULARY_VERIFY } from "./fixture/custom-vocabulary.js";
 
 const REPO = resolve(import.meta.dir, "../../../../..");
 const SHOP = join(REPO, "fixtures/explorer-conformance/shop");
@@ -207,6 +208,41 @@ describe("explorer site over the fitness model", async () => {
   test("with no requirements the main page says so, and no page claims an L5 column", () => {
     expect(fitness.page("index.html")).toContain("This model declares no requirements yet");
     expect(fitness.page("model/fitness/Program.html")).not.toContain("Claimed at L5");
+  });
+});
+
+describe("explorer site over application-owned vocabulary", () => {
+  const build = (): { pages: string[]; page: (p: string) => string } => {
+    const out = scratch();
+    const r = generateExplorerSite({ explorer: buildExplorer({ model: CUSTOM_VOCABULARY_MODEL, verify: CUSTOM_VOCABULARY_VERIFY }), outDir: out, title: "Acme" });
+    return { pages: r.pages, page: (p) => readFileSync(join(out, p), "utf8") };
+  };
+
+  test("every top-level node gets a page, and the site passes its own link check", () => {
+    const { pages } = build();
+    expect(pages).toContain("model/acme/crm/Lead.html");
+    expect(pages).toContain("model/acme/crm/Lead.page-list.html");
+    expect(pages).toContain("model/acme/tax/tax.html");
+  });
+
+  test("a custom type's generic page shows its kind, attributes, members and the requirement claiming it", () => {
+    const { page } = build();
+    const tax = page("model/acme/tax/tax.html");
+    expect(tax).toContain("capability.module");
+    expect(tax).toContain("Sales tax.");
+    expect(tax).toContain("The software computes sales tax.");
+    const list = page("model/acme/crm/Lead.page-list.html");
+    expect(list).toContain("page.list");
+    expect(list).toContain(`id="m-block-leads"`);
+    // An attribute naming a node links to that node's page.
+    expect(list).toContain(`href="../../../model/acme/crm/Lead.html"`);
+  });
+
+  test("the package page lists the custom nodes beside the objects", () => {
+    const { page } = build();
+    const crm = page("model/acme/crm/index.html");
+    expect(crm).toContain(`href="../../../model/acme/crm/Lead.html"`);
+    expect(crm).toContain(`href="../../../model/acme/crm/Lead.page-list.html"`);
   });
 });
 

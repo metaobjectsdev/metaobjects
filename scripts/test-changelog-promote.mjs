@@ -27,6 +27,13 @@ check(r.action === "unchanged" && r.text === prepared, "a section already dated 
 r = promoteChangelog(prepared, "1.1.1", "2026-10-22", SUB);
 check(r.action === "nothing" && r.text === prepared, "an empty [Unreleased] above another version promotes nothing");
 
+const split = "# Changelog\n\n## [Unreleased]\n\n- a fragment\n\n## [1.1.0] — 2026-10-10\n\n_npm `1.1.0`._\n\n- prepared\n";
+r = promoteChangelog(split, "1.1.0", "2026-10-22", SUB);
+check(r.action === "split" && r.text === split, "entries above a prepared section for this version are refused, not given a second heading");
+
+r = promoteChangelog(split, "1.1.1", "2026-10-22", SUB);
+check(r.action === "promoted" && r.text.includes("## [1.1.1] — 2026-10-22\n\n_npm `1.1.0`._\n\n- a fragment"), "entries above a different version still promote");
+
 if (fails > 0) {
   console.error(`\n${fails} check(s) failed`);
   process.exit(1);

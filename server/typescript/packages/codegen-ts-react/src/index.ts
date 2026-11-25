@@ -6,8 +6,9 @@ export { formFile, type FormFileOpts } from "./form-file.js";
 export { reactGeneratorRegistry } from "./generator-registry.js";
 
 // FR-040 §4.2(b) — public so an owned generator composes the engine rather than
-// forking it. Signature is stable API: (entity, ctx) => string.
-export { renderFormFile } from "./templates/form-file.js";
+// forking it. Signature is stable API: (entity, ctx) => string. `writeFormFile(w, entity, ctx)`
+// writes the same file into a code writer (ADR-0063) the caller holds.
+export { renderFormFile, writeFormFile } from "./templates/form-file.js";
 
 // FR-040 §4.1 — the copyable reference generator(s) this package ships in
 // `src/reference/`, and the reader `meta init`/`meta eject` use to read them.

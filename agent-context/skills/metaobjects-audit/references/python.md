@@ -1,8 +1,9 @@
 # Python port — audit reference
 
 The Python port targets FastAPI consumers. Codegen runs through the **`metaobjects`
-console-script** (`pip install metaobjects`). Schema migration and live-DB drift
-are **Node-`meta`-only** (ADR-0015) — the `metaobjects` console-script has no
+console-script** (`pip install metaobjects`). Schema migration is the project's own
+tool (Alembic) or the Node `meta migrate` reference helper, and live-DB drift is the Node
+`meta verify --db` (ADR-0015) — the `metaobjects` console-script has no
 `migrate` subcommand and `metaobjects verify --db` is rejected with exit 2. The
 runtime persistence tier is the `ObjectManager` (metadata-driven CRUD over
 SQLAlchemy Core or asyncpg), or a hand-written repository implementation.
@@ -118,11 +119,11 @@ hand-written layer the model fully describes, resolves to a generator the projec
 refs under `metaobjects gen --templates <dir>`) where the shape is what matters. Recommend it; it is the
 primary path. Worked template example: `docs/ports/python.md`.
 
-To re-scaffold the agent-context into a Python project, use the Node `meta` CLI (the
-single agent-docs assembler per ADR-0033):
+To re-scaffold the agent-context into a Python project, run the Python CLI. It writes the
+files the single assembler built (ADR-0033 Amendment 1), with no Node:
 
 ```bash
-npx meta agent-docs --server python [--out <dir>]
+metaobjects agent-docs [--client <fw>] [--out <dir>]
 ```
 
 ---

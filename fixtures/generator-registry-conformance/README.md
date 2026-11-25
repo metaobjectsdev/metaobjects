@@ -115,6 +115,34 @@ assertions:
 What each port's reference scan reads, and the limits of the guard, are in ADR-0034
 Amendment 8.
 
+## `surface` — the generator-authoring surface
+
+The engine an owned copy may import (`eject.engineSurface`, above) is wider than what
+MetaObjects promises to keep stable. The top-level `surface` block names the promised part:
+the modules a team writes its own generator against
+([ADR-0034](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md) Amendment 12). Each port
+lists four roles, spelled the way its `engine` list spells members:
+
+| Role | What it holds |
+|---|---|
+| `generator` | The interface a generator implements, what it is handed and what it returns, including the one declaration of what the generator provides. |
+| `modelWalk` | The answers about the loaded model that are not a single metadata accessor. |
+| `writer` | What lays out the emitted text (ADR-0063). |
+| `naming` | The port's spellings of metadata names: types, members, files. |
+
+The surface is versioned with the port's codegen package and changes under
+[`docs/compatibility-policy.md`](../../docs/compatibility-policy.md): removing or renaming one
+of its exported names is a major for that package. Every other engine member is internal. An
+owned copy may still import it, and it may change in any release. Reference templates that
+`meta eject` copies into a project are the project's own code and are never surface. An empty
+role says the port has no module in that role yet.
+
+Each port's test pins the surface by name and checks that every surface entry is also an
+`engine` entry. TypeScript's is `codegen-ts/test/authoring-surface.test.ts`, with the exported
+names in `authoring-surface.snapshot.json` beside it. The other ports add theirs in their own
+T7 rows; until then `ModelWalk` in Java and Kotlin is a surface entry that is not yet an
+`engine` entry.
+
 ## Shared (cross-port) names
 
 These concepts MUST use the same stable name wherever a port implements them:

@@ -11,8 +11,8 @@ written by ``meta agent-docs`` carries the installed version under ``generatedBy
 (SAME key as TS — a polyglot repo may cross-read the manifest).
 
 Note: the stamp test (``test_agent_docs_stamps_generated_by``) was removed when
-the Python assembler was deleted — scaffolding now belongs to ``meta agent-docs``
-(the Node CLI); the ``metaobjects agent-docs`` command is a redirect stub.
+the Python assembler was deleted; ``metaobjects agent-docs`` now writes the shipped tree
+itself (see ``test_agent_docs.py``).
 """
 
 from __future__ import annotations

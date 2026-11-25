@@ -34,8 +34,9 @@ exactly that set. A `path` is read **in place and never installed** or copied.
 `"sources": []`, so every existing project takes the default and resolves the same
 files it always did.
 
-**Port support.** `sources` is read by **all four CLI surfaces** — the Node `meta`
-CLI, `dotnet meta` (C#), `metaobjects` (Python) and `metaobjects:generate` (Java
+**Port support.** `sources` is read by **all five CLI surfaces** — the Node `meta`
+CLI, `dotnet meta` (C#), `metaobjects` (Python), `cargo meta` (Rust) and
+`metaobjects:generate` (Java
 and Kotlin, via Maven — Kotlin has no CLI entry point of its own; it runs through
 the same Maven plugin as Java). Each resolves the same files from the same
 declaration; that promise is gated by
@@ -74,14 +75,37 @@ failing deep inside the loader with an opaque, uncoded error. Declare exactly on
 directory `path` to use `dotnet meta gen`/`verify`, or route around the
 limit with an explicit `<metadataDir>` CLI argument.
 `MetaDataLoader.Load(IReadOnlyList<IMetaDataSource>)` (`MetaDataLoader.cs`) is the
-documented follow-up that would lift both restrictions. The other three CLI
+documented follow-up that would lift both restrictions. The other four CLI
 surfaces have no such limit.
 
-The non-TypeScript ports read a **neutral subset** of that file —
-`schema_version` and `sources` — and ignore every other top-level key, so the
-TypeScript-owned keys beside them (`migrate`, `extract`, and the rest) never
-become a four-port concern. The C# port names an unknown top-level key on standard
-error, once per key, and still ignores it ([C# port](../ports/csharp.md#configure)).
+The non-TypeScript ports read a **neutral subset** of that file: each port models
+the keys its own commands consume and ignores the TypeScript-owned keys beside
+them (`extract`, and the rest), so a new TS-only key never becomes a cross-port
+concern. The shared core is `schema_version` and `sources`; beyond it, each port
+reads what it runs:
+
+- **Python** reads `dependencies`, `scope.include` (only for the dependency
+  explicit-include rule — this port has never applied `scope` to its own
+  output), `migrate.scope`, `libraries`, `naming`, `wire`, `rules`/`verify`,
+  `requirements.inherit`, `api` and `enums`; a separate read of `migrate.dialect`
+  — whether the project chose a `meta migrate` dialect (`meta init --dialect`
+  writes it) — decides whether the agent files and the model-only schema page
+  carry the reference migration helper's steps or the project's own tool
+  ([Python port](../ports/python.md)).
+- **Java and Kotlin** read the same list minus `libraries` — the Maven plugin's
+  `<loader><libraries>` names those instead — and read the TypeScript-owned
+  `migrate.dialect`/`conventions`/`foreignKeyIndexes` leniently, without
+  consuming them (`meta migrate` owns and validates those keys).
+- **C#** reads the shared list plus `libraries`, those `migrate` settings, and a
+  C#-scoped `csharp` block (`outDir`, `namespace`, providers). It names an
+  unknown top-level key on standard error, once per key, and still ignores it
+  ([C# port](../ports/csharp.md#configure)).
+- **Rust** reads the widest subset — the same list as C#, plus both `scope` arms
+  and the full TypeScript-owned `migrate` block (`outDir` through
+  `foreignKeyTargets`) — and surfaces an unknown top-level key as a warning in
+  the parse result rather than an error
+  ([Rust port](../ports/rust.md)).
+
 The Node CLI remains the file's only writer; `meta init --config-only` writes it into
 a Maven- or pip-rooted project without adding a TypeScript scaffold.
 
@@ -95,10 +119,12 @@ pattern and its `**` replacement (for example `acme::*` becomes `acme::**`), so 
 never drops silently. `<filters>` keeps what `scope` cannot express: `!`-prefix exclusion
 and a `.[attr]` predicate. Both are output filters over the same resolved file set, so
 they compete rather than layer. No cross-port behavior depends on `scope`; the TypeScript,
-C#, Python and Kotlin ports have no separate generator-filter glob (Kotlin runs through the
+C#, Python, Kotlin and Rust ports have no separate generator-filter glob (Kotlin runs through the
 same Maven plugin and so the same `<filters>`). (The pattern grammar itself is ported and
 corpus-gated in Java, Kotlin and C# as a library, ahead of the cross-repo dependency work;
-no command in those ports reads `scope` from the config yet.)
+no command in those ports applies `scope` to its own generated output yet — the
+neutral-subset reads above (`scope.include`, `migrate.scope`) serve the dependency
+rules only.)
 
 **Two things are deliberately not cross-port contracts**, because the corpus
 that gates this feature says so explicitly:
@@ -745,7 +771,7 @@ Phase 1 ships the spine. Explicitly **not** built yet, so you do not go looking:
   collides with `scope`'s pattern characters (see "Port support" near the top of
   this document), so reconciling the two is a separate, adopter-affecting decision
   rather than a mechanical port. They remain Node-CLI-only for now; `sources`
-  itself is no longer in this list — all four CLI surfaces read it today.
+  itself is no longer in this list — all five CLI surfaces read it today.
 - **Database and other runtime metadata sources.** Ruled a runtime-metadata concern
   rather than a build-time one.
 
@@ -762,10 +788,11 @@ Design rationale and the full phase plan:
   pins the resolved file SET for a declared `sources` list (the default, the
   relative-path base, recursion, extension matching, union/de-dup, and every error
   condition, including the deliberately-unpinned malformed-config case — see the
-  corpus's own README). All four CLI surfaces run it:
+  corpus's own README). All five CLI surfaces run it:
   `server/typescript/packages/sdk/test/source-resolution-conformance.test.ts`,
   `server/csharp/MetaObjects.Conformance.Tests/SourceResolutionConformanceTests.cs`,
-  `server/python/tests/conformance/test_source_resolution_conformance.py`, and
+  `server/python/tests/conformance/test_source_resolution_conformance.py`,
+  `server/rust/metaobjects/tests/source_resolution_conformance.rs`, and
   `server/java/metadata/src/test/java/com/metaobjects/config/SourceResolutionConformanceTest.java`
   (Kotlin runs through the Java/Maven loader, so it shares the Java runner).
 
@@ -774,7 +801,8 @@ Design rationale and the full phase plan:
 - [`fixtures/scope-conformance/`](../../fixtures/scope-conformance/) — 10 cases
   pinning `*` / `**`, include-union, exclude-after-include, literal metacharacters,
   and case sensitivity. All five ports run it (Kotlin inherits Java's); only the Node CLI
-  reads `scope` from the config (see "Port support" above). See
+  applies `scope` to its own output — the other ports read `scope.include` and
+  `migrate.scope` for the dependency rules alone (see the neutral subset above). See
   [`CONFORMANCE.md`](../CONFORMANCE.md).
 
 **TypeScript gates**

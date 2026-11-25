@@ -15,5 +15,8 @@ for (let i = 0; i < 8; i++) {
 if (!src) { console.error("monorepo agent-context/ not found to bundle"); process.exit(1); }
 const dest = join(pkgDir, "agent-context");
 rmSync(dest, { recursive: true, force: true });
-cpSync(src, dest, { recursive: true });
+// evals/ is the test harness for the skills (trigger cases, the skill A/B), not content an
+// installed project reads, so it stays out of the bundle and therefore out of the npm package.
+const evals = join(src, "evals");
+cpSync(src, dest, { recursive: true, filter: (from) => from !== evals });
 console.log("bundled agent-context →", dest);

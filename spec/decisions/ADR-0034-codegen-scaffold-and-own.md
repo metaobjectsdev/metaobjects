@@ -1267,3 +1267,48 @@ promise with them; `docs/compatibility-policy.md` stands as written.
 **What does not change.** Amendment 3's mechanical test, restated: what the tool guarantees as a
 contract is core; what it writes into your repo or a store is a helper. The engine, the layout
 and the eject contract stay covered by the compatibility policy.
+
+### Amendment 12 (2026-11-23) — the generator-authoring surface is named, promised and versioned
+
+**Ruling (maintainer, 2026-11-20, the 1.3.0 build plan's answer to the toolkit review's question on
+the authoring surface).** Amendment 11 made every generator a supported helper and did not say what
+a generator is *written against*. Amendment 4 made writing your own generator the primary path, and
+1.3.0 moves every port onto a code writer (ADR-0063) that teams will build on. This amendment names
+that surface before the conversions fix its shape by accident.
+
+1. **Each port names a small authoring surface in four roles.** The **generator interface** (what a
+   generator implements, what it is handed, what it returns), the **model walk** (the answers about
+   the loaded model that are not a single metadata accessor), the **writer** (what lays out the
+   emitted text) and the **naming helpers** (the port's spellings of metadata names). The shared
+   generator list (`fixtures/generator-registry-conformance/registry.json`) carries a top-level
+   `surface` block that names each port's modules by role. That block is the record. A port's
+   surface is whatever it lists there, and a change to the list is a change to the surface.
+2. **The surface is core, versioned with the port's codegen package.** It joins the scaffold-and-own
+   contract in `docs/compatibility-policy.md`. Removing or renaming an exported name is a major for
+   that package. Adding one is a minor. Each port pins the exported names with a name-level snapshot
+   test, so a change to the surface is a visible diff, never a side effect.
+3. **Everything else in the engine is internal.** The eject contract (Amendment 8) is unchanged: an
+   owned copy may still import any `engine` member. An engine member outside the surface carries no
+   promise and may change in any release. The surface is a subset of the engine, and each port's
+   test checks that.
+4. **Code that `meta eject` copies is owned code, never surface.** A reference generator's template
+   modules are copied into the project with it, and the copy imports them from there. They are the
+   project's own code, so promising their shape would promise nothing an adopter relies on. A
+   reference copy that reaches its templates by a path inside the packaged engine is a defect in the
+   copy, fixed by importing the copied module, not by adding the path to the surface.
+5. **A generator declares what it provides in one place.** Some generators answer questions another
+   part of the tool asks: whether it mounts routes, whether it emits the query helpers or the names
+   artifact. A generator states this in one documented declaration that is part of the generator
+   interface. It does not set a flag named after one of the packaged generators. A consumer of the
+   answer (another generator, a gate, the docs generators) reads the declaration and never matches a
+   generator by its name, so a team's own generator that provides the same thing is seen the same
+   way.
+
+**What does not change.** The `Generator` interface's role in the scaffold-and-own contract, the
+eject contract and its tests, the layout, and Amendment 11's line between core and helpers. What a
+generator *emits* stays a helper; what a generator is *written against* is core.
+
+**Per port.** The plan's T7 rows carry this out: TypeScript (its `engine` entry and the name-level
+snapshot, the reference copies' template imports, and the marker flags replaced by the declaration),
+Python, C# (as a public API baseline), Java and Kotlin (the shared SPI and both writers) and Rust
+(ADR-0065 Amendment 5). The compatibility statement follows in ADR-0035 Amendment 7.

@@ -270,6 +270,7 @@ rather than editing `render_wire(..., _WIRE)` in a router. `metaobjects verify` 
 
 ## Re-scaffold this context
 
-`metaobjects agent-docs` does not scaffold anything: it prints a pointer and exits 1.
-Run `npx meta agent-docs --server python` (the Node `meta` CLI) to (re)scaffold the slim
-always-on Markdown + these `metaobjects-*` skills into the project.
+Run `metaobjects agent-docs` to (re)scaffold the slim always-on Markdown and these
+`metaobjects-*` skills into the project. It needs no Node: the files ship inside the
+`metaobjects` package. Add `--client <fw>` for a web client and `--out <dir>` for another
+project root.

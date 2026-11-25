@@ -172,8 +172,8 @@ describe("docsFile()", () => {
 });
 
 describe("factories — target wiring", () => {
-  test("entityFile sets emitsEntityModule and accepts target", () => {
-    expect(entityFile().emitsEntityModule).toBe(true);
+  test("entityFile provides the entity modules and accepts target", () => {
+    expect(entityFile().provides?.entityModule).toBe(true);
     expect(entityFile({ target: "model" }).target).toBe("model");
   });
   test("routesFile/queriesFile/barrel accept target", () => {

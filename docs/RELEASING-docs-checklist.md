@@ -19,7 +19,7 @@ by exactly one release.
 ## A. This repo — `metaobjectsdev/metaobjects`
 
 - [ ] `README.md` — per-port version rows (npm + Maven Central).
-- [ ] `CHANGELOG.md` — add the release entry.
+- [ ] `CHANGELOG.md` — add the release entry (the `changelog.d/` fragments are folded in by `release.mjs`, or by `node scripts/changelog-fragments.mjs --assemble`).
 - [ ] `CLAUDE.md` — the `## Status` section (version line + "_Last refreshed_" date).
 - [ ] `docs/llms/llms.txt` — the "Shipping at `<npm>` … and `<maven>` …" line, the
       `## Implementations (npm … / Maven Central …)` header, the per-port version

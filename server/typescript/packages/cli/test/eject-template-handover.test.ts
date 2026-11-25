@@ -45,7 +45,7 @@ describe("the hand-over", () => {
   });
 
   test("a generator that calls no template module hands over none", async () => {
-    const r = await ejectGenerator({ cwd, name: "barrel" });
+    const r = await ejectGenerator({ cwd, name: "requirement-tests" });
     expect(r.templates).toBeUndefined();
     expect(existsSync(join(cwd, "codegen/templates"))).toBe(false);
   });
@@ -174,7 +174,7 @@ describe("meta eject --list reports the copies a project owns", () => {
   });
 
   test("a project with no template copy prints no section for them", async () => {
-    await ejectCommand(["barrel"], cwd, "text");
+    await ejectCommand(["requirement-tests"], cwd, "text");
     logged = [];
     await ejectCommand(["--list"], cwd, "text");
     expect(logged.join("\n")).not.toContain("Template source this project owns");

@@ -1,4 +1,4 @@
-import { code, imp, joinCode, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import { arr, json, props, str, TsWriter, type Props } from "@metaobjectsdev/codegen-ts/engine";
 import type { MetaObject, MetaField, MetaRoot } from "@metaobjectsdev/metadata";
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
@@ -231,20 +231,28 @@ function extractGrids(entity: MetaObject, root: MetaRoot, tph?: TphGridInfo): Gr
   return grids;
 }
 
-function renderColumnDef(col: ColumnSpec): string {
-  const parts: string[] = [];
-  parts.push(`    id: ${JSON.stringify(col.id)}`);
-  parts.push(`    accessorKey: ${JSON.stringify(col.id)}`);
-  parts.push(`    header: ${JSON.stringify(col.header)}`);
-  const meta: string[] = [`view: ${JSON.stringify(col.viewKind)}`];
-  if (col.sortable !== undefined) meta.push(`sortable: ${col.sortable}`);
-  if (col.width    !== undefined) meta.push(`width: ${col.width}`);
-  if (col.renderer !== undefined) meta.push(`renderer: ${JSON.stringify(col.renderer)}`);
-  parts.push(`    meta: { ${meta.join(", ")} }`);
-  return `  {\n${parts.join(",\n")}\n  }`;
+/** One column definition: `{ id, accessorKey, header, meta: { view, ... } }`. */
+function columnDef(col: ColumnSpec): Props {
+  const meta = props().set("view", str(col.viewKind));
+  if (col.sortable !== undefined) meta.set("sortable", String(col.sortable));
+  if (col.width !== undefined) meta.set("width", String(col.width));
+  if (col.renderer !== undefined) meta.set("renderer", str(col.renderer));
+  return props()
+    .set("id", str(col.id))
+    .set("accessorKey", str(col.id))
+    .set("header", str(col.header))
+    .set("meta", meta);
 }
 
+/** The grid columns module for `entity`, as a file. */
 export function renderColumnsFile(entity: MetaObject, ctx: RenderContext): string {
+  const w = new TsWriter();
+  writeColumnsFile(w, entity, ctx);
+  return w.toString();
+}
+
+/** Write the grid columns module for `entity` (one grid const, column list and filter preset per dataGrid). */
+export function writeColumnsFile(w: TsWriter, entity: MetaObject, ctx: RenderContext): void {
   const entityName = entity.name;
   const lcEntity   = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   // FR-017: a TPH discriminator base emits a polymorphic grid typed against the
@@ -261,51 +269,10 @@ export function renderColumnsFile(entity: MetaObject, ctx: RenderContext): strin
     : undefined;
   const grids      = extractGrids(entity, ctx.loadedRoot, tph);
 
-  const ColumnDefSym = imp("t:ColumnDef@@tanstack/react-table");
-
-  // Track whether any grid emits a filter const so we know to import <Entity>Filter.
-  let hasFilterConst = false;
-
-  const sections = grids.map((grid) => {
-    const gridConstName    = `${lcEntity}${capitalize(grid.name)}Grid`;
-    const columnsConstName = `${lcEntity}${capitalize(grid.name)}Columns`;
-
-    const sortBlock = grid.defaultSort
-      ? `  defaultSort: { field: ${JSON.stringify(grid.defaultSort.field)}, order: ${JSON.stringify(grid.defaultSort.order)} as const },\n`
-      : "";
-    const gridConst = code`
-export const ${gridConstName} = {
-  name:        ${JSON.stringify(grid.name)},
-  pageSize:    ${grid.pageSize},
-${sortBlock}  filterable:  ${grid.filterable},
-};
-`;
-    const colsLines = grid.columns.map(renderColumnDef).join(",\n");
-    const colsConst = code`
-export const ${columnsConstName}: ${ColumnDefSym}<${entityName}Row>[] = [
-${colsLines},
-];
-`;
-
-    // Emit per-grid filter const when @filter is set. The value is already a
-    // desugared, load-time-validated object — emit it verbatim.
-    let filterConstCode: Code | null = null;
-    if (grid.filter !== undefined) {
-      const filterConstName = `${lcEntity}${capitalize(grid.name)}Filter`;
-      hasFilterConst = true;
-      filterConstCode = code`
-export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(grid.filter, null, 2)};
-`;
-    }
-
-    return filterConstCode
-      ? code`${gridConst}\n${colsConst}\n${filterConstCode}`
-      : code`${gridConst}\n${colsConst}`;
-  });
-
-  const header =
-    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n`;
+  w.header(
+    `// ${GENERATED_HEADER}-tanstack — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entityName} (${entity.fqn()})`,
+  );
 
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
@@ -316,16 +283,36 @@ export const ${filterConstName}: ${entityName}Filter = ${JSON.stringify(grid.fil
     entityName,
     ctx.extStyle,
   );
-  // Import <Entity>Row always; import <Entity>Filter only when a filter const is emitted.
   // TPH base: <Base>Row is a distinct export (the all-columns row); import it
   // directly. Non-TPH: the entity type IS the row, imported under the Row alias.
-  const rowImport = tphBase ? `${entityName}Row` : `${entityName} as ${entityName}Row`;
-  const entityImportCode = hasFilterConst
-    ? code`import type { ${rowImport}, ${entityName}Filter } from ${JSON.stringify(entityModule)};`
-    : code`import type { ${rowImport} } from ${JSON.stringify(entityModule)};`;
+  // <Entity>Filter is imported only by a grid that emits a filter const.
+  const row = tphBase
+    ? w.useType(`${entityName}Row`, entityModule)
+    : w.useType(entityName, entityModule, `${entityName}Row`);
+  const columnDefType = w.useType("ColumnDef", "@tanstack/react-table");
 
-  const body: Code = joinCode(sections, { on: "\n" });
-  return header + entityImportCode.toString() + "\n" + body.toString();
+  for (const grid of grids) {
+    const gridConst = props()
+      .set("name", str(grid.name))
+      .set("pageSize", String(grid.pageSize));
+    if (grid.defaultSort) {
+      gridConst.set("defaultSort", props()
+        .set("field", str(grid.defaultSort.field))
+        .set("order", `${str(grid.defaultSort.order)} as const`));
+    }
+    gridConst.set("filterable", String(grid.filterable));
+    w.blank();
+    w.line(`export const ${lcEntity}${capitalize(grid.name)}Grid = `, gridConst, ";");
+    w.blank();
+    w.line(`export const ${lcEntity}${capitalize(grid.name)}Columns: ${columnDefType}<${row}>[] = `, arr(grid.columns.map(columnDef)), ";");
+    // Emit per-grid filter const when @filter is set. The value is already a
+    // desugared, load-time-validated object — emit it verbatim.
+    if (grid.filter !== undefined) {
+      const filterType = w.useType(`${entityName}Filter`, entityModule);
+      w.blank();
+      w.line(`export const ${lcEntity}${capitalize(grid.name)}Filter: ${filterType} = `, json(grid.filter), ";");
+    }
+  }
 }
 
 function capitalize(s: string): string {

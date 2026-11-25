@@ -299,7 +299,7 @@ describe("renderDrizzleSchema — Postgres", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderDrizzleSchema(root.findObject("Ticket")!, ctx).toString();
-    expect(out.replace(/\s+/g, " ")).toContain('.generatedByDefaultAsIdentity({ name: "Old_Id_seq", startWith: 1000, })');
+    expect(out.replace(/\s+/g, " ")).toContain('.generatedByDefaultAsIdentity({ name: "Old_Id_seq", startWith: 1000 })');
   });
 
   test("Postgres increment PK emits no serial/bigserial sugar in any form", () => {

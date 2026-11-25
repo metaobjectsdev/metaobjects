@@ -3535,13 +3535,29 @@ def _cmd_verify(args: argparse.Namespace) -> int:
 
 
 def _cmd_agent_docs(args: argparse.Namespace) -> int:
-    """``agent-docs`` — redirect to the canonical Node meta CLI scaffolder."""
+    """``agent-docs`` — write the shipped agent files for a stack (no Node)."""
+    from metaobjects.agent_context.agent_docs import run_agent_docs
+    from metaobjects.agent_context.shipped import ShippedContextError
+
+    out = Path(args.out) if args.out is not None else Path.cwd()
+    try:
+        created, notes = run_agent_docs(
+            servers=args.server or [],
+            clients=args.client or [],
+            out=out,
+            wire_root=not args.no_wire_root,
+        )
+    except (ShippedContextError, ParseError) as err:
+        print(f"metaobjects agent-docs: {err}", file=sys.stderr)
+        return 2
     print(
-        "agent-context scaffolding moved to the meta CLI — run: "
-        "npx meta agent-docs --server python [--client <fw>] [--out <dir>]",
-        file=sys.stderr,
+        f"Wrote the MetaObjects agent context ({len(created)} files changed): "
+        ".metaobjects/AGENTS.md + the metaobjects-* skills."
     )
-    return 1
+    for note in notes:
+        print(f"  {note}")
+    print("Re-run agent-docs to update; --no-wire-root skips the root AGENTS.md/CLAUDE.md @import.")
+    return 0
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -3914,12 +3930,22 @@ def _build_parser() -> argparse.ArgumentParser:
     agent_docs = sub.add_parser(
         "agent-docs",
         help=(
-            "moved to the Node CLI: run `npx meta agent-docs --server python` "
-            "(this command scaffolds nothing and exits 1)"
+            "write .metaobjects/AGENTS.md and the metaobjects-* skills for this stack "
+            "(default --server python); needs no Node"
         ),
     )
-    for ignored_flag in ("--server", "--client", "--out"):
-        agent_docs.add_argument(ignored_flag, help=argparse.SUPPRESS)
+    agent_docs.add_argument(
+        "--server", action="append",
+        help="server language, repeatable: typescript|java|kotlin|csharp|python|rust",
+    )
+    agent_docs.add_argument(
+        "--client", action="append", help="client framework, repeatable: react|tanstack|angular"
+    )
+    agent_docs.add_argument("--out", help="project directory to write into (default: the current one)")
+    agent_docs.add_argument(
+        "--no-wire-root", action="store_true",
+        help="do not add the @import to the root AGENTS.md / CLAUDE.md",
+    )
     agent_docs.set_defaults(func=_cmd_agent_docs)
 
     return parser

@@ -44,11 +44,7 @@ import {
   type CubeViewSpec,
 } from "./cube-model-spec.js";
 import { escapeCubeTemplate, jinjaSafe, JINJA_RAW_END } from "./cube-template.js";
-
-const INDENT = "  ";
-
-/** A mapping or a list item as lines, relative to its own indent. */
-type Lines = string[];
+import { YamlWriter } from "../writer/yaml-writer.js";
 
 /** A member reference inside a rollup: the member on the cube the rollup belongs to. */
 function cubeRef(member: string): string {
@@ -102,128 +98,105 @@ function textScalar(text: string, where: string): string {
   return doubleQuoted(safe);
 }
 
-function indented(lines: Lines): Lines {
-  return lines.map((line) => `${INDENT}${line}`);
-}
-
-/** One block-list entry: the first line carries the dash, the rest align under it. */
-function listItem(lines: Lines): Lines {
-  return lines.map((line, i) => (i === 0 ? "- " : INDENT) + line);
-}
-
-/** `key:` and its block-list entries, or nothing for an empty list. */
-function blockList(key: string, items: readonly Lines[]): Lines {
-  if (items.length === 0) return [];
-  return [`${key}:`, ...indented(items.flatMap(listItem))];
+/** `key:` and one block-list entry per item, or nothing for an empty list. */
+function blockList<T>(w: YamlWriter, key: string, items: readonly T[], write: (item: T) => void): void {
+  if (items.length === 0) return;
+  w.key(key, () => {
+    for (const item of items) w.item(() => write(item));
+  });
 }
 
 /** `key: [a, b]`, or nothing for an empty list. */
-function flowList(key: string, values: readonly string[]): Lines {
-  return values.length === 0 ? [] : [`${key}: [${values.join(", ")}]`];
+function flowList(w: YamlWriter, key: string, values: readonly string[]): void {
+  if (values.length > 0) w.line(`${key}: [${values.join(", ")}]`);
 }
 
 /** The keys every cube and member shares, in Table H's order: `public`, `title`, `description`. */
-function documentation(node: { public?: boolean; title?: string; description?: string }, at: string): Lines {
-  const out: Lines = [];
-  if (node.public !== undefined) out.push(`public: ${node.public}`);
-  if (node.title !== undefined) out.push(`title: ${textScalar(node.title, `${at} title`)}`);
-  if (node.description !== undefined) out.push(`description: ${textScalar(node.description, `${at} description`)}`);
-  return out;
+function writeDocumentation(w: YamlWriter, node: { public?: boolean; title?: string; description?: string }, at: string): void {
+  if (node.public !== undefined) w.line(`public: ${node.public}`);
+  if (node.title !== undefined) w.line(`title: ${textScalar(node.title, `${at} title`)}`);
+  if (node.description !== undefined) w.line(`description: ${textScalar(node.description, `${at} description`)}`);
 }
 
-function renderJoin(join: CubeJoinSpec): Lines {
-  return [`name: ${nameScalar(join.name)}`, `relationship: ${join.relationship}`, `sql: ${sqlScalar(join.sql)}`];
+function writeJoin(w: YamlWriter, join: CubeJoinSpec): void {
+  w.line(`name: ${nameScalar(join.name)}`);
+  w.line(`relationship: ${join.relationship}`);
+  w.line(`sql: ${sqlScalar(join.sql)}`);
 }
 
-function renderDimension(dimension: CubeDimensionSpec, cube: string): Lines {
+function writeDimension(w: YamlWriter, dimension: CubeDimensionSpec, cube: string): void {
   const at = `cube '${cube}' dimension '${dimension.name}'`;
-  const out: Lines = [
-    `name: ${nameScalar(dimension.name)}`,
-    `sql: ${sqlScalar(dimension.sql)}`,
-    `type: ${dimension.type}`,
-  ];
-  if (dimension.primaryKey !== undefined) out.push(`primary_key: ${dimension.primaryKey}`);
-  out.push(...documentation(dimension, at));
-  out.push(...grainsLines(dimension.meta));
-  return out;
+  w.line(`name: ${nameScalar(dimension.name)}`);
+  w.line(`sql: ${sqlScalar(dimension.sql)}`);
+  w.line(`type: ${dimension.type}`);
+  if (dimension.primaryKey !== undefined) w.line(`primary_key: ${dimension.primaryKey}`);
+  writeDocumentation(w, dimension, at);
+  writeGrains(w, dimension.meta);
 }
 
 /** The `meta:` block, present only when the member carries grains (empty grains emit nothing). */
-function grainsLines(meta: CubeDimensionMeta | undefined): Lines {
-  if (meta === undefined || meta.grains.length === 0) return [];
-  return ["meta:", ...indented(flowList("grains", meta.grains))];
+function writeGrains(w: YamlWriter, meta: CubeDimensionMeta | undefined): void {
+  if (meta === undefined || meta.grains.length === 0) return;
+  w.key("meta", () => flowList(w, "grains", meta.grains));
 }
 
-function renderMeasure(measure: CubeMeasureSpec, cube: string): Lines {
+function writeMeasure(w: YamlWriter, measure: CubeMeasureSpec, cube: string): void {
   const at = `cube '${cube}' measure '${measure.name}'`;
-  const filters = (measure.filters ?? []).map((f): Lines => [`sql: ${sqlScalar(f.sql)}`]);
-  return [
-    `name: ${nameScalar(measure.name)}`,
-    `sql: ${sqlScalar(measure.sql)}`,
-    `type: ${measure.type}`,
-    ...blockList("filters", filters),
-    ...documentation(measure, at),
-  ];
+  w.line(`name: ${nameScalar(measure.name)}`);
+  w.line(`sql: ${sqlScalar(measure.sql)}`);
+  w.line(`type: ${measure.type}`);
+  blockList(w, "filters", measure.filters ?? [], (f) => w.line(`sql: ${sqlScalar(f.sql)}`));
+  writeDocumentation(w, measure, at);
 }
 
-function renderSegment(segment: CubeSegmentSpec, cube: string): Lines {
+function writeSegment(w: YamlWriter, segment: CubeSegmentSpec, cube: string): void {
   const at = `cube '${cube}' segment '${segment.name}'`;
-  return [
-    `name: ${nameScalar(segment.name)}`,
-    `sql: ${sqlScalar(segment.sql)}`,
-    ...documentation(segment, at),
-  ];
+  w.line(`name: ${nameScalar(segment.name)}`);
+  w.line(`sql: ${sqlScalar(segment.sql)}`);
+  writeDocumentation(w, segment, at);
 }
 
-function renderRollup(rollup: CubeRollupSpec): Lines {
-  const out: Lines = [
-    `name: ${nameScalar(rollup.name)}`,
-    `type: ${rollup.type}`,
-    ...flowList("measures", rollup.measures.map(cubeRef)),
-    ...flowList("dimensions", rollup.dimensions.map(cubeRef)),
-    ...flowList("segments", rollup.segments.map(cubeRef)),
-  ];
+function writeRollup(w: YamlWriter, rollup: CubeRollupSpec): void {
+  w.line(`name: ${nameScalar(rollup.name)}`);
+  w.line(`type: ${rollup.type}`);
+  flowList(w, "measures", rollup.measures.map(cubeRef));
+  flowList(w, "dimensions", rollup.dimensions.map(cubeRef));
+  flowList(w, "segments", rollup.segments.map(cubeRef));
   if (rollup.timeDimensions !== undefined) {
-    const entries = rollup.timeDimensions.map(
-      (t): Lines => [`dimension: ${cubeRef(t.dimension)}`, `granularity: ${t.granularity}`],
-    );
-    out.push(...blockList("time_dimensions", entries));
+    blockList(w, "time_dimensions", rollup.timeDimensions, (t) => {
+      w.line(`dimension: ${cubeRef(t.dimension)}`);
+      w.line(`granularity: ${t.granularity}`);
+    });
   } else if (rollup.timeDimension !== undefined) {
-    out.push(`time_dimension: ${cubeRef(rollup.timeDimension)}`, `granularity: ${rollup.granularity}`);
+    w.line(`time_dimension: ${cubeRef(rollup.timeDimension)}`);
+    w.line(`granularity: ${rollup.granularity}`);
   }
-  return out;
 }
 
-function renderCube(cube: CubeSpec): Lines {
+function writeCube(w: YamlWriter, cube: CubeSpec): void {
   const at = `cube '${cube.name}'`;
-  const out: Lines = [`name: ${nameScalar(cube.name)}`];
-  if (cube.sqlTable !== undefined) out.push(`sql_table: ${sqlScalar(cube.sqlTable)}`);
-  if (cube.sql !== undefined) out.push(`sql: ${sqlScalar(cube.sql)}`);
-  out.push(
-    ...documentation(cube, at),
-    ...blockList("joins", cube.joins.map(renderJoin)),
-    ...blockList("dimensions", cube.dimensions.map((d) => renderDimension(d, cube.name))),
-    ...blockList("measures", cube.measures.map((m) => renderMeasure(m, cube.name))),
-    ...blockList("segments", cube.segments.map((s) => renderSegment(s, cube.name))),
-    ...blockList("pre_aggregations", cube.preAggregations.map(renderRollup)),
-  );
-  return out;
+  w.line(`name: ${nameScalar(cube.name)}`);
+  if (cube.sqlTable !== undefined) w.line(`sql_table: ${sqlScalar(cube.sqlTable)}`);
+  if (cube.sql !== undefined) w.line(`sql: ${sqlScalar(cube.sql)}`);
+  writeDocumentation(w, cube, at);
+  blockList(w, "joins", cube.joins, (j) => writeJoin(w, j));
+  blockList(w, "dimensions", cube.dimensions, (d) => writeDimension(w, d, cube.name));
+  blockList(w, "measures", cube.measures, (m) => writeMeasure(w, m, cube.name));
+  blockList(w, "segments", cube.segments, (sg) => writeSegment(w, sg, cube.name));
+  blockList(w, "pre_aggregations", cube.preAggregations, (r) => writeRollup(w, r));
 }
 
-function renderViewInclude(include: CubeViewIncludeSpec, view: string): Lines {
+function writeViewInclude(w: YamlWriter, include: CubeViewIncludeSpec, view: string): void {
   const at = `view '${view}' member '${include.alias ?? include.name}'`;
-  const out: Lines = [`name: ${nameScalar(include.name)}`];
-  if (include.alias !== undefined) out.push(`alias: ${nameScalar(include.alias)}`);
-  out.push(...documentation(include, at));
-  out.push(...grainsLines(include.meta));
-  return out;
+  w.line(`name: ${nameScalar(include.name)}`);
+  if (include.alias !== undefined) w.line(`alias: ${nameScalar(include.alias)}`);
+  writeDocumentation(w, include, at);
+  writeGrains(w, include.meta);
 }
 
-function renderViewCube(entry: CubeViewCubeSpec, view: string): Lines {
-  return [
-    `join_path: ${nameScalar(entry.joinPath)}`,
-    ...blockList("includes", entry.includes.map((include) => renderViewInclude(include, view))),
-  ];
+function writeViewCube(w: YamlWriter, entry: CubeViewCubeSpec, view: string): void {
+  w.line(`join_path: ${nameScalar(entry.joinPath)}`);
+  blockList(w, "includes", entry.includes, (include) => writeViewInclude(w, include, view));
 }
 
 /**
@@ -232,13 +205,11 @@ function renderViewCube(entry: CubeViewCubeSpec, view: string): Lines {
  * and member) for free text that is raw-wrapped and holds `endraw`.
  */
 export function renderCubeViewYaml(view: CubeViewSpec): string {
-  const at = `view '${view.name}'`;
-  const body: Lines = [
-    `name: ${nameScalar(view.name)}`,
-    ...documentation(view, at),
-    ...blockList("cubes", view.cubes.map((entry) => renderViewCube(entry, view.name))),
-  ];
-  return wrapFile("views:", body);
+  return writeFile("views", (w) => {
+    w.line(`name: ${nameScalar(view.name)}`);
+    writeDocumentation(w, view, `view '${view.name}'`);
+    blockList(w, "cubes", view.cubes, (entry) => writeViewCube(w, entry, view.name));
+  });
 }
 
 /**
@@ -247,11 +218,13 @@ export function renderCubeViewYaml(view: CubeViewSpec): string {
  * (it holds a Jinja opener) and holds `endraw`.
  */
 export function renderCubeYaml(cube: CubeSpec): string {
-  return wrapFile("cubes:", renderCube(cube));
+  return writeFile("cubes", (w) => writeCube(w, cube));
 }
 
-/** The framing both file kinds share: header line, one top-level key, its items indented, trailing newline. */
-function wrapFile(rootKey: string, item: Lines): string {
-  const lines = [`# ${GENERATED_HEADER} — ${CUBE_MODEL_GENERATOR_NAME}`, rootKey, ...indented(listItem(item))];
-  return `${lines.join("\n")}\n`;
+/** The framing both file kinds share: header line, one top-level key, its one entry. */
+function writeFile(rootKey: string, item: (w: YamlWriter) => void): string {
+  const w = new YamlWriter();
+  w.line(`# ${GENERATED_HEADER} — ${CUBE_MODEL_GENERATOR_NAME}`);
+  w.key(rootKey, () => w.item(() => item(w)));
+  return w.toString();
 }

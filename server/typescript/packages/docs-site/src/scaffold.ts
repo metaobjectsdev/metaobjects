@@ -26,6 +26,7 @@ export const EXPLORER_TEMPLATE_NAMES: readonly string[] = [
   "explorer-overview.html.mustache",
   "explorer-map.html.mustache",
   "explorer-object.html.mustache",
+  "explorer-node.html.mustache",
   "explorer-prompt.html.mustache",
   "explorer-prompts.html.mustache",
   "explorer-requirements.html.mustache",

@@ -41,6 +41,7 @@
 import { REQUIREMENT_ATTR_STATEMENT } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import type { Provider } from "@metaobjectsdev/render";
+import { compareCodeUnits } from "../code-unit-order.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { concernOf, walkRequirements } from "../requirement-walk.js";
 import { frameworkTemplatesProvider } from "../render-engine/framework-provider.js";
@@ -108,7 +109,7 @@ export function buildNodeIndex(
       });
     }
   }
-  return [...byAddress.values()].sort((a, b) => a.address.localeCompare(b.address));
+  return [...byAddress.values()].sort((a, b) => compareCodeUnits(a.address, b.address));
 }
 
 function mdCell(text: string): string {
@@ -155,7 +156,7 @@ export function agentRequirementsPageData(
     }
   }
   const statements = [...stated.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
+    .sort((a, b) => compareCodeUnits(a[0], b[0]))
     .map(([path, { subType, statement }]) => ({ path, subType, statement: mdCell(oneLine(statement)) }));
   return {
     generatedMarker: GENERATED_MARKER,

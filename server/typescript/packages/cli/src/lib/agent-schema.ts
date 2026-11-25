@@ -27,6 +27,8 @@ export function buildAgentSchemaInput(
   warn: (message: string) => void,
   /** The project's schema settings, so the page describes the schema `meta migrate` builds. */
   schema: SchemaBuildOptions,
+  /** The project chose a `meta migrate` dialect (`migrate.dialect` in `.metaobjects/config.json`). */
+  migrate: boolean,
 ): AgentSchemaInput | undefined {
   // THE RUNNER'S OWN GUARD DECIDES THIS, not a default applied here. `DEFAULT_DIALECT` is
   // inert: `meta gen` refuses a model that emits database code with no dialect declared, so a
@@ -64,6 +66,7 @@ export function buildAgentSchemaInput(
       // produced it.
       columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
       qualify: qualifiedDbName,
+      migrate,
     };
   } catch (err) {
     // A model the schema builder refuses is a real condition (a primary-key move, a duplicate

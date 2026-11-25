@@ -14,7 +14,7 @@
 // (ERR_UNKNOWN_ATTR); the line here used to claim it turned generation ON,
 // while the factory beside it read it as an opt-OUT. Neither is true now.
 
-import { code, imp } from "@metaobjectsdev/codegen-ts";
+import { arr, props, str, TsWriter } from "@metaobjectsdev/codegen-ts";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
@@ -70,16 +70,18 @@ function controlDefaultFor(field: MetaField): string {
   switch (field.subType) {
     case FIELD_SUBTYPE_BOOLEAN: return "false";
     case FIELD_SUBTYPE_CURRENCY: return "0";
-    default: return "''";
+    default: return str("");
   }
 }
 
-function controlValidatorsFor(field: MetaField): string[] {
+/** The control's validators; `validators` is the local name of the imported `Validators`,
+ *  asked for only by a field that has one, so a form with none imports nothing unused. */
+function controlValidatorsFor(field: MetaField, validators: () => string): string[] {
   const out: string[] = [];
-  if (field.isRequired) out.push("Validators.required");
+  if (field.isRequired) out.push(`${validators()}.required`);
   // ADR-0039: resolving — a field may inherit @maxLength via extends.
   const max = field.attr(FIELD_ATTR_MAX_LENGTH);
-  if (typeof max === "number") out.push(`Validators.maxLength(${max})`);
+  if (typeof max === "number") out.push(`${validators()}.maxLength(${max})`);
   return out;
 }
 
@@ -89,7 +91,15 @@ function controlTypeFor(field: MetaField): string {
   return "text";
 }
 
+/** The Angular form component for `entity`, as a file. */
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
+  const w = new TsWriter();
+  writeFormFile(w, entity, ctx);
+  return w.toString();
+}
+
+/** Write the `<Entity>FormComponent` (reactive forms) for `entity` into `w`. */
+export function writeFormFile(w: TsWriter, entity: MetaObject, ctx: RenderContext): void {
   const entityName = entity.name;
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
@@ -100,83 +110,64 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   );
   const fields = visibleFields(entity);
 
-  const ComponentSym = imp("Component@@angular/core");
-  const inputSym = imp("input@@angular/core");
-  const outputSym = imp("output@@angular/core");
-  const injectSym = imp("inject@@angular/core");
-  const FormBuilderSym = imp("FormBuilder@@angular/forms");
-  const ValidatorsSym = imp("Validators@@angular/forms");
-  const ReactiveFormsModuleSym = imp("ReactiveFormsModule@@angular/forms");
-  const CommonModuleSym = imp("CommonModule@@angular/common");
-  const CurrencyInputComponentSym = imp("CurrencyInputComponent@@metaobjectsdev/angular");
+  w.header(
+    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entityName} (${entity.fqn()})`,
+  );
+  const row = w.useType(entityName, entityFileSpec, `${entityName}Row`);
+  const validators = (): string => w.use("Validators", "@angular/forms");
 
-  const controlEntries = fields.map((f) => {
-    const validators = controlValidatorsFor(f);
-    const validatorsExpr = validators.length > 0
-      ? `[${validators.join(", ")}]`
-      : "[]";
-    return `      ${f.name}: [${controlDefaultFor(f)}, ${validatorsExpr}],`;
-  }).join("\n");
-
-  const templateFields = fields.map((f) => {
-    const ctrlType = controlTypeFor(f);
-    const labelText = f.name.charAt(0).toUpperCase() + f.name.slice(1);
-    if (ctrlType === "checkbox") {
-      return `        <label>${labelText}<input type="checkbox" [formControlName]="${JSON.stringify(f.name)}" /></label>`;
-    }
-    if (ctrlType === "currency") {
-      return `        <label>${labelText}<mo-currency-input [formControlName]="${JSON.stringify(f.name)}"></mo-currency-input></label>`;
-    }
-    return `        <label>${labelText}<input type="text" [formControlName]="${JSON.stringify(f.name)}" /></label>`;
-  }).join("\n");
-
-  const literalImports = code`
-import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};
-`;
-
-  const body = code`
-/**
- * Generated Angular form component for ${entityName}. Reactive-forms based;
- * field controls + validators are derived from metadata. Replace by hand-writing
- * a custom component using the same building blocks if you need a richer layout.
- */
-@${ComponentSym}({
-  selector: ${JSON.stringify(`${entityName.toLowerCase()}-form`)},
-  standalone: true,
-  imports: [${CommonModuleSym}, ${ReactiveFormsModuleSym}, ${CurrencyInputComponentSym}],
-  template: \`
-    <form [formGroup]="form" (ngSubmit)="onSubmit()">
-${templateFields}
-      <button type="submit" [disabled]="form.invalid || form.pristine">Save</button>
-    </form>
-  \`,
-})
-export class ${entityName}FormComponent {
-  private readonly fb = ${injectSym}(${FormBuilderSym});
-
-  readonly entity = ${inputSym}<${entityName}Row | null>(null);
-  readonly submitted = ${outputSym}<Partial<${entityName}Row>>();
-
-  readonly form = this.fb.group({
-${controlEntries}
-  });
-
-  onSubmit(): void {
-    if (this.form.invalid) return;
-    this.submitted.emit(this.form.value as Partial<${entityName}Row>);
+  const controls = props();
+  for (const f of fields) {
+    controls.set(f.name, arr([controlDefaultFor(f), arr(controlValidatorsFor(f, validators))]));
   }
-}
-`;
 
-  // Reference the imported Validators symbol so ts-poet emits the import
-  // even though it appears only inside template strings above.
-  const validatorsAnchor = code`
-const __ensureValidatorsImport__ = ${ValidatorsSym};
-void __ensureValidatorsImport__;
-`;
-
-  const header =
-    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n`;
-  return header + literalImports.toString() + body.toString() + validatorsAnchor.toString();
+  w.blank();
+  w.doc(
+    `Generated Angular form component for ${entityName}. Reactive-forms based;`,
+    "field controls + validators are derived from metadata. Replace by hand-writing",
+    "a custom component using the same building blocks if you need a richer layout.",
+  );
+  w.block(`@${w.use("Component", "@angular/core")}({`, () => {
+    w.line(`selector: ${str(`${entityName.toLowerCase()}-form`)},`);
+    w.line("standalone: true,");
+    w.line("imports: ", arr([
+      w.use("CommonModule", "@angular/common"),
+      w.use("ReactiveFormsModule", "@angular/forms"),
+      w.use("CurrencyInputComponent", "@metaobjectsdev/angular"),
+    ]), ",");
+    // The component template is one template literal; its markup nests like any block.
+    w.block("template: `", () => {
+      w.block('<form [formGroup]="form" (ngSubmit)="onSubmit()">', () => {
+        for (const f of fields) {
+          const ctrlType = controlTypeFor(f);
+          const labelText = f.name.charAt(0).toUpperCase() + f.name.slice(1);
+          // A static control name binds as a plain attribute: `[formControlName]` would need a
+          // quoted string expression inside the attribute's own quotes.
+          const control = `formControlName="${f.name}"`;
+          if (ctrlType === "checkbox") {
+            w.line(`<label>${labelText}<input type="checkbox" ${control} /></label>`);
+          } else if (ctrlType === "currency") {
+            w.line(`<label>${labelText}<mo-currency-input ${control}></mo-currency-input></label>`);
+          } else {
+            w.line(`<label>${labelText}<input type="text" ${control} /></label>`);
+          }
+        }
+        w.line('<button type="submit" [disabled]="form.invalid || form.pristine">Save</button>');
+      }, "</form>");
+    }, "`,");
+  }, "})");
+  w.block(`export class ${entityName}FormComponent {`, () => {
+    w.line(`private readonly fb = ${w.use("inject", "@angular/core")}(${w.use("FormBuilder", "@angular/forms")});`);
+    w.blank();
+    w.line(`readonly entity = ${w.use("input", "@angular/core")}<${row} | null>(null);`);
+    w.line(`readonly submitted = ${w.use("output", "@angular/core")}<Partial<${row}>>();`);
+    w.blank();
+    w.line("readonly form = this.fb.group(", controls, ");");
+    w.blank();
+    w.block("onSubmit(): void {", () => {
+      w.block("if (this.form.invalid) {", () => w.line("return;"));
+      w.line(`this.submitted.emit(this.form.value as Partial<${row}>);`);
+    });
+  });
 }

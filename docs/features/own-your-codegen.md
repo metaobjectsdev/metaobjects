@@ -277,9 +277,9 @@ eject any of them and not the others.
 
 The model and api page sets link to each other, so the runner tells every generator the
 same facts on `ctx.docs`, read from the list: the api surfaces in each target (the
-directory each `apiDocsFile()` writes to, from its `emitsApiDocs` marker) and whether the
-model pages are written (`docsFile()`'s `emitsModelDocs` marker). An owned copy keeps the
-marker, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
+directory each `apiDocsFile()` writes to, from its `provides.apiDocs` declaration) and whether
+the model pages are written (`docsFile()`'s `provides.modelDocs`). An owned copy keeps the
+declaration, so it is read the same way. `docsFile({ apiSurfaces })` names api pages that live
 somewhere else (another port's, with a `baseUrl` each) and wins over the fact. The agent
 pages need the physical schema, which `meta gen` computes from your dialect and the
 project's `naming` setting when the list includes `agentDocsFile()` (the generator package
@@ -903,7 +903,8 @@ Through 1.0 both ports also discovered a project-root `template-spec.json` (and 
 nothing declaring a spec fails and names the migration section.
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
-ADR-0015. Schema migrations are TypeScript-owned across all ports.)*
+ADR-0015. `meta migrate` is the reference migration helper for every port, one option beside each
+language's own tool.)*
 
 ## What's shared vs. per-port
 

@@ -82,10 +82,10 @@ load, a refused file, drift), 2 a usage error. An unknown flag names the flags t
 An owned generator crate that fails to build, or a generator in it that panics, is a failed run: 1,
 with the compiler's or the panic's own message.
 
-There is no `migrate`, no `verify --db` and no `fmt` in `cargo meta`. Schema migrations and database
-checks are the Node `meta` tool's for every server language
-([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md)); a Rust project runs
-`meta migrate` beside `cargo meta gen`, as a Java, C# or Python project does.
+There is no `migrate`, no `verify --db` and no `fmt` in `cargo meta`. Schema migrations run in your
+own migration tool (sqlx migrations, say), handed the schema `meta schema` prints; the Node
+`meta migrate` is the reference migration helper, one option, and the database check is the Node
+`meta verify --db` ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md)).
 
 ## What `gen` writes
 
@@ -251,9 +251,12 @@ lines it lacks and how many are its own.
 `cargo meta eject --undo` removes copies that are still identical (`--force` discards an edited one)
 and tells you the two lines of `codegen/main.rs` to change; it never edits that file.
 
-This is **not a plugin contract**. Nothing discovers or loads a third-party generator, and the
-engine's Rust API carries no stability promise: an owned copy is pinned
-to the exact engine its `Cargo.toml` names.
+Nothing discovers or loads a third-party generator: the owned crate is the supported way to add
+your team's own generator. Write it against `metaobjects-codegen`'s authoring surface (the
+`generator`, `emitted`, `plan`, `writer` and `names` modules) and add it to the generator list. That
+surface is versioned with the crate under the [compatibility policy](../compatibility-policy.md); the
+rest of the crate is internal and may change in any release (ADR-0065 Amendment 5). An owned copy is
+pinned to the exact engine its `Cargo.toml` names.
 
 The owned crate's `Cargo.toml` names no machine. By default the three engine crates are the crates.io
 release the tool is, pinned exactly (`metaobjects = "=<version>"`), since an owned copy is that release's
@@ -337,8 +340,9 @@ CLI package is `metaobjects-cli` and installs a `cargo-meta` binary: the command
 `cargo meta`. Nothing is reserved on crates.io; reserving a name is a publish, and waits for the
 owner's go.
 
-The schema stays where it is for every port: migrations and database checks run in the Node `meta`
-tool ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md);
+The schema stays where it is for every port: migrations run in the project's own tool or the Node
+`meta migrate` reference helper, and database checks in the Node `meta`
+([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md);
 [What differs by language](../features/language-differences.md)).
 
 ## Build and test

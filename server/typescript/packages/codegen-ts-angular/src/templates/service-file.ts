@@ -11,7 +11,7 @@
 //   update(id, patch)     → PATCH /api/<entity>/:id
 //   delete(id)            → DELETE /api/<entity>/:id
 
-import { code, imp } from "@metaobjectsdev/codegen-ts";
+import { TsWriter } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   type RenderContext,
@@ -21,10 +21,16 @@ import {
   effectivePackage,
 } from "@metaobjectsdev/codegen-ts";
 
+/** The Angular service for `entity`, as a file. */
 export function renderServiceFile(entity: MetaObject, ctx: RenderContext): string {
-  const entityName = entity.name;
-  const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const w = new TsWriter();
+  writeServiceFile(w, entity, ctx);
+  return w.toString();
+}
 
+/** Write the `<Entity>Service` @Injectable for `entity` into `w`. */
+export function writeServiceFile(w: TsWriter, entity: MetaObject, ctx: RenderContext): void {
+  const entityName = entity.name;
   const entityFileSpec = entityModuleSpecifier(
     ctx.selfTarget,
     ctx.entityModuleTarget,
@@ -33,79 +39,62 @@ export function renderServiceFile(entity: MetaObject, ctx: RenderContext): strin
     ctx.extStyle,
   );
 
-  const InjectableSym = imp("Injectable@@angular/core");
-  const injectSym = imp("inject@@angular/core");
-  const EntityFetcherTokenSym = imp("EntityFetcherToken@@metaobjectsdev/angular");
-  const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/angular");
+  w.header(
+    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}`,
+    `// Source metadata: ${entityName} (${entity.fqn()})`,
+  );
+  const row = w.useType(entityName, entityFileSpec, `${entityName}Row`);
+  const meta = w.use(entityName, entityFileSpec);
+  const path = `\${${meta}.$path}`;
+  const ANGULAR = "@metaobjectsdev/angular";
 
-  const literalImports = code`
-import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};
-import { ${entityName} } from ${JSON.stringify(entityFileSpec)};
-`;
-
-  const body = code`
-export interface ${entityName}ListOpts {
-  filter?: Record<string, unknown>;
-  sort?:   string;
-  limit?:  number;
-  offset?: number;
-  withCount?: 0 | 1;
-}
-
-/**
- * Generated Angular service for ${entityName}.
- *
- * Wraps the injected EntityFetcher with typed CRUD methods conforming to the
- * cross-port REST URL grammar. Inject anywhere in your component tree —
- * provided in root.
- */
-@${InjectableSym}({ providedIn: "root" })
-export class ${entityName}Service {
-  private readonly fetcher = ${injectSym}(${EntityFetcherTokenSym});
-
-  list(opts?: ${entityName}ListOpts): Promise<${entityName}Row[]> {
-    const params: Record<string, unknown> = { ...(opts?.filter ?? {}) };
-    if (opts?.sort   !== undefined) params["sort"]      = opts.sort;
-    if (opts?.limit  !== undefined) params["limit"]     = opts.limit;
-    if (opts?.offset !== undefined) params["offset"]    = opts.offset;
-    if (opts?.withCount !== undefined) params["withCount"] = opts.withCount;
-    const qs = Object.keys(params).length > 0 ? "?" + ${buildFilterQsSym}(params) : "";
-    return this.fetcher<${entityName}Row[]>(\`\${${entityName}.$path}\${qs}\`);
-  }
-
-  get(id: number | string): Promise<${entityName}Row> {
-    return this.fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`);
-  }
-
-  create(dto: Partial<${entityName}Row>): Promise<${entityName}Row> {
-    return this.fetcher<${entityName}Row>(\`\${${entityName}.$path}\`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(dto),
+  w.blank();
+  w.block(`export interface ${entityName}ListOpts {`, () => {
+    w.line("filter?: Record<string, unknown>;");
+    w.line("sort?: string;");
+    w.line("limit?: number;");
+    w.line("offset?: number;");
+    w.line("withCount?: 0 | 1;");
+  });
+  w.blank();
+  w.doc(
+    `Generated Angular service for ${entityName}.`,
+    "",
+    "Wraps the injected EntityFetcher with typed CRUD methods conforming to the",
+    "cross-port REST URL grammar. Inject anywhere in your component tree —",
+    "provided in root.",
+  );
+  w.line(`@${w.use("Injectable", "@angular/core")}({ providedIn: "root" })`);
+  w.block(`export class ${entityName}Service {`, () => {
+    w.line(`private readonly fetcher = ${w.use("inject", "@angular/core")}(${w.use("EntityFetcherToken", ANGULAR)});`);
+    w.blank();
+    w.block(`list(opts?: ${entityName}ListOpts): Promise<${row}[]> {`, () => {
+      w.line("const params: Record<string, unknown> = { ...(opts?.filter ?? {}) };");
+      for (const opt of ["sort", "limit", "offset", "withCount"]) {
+        w.block(`if (opts?.${opt} !== undefined) {`, () => w.line(`params["${opt}"] = opts.${opt};`));
+      }
+      w.line(`const qs = Object.keys(params).length > 0 ? "?" + ${w.use("buildFilterQs", ANGULAR)}(params) : "";`);
+      w.line(`return this.fetcher<${row}[]>(\`${path}\${qs}\`);`);
     });
-  }
-
-  update(id: number | string, patch: Partial<${entityName}Row>): Promise<${entityName}Row> {
-    return this.fetcher<${entityName}Row>(\`\${${entityName}.$path}/\${id}\`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
+    w.blank();
+    w.block(`get(id: number | string): Promise<${row}> {`, () => {
+      w.line(`return this.fetcher<${row}>(\`${path}/\${id}\`);`);
     });
-  }
-
-  delete(id: number | string): Promise<void> {
-    return this.fetcher<void>(\`\${${entityName}.$path}/\${id}\`, {
-      method: "DELETE",
+    const write = (head: string, url: string, method: string, body: string): void => {
+      w.blank();
+      w.block(head, () => {
+        w.block(`return this.fetcher<${row}>(\`${url}\`, {`, () => {
+          w.line(`method: "${method}",`);
+          w.line('headers: { "Content-Type": "application/json" },');
+          w.line(`body: JSON.stringify(${body}),`);
+        }, "});");
+      });
+    };
+    write(`create(dto: Partial<${row}>): Promise<${row}> {`, path, "POST", "dto");
+    write(`update(id: number | string, patch: Partial<${row}>): Promise<${row}> {`, `${path}/\${id}`, "PATCH", "patch");
+    w.blank();
+    w.block("delete(id: number | string): Promise<void> {", () => {
+      w.line(`return this.fetcher<void>(\`${path}/\${id}\`, { method: "DELETE" });`);
     });
-  }
-}
-`;
-
-  const _ = lcEntity; // reserved for future per-entity naming hooks
-  void _;
-
-  const header =
-    `// ${GENERATED_HEADER}-angular — ${GENERATED_EDIT_NOTE}\n` +
-    `// Source metadata: ${entityName} (${entity.fqn()})\n`;
-  return header + literalImports.toString() + body.toString();
+  });
 }

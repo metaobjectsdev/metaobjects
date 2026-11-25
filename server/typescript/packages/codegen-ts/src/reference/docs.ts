@@ -99,7 +99,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
     target: opts?.target ?? DOCS_TARGET_NAME,
     // Tells an api reference generator in the same target that there are model pages to
     // link back to.
-    emitsModelDocs: true,
+    provides: { modelDocs: true },
     async generate(ctx) {
       if (!ctx.renderContext) {
         throw new Error("docs-file: renderContext is required (provided by `meta gen`)");

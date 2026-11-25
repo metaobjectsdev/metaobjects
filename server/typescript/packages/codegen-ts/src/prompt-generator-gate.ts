@@ -1,6 +1,6 @@
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT, TEMPLATE_ATTR_RESPONSE_REF } from "@metaobjectsdev/metadata";
-import type { Generator } from "./generator.js";
+import { providesOf, type Generator } from "./generator.js";
 
 /**
  * Generators that turn a declared `template.*` into runnable prompt code. Names, not
@@ -71,10 +71,10 @@ export function warnMissingPromptGenerators(
       : "";
 
   // The claim that the payload value objects "were emitted regardless" is only true when
-  // a generator that actually emits entity/value-object modules ran (`emitsEntityModule`,
+  // a generator that actually emits entity/value-object modules ran (`provides.entityModule`,
   // e.g. entityFile()) — a run with code generators but none of THOSE emitted nothing
   // either, so the claim is dropped rather than stated falsely.
-  const emittedValueObjects = generators.some((g) => g.emitsEntityModule === true);
+  const emittedValueObjects = generators.some((g) => providesOf(g).entityModule === true);
   const valueObjectsClaim = emittedValueObjects
     ? ` The payload value objects were emitted regardless — those are object.value nodes, ` +
       `which is why this looked like it had worked.`

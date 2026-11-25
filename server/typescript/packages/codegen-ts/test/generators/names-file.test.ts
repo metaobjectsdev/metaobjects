@@ -81,7 +81,7 @@ describe("namesFile() generator", () => {
   test("declares the marker + name the runner and meta init key off of", () => {
     const gen = namesFile();
     expect(gen.name).toBe("names");
-    expect(gen.emitsNames).toBe(true);
+    expect(gen.provides?.names).toBe(true);
   });
 
   test("a sourced entity emits <Entity>.names.ts carrying the exported const", async () => {

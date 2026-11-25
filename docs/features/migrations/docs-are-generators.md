@@ -213,7 +213,9 @@ Do not move a 1.0 copy across as it is. It reads `ctx.docsDoor`, which 1.1.0 rem
 model pages and api pages no longer link to each other. Re-eject it with
 `meta eject <name> --force` and make your edits again in the new copy. What changed in the
 copy: `docsSurface` is gone, the link facts are on `ctx.docs`, the copy declares
-`emitsModelDocs` or `emitsApiDocs` so the other generator can link to it, and it takes a
+`emitsModelDocs` or `emitsApiDocs` so the other generator can link to it (since 1.3.0,
+`provides: { modelDocs: true }` or `provides: { apiDocs: { subDir } }`; the older markers are
+still read), and it takes a
 `target` option. A 1.0 copy left as it is still writes to the `docs` target, not into the
 code's output directory, and is refused when `targets` has no `docs` entry.
 

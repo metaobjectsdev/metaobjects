@@ -4,7 +4,8 @@ The Java runtime tier is **OMDB** (`metaobjects-omdb`) —
 `com.metaobjects.manager.db.ObjectManagerDB`, a metadata-driven persistence engine
 on modernized JDBC + Spring-tx. It reads the same metadata at runtime and drives
 CRUD with no per-entity ORM boilerplate. OMDB is pure data-access (CRUD / query /
-codec / transactions); schema is owned by the Node `meta` migration tool, not OMDB.
+codec / transactions); schema migrations run in your own tool or the Node `meta migrate`
+reference helper, not OMDB.
 
 ## Contents
 - Construct an `ObjectManagerDB`

@@ -1,7 +1,10 @@
 // Port-neutral `.metaobjects/config.json` reading.
 //
-// Reads the NEUTRAL SUBSET (`schema_version`, `sources`, `libraries`, `dependencies`, and the two
-// pattern lists FR-023 needs: `scope.include` and `migrate.scope`). The file also carries
+// Reads the NEUTRAL SUBSET: `schema_version`, `sources`, `libraries`, `dependencies`, the two
+// pattern lists FR-023 needs (`scope.include` and `migrate.scope`), `naming`, `wire`,
+// `requirements.inherit`, `api`, `enums`, `rules`/`verify`, the C#-scoped `csharp` block, and
+// the TypeScript-owned `migrate.dialect`/`conventions`/`foreignKeyIndexes`/`checks.skipRedundant`
+// read leniently (`meta migrate` owns and validates those keys). The file also carries
 // TypeScript-owned keys (`pending_in_git`, `confidence_thresholds`, `extract`, and the rest of
 // `migrate` and `scope`); those are IGNORED rather than modeled, so a new TS-only key never becomes
 // a four-port change. See

@@ -23,11 +23,13 @@ import {
   unindexedFkRows,
   warnAdvisory,
   referentialActionConflictRows,
+  unenforcedLifecycleRows,
   advisoryHelpLines,
 } from "../lib/advisory.js";
 import { scanForUnprovenancedLibraryPrefix } from "../lib/library-prefix-advisory.js";
 import { scanForUnindexedForeignKeys, summarizeUnindexedFks, type UnindexedFkFinding } from "../lib/fk-index-advisory.js";
 import { scanForReferentialActionConflicts, type ReferentialActionConflictFinding } from "../lib/referential-action-advisory.js";
+import { scanForUnenforcedLifecycles, type GeneratorEntry, type UnenforcedLifecycleFinding } from "../lib/unenforced-lifecycle-advisory.js";
 import { warnIfAgentContextMissesRequirements, warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
@@ -1168,6 +1170,20 @@ export async function verifyCommand(
       // advisory only — a model the schema builder refuses is migrate's to report.
     }
 
+    // ADR-0067 §6 — a lifecycle in a project whose generators include no service for that
+    // entity: the flat routes enforce nothing. Only with a loaded config, since the generator
+    // list is what it reads; a project without one (a non-TypeScript port's) has its own list.
+    let unenforcedLifecycles: UnenforcedLifecycleFinding[] = [];
+    try {
+      if (forgeConfig !== undefined) {
+        unenforcedLifecycles = scanForUnenforcedLifecycles(
+          root, forgeConfig.generators as readonly GeneratorEntry[], { skip: collection.imported },
+        );
+      }
+    } catch {
+      // advisory only — never breaks verify.
+    }
+
     const unindexedFkSummary = summarizeUnindexedFks(unindexedFks);
     antiPatternSection = ranSection([
       ...antiPatternRows(findings),
@@ -1176,6 +1192,7 @@ export async function verifyCommand(
       ...libraryPrefixRows(libraryPrefix),
       ...unindexedFkRows(unindexedFkSummary === undefined ? [] : [unindexedFkSummary]),
       ...referentialActionConflictRows(actionConflicts),
+      ...unenforcedLifecycleRows(unenforcedLifecycles),
     ]);
     if (findings.length > 0) {
       log.warn(
@@ -1211,6 +1228,13 @@ export async function verifyCommand(
           `that disagree on its referential action (advisory — does not fail the build):`,
       );
       warnAdvisory(actionConflicts.map((f) => `  ${f.message}`), flags.limit, { structured });
+    }
+    if (unenforcedLifecycles.length > 0) {
+      log.warn(
+        `meta verify — ${unenforcedLifecycles.length} entit(ies) declare a lifecycle no service generator ` +
+          `enforces (advisory — does not fail the build):`,
+      );
+      warnAdvisory(unenforcedLifecycles.map((f) => `  ${f.message}`), flags.limit, { structured });
     }
     if (libraryPrefix.length > 0) {
       log.warn(
@@ -1878,6 +1902,7 @@ export async function verifyCommand(
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
           codegenSchema,
+          genCollection.migrateDialect !== undefined,
         ),
         schemaSettings: codegenSchema,
         requirementLedger,
@@ -1903,7 +1928,7 @@ export async function verifyCommand(
           const probe = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope,
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
-              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
+              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema, genCollection.migrateDialect !== undefined),
               schemaSettings: codegenSchema,
               requirementLedger,
               inLedger: genCollection.inLedger,

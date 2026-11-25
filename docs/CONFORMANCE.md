@@ -8,7 +8,7 @@ single place per-corpus counts are maintained (the port READMEs deliberately poi
 here instead of restating them).
 
 Not every corpus is a five-port corpus, and that asymmetry is deliberate rather
-than a gap — schema migration is TypeScript-owned ([ADR-0015](../spec/decisions/ADR-0015-single-shared-migrate-engine.md)),
+than a gap — the reference migration helper is TypeScript's ([ADR-0015](../spec/decisions/ADR-0015-single-shared-migrate-engine.md)),
 Kotlin runs on the JVM and inherits the Java loader/render/extract engines instead
 of re-implementing them, and a few corpora gate tooling that only one port ships.
 The dark cells below say which is which.
@@ -55,7 +55,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 6 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/list-query-conformance/`](../fixtures/list-query-conformance/) (how a list route reads its query string: filter tree, search, sort, page, or the named 400) | 95 cases | ✓ (reference; the source of the expected answers) | planned (R-JV) | planned (R-KT) | planned (R-CS) | planned (R-PY) |
-| [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | planned | planned |
+| [`fixtures/docs-page-conformance/`](../fixtures/docs-page-conformance/) (the requirements pages and the model-only schema page: each page's data and bytes) | 4 cases | ✓ (reference; the source of the expected bytes) | planned | planned (through Java) | ✓ | planned |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 | [`fixtures/fmt-conformance/`](../fixtures/fmt-conformance/) (#304 — `meta fmt`) | 13 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/field-lint-conformance/`](../fixtures/field-lint-conformance/) (the `verify` field authoring lint) | 15 | ✓ (reference) | ✓ | inherits via Java | ✓ | ✓ |
@@ -123,8 +123,8 @@ the contracts and the conformance kits that hold every port to them.
   `extract-conformance/`, `verify-conformance/`, `verify-strict-conformance/`,
   `jinja-render-conformance/` and `jinja-verify-conformance/` (the Jinja engine and its
   payload check, Python and TypeScript only, ADR-0061),
-  `persistence-conformance/` (runtime reads and writes, and the TS-owned migration
-  scenarios), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
+  `persistence-conformance/` (runtime reads and writes, and the migration scenarios of
+  the TypeScript reference helper), `agent-context-conformance/`, `metamodel-docs/`, `fmt-conformance/`
   (the canonical serializer, surfaced per-file — ADR-0034's "canonical format" is core),
   `field-lint-conformance/` (the advisory field lint every port's `verify` prints),
   `model-lint-conformance/` (the advisory overlay, node-name and deprecated-reference lints),
@@ -826,12 +826,15 @@ All 4 cases → [features/requirements.md](features/requirements.md) (the docume
 surfaces) and [features/templates-and-payloads.md](features/templates-and-payloads.md) (the
 shared templates). Each case is a model under `input/` and, under `expected/`, every page it
 yields (`requirements.md`, `requirements.toon`, `agent/requirements.md`, the model-only
-`agent/schema.md`) plus the data each page's shared template is fed. The TypeScript
+`agent/schema.md`) plus the data each page's shared template is fed and, under `rows/`, the
+ledger and model-only schema rows that data is built from (the shapes the docs site reuses). The TypeScript
 builders are the source of the expected bytes. The corpus README writes down what a
 non-TypeScript schema page contains and what it leaves out.
 
-**Held to it:** `server/typescript/packages/cli/test/docs-page-conformance.test.ts`. The
-other ports' page generators are planned.
+**Held to it:** `server/typescript/packages/cli/test/docs-page-conformance.test.ts` and
+`server/python/tests/conformance/test_docs_page_conformance.py` (rows, page data, then bytes;
+the Python builders derive the schema rows from the model with the port's own naming helpers).
+The C#, Java (Kotlin through Java) and Rust page generators are planned.
 
 ### `fixtures/requirement-test-identity-conformance/` (27 cases)
 

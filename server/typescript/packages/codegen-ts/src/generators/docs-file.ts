@@ -88,7 +88,7 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
   const generator: Generator = {
     name: "docs-file",
     target: opts?.target ?? DOCS_TARGET_NAME,
-    emitsModelDocs: true,
+    provides: { modelDocs: true },
     async generate(ctx) {
       if (!ctx.renderContext) {
         throw new Error("docs-file: renderContext is required (provided by runGen)");

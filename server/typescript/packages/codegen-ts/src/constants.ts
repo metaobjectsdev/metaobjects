@@ -1,5 +1,7 @@
 // Local constants for codegen-ts.
 
+import { CodeWriter } from "./writer/code-writer.js";
+
 /**
  * The header line every emitter puts at the top of a generated file.
  *
@@ -76,7 +78,12 @@ export const NAMES_FILE_SUFFIX = ".names.ts";
  * (`Order.extra.ts`, `OrderForm.extra.tsx`).
  */
 export function sidecarLine(sidecarName: string): string {
-  return `// Extend in your own module (e.g. ${sidecarName}) — nothing imports it for you.\n`;
+  return new CodeWriter().line(sidecarComment(sidecarName)).toString();
+}
+
+/** The same sentence as one header line with no line break, for a generator on the writer. */
+export function sidecarComment(sidecarName: string): string {
+  return `// Extend in your own module (e.g. ${sidecarName}) — nothing imports it for you.`;
 }
 
 /** Default outDir used by tests + as a sane default for generate(). */

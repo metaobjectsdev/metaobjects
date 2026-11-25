@@ -3,7 +3,8 @@
 // datetimes get eq/ne/gt/gte/lt/lte/in. An enum's operand type is its member union.
 
 import { flatSurfaceFields } from "@metaobjectsdev/codegen-ts/engine";
-import { code, type Code } from "@metaobjectsdev/codegen-ts/engine";
+import type { Code } from "@metaobjectsdev/codegen-ts/engine";
+import { TsWriter } from "@metaobjectsdev/codegen-ts/engine";
 import { MetaField, MetaObject, type MetaRoot } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_BOOLEAN,
@@ -80,6 +81,13 @@ function renderFieldUnion(field: MetaField): string {
  * the server's per-subtype allowlist.
  */
 export function renderFilterType(entity: MetaObject, exclude?: string, root?: MetaRoot): Code {
+  const w = new TsWriter();
+  writeFilterType(w, entity, exclude, root);
+  return w.toCode();
+}
+
+/** Write {@link renderFilterType}'s `<Entity>Filter` type into `w`. */
+export function writeFilterType(w: TsWriter, entity: MetaObject, exclude?: string, root?: MetaRoot): void {
   const filterName = entityTypeNames(entity).filter;
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in filter types.
   // A column a sibling subtype of the same table marks as a credential is no more filterable or
@@ -92,39 +100,18 @@ export function renderFilterType(entity: MetaObject, exclude?: string, root?: Me
   // client/server mismatches (@filterable: true + @sortable: false must be excluded from both).
   const sortFieldNames = allFields.filter(isSortableField).map((f) => `"${f.name}"`);
 
-  const fieldLines: string[] = [];
-  for (const f of filterableFieldsList) {
-    fieldLines.push(`  ${f.name}?: ${renderFieldUnion(f)};`);
-  }
+  const sortUnion = sortFieldNames.join(" | ");
+  const sortType = sortFieldNames.length === 0
+    ? "string"
+    : `\`\${${sortUnion}}:\${"asc" | "desc"}\` | ${sortUnion}`;
 
-  if (fieldLines.length === 0 && sortFieldNames.length === 0) {
-    return code`
-export type ${filterName} = {
-  limit?: number;
-  offset?: number;
-  sort?: string;
-  or?: ${filterName}[];
-  and?: ${filterName}[];
-};
-`;
-  }
-
-  const sortType =
-    sortFieldNames.length === 0
-      ? `string`
-      : (() => {
-          const sortUnion = sortFieldNames.join(" | ");
-          return `\`\${${sortUnion}}:\${"asc" | "desc"}\` | ${sortUnion}`;
-        })();
-
-  return code`
-export type ${filterName} = {
-  limit?: number;
-  offset?: number;
-  sort?: ${sortType};
-${fieldLines.join("\n")}
-  or?: ${filterName}[];
-  and?: ${filterName}[];
-};
-`;
+  w.blank();
+  w.block(`export type ${filterName} = {`, () => {
+    w.line("limit?: number;");
+    w.line("offset?: number;");
+    w.line(`sort?: ${sortType};`);
+    for (const f of filterableFieldsList) w.line(`${f.name}?: ${renderFieldUnion(f)};`);
+    w.line(`or?: ${filterName}[];`);
+    w.line(`and?: ${filterName}[];`);
+  }, "};");
 }

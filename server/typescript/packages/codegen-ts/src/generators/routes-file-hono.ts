@@ -70,13 +70,13 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
   const generator: Generator = {
     name: "routes-file-hono",
     // Read by the api reference (`apiDocsFile()`): it lists the verbs this file mounts.
-    mountsRoutes: {
-      ...(opts?.expose !== undefined && { expose: opts.expose }),
-      ...(opts?.filter !== undefined && { filter: opts.filter }),
+    provides: {
+      routes: {
+        framework: "hono",
+        ...(opts?.expose !== undefined && { expose: opts.expose }),
+        ...(opts?.filter !== undefined && { filter: opts.filter }),
+      },
     },
-    // Marks this as the Hono routes generator so the runner can aggregate
-    // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
-    emitsHonoRoutes: true,
     // TPH subtypes are EXCLUDED, matching the Fastify generator. A TPH subtype shares
     // its base's table, so mounting vanilla CRUD for it produced routes with no
     // discriminator scoping at all: the list returned EVERY subtype's rows, and

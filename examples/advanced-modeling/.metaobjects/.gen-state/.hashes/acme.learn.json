@@ -1,112 +1,112 @@
 {
   "src/generated/Author.form.tsx": {
-    "hash": "0481f3ab0aa427581cead70d2c44fae1d709e49a0f004fcc070c50c55ede3308",
+    "hash": "fc4d7815f2b581db2f7ce5f8587367e8a2bf6132d2b6df008a6a2a7963ce93f6",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Author"
   },
   "src/generated/Author.queries.ts": {
-    "hash": "bea4d154f02ed1b93679acde9ece817be80c625b65f5b4efa2d6aaba712b9185",
+    "hash": "10b5855e677cafcfeea9ca04c88b5d2482cc94c2991757427a0c498e90824b0f",
     "generatedBy": "queries-file",
     "sourceNode": "acme::learn::Author"
   },
   "src/generated/Author.routes.ts": {
-    "hash": "777c863287967d273a91afc4c1b706ab87c6c178fb995fe911ffce3360b53747",
+    "hash": "f6e993aa793d37863c7c4d5727986fab50dc698863773a60f74e14fb6e01c63b",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Author"
   },
   "src/generated/Author.ts": {
-    "hash": "a1669e4eec814446e5da4561636312698cce75d2ee5c8afd1d38016a616d2f98",
+    "hash": "9cfa6936e656a50ac9c1cfdecbd8b8034bdd4845ba17291daa14b935929383db",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::Author"
   },
   "src/generated/InstructorProfile.ts": {
-    "hash": "3559df25112ecb00911c2668a2fce07770b213fee9455fce80906162814b2c17",
+    "hash": "eda7b77035b1b94480078b524b1a78fffcf41214667f6570a9f1fe8706a3bb5b",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::InstructorProfile"
   },
   "src/generated/Lesson.form.tsx": {
-    "hash": "10435d259837450502de4261ec6220fd6fdeecdf14fb22e377d8fd6d149c172e",
+    "hash": "2f3049b0d00b2eec408a70317294fc9eac19efb148af7f724d23a132c95fe18a",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Lesson"
   },
   "src/generated/Lesson.queries.ts": {
-    "hash": "d6fa0b0c29b65afd52e69423e79dc478b3dcde505fac55bca7057cb00f46eb1a",
+    "hash": "781ca1dc8bb5c12f2232be737c5e365137b9b9477dc22b78f58534ea3fbeaf0e",
     "generatedBy": "queries-file",
     "sourceNode": "acme::learn::Lesson"
   },
   "src/generated/Lesson.routes.ts": {
-    "hash": "b57f413c9b5582fee2cf9150064f879d106b0e94c0b4e75448b0a1fce3e7e708",
+    "hash": "2025ba1e058dcc9464a0a37835e036cca091f0c88bbcc9bd977f8eec34a95b0b",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Lesson"
   },
   "src/generated/Lesson.ts": {
-    "hash": "c699a4d4a0584e9206d7562ea16116c34c5dc85ee4027acaf9cb0b01d2222f06",
+    "hash": "9dcce0b6480174685c71d458eb9cac84287cb53bcfb1741a566a5450f25835b5",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::Lesson"
   },
   "src/generated/Program.form.tsx": {
-    "hash": "16c15c97549faffb320e0d10e8588d86751cf4580eda591d6b7ce0cf7ce42a02",
+    "hash": "04dc08a97e19509b0682b8ed0d4e745124bee06f2c7d0b9545454078d50575b2",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Program"
   },
   "src/generated/Program.queries.ts": {
-    "hash": "d0b4b7d598cf4da0c7200e78198cf81fc807edf5563f83028b31a01b1da0288b",
+    "hash": "6e1dd0b1e695e2f61ad512b65fb764c24afda4d40be6a7acdf75f2be8f47c5ce",
     "generatedBy": "queries-file",
     "sourceNode": "acme::learn::Program"
   },
   "src/generated/Program.routes.ts": {
-    "hash": "a0b184a3475fbe3c5f06cc88007a76fa298e375f4c1be8b6037a781f2aef7860",
+    "hash": "dd73e74e33c82678abf349d9b967c4b8f733cec503efd64a7720bc8bb496f5a9",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Program"
   },
   "src/generated/Program.ts": {
-    "hash": "95c5f5a951d1b219b4f3a4cef6dfc5fc0ea4612c3b18529fc3defaf27aa7e952",
+    "hash": "7e640baafc630631b1b023c58e14a4be958e514c8a2246a7b1f2e370bf89d98e",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::Program"
   },
-  "src/generated/ProgramDescriptionOutput.render.ts": "77691e7f4c7dd8658ad2842fb5ea68a4b79e5c5ec69bb7221c618db303f2eb9f",
+  "src/generated/ProgramDescriptionOutput.render.ts": "ce4f093b57f92ed362d74e6257da5b34add50bbef44447fd763ff5dfcebdc5fb",
   "src/generated/ProgramDescriptionPayload.ts": {
-    "hash": "8df741a3271c6e6e8317041dd088f6b5de5f0f2e95c1b637528992c578e487d7",
+    "hash": "c12590e0c4956bfc6c3dea6874cf0f92a87e84f769ae15e7e915a11f8cb34175",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::ProgramDescriptionPayload"
   },
   "src/generated/ProgramSummary.queries.ts": {
-    "hash": "8902cbac50396109867e90d2e973d850e0d1e211d9d2f21c0e5f4b2882fd0dd9",
+    "hash": "7ffa3a153dd04a6f4f2557bf4c5e142d7c33408fccbea179c533e6c67188cfb2",
     "generatedBy": "queries-file",
     "sourceNode": "acme::learn::ProgramSummary"
   },
   "src/generated/ProgramSummary.routes.ts": {
-    "hash": "3aa58a1722e50378410e05e43e797b67f7ef80ab16ec0bc6711c222787a16578",
+    "hash": "ff6efa2ca2acadfd2dff7049015496a203fa9663fe195900ce7ee48c15058fd1",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::ProgramSummary"
   },
   "src/generated/ProgramSummary.ts": {
-    "hash": "615eb82032aaf686bc3e5b1484bf2b70174ded81da0310c5a6939e6fdb33bc8d",
+    "hash": "50eb63f4c1d8b085ec353f1246d565860f8e3a4d3d97f229a2c26ee4ae475742",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::ProgramSummary"
   },
   "src/generated/Purchase.form.tsx": {
-    "hash": "cd3556f18246b84e661a423186127cd5f87b1ad955a3afe9cd78ba77fa824b2a",
+    "hash": "b36865baadc74ecb4b1c86cb74b1b127b57379c9f093bcc329a63d4dca52f1ca",
     "generatedBy": "form-file",
     "sourceNode": "acme::learn::Purchase"
   },
   "src/generated/Purchase.queries.ts": {
-    "hash": "9527a9cae7157415d78c64d21164779272d731827efa807505dc3552728be1e9",
+    "hash": "e4f7f5a5783abcbcd77f0f790e7fa71f3c4f7b8fe0b41d8eadb4f406a83612db",
     "generatedBy": "queries-file",
     "sourceNode": "acme::learn::Purchase"
   },
   "src/generated/Purchase.routes.ts": {
-    "hash": "9d634c477225b01f3873815e01423f8ae06673830b4f63f1c19df4e3222dda3f",
+    "hash": "9255f3ae02ef0abe3f601b77d5dace33843b96acc5f7482968ccaa4db688c5ea",
     "generatedBy": "routes-file",
     "sourceNode": "acme::learn::Purchase"
   },
   "src/generated/Purchase.ts": {
-    "hash": "ee57e04fa03ff23675e1a80be5beb984fee268b423ac1ecd80452d857a22d30a",
+    "hash": "adfeeab421b770ad77ce9e19d18ce9e855bbf323fd4d70511c7eb0d89cf387ac",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::Purchase"
   },
   "src/generated/SyllabusSection.ts": {
-    "hash": "d57e6668f79f6577986b2558fe57badc3f87ce8e5d55340f3063c3db57d7d367",
+    "hash": "66336bd4a963c57cb194d8d0715089830cac401353ab0b80e322b0f56612a2d9",
     "generatedBy": "entity-file",
     "sourceNode": "acme::learn::SyllabusSection"
   }
