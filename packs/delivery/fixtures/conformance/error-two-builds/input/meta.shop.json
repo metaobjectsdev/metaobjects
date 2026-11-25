@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.service": {
+                "name": "api",
+                "children": [
+                  {
+                    "build.dockerfile": {
+                      "name": "image"
+                    }
+                  },
+                  {
+                    "build.command": {
+                      "name": "jar",
+                      "@command": "make"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

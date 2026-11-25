@@ -330,6 +330,13 @@ export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";
 // Type provider model
 export { composeRegistry } from "./provider.js";
 export type { MetaDataTypeProvider } from "./provider.js";
+// FR-033 — register vocabulary from a provider definition file (the spec/metamodel/
+// format). The bundled packs use it; so may a provider outside core (ADR-0069 §5:
+// the definition file format is part of the covered provider contract).
+export { applyProviderDefinition } from "./provider-data.js";
+export type { ProviderDefinition, TypeDef, ChildDef, ExtendDef, FactoryMap, ValidatorMap } from "./provider-data.js";
+// The validation hook a provider's TypeDefinition may carry (`validate`).
+export type { NodeValidator, ValidationContext, SymbolTable, LoaderCode } from "./validation-types.js";
 
 // DataType classification
 export {
@@ -369,6 +376,7 @@ export {
   refMatchesObject,
   resolveObjectRef,
   resolveRef,
+  referrerPackageFor,
   lookupCanonical,
   refTarget,
   spellRef,

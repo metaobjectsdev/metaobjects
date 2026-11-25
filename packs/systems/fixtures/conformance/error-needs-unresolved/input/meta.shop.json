@@ -1,0 +1,28 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "children": [
+            {
+              "app.service": {
+                "name": "api",
+                "@needs": [
+                  "db",
+                  "dbb"
+                ]
+              }
+            },
+            {
+              "resource.database": {
+                "name": "db"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

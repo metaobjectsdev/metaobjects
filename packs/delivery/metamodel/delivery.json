@@ -1,0 +1,121 @@
+{
+  "provider": "metaobjects-delivery",
+  "types": [
+    {
+      "type": "environment",
+      "subType": "base",
+      "description": "Abstract environment base. Not authored directly: an `environment.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED)."
+    },
+    { "type": "environment", "subType": "standing", "extendsBase": true, "description": "A named environment that stays up: production, staging. Deployments name it with @environment; a settings vault maps its secrets to it by the same name.", "whenToUse": "Every environment that exists whether or not anyone is working on it." },
+    { "type": "environment", "subType": "ephemeral", "extendsBase": true, "description": "An environment created for one change and removed after it: a pull-request preview.", "whenToUse": "Per-branch or per-pull-request previews." },
+    { "type": "environment", "subType": "local", "extendsBase": true, "description": "A developer's own machine.", "whenToUse": "The settings and resources a project needs to run on a workstation." },
+    {
+      "type": "build",
+      "subType": "base",
+      "description": "Abstract build base: the attributes every build.* shares. A build is a child of an app and says how its deployable is made, the same in every environment. Not authored directly: a `build.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "watchExclude", "isArray": true, "min": 0, "max": 1, "description": "Repository path globs whose change must not start a new build (`docs/**`, `*.md`). A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists." }
+      ]
+    },
+    {
+      "type": "build",
+      "subType": "dockerfile",
+      "extendsBase": true,
+      "description": "The app is built as a container image from a Dockerfile.",
+      "whenToUse": "Any app whose image is described by a Dockerfile in the repository.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "path", "min": 0, "max": 1, "description": "The Dockerfile's path from the repository root. Absent means `Dockerfile`." },
+        { "type": "attr", "subType": "string", "name": "context", "min": 0, "max": 1, "description": "The build context directory from the repository root. Absent means the root." }
+      ]
+    },
+    {
+      "type": "build",
+      "subType": "command",
+      "extendsBase": true,
+      "description": "The app is built by a command the platform's own builder runs, with no Dockerfile.",
+      "whenToUse": "A buildpack-style build: `npm run build`, `./gradlew bootJar`.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "command", "min": 1, "max": 1, "description": "The build command, run from the repository root." }
+      ]
+    },
+    {
+      "type": "build",
+      "subType": "static",
+      "extendsBase": true,
+      "description": "The app is a directory of files served as they are, optionally produced by a command first.",
+      "whenToUse": "A static site or a single-page client served by a CDN.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "directory", "min": 1, "max": 1, "description": "The directory of files to serve, from the repository root (`dist`)." },
+        { "type": "attr", "subType": "string", "name": "command", "min": 0, "max": 1, "description": "The command that produces the directory. Absent means the directory is committed as it is." }
+      ]
+    },
+    {
+      "type": "runtime",
+      "subType": "process",
+      "description": "How one of an app's processes runs, the same in every environment: its start command, port, health check, shutdown drain and restart policy. A platform generator writes what its platform's file can hold and lists the rest.",
+      "whenToUse": "Every app that runs as a process. A second runtime.process is a second process of the same app (a worker beside the web server).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "command", "min": 0, "max": 1, "description": "The start command. Absent means the image's or the builder's default." },
+        { "type": "attr", "subType": "int", "name": "port", "min": 0, "max": 1, "description": "The port the process listens on." },
+        { "type": "attr", "subType": "string", "name": "healthPath", "min": 0, "max": 1, "description": "The HTTP path that answers 2xx when the process is ready (`/health`)." },
+        { "type": "attr", "subType": "int", "name": "healthTimeoutSeconds", "min": 0, "max": 1, "description": "How long a new deployment may take to pass its health check before it is failed." },
+        { "type": "attr", "subType": "int", "name": "drainSeconds", "min": 0, "max": 1, "description": "How long the old process keeps running after the new one is healthy, so requests in flight finish." },
+        { "type": "attr", "subType": "string", "name": "restart", "min": 0, "max": 1, "allowedValues": ["always", "onFailure", "never"], "description": "When the platform restarts the process after it exits: always, onFailure (a non-zero exit) or never." }
+      ]
+    },
+    {
+      "type": "deployment",
+      "subType": "base",
+      "description": "Abstract deployment base: an app placed in an environment on a platform. A platform pack registers the concrete subtype (`deployment.<platform>`), which takes these attributes and adds the platform's own. A deployment holds only what differs per environment; what is true everywhere sits under the app. An estate repository adds deployments the app never declared and overrides the ones it did by overlay. Not authored directly: a `deployment.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "app", "min": 1, "max": 1, "description": "The app deployed: `System.app` (`Shop.web`), or `pkg::System.app` from another package. It must resolve to an app.* node (ERR_DELIVERY_UNRESOLVED_REF)." },
+        { "type": "attr", "subType": "string", "name": "environment", "min": 1, "max": 1, "description": "The environment.* node it deploys to, by name (or `pkg::name`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)." },
+        { "type": "attr", "subType": "string", "name": "domains", "isArray": true, "min": 0, "max": 1, "description": "The public host names that route to the app here." },
+        { "type": "attr", "subType": "int", "name": "replicas", "min": 0, "max": 1, "description": "How many copies run. Absent means the platform's default." },
+        { "type": "attr", "subType": "string", "name": "region", "min": 0, "max": 1, "description": "The platform's region name." },
+        { "type": "attr", "subType": "string", "name": "branch", "min": 0, "max": 1, "description": "The repository branch whose pushes deploy here." },
+        { "type": "attr", "subType": "string", "name": "secrets", "min": 0, "max": 1, "description": "The vault the deployment's secret settings come from, by name (a vault.* of the config pack). Recorded by name only: this pack does not require the config pack." },
+        { "type": "value", "subType": ["literal", "ref"], "name": "*", "min": 0, "max": null }
+      ]
+    },
+    {
+      "type": "value",
+      "subType": "base",
+      "description": "Abstract value base: how one setting gets its value in one deployment. A child of a deployment. A secret needs no value node: the setting is marked secret and the deployment names its vault. Not authored directly: a `value.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "setting", "min": 1, "max": 1, "description": "The setting this value is for, as `Group.field` (a field of an object.settings of the config pack). Recorded by name only: this pack does not require the config pack." }
+      ]
+    },
+    {
+      "type": "value",
+      "subType": "literal",
+      "extendsBase": true,
+      "description": "The setting takes a fixed value in this deployment.",
+      "whenToUse": "A non-secret value that differs per environment: a profile name, a feature flag, a log level.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "literal", "min": 1, "max": 1, "description": "The value, as a string (the setting's type parses it). Named @literal because `value` is a reserved structural key." }
+      ]
+    },
+    {
+      "type": "value",
+      "subType": "ref",
+      "extendsBase": true,
+      "description": "The setting takes a value another node produces at deploy time: a database's connection URL, another app's private address. This is how an address stays out of a repository: it is named, never written.",
+      "whenToUse": "A setting whose value only the platform knows once the resource or app exists.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "producedBy", "min": 1, "max": 1, "description": "The node that produces the value: a resource.* or app.*, as `System.child` (`Shop.db`, or `pkg::System.child`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)." },
+        { "type": "attr", "subType": "string", "name": "output", "min": 1, "max": 1, "allowedValues": ["url", "host", "port", "user", "password", "privateUrl", "publicUrl"], "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply." }
+      ]
+    }
+  ],
+  "extends": [
+    { "type": "metadata", "subType": "root", "children": [
+        { "type": "environment", "subType": ["standing", "ephemeral", "local"], "name": "*", "min": 0, "max": null },
+        { "type": "deployment", "subType": "*", "name": "*", "min": 0, "max": null }
+      ] },
+    { "type": "app", "subType": ["service", "client", "job"], "children": [
+        { "type": "build", "subType": ["dockerfile", "command", "static"], "name": "*", "min": 0, "max": 1 },
+        { "type": "runtime", "subType": "process", "name": "*", "min": 0, "max": null }
+      ] }
+  ]
+}

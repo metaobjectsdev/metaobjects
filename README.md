@@ -324,7 +324,7 @@ metaobjects/
 │   ├── ai/                         #   the LLM-call trace envelope (stable)
 │   └── iam/                        #   users, groups, roles, grants (preview)
 ├── packs/                          # independent packs, outside the default bundle, each with its
-│                                   #   own version (ADR-0069; none shipped yet)
+│                                   #   own version (ADR-0069; listed in packs/README.md)
 ├── templates/                      # canonical api/docs Mustache templates (the SSOT the
 │                                   #   ports embed; byte-gated so copies cannot drift)
 ├── agent-context/                  # the shared source the per-port AI-assistant context
