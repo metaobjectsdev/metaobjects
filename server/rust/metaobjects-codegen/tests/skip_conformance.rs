@@ -9,8 +9,9 @@
 //!
 //! Where Rust differs it says so below, in the one table of `Fit` values:
 //! - `Applies` runs the case and checks the corpus's `gen` and `verify` columns.
-//! - `NotApplicable` names why the case cannot arise (there are no templates and no merge
-//!   engine in the Rust port).
+//! - `NotApplicable` names why the case cannot arise (there is no merge engine in the Rust
+//!   port).
+//! - The template cases declare the template roots the `render-helper` generator declares.
 //! - `generated-file-edited` runs, and "regenerate" means the run is attempted and the edited file
 //!   is REFUSED (the run fails and names it): Rust has no three-way merge, as Python has none.
 
@@ -22,7 +23,9 @@ use std::time::Duration;
 use common::{Scratch, shop_files};
 use metaobjects_codegen::engine::{OWNED_GENERATORS_DIR, OWNED_MAIN, OWNED_MANIFEST, VerifyReport};
 use metaobjects_codegen::generator::{EmittedFile, GenContext, GenError};
-use metaobjects_codegen::{EntityGenerator, Generator, Outcome, RunError, RunOptions, run, verify};
+use metaobjects_codegen::{
+    EntityGenerator, Generator, Outcome, RenderHelperGenerator, RunError, RunOptions, run, verify,
+};
 use serde_json::{Value, json};
 
 const CASES: &str = include_str!("../../../../fixtures/codegen-skip-conformance/cases.json");
@@ -34,12 +37,9 @@ enum Fit {
 
 fn fit(id: &str) -> Fit {
     match id {
-        "template-edited" | "template-added" => Fit::NotApplicable(
-            "the Rust port has no templates (the prompt pillar is a later phase)",
-        ),
-        "template-and-docs-rerun" => Fit::NotApplicable(
-            "the Rust port has no `template` generator and no docs page generator yet",
-        ),
+        "template-and-docs-rerun" => {
+            Fit::NotApplicable("the Rust port has no docs page generator yet")
+        }
         "hand-edit-kept" => Fit::NotApplicable(
             "a hand edit is never kept: with no merge engine, the run refuses the file instead",
         ),
@@ -292,6 +292,24 @@ fn next_run(id: &str, p: &Scratch, ask: Ask) -> Answer {
                 },
                 |_| {},
             )
+        }
+        "template-edited" | "template-added" => {
+            // The roots `render-helper` hashes; the stored run must have declared them.
+            let templating = || Probe {
+                extras: RenderHelperGenerator.extra_inputs(),
+                ..Probe::default()
+            };
+            p.write("templates/pages/welcome.mustache", "Hello {{name}}");
+            assert_eq!(
+                go(p, templating(), |_| {}).unwrap().outcome,
+                Outcome::Generated
+            );
+            if id == "template-edited" {
+                p.write("templates/pages/welcome.mustache", "Hi {{name}}");
+            } else {
+                p.write("templates/pages/goodbye.mustache", "Bye {{name}}");
+            }
+            ask.go(p, templating(), |_| {})
         }
         "uncacheable-generator" => ask.go(
             p,

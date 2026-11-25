@@ -599,7 +599,7 @@ gate_site_reference() { bun_install && bun scripts/build-site-reference.ts --che
 # exercised) are the ones worth a test at all. See scripts/maven-coordinate.mjs.
 # And the publish workflows' tag check (scripts/check-release-tag.mjs), whose test also reads
 # each real manifest, so a layout change fails here rather than on a release tag.
-gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && node scripts/test-release-branch.mjs && bash tools/prerelease/test-prerelease-link.sh && bash tools/prerelease/test-estate-run.sh; }
+gate_release_tag() { bun test scripts/finish-release.test.ts scripts/eject-release-gate.test.ts && node scripts/test-maven-coordinate.mjs && node scripts/test-prerelease-version.mjs && node scripts/test-check-release-tag.mjs && node scripts/test-changelog-promote.mjs && node scripts/test-release-branch.mjs && node scripts/test-rust-release.mjs && bash tools/prerelease/test-prerelease-link.sh && bash tools/prerelease/test-estate-run.sh; }
 
 # ── repo-root scripts/ typechecks ─────────────────────────────────────────────
 # `bun test` transpiles per file and never typechecks, and `bun run
@@ -968,7 +968,17 @@ gate_conf_rust() {
       && cargo test --locked -q -- --nocapture \
       && gate_rust_load_bench \
       && gate_rust_gen_bench \
-      && gate_rust_publish_dry_run )
+      && gate_rust_publish_dry_run ) \
+    && gate_rust_example
+}
+# The worked service example (examples/rust-service/): its committed generated crates must be
+# what `cargo meta gen` writes now (a forced verify, which renders), and its app's HTTP test runs
+# over them. Built into server/rust/target/, this checkout's own.
+gate_rust_example() {
+  ( cd server/rust \
+      && cargo run --locked -q -p metaobjects-cli --bin cargo-meta -- meta verify --full --project ../../examples/rust-service ) \
+    && CARGO_TARGET_DIR="$PWD/server/rust/target/examples" \
+      cargo test --locked -q --manifest-path examples/rust-service/Cargo.toml
 }
 # The crates are publishable (ADR-0065 Amendment 3), so a change that would make `cargo publish`
 # refuse them fails here, not on the day somebody publishes: package all three, build each

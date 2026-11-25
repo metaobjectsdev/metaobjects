@@ -73,6 +73,101 @@ pub fn file(banner: &str, items: &[String]) -> String {
     out
 }
 
+/// A TOML manifest (a generated crate's `Cargo.toml`), line by line: comments, tables and
+/// `key = value` entries, with blank lines where the generator asks for them. Values are
+/// written as given, already quoted. Like [`CodeWriter`], it owns the line breaks, so the
+/// generator never types one.
+#[derive(Debug, Default)]
+pub struct Manifest {
+    w: CodeWriter,
+}
+
+impl Manifest {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The start of a generated crate's manifest: `comment` (the generator's banner), then the
+    /// `[package]` table every generated crate opens with, up to and not including a
+    /// `description`. Generated crates are edition 2021, version 0.1.0 and never published.
+    pub fn generated_crate(comment: &str, name: &str) -> Self {
+        let mut m = Self::new();
+        m.comment(comment).table("package");
+        m.entry("name", &toml_string(name));
+        m.entry("version", &toml_string("0.1.0"));
+        m.entry("edition", &toml_string("2021"));
+        m.entry("publish", "false");
+        m
+    }
+
+    /// Each line of `text` as a `# ` comment (a bare `#` for an empty line).
+    pub fn comment(&mut self, text: &str) -> &mut Self {
+        for l in text.lines() {
+            let l = l.trim_end();
+            self.w.line(if l.is_empty() {
+                "#".to_string()
+            } else {
+                format!("# {l}")
+            });
+        }
+        self
+    }
+
+    /// A table header: `[name]`, or `[[name]]` for an array of tables.
+    pub fn table(&mut self, header: &str) -> &mut Self {
+        self.w.line(format!("[{header}]"));
+        self
+    }
+
+    /// `key = value`.
+    pub fn entry(&mut self, key: &str, value: &str) -> &mut Self {
+        self.w.line(format!("{key} = {value}"));
+        self
+    }
+
+    /// Ask for one blank line before whatever is written next.
+    pub fn blank(&mut self) -> &mut Self {
+        self.w.blank();
+        self
+    }
+
+    /// The finished text, one final newline.
+    pub fn finish(self) -> String {
+        self.w
+            .finish()
+            .expect("a manifest opens no blocks and its lines hold no line break")
+    }
+}
+
+/// A TOML basic string: `"text"`, with `\\`, `"` and control characters escaped.
+pub fn toml_string(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for ch in text.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+                out.push_str(&format!("\\u{:04X}", c as u32))
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// `{ path = "../<name>" }`: a dependency on a sibling crate in the output directory.
+pub fn sibling_dep(name: &str) -> String {
+    format!("{{ path = {} }}", toml_string(&format!("../{name}")))
+}
+
+/// A generated file that is fixed text after its banner: the banner line, a blank line, then
+/// the text as written (the `emitted/` modules, the client transport, the command helpers).
+pub fn fixed(banner: &str, text: &str) -> String {
+    file(banner, &[text.to_string()])
+}
+
 /// A writer error: one of the shared codes and a message for people.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriterError {
@@ -357,6 +452,27 @@ impl CodeWriter {
         self.block_with(head, "}", body)
     }
 
+    /// `head`, a `where` clause with one bound per line, then the block `{ body }`: the layout
+    /// rustfmt gives an item whose bounds sit in a `where` clause.
+    pub fn where_block(
+        &mut self,
+        head: impl Into<Piece>,
+        bounds: &[String],
+        body: impl FnOnce(&mut Self),
+    ) -> &mut Self {
+        self.line(head);
+        self.open("where");
+        for b in bounds {
+            self.line(format!("{b},"));
+        }
+        self.close("{");
+        // The `{` just written opens the body: indent as an opener does.
+        self.openers.push("{".to_string());
+        self.at_block_start = true;
+        body(self);
+        self.close("}")
+    }
+
     /// [`CodeWriter::block`] with its own closing line.
     pub fn block_with(
         &mut self,
@@ -410,6 +526,12 @@ impl CodeWriter {
         self
     }
 
+    /// A bare `///`: the line between two paragraphs of one doc comment.
+    pub fn doc_break(&mut self) -> &mut Self {
+        self.put(&Piece::Text("///".to_string()));
+        self
+    }
+
     /// Generated prose as a `///` doc comment: each line of `text` is a paragraph line, wrapped
     /// at a word boundary so no comment line passes the width. For text the generator wrote;
     /// an author's own description goes through [`CodeWriter::doc`], which keeps their lines.
@@ -435,10 +557,47 @@ impl CodeWriter {
         self
     }
 
+    /// `use path::{a, b};` as rustfmt lays a `use` list out: on one line when it fits;
+    /// otherwise the opener, the names filled onto lines one level in (each followed by a
+    /// comma, as many to a line as fit the width), and `};`. One name is written without
+    /// braces, `use path::a;`. This is rustfmt's rule, not part of the shared core contract.
+    pub fn use_list(&mut self, path: &str, names: &[&str]) -> &mut Self {
+        if let [only] = names {
+            self.put(&Piece::Text(format!("use {path}::{only};")));
+            return self;
+        }
+        let one = format!("use {path}::{{{}}};", names.join(", "));
+        if self.fits(&one) {
+            self.put(&Piece::Text(one));
+            return self;
+        }
+        self.open_piece(&Piece::Text(format!("use {path}::{{")));
+        let mut row = String::new();
+        for n in names {
+            let next = if row.is_empty() {
+                format!("{n},")
+            } else {
+                format!("{row} {n},")
+            };
+            if !row.is_empty() && !self.fits(&next) {
+                self.put(&Piece::Text(std::mem::take(&mut row)));
+                row = format!("{n},");
+            } else {
+                row = next;
+            }
+        }
+        if !row.is_empty() {
+            self.put(&Piece::Text(row));
+        }
+        self.close_piece(&Piece::Text("};".to_string()));
+        self
+    }
+
     /// `head rhs` as rustfmt lays an assignment out (`let x = f(a, b);`, `const X: T = &[a];`):
     /// on one line when it fits; otherwise the right-hand side alone on the next line, one
     /// level in, when it fits there; otherwise on the first line with its last list broken.
-    /// This is rustfmt's rule, not part of the shared core contract.
+    /// This is rustfmt's rule under the generated crates' settings ([`RUSTFMT_TOML`]), not
+    /// part of the shared core contract.
     pub fn assign(&mut self, head: &str, rhs: impl Into<Piece>) -> &mut Self {
         let rhs = rhs.into();
         let one_line = flat(&rhs);
@@ -560,6 +719,22 @@ impl CodeWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_where_block_puts_each_bound_on_its_own_line_and_indents_the_body() {
+        let mut w = CodeWriter::new();
+        w.where_block(
+            "impl<T> Shape for T",
+            &["T: Clone".to_string(), "T: Send".to_string()],
+            |w| {
+                w.line("fn f() {}");
+            },
+        );
+        assert_eq!(
+            w.finish().unwrap(),
+            "impl<T> Shape for T\nwhere\n    T: Clone,\n    T: Send,\n{\n    fn f() {}\n}\n"
+        );
+    }
 
     #[test]
     fn prose_wraps_at_a_word_boundary_inside_the_width() {

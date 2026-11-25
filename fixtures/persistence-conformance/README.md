@@ -375,7 +375,8 @@ writes nothing; prove it with a follow-up `op: get` or `op: count`.
 including one an adopter writes: a NULL operand in a condition matches nothing, as SQL's
 three-valued logic says. It carries `engines: [postgres, mysql]`, so the Postgres and MySQL
 runners run it; the MySQL run covers the read-back in the Kysely and Drizzle drivers. The
-TypeScript runner drives `ObjectManager.guardedUpdate` there. C#, Java and Kotlin defer it
+TypeScript runner drives `ObjectManager.guardedUpdate` there, and the Rust runner the generated
+store's `meta_store::transition` on Postgres. C#, Java and Kotlin defer it
 by name, with the 1.3.0 row that builds each one's guarded update (L-CS-2, L-JV-2, L-KT-2),
 and run it once that lands. Python defers it by name (L-PY-2).
 

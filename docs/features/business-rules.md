@@ -18,16 +18,19 @@ A requirement can claim an operation or a transition. The flat generators genera
 the vocabulary. The layer generators of ADR-0067 do, and an app adds them to its generator list as
 it adds any generator. The first is `rules-names`, which writes the states, transitions,
 permissions and error codes as constants, in TypeScript (see
-[The names layer](#the-names-layer-typescript)) and C#. The second is `contract-types`: in
+[The names layer](#the-names-layer-typescript)), C# and Rust. The second is `contract-types`: in
 TypeScript it writes the shapes and errors an operation takes and returns (see
-[The contract types layer](#the-contract-types-layer-typescript)), and in C# so far each
-entity's create and update records ([C# port](../ports/csharp.md)). The TypeScript runtime makes the
+[The contract types layer](#the-contract-types-layer-typescript)), and in C# and Rust so far each
+entity's create and update records ([C# port](../ports/csharp.md), [Rust port](../ports/rust.md));
+the Rust generators write only for a package that declares rules. The TypeScript runtime makes the
 guarded update a transition writes, `ObjectManager.guardedUpdate`, held to the shared
 persistence scenario `guarded-update.yaml`. The service layer starts in TypeScript: `service` writes
 each package's derived list, get, create, update and delete, every write in one transaction with the
 declared write rules, behind a thin Fastify transport (`service-routes`) or Hono transport
 (`service-routes-hono`) that answers the shared API tests as the flat routes do (see
-[The service layer](#the-service-layer-typescript)). It also writes a command per transition and a
+[The service layer](#the-service-layer-typescript)). The Rust `service` generator writes the same
+operations and checks over its generated store, behind the opt-in axum transport `service-routes`,
+which answers the same shared API tests ([Rust port](../ports/rust.md)). It also writes a command per transition and a
 shell per declared command and query, and enforces at run time what this page declares: the
 permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
 later 1.3.0 work. A lifecycle in a project that wires no service generator covering it is

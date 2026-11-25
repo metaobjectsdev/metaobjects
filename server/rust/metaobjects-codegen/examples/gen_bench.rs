@@ -35,6 +35,10 @@ use serde_json::{Map, Value, json};
 
 const FITNESS: &str =
     include_str!("../../../../fixtures/persistence-conformance/canonical/meta.fitness.json");
+/// The one prompt body the model's template names; every copy's template points at it.
+const COACH_NOTE: &str = include_str!(
+    "../../../../fixtures/persistence-conformance/canonical/prompts/fitness/coach-note.mustache"
+);
 const ROOT_PACKAGE: &str = "\"package\": \"fitness\"";
 /// An object that exists in every copy; the change scenario gives it a description.
 const CHANGE_AT: &str = "\"name\": \"AllTypes\"";
@@ -145,6 +149,11 @@ fn main() {
     write(
         &project.join(".metaobjects/config.json"),
         r#"{ "schema_version": 1 }"#,
+    );
+    // The template the render-helper generator checks every copy's helper against.
+    write(
+        &project.join("prompts/fitness/coach-note.mustache"),
+        COACH_NOTE,
     );
     let model_file = |i: usize| project.join(format!("metaobjects/meta.fitness_x{i:02}.json"));
     for i in 0..copies {

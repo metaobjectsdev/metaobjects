@@ -17,12 +17,14 @@
 //!   (a warning when not), and each `requiredTags` tag must appear as an opening and a
 //!   closing form in the body and its partials.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 
 use serde_json::Value;
 
 use crate::accessors::{HAS_PREFIX, LAST_ACCESSOR, has_accessor_name};
-use crate::presence::{ERR_VAR_NOT_ON_PAYLOAD, matching_close};
+pub use crate::presence::ERR_VAR_NOT_ON_PAYLOAD;
+use crate::presence::matching_close;
 use crate::render::{MAX_DEPTH, Provider};
 use crate::tags::{self, Tag, TagKind};
 
@@ -45,21 +47,64 @@ pub const ERR_TEMPLATE_ENGINE_UNSUPPORTED: &str = "ERR_TEMPLATE_ENGINE_UNSUPPORT
 ///
 /// `fields` present: a context-pushing field (an object, or a list of objects). Absent: a
 /// scalar, or a list of scalars. `is_array` is the field's effective array-ness.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+///
+/// The `const` constructors build a tree a generated render helper keeps as a `static`;
+/// [`PayloadField::owned`] and [`PayloadField::from_json`] build one at run time.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayloadField {
-    pub name: String,
-    pub fields: Option<Vec<PayloadField>>,
+    pub name: Cow<'static, str>,
+    pub fields: Option<Cow<'static, [PayloadField]>>,
     pub is_array: bool,
 }
 
 impl PayloadField {
     /// A scalar field.
     #[must_use]
-    pub fn scalar(name: &str) -> Self {
+    pub const fn scalar(name: &'static str) -> Self {
         Self {
-            name: name.to_string(),
+            name: Cow::Borrowed(name),
             fields: None,
             is_array: false,
+        }
+    }
+
+    /// An array of scalars.
+    #[must_use]
+    pub const fn scalar_array(name: &'static str) -> Self {
+        Self {
+            name: Cow::Borrowed(name),
+            fields: None,
+            is_array: true,
+        }
+    }
+
+    /// A nested object: a section over it pushes `fields`.
+    #[must_use]
+    pub const fn object(name: &'static str, fields: &'static [PayloadField]) -> Self {
+        Self {
+            name: Cow::Borrowed(name),
+            fields: Some(Cow::Borrowed(fields)),
+            is_array: false,
+        }
+    }
+
+    /// An array of objects: a section over it pushes `fields` once per element.
+    #[must_use]
+    pub const fn object_array(name: &'static str, fields: &'static [PayloadField]) -> Self {
+        Self {
+            name: Cow::Borrowed(name),
+            fields: Some(Cow::Borrowed(fields)),
+            is_array: true,
+        }
+    }
+
+    /// A field built at run time.
+    #[must_use]
+    pub fn owned(name: String, fields: Option<Vec<PayloadField>>, is_array: bool) -> Self {
+        Self {
+            name: Cow::Owned(name),
+            fields: fields.map(Cow::Owned),
+            is_array,
         }
     }
 
@@ -70,10 +115,12 @@ impl PayloadField {
             .map(|items| {
                 items
                     .iter()
-                    .map(|f| Self {
-                        name: f["name"].as_str().unwrap_or_default().to_string(),
-                        fields: f.get("fields").map(Self::from_json),
-                        is_array: f["isArray"].as_bool().unwrap_or(false),
+                    .map(|f| {
+                        Self::owned(
+                            f["name"].as_str().unwrap_or_default().to_string(),
+                            f.get("fields").map(Self::from_json),
+                            f["isArray"].as_bool().unwrap_or(false),
+                        )
                     })
                     .collect()
             })

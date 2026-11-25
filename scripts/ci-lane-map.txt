@@ -38,6 +38,7 @@
 packs/*               | packs           | an independent pack (ADR-0069): its own lane only under --affected (the hosted workflows select by port, where packs/ is ts); core never reads packs/ (scripts/check-pack-boundary.ts)
 server/typescript/*   | ts-fast ts-unit packs | the TypeScript server port; packs runs too, as a canary that reports a pack the change breaks and blocks nothing (ADR-0069)
 examples/dynamic-grid/* | ts-fast ts-unit | a workspace member: ts-fast typechecks it, ts-unit runs its suite, and no other port reads it
+examples/rust-service/* | rust          | the Rust service example: the rust lane verifies its generated crates and runs its test
 client/web/*          | ts-fast ts-unit packs | the universal web client, built and tested by the TypeScript lanes; packs as for server/typescript
 server/java/*         | java-slow       | the Java and Kotlin ports (the reactor holds both conformance suites)
 server/python/*       | python          | the Python port

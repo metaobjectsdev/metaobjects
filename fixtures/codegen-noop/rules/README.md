@@ -25,13 +25,24 @@ The generators of the rules layers themselves (ADR-0067) are the other exception
 vocabulary is their job. Each adds only files of its own for `with/`, and moves none of what it
 writes for `without/`. Today those are TypeScript's `rules-names`, which writes nothing for
 `without/`, and `contract-types`, whose entity contracts do not depend on the vocabulary and whose
-operations module (and the value object only an operation reaches) does.
+operations module (and the value object only an operation reaches) does. In Rust, `rules-names`
+and `contract-types` write nothing for `without/` and, for `with/`, only files of their own. The
+Rust data-access generator (`repository`, ADR-0067 layer 3) writes the same files for both models,
+because it stores every entity either way; the vocabulary changes only the file of the entity that
+holds the lifecycle, and only by appending that lifecycle's guarded update (`transition_status`) at
+its end.
 
 The service generators (ADR-0067 layers 4 and 5) are the enforcing shells, so they also CHANGE
 files they write for `without/`: TypeScript's `service` adds a file per derived transition command
 and per declared operation and changes the package index (its policy, bodies and interfaces) and
 the lifecycle entity's create and update (which check its state), and `service-routes` and `service-routes-hono` change their
 transports (the new routes). The test pins both lists, and every other file stays byte-identical.
+The Rust `service` adds the declared operations' file and changes the service crate's manifest
+(the rules and contract crates it names), its library (the policy, the bodies and the move types)
+and the lifecycle entity's file (its commands and state checks); every other file it writes changes
+only in its `impl` header, which gains the policy and bodies type parameters. The Rust
+`service-routes` changes only its transport crate's manifest (the rules crate it names) and its
+library (the transition and operation routes).
 
 A generator that started reading an operation or a transition by accident would emit
 something half-built; these tests are what notice:
@@ -43,7 +54,7 @@ something half-built; these tests are what notice:
 | Java | `server/java/codegen-spring/src/test/java/com/metaobjects/generator/spring/RulesInertTest.java` |
 | Kotlin | `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/RulesInertTest.kt` |
 | Python | `server/python/tests/test_rules_inert.py` |
-| Rust | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every generator it ships: `entity`, `client`, `commands`) |
+| Rust | `server/rust/metaobjects-codegen/tests/rules_inert.rs` (every flat generator it ships; the rules-layer generators are held to adding files only, the data-access generator to appending the guarded update, and the service to its pinned changes) |
 
 Regenerate `without/` from `with/` by deleting every `transition.*` child and the
 `api.operational` node, nothing else.

@@ -1,10 +1,16 @@
 #!/usr/bin/env bun
-// One-command lockstep release of the @metaobjectsdev/* npm packages.
+// One-command lockstep release of the @metaobjectsdev/* npm packages, and of the Rust crates
+// when they have changed (ADR-0065 Amendment 3).
 //
 //   bun run release <version>            # do it (stops for confirm before publish)
 //   bun run release <version> --dry-run  # everything except publish/tag/push
 //   bun run release <version> --yes      # skip the interactive confirm (CI)
 //   bun run release <version> --preflight-only   # run PHASE 0 and stop
+//   bun run release <version> --crates=publish|skip   # override whether the crates ship
+//
+// The Rust crates publish to crates.io behind the same confirm, after npm, in dependency
+// order, when a file they ship changed since the last `rust-v*` tag (or they never shipped,
+// or expected-registry.json moved). scripts/lib/rust-release.mjs holds those rules.
 //
 // --preflight-only is NOT --dry-run. --dry-run still runs Phase 1, which writes the
 // new version into every package.json of the lockstep set, rebuilds, and regenerates bun.lock —
@@ -33,6 +39,10 @@ import { FRAGMENT_DIR, assembleChangelog, fragmentProblems, readFragments } from
 import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 import { mavenVersion } from "./maven-coordinate.mjs";
+import {
+  RUST_DIR, RUST_TAG_PREFIX, bumpRustManifest, crateVersionTaken, newestRustTag, rustPublishDecision,
+  rustPublishOrder,
+} from "./lib/rust-release.mjs";
 import { ejectReleaseRefusalAt } from "./eject-release-gate.mjs";
 import {
   releaseBranchRefusal, newestNpmReleaseTag, latestRegressionRefusal, unmergedMaintenanceRefusal,
@@ -42,6 +52,7 @@ const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
 const PREFLIGHT_ONLY = process.argv.includes("--preflight-only");
 const YES = process.argv.includes("--yes");
+const CRATES_MODE = process.argv.find((a) => a.startsWith("--crates="))?.slice("--crates=".length) ?? "auto";
 
 // A scratch root for the post-publish smoke that no stray node_modules can shadow.
 // See PHASE 11. Kept beside the other helpers so the reason travels with the call.
@@ -186,6 +197,50 @@ if (taken.length)
 ok(`preflight: on ${branch}, synced, ${VERSION} free on all ${set.length} packages`);
 ok(`lockstep set @ ${current}: ${set.length} packages → ${VERSION}`);
 
+// --- the Rust crates: do they ship this cut, and can they? -----------------
+// Decided here, with npm's checks, for the same reason: everything after the version bump is
+// committed and pushed before the first publish, so a dead token or a taken number found at
+// the publish step strands the release half-shipped.
+const rustTag = newestRustTag(out("git tag -l").split("\n"));
+let rust;
+try {
+  rust = rustPublishDecision({
+    lastTag: rustTag,
+    changedPaths: rustTag ? out(`git diff --name-only ${rustTag} HEAD`).split("\n").filter(Boolean) : [],
+    mode: CRATES_MODE,
+  });
+} catch (e) { die(e.message); }
+let crates = [];
+if (!rust.publish) {
+  ok(`crates.io: sits this release out (${rust.reason})`);
+} else {
+  crates = rustPublishOrder(JSON.parse(out(`cd ${RUST_DIR} && cargo metadata --format-version 1 --no-deps --locked`)));
+  // cargo reads a token from CARGO_REGISTRY_TOKEN or from the file `cargo login` writes.
+  const cargoHome = process.env.CARGO_HOME ?? join(homedir(), ".cargo");
+  const credentials = ["credentials.toml", "credentials"].map((f) => join(cargoHome, f)).find(existsSync);
+  if (!process.env.CARGO_REGISTRY_TOKEN && !(credentials && /\btoken\s*=/.test(readFileSync(credentials, "utf8")))) {
+    die("crates.io has no token: publishing the crates would fail after the version bump is\n" +
+        "  already committed. Run `cargo login` with a crates.io API token that has the\n" +
+        "  publish-update scope (and publish-new for a crate's first release), or set\n" +
+        "  CARGO_REGISTRY_TOKEN. Pass --crates=skip to cut without the crates.");
+  }
+  // crates.io asks automated clients to name themselves in the User-Agent.
+  const agent = { "user-agent": "metaobjects-release (https://github.com/metaobjectsdev/metaobjects)" };
+  const takenCrates = (await Promise.all(crates.map(async (name) => {
+    try {
+      const r = await fetch(`https://crates.io/api/v1/crates/${name}`, { headers: agent, signal: AbortSignal.timeout(15_000) });
+      if (r.status === 404) return null;             // never published = free
+      if (!r.ok) die(`crates.io answered HTTP ${r.status} for ${name} — cannot verify ${VERSION} is free`);
+      return crateVersionTaken(await r.json(), VERSION) ? name : null;
+    } catch { die(`could not reach crates.io to verify ${VERSION} is free (${name})`); }
+  }))).filter(Boolean);
+  if (takenCrates.length) {
+    die(`${VERSION} is already published on crates.io for:\n  ${takenCrates.join("\n  ")}\n` +
+        "crates.io versions are permanent (a yank does not free the number) — pick the next free version.");
+  }
+  ok(`crates.io: ${crates.length} crates ship (${rust.reason}); ${VERSION} free on all of them`);
+}
+
 // The showcase corpus is what metaobjects.dev publishes as "real `meta gen` output",
 // so a stale tree is a stale claim on a public page. Checked BEFORE the version bump,
 // which is committed and pushed long before the first publish.
@@ -242,6 +297,17 @@ for (const p of set) {
   writeFileSync(join(p.dir, "package.json"), JSON.stringify(p.pkg, null, 2) + "\n");
 }
 ok(`bumped ${set.length} package.json → ${VERSION}`);
+const rustManifests = [];
+if (rust.publish) {
+  const members = JSON.parse(out(`cd ${RUST_DIR} && cargo metadata --format-version 1 --no-deps --locked`))
+    .packages.map((p) => p.manifest_path);
+  for (const manifest of [join(RUST_DIR, "Cargo.toml"), ...members]) {
+    writeFileSync(manifest, bumpRustManifest(readFileSync(manifest, "utf8"), VERSION));
+    rustManifests.push(manifest);
+  }
+  sh(`cd ${RUST_DIR} && cargo update --workspace --offline`, { quiet: true });
+  ok(`bumped the Rust workspace → ${VERSION} (${rustManifests.length} manifests, Cargo.lock)`);
+}
 
 // --- PHASE 2+3: clean build + relock --------------------------------------
 sh("bun run clean", { quiet: true });
@@ -259,6 +325,15 @@ if (pj.version !== VERSION) die(`packed cli version is ${pj.version}, expected $
 const bad = Object.entries(pj.dependencies || {}).filter(([k, v]) => k.startsWith("@metaobjectsdev/") && v !== VERSION);
 if (bad.length) die(`packed cli pins stale/workspace sibling deps: ${JSON.stringify(bad)}`);
 ok(`packed deps verified: all @metaobjectsdev/* pinned to ${VERSION}`);
+
+// --- pack-verify the crates: each packages and builds from its own tarball -------
+// `--workspace` resolves the sibling crates from the tarballs it just made, so a crate that
+// would only build against a path in this checkout fails here, not on crates.io.
+// `--allow-dirty` because the version bump above is not committed yet.
+if (rust.publish) {
+  sh(`cd ${RUST_DIR} && cargo publish --dry-run --workspace --locked --allow-dirty`, { quiet: true });
+  ok(`crates pack-verified: ${crates.join(", ")} @ ${VERSION}`);
+}
 
 // --- write the changelog computed in Phase 0 -----------------------------------------
 // One file per change (scripts/lib/changelog-fragments.mjs): the fragments became ordinary
@@ -292,6 +367,9 @@ ok("site payload regenerated for the new version");
 // --- PHASE 6: STOP — confirm before the irreversible publish --------------
 console.log(`\n\x1b[1mReady to publish ${VERSION} to npm \`latest\` (IRREVERSIBLE).\x1b[0m`);
 console.log(`  packages: ${set.length}  |  packed deps: pinned  |  build: clean`);
+console.log(rust.publish
+  ? `  and ${crates.length} crates to crates.io (IRREVERSIBLE): ${crates.join(", ")}`
+  : `  crates.io: none (${rust.reason})`);
 if (DRY) { ok("dry run — stopping before commit/publish/tag (no changes published)"); process.exit(0); }
 if (!YES) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -302,6 +380,7 @@ if (!YES) {
 
 // --- commit the release ---------------------------------------------------
 sh(`git add -A server/typescript/packages/*/package.json client/web/packages/*/package.json bun.lock CHANGELOG.md ${FRAGMENT_DIR} examples/showcase/site-payload.json`);
+if (rust.publish) sh(`git add ${[...rustManifests, join(RUST_DIR, "Cargo.lock")].join(" ")}`);
 sh(`git commit -q -m "chore(release): @metaobjectsdev TypeScript packages ${VERSION}"`);
 ok("committed");
 
@@ -310,6 +389,15 @@ const ordered = set;   // publishSet() returns it in tier order, already validat
 for (const pkg of ordered) {
   sh(`cd ${pkg.dir} && bun publish`, { quiet: true });
   ok(`published ${pkg.short}@${VERSION}`);
+}
+
+// --- PHASE 7b: the crates, in dependency order ------------------------------
+// After npm, so a dead npm token (the likelier failure) stops the cut before anything on
+// crates.io is permanent. cargo waits for each crate to appear in the index before it
+// returns, so the next crate can resolve it.
+for (const name of crates) {
+  sh(`cd ${RUST_DIR} && cargo publish -p ${name} --locked`, { quiet: true });
+  ok(`published ${name}@${VERSION} to crates.io`);
 }
 
 // --- PHASE 8: push (the tag is NOT cut here) -------------------------------
@@ -343,10 +431,11 @@ const v = out(`cd ${sm} && ./node_modules/.bin/meta --version`);
 if (!v.includes(VERSION)) die(`smoke FAILED: clean install reports ${v}, expected ${VERSION}`);
 ok(`smoke: clean external install → meta --version = ${v}`);
 
-console.log(`\n\x1b[32m\x1b[1m✅ ${VERSION} is live on npm latest.\x1b[0m`);
+console.log(`\n\x1b[32m\x1b[1m✅ ${VERSION} is live on npm latest${rust.publish ? " and crates.io" : ""}.\x1b[0m`);
 console.log(`\n\x1b[1mNOT DONE — v${VERSION} is not tagged yet, by design.\x1b[0m`);
 console.log(`   1. Bump PyPI/NuGet/Maven, run \`bun run site:payload\`, commit, push.`);
-console.log(`   2. Tag the ports: python-v${VERSION}, csharp-v${VERSION}, java-v${mavenVersion(VERSION)}.`);
+console.log(`   2. Tag the ports: python-v${VERSION}, csharp-v${VERSION}, java-v${mavenVersion(VERSION)}` +
+  (rust.publish ? `, ${RUST_TAG_PREFIX}${VERSION}.` : "."));
 console.log(`   3. \`bun scripts/finish-release.mjs ${VERSION}\` — gates the coordinates, then cuts v${VERSION}.`);
 console.log(`   The website pins to v${VERSION}, so tagging before step 1 publishes three stale versions.`);
 console.log(`   Docs version refs are NOT auto-bumped (low-value churn for a patch); batch them when convenient.`);

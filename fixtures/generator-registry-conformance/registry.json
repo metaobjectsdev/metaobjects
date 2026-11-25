@@ -21,21 +21,21 @@
       "tier": "native",
       "layer": "capability",
       "eject": "full",
-      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+      "ports": ["typescript", "csharp", "java", "kotlin", "python", "rust"]
     },
     "output-prompt": {
       "concept": "Per-template output-format prompt fragment generator.",
       "tier": "native",
       "layer": "capability",
       "eject": "full",
-      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+      "ports": ["typescript", "csharp", "java", "kotlin", "python", "rust"]
     },
     "render-helper": {
-      "concept": "Per-renderable-template render helper (typed render wrappers). BOTH template subtypes render (ADR-0052), so on csharp/java/kotlin/python this covers template.output AND template.prompt; on typescript a prompt's render handle is the separate `prompt-render` generator instead, so typescript's render-helper is template.output only. Same stable name, one concept, one per-port split — stated here because the concept line is shared and the split is not.",
+      "concept": "Per-renderable-template render helper (typed render wrappers). BOTH template subtypes render (ADR-0052), so on csharp/java/kotlin/python/rust this covers template.output AND template.prompt; on typescript a prompt's render handle is the separate `prompt-render` generator instead, so typescript's render-helper is template.output only. Same stable name, one concept, one per-port split — stated here because the concept line is shared and the split is not.",
       "tier": "native",
       "layer": "capability",
       "eject": "full",
-      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
+      "ports": ["typescript", "csharp", "java", "kotlin", "python", "rust"]
     },
     "extractor": {
       "concept": "Per-template typed extract<Name> helper: tolerant recovery of the typed response from dirty model text; throws only when a @required field is lost.",
@@ -105,32 +105,32 @@
       "ports": ["typescript", "csharp", "kotlin", "python", "java"]
     },
     "rules-names": {
-      "concept": "Business-rules name constants (ADR-0067 layer 0): each lifecycle's states, initial and terminal states and transitions, the permission each derived command and each operation asks for, and the error codes. A layer generator: it acts on the rules vocabulary, so the codegen-noop rules corpus does not hold it.",
+      "concept": "Business-rules name constants (ADR-0067 layer 0): each lifecycle's states, initial and terminal states and transitions, the permission each derived command and each operation asks for, and the error codes. A layer generator: it acts on the rules vocabulary, so the codegen-noop rules corpus does not hold it. On rust they are closed enums in a `<package>_rules` crate, which also names each derived command and declared operation.",
       "tier": "native",
       "layer": "model",
       "eject": "full",
-      "ports": ["typescript", "csharp"]
+      "ports": ["typescript", "csharp", "rust"]
     },
     "contract-types": {
-      "concept": "Contract types with no persistence mapping (ADR-0067 layer 1): each store-backed entity's read, create and update shapes, each projection's read shape, each declared operation's input, output and errors, and the wire error bodies. TypeScript writes the whole layer. C# so far writes each entity's create and update records, which leave out the server-owned members (generated key, @autoSet stamp, readOnly and derived fields, TPH discriminator) and tell an omitted member from an explicit null. The other ports add theirs with their rules-layer work.",
+      "concept": "Contract types with no persistence mapping (ADR-0067 layer 1): each store-backed entity's read, create and update shapes, each projection's read shape, each declared operation's input, output and errors, and the wire error bodies. TypeScript writes the whole layer. C# so far writes each entity's create and update records, which leave out the server-owned members (generated key, @autoSet stamp, readOnly and derived fields, TPH discriminator) and tell an omitted member from an explicit null. On rust an entity's read, create and patch shapes are the entity generator's model crate, which carries no persistence mapping, and this generator writes a `<package>_contract` crate per package with a declared operation: each operation's input, output, business errors and error body, the read shape of a returned projection that is not a served read, and the wire error contract. The other ports add theirs with their rules-layer work.",
       "tier": "native",
       "layer": "model",
       "eject": "full",
-      "ports": ["typescript", "csharp"]
+      "ports": ["typescript", "csharp", "rust"]
     },
     "service": {
-      "concept": "The service layer (ADR-0067 layer 4): one module per metadata package, a function per operation, and a factory that binds them to the dependencies passed in. Each store-backed entity gets its derived list, get, create, update and delete; every write runs in one transaction (a savepoint inside a caller's) with the declared write rules (ADR-0045). TypeScript so far, behind its own transport (`service-routes`); the other ports add theirs with their rules-layer work.",
+      "concept": "The service layer (ADR-0067 layer 4): one module per metadata package, a function per operation, and a factory that binds them to the dependencies passed in. Each store-backed entity gets its derived list, get, create, update and delete; every write runs in one transaction (a savepoint inside a caller's) with the declared write rules (ADR-0045). TypeScript, behind its own transport (`service-routes`), and Rust (over the `repository` store crates, its write running inside a caller's transaction through its `_in` twin); the other ports add theirs with their rules-layer work.",
       "tier": "native",
       "layer": "service",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "rust"]
     },
     "service-routes": {
-      "concept": "A thin REST transport over the service layer (ADR-0067 layer 5), one per metadata package: each route parses the request, calls one service operation and sends what it answered, and holds no rules. It answers the shared REST contract as `routes` does. TypeScript (Fastify) so far.",
+      "concept": "A thin REST transport over the service layer (ADR-0067 layer 5), one per metadata package: each route parses the request, calls one service operation and sends what it answered, and holds no rules. It answers the shared REST contract as `routes` does. TypeScript (Fastify) and Rust (axum, one router per package with an actor extractor; opt-in at `cargo meta init --transport`, because it brings a web framework into the build).",
       "tier": "native",
       "layer": "api",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "rust"]
     },
     "service-routes-hono": {
       "concept": "The `service-routes` transport on Hono: the same routes over the service layer (ADR-0067 layer 5), mounted on a Hono app, answering the shared REST contract the same way. TYPESCRIPT ONLY by design, as `routes-hono` is: Hono is a TypeScript framework.",
@@ -140,7 +140,7 @@
       "ports": ["typescript"]
     },
     "prompt-render": {
-      "concept": "Per-template.prompt render handle over the render engine, aggregated into one module. TYPESCRIPT ONLY by design: the other four ports emit a prompt's render helper from `render-helper` (see its note) rather than a second generator.",
+      "concept": "Per-template.prompt render handle over the render engine, aggregated into one module. TYPESCRIPT ONLY by design: the other ports emit a prompt's render helper from `render-helper` (see its note) rather than a second generator.",
       "tier": "native",
       "layer": "capability",
       "eject": "full",
@@ -177,11 +177,11 @@
       "ports": ["csharp"]
     },
     "repository": {
-      "concept": "Per-entity repository seam (Java: Spring Data interface; Kotlin: an open Exposed persistence base with CRUD + patch bodies).",
+      "concept": "Per-entity repository seam (Java: Spring Data interface; Kotlin: an open Exposed persistence base with CRUD + patch bodies; Rust: a store crate per package over sqlx, with list, count, get, create, update, delete and the guarded lifecycle update).",
       "tier": "native",
       "layer": "persistence",
       "eject": "full",
-      "ports": ["java", "kotlin"]
+      "ports": ["java", "kotlin", "rust"]
     },
     "dto": {
       "concept": "Per-entity Spring DTO.",
@@ -609,8 +609,11 @@
         "engine": [
           "metaobjects_codegen::emitted",
           "metaobjects_codegen::generator",
+          "metaobjects_codegen::inbound",
+          "metaobjects_codegen::layers",
           "metaobjects_codegen::names",
           "metaobjects_codegen::plan",
+          "metaobjects_codegen::render",
           "metaobjects_codegen::writer"
         ]
       }

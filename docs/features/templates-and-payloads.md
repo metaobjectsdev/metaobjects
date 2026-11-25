@@ -728,7 +728,7 @@ served after codegen that names a variable the payload lacks (`{{nmae}}` for `na
 it for a Mustache body in TypeScript, C#, Java (and so Kotlin), Python and Rust (the
 `metaobjects-render` crate), and for a Jinja body in TypeScript and Python. A present `null` still renders empty, and a section over an absent name
 still renders nothing. The generated render helpers (the `template.output` helper and the
-`template.prompt` handle, in all five ports) carry the payload's field tree, so the same miss is
+`template.prompt` handle, in all six ports) carry the payload's field tree, so the same miss is
 caught in text served after codegen. Passing the field tree to the engine (`verify` in TypeScript,
 Java, Kotlin and C#; `verify=` in Python) also checks names against the declared fields. Pinned by
 [`fixtures/template-output-render-conformance/runtime-drift/`](../../fixtures/template-output-render-conformance/runtime-drift/),

@@ -24,9 +24,9 @@ name = "cargo-meta"
 path = "src/main.rs"
 
 [dependencies]
-metaobjects = { path = "../metaobjects", version = "0.1.0" }
-metaobjects-codegen = { path = "../metaobjects-codegen", version = "0.1.0" }
-metaobjects-render = { path = "../metaobjects-render", version = "0.1.0" }
+metaobjects = { path = "../metaobjects", version = "1.3.0" }
+metaobjects-codegen = { path = "../metaobjects-codegen", version = "1.3.0" }
+metaobjects-render = { path = "../metaobjects-render", version = "1.3.0" }
 serde_json.workspace = true
 
 

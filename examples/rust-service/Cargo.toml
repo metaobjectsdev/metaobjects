@@ -1,0 +1,4 @@
+# The example's workspace: the app and every crate `cargo meta gen` wrote.
+[workspace]
+resolver = "2"
+members = ["app", "generated/*"]

@@ -1,6 +1,6 @@
 [package]
 name = "metaobjects-codegen"
-description = "MetaObjects code generation for Rust: the run engine and the entity, client and commands generators."
+description = "MetaObjects code generation for Rust: the run engine and the shipped generators."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,10 +14,18 @@ categories = ["development-tools", "development-tools::build-utils"]
 build = "build.rs"
 
 [dependencies]
-metaobjects = { path = "../metaobjects", version = "0.1.0" }
+metaobjects = { path = "../metaobjects", version = "1.3.0" }
+metaobjects-render = { path = "../metaobjects-render", version = "1.3.0" }
 serde_json.workspace = true
 indexmap.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+# The layout ratchet (tests/layout_ratchet.rs) parses generator source to find hand-typed layout.
+syn = { version = "3", default-features = false, features = ["full", "visit", "parsing", "printing", "clone-impls"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+# The persistence-corpus runner (tests/persistence_conformance.rs) reads the scenario YAML.
+saphyr = "0.3.4"
 
 [lints]
 workspace = true

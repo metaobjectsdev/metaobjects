@@ -1,0 +1,22 @@
+metadata:
+  package: tasks
+  children:
+    - object.entity:
+        name: Task
+        description: One piece of work, from the moment it is written down until it is done.
+        children:
+          - source.rdb: { table: tasks }
+          - field.long: { name: id }
+          - identity.primary: { name: pk, fields: [id], generation: increment }
+          - field.string: { name: title, maxLength: 120, required: true, filterable: true, sortable: true, db.indexed: true }
+          - field.string: { name: notes, maxLength: 2000 }
+          - field.enum:
+              name: status
+              values: [todo, doing, done]
+              default: todo
+              filterable: true
+              db.indexed: true
+              children:
+                - transition.action: { name: start, from: [todo], to: doing }
+                - transition.action: { name: finish, from: [todo, doing], to: done }
+                - transition.action: { name: reopen, from: [done], to: todo, public: true }

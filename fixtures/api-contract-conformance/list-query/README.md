@@ -51,5 +51,7 @@ answer every scenario by construction.
 Runners: TypeScript `server/typescript/packages/integration-tests/test/api-contract-list-query.test.ts`
 (one Postgres container for the file, reseeded before every scenario), and C#
 `server/csharp/MetaObjects.IntegrationTests/Api/ApiContractListQueryConformanceTest.cs` (the
-generated routes on Kestrel against Postgres). Both run every scenario. The other ports'
-runners arrive with their 1.3.0 REST-standard work.
+generated routes on Kestrel against Postgres), and Rust
+`server/rust/metaobjects-codegen/tests/api_contract.rs` (the generated axum routes against
+SQLite in memory). All three run every scenario. The other ports' runners arrive with their
+1.3.0 REST-standard work.

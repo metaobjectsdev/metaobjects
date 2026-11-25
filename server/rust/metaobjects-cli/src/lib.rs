@@ -37,7 +37,7 @@ const USAGE: &str = "\
 cargo meta: MetaObjects for Rust
 
 USAGE:
-    cargo meta init   [--project <dir>]
+    cargo meta init   [--project <dir>] [--transport]
     cargo meta gen    [OPTIONS] [ENTITY...]
     cargo meta verify [--codegen] [--templates] [--full] [OPTIONS]
     cargo meta eject  <generator>... [--force] [--engine <source>]
@@ -47,7 +47,8 @@ USAGE:
 COMMANDS:
     init       Scaffold a project: .metaobjects/config.json, a first metadata file, the
                ignore rules for the generation state and metaobjects.config.json, the list of
-               generators to run. Writes only what is missing.
+               generators to run. Writes only what is missing. --transport lists the
+               opt-in axum transport (service-routes) too.
     gen        Generate Rust crates from the project's model. Skips the whole run when the
                model, the project config and the generators are unchanged; writes only files
                whose bytes changed; removes a generated file nothing emits any more; refuses
@@ -93,7 +94,8 @@ OPTIONS (everywhere):
     -V, --version        Print the version.
 
 GENERATORS: a project chooses what runs in metaobjects.config.json, `{ \"generators\": [..] }`,
-by name. Edit the list; no eject is needed. With no such file every generator runs.
+by name. Edit the list; no eject is needed. With no such file every generator runs but the
+opt-in transport (service-routes), which `init --transport` lists.
 
 ENTITY names limit `gen` to the crates that contain them plus the crates those depend on.
 Such a run never skips, never stores the skip key and never removes a file.
@@ -122,7 +124,7 @@ const fn valued(name: &'static str) -> Flag {
     Flag { name, value: true }
 }
 
-const INIT_FLAGS: &[Flag] = &[valued("--project")];
+const INIT_FLAGS: &[Flag] = &[valued("--project"), switch("--transport")];
 const GEN_FLAGS: &[Flag] = &[
     switch("--force"),
     valued("--generators"),
@@ -371,7 +373,7 @@ fn list_generators(
     generators: &[Box<dyn Generator>],
 ) -> i32 {
     let listed = match generator_list::read(root) {
-        Ok(listed) => listed,
+        Ok(listed) => listed.as_deref().map(generator_list::names),
         Err(e) => {
             let _ = writeln!(err, "{TOOL}: {e}");
             return 1;
@@ -389,7 +391,7 @@ fn list_generators(
         None => {
             let _ = writeln!(
                 out,
-                "No {GENERATOR_LIST_FILE}: every generator runs. `{TOOL} init` writes one to choose from."
+                "No {GENERATOR_LIST_FILE}: every generator runs but the opt-in ones. `{TOOL} init` writes one to choose from."
             );
         }
         Some(names) => {
@@ -410,7 +412,8 @@ fn list_generators(
         }
     }
     let on = |name: &str| match &listed {
-        None => String::new(),
+        None if generator_list::runs_unlisted(name) => String::new(),
+        None => " [opt-in]".to_string(),
         Some(names) if names.iter().any(|n| n == name) => " [configured]".to_string(),
         Some(_) => " [not configured]".to_string(),
     };
@@ -707,7 +710,7 @@ fn cmd_eject(
 }
 
 /// What `init` writes when it is missing: a path from the project root and its text.
-fn init_files() -> [(&'static str, String); 4] {
+fn init_files(transport: bool) -> [(&'static str, String); 4] {
     [
         (
             ".metaobjects/config.json",
@@ -721,7 +724,7 @@ fn init_files() -> [(&'static str, String); 4] {
             "metaobjects/meta.app.yaml",
             "metadata:\n  package: app\n  children: []\n".to_string(),
         ),
-    (GENERATOR_LIST_FILE, generator_list::scaffold()),
+    (GENERATOR_LIST_FILE, generator_list::scaffold(transport)),
     ]
 }
 
@@ -747,7 +750,7 @@ fn cmd_init(
     let has_metadata = std::fs::read_dir(root.join("metaobjects"))
         .map(|d| d.filter_map(Result::ok).next().is_some())
         .unwrap_or(false);
-    for (rel, text) in init_files() {
+    for (rel, text) in init_files(s.has("--transport")) {
         let path = root.join(rel);
         if path.exists() {
             let _ = writeln!(out, "kept {rel} (already exists)");
@@ -953,6 +956,30 @@ mod tests {
             String::from_utf8(out).unwrap(),
             String::from_utf8(err).unwrap(),
         )
+    }
+
+    #[test]
+    fn init_lists_the_opt_in_transport_only_when_asked() {
+        let base = std::env::var_os("DEV_SCRATCH")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join(format!("mo-cli-init-{}", std::process::id()));
+        for (flag, listed) in [(None, false), (Some("--transport"), true)] {
+            let dir = base.join(if listed { "with" } else { "without" });
+            let mut list = vec!["init", "--project", dir.to_str().unwrap()];
+            list.extend(flag);
+            let (code, _, err) = run_cli(&list);
+            assert_eq!(code, 0, "{err}");
+            let text = std::fs::read_to_string(dir.join(GENERATOR_LIST_FILE)).unwrap();
+            let names = generator_list::names(&generator_list::parse(&text).unwrap());
+            assert_eq!(
+                names.iter().any(|n| n == "service-routes"),
+                listed,
+                "{text}"
+            );
+            assert!(names.iter().any(|n| n == "service"), "{text}");
+        }
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

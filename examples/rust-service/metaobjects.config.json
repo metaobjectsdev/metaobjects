@@ -1,0 +1,10 @@
+{
+  "generators": [
+    "entity",
+    "rules-names",
+    "contract-types",
+    "repository",
+    "service",
+    "service-routes"
+  ]
+}

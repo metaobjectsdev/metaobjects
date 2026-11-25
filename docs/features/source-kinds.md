@@ -64,7 +64,7 @@ there and are excluded from the write codecs); reads route to the view; the `CRE
 is emitted by `meta migrate` from the **same assembly logic** as a projection view — one
 emitter, two hosts.
 
-> **Status — shipped in all five ports.** Both halves have landed: the schema/write half
+> **Status — shipped in all six ports.** Both halves have landed: the schema/write half
 > ([#213](https://github.com/metaobjectsdev/metaobjects/issues/213)) keeps derived fields OFF
 > the write table and emits the replica view (verified by a real-Postgres round-trip), and the
 > codegen READ half ([#214](https://github.com/metaobjectsdev/metaobjects/issues/214)) routes

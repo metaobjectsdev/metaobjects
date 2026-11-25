@@ -163,10 +163,7 @@ fn a_model_with_nothing_served_gets_no_client_and_no_transport() {
 
 #[test]
 fn a_subtype_of_a_single_table_hierarchy_is_reached_under_its_base() {
-    let p = Scratch::project(
-        "client-tph",
-        &[("metaobjects/meta.fitness.json", common::FITNESS)],
-    );
+    let p = Scratch::project("client-tph", &common::FITNESS_PROJECT);
     generate_all(&p, &[]);
     let base = p.read("generated/fitness_client/src/auth.rs");
     assert!(
