@@ -138,6 +138,7 @@ checks, and asserts each `shapeOnlyCases` pair is ACCEPTED:
 | C# | `server/csharp/MetaObjects.Codegen.Tests/CSharpNamingTests.cs` (pluralizers + refusal — `CSharpNaming.AssertNoCollectionNameCollisions`, wired into `CodegenRunner.Run`); `server/csharp/MetaObjects.Codegen.Tests/DbContextForeignKeyConfigTests.cs` (the historical Address/Addresses fixture, now an expected-error test at both the unit and `CodegenRunner.Run` integration level) |
 | Java / Kotlin | `server/java/codegen-base/src/test/java/com/metaobjects/generator/util/RouteNamingTest.java` (pluralizers + refusal — `RouteNaming.assertNoCollectionNameCollisions`, wired into `MetaDataGeneratorMojo#executeGenerators` and the codegen mode of `MetaDataVerifyMojo`; Kotlin inherits both — it runs through the same Maven goals — and `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinRouteNamingTest.kt` checks the refusal on models the Kotlin facade loads) |
 | Python | `server/python/tests/codegen/test_route_path_naming.py` (pluralizers); `server/python/tests/codegen/test_collection_name_collision.py` (refusal — `assert_no_collection_name_collisions`, wired into `run_gen` in `runner.py`) |
+| Rust | `server/rust/metaobjects/tests/naming_conformance.rs` (both `cases` columns, the `collisionCases` refusal through `assert_no_collection_name_collisions`, and the `shapeOnlyCases` acceptances) |
 
 No HTTP server, no database — this corpus is intentionally a pure function
 check, unlike `api-contract-conformance` (which is the right place for the

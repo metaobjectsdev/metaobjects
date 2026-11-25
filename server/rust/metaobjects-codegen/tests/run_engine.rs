@@ -679,3 +679,15 @@ fn two_name_collisions_and_a_crate_cycle_are_reported_not_emitted() {
     assert!(e.to_string().contains("ERR_CRATE_CYCLE"), "{e}");
     assert!(!p.exists("generated"));
 }
+
+#[test]
+fn a_flag_naming_an_opt_in_generator_with_no_list_is_refused_not_ignored() {
+    let p = Scratch::project("opt-in-flag", &shop_files());
+    let e = gen_with(&p, |o| {
+        o.generators = Some(vec!["service-routes".to_string()])
+    })
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("the generator service-routes is opt-in"), "{e}");
+    assert!(!p.exists("generated"), "a refused run writes nothing");
+}

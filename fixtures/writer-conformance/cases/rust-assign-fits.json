@@ -1,0 +1,37 @@
+{
+  "description": "`assign` writes `head rhs` on one line when it fits.",
+  "dialect": "rust",
+  "ops": [
+    [
+      "open",
+      "fn main() {"
+    ],
+    [
+      "assign",
+      "let x =",
+      [
+        "f",
+        {
+          "list": {
+            "open": "(",
+            "items": [
+              "a",
+              "b"
+            ],
+            "close": ")"
+          }
+        },
+        ";"
+      ]
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "fn main() {",
+    "    let x = f(a, b);",
+    "}"
+  ]
+}

@@ -120,13 +120,13 @@ impl RulesCheckResult {
 }
 
 /// One lifecycle: an enum field with at least one transition.
-struct Lifecycle<'a> {
-    field: NodeId,
+pub(crate) struct Lifecycle<'a> {
+    pub(crate) field: NodeId,
     /// The enum's `@values`, in declaration order.
-    states: Vec<&'a str>,
+    pub(crate) states: Vec<&'a str>,
     /// The enum's `@default`; `None` only on a model the loader refused.
-    initial: Option<&'a str>,
-    transitions: Vec<NodeId>,
+    pub(crate) initial: Option<&'a str>,
+    pub(crate) transitions: Vec<NodeId>,
 }
 
 fn quote_list<S: AsRef<str>>(xs: &[S]) -> String {
@@ -159,7 +159,7 @@ pub fn rules_address(tree: &Tree, node: NodeId) -> String {
 /// The permission name a node gets when it declares none, `<package>.<path>`: the path is
 /// `<operation>` for a declared operation and `<Entity>.<transition>` for a transition's
 /// derived command, so two entities' transitions of one name ask about different permissions.
-fn derived_permission_name(tree: &Tree, owner: NodeId, path: &str) -> String {
+pub(crate) fn derived_permission_name(tree: &Tree, owner: NodeId, path: &str) -> String {
     let pkg = tree.effective_package(tree.top_level_of(owner));
     if pkg.is_empty() {
         path.to_string()
@@ -172,7 +172,7 @@ fn needs_permission_name(tree: &Tree, node: NodeId) -> bool {
     tree.attr(node, A_PERMISSION).is_none() && !is_true(tree, node, A_PUBLIC)
 }
 
-fn entities(tree: &Tree, root: NodeId) -> Vec<NodeId> {
+pub(crate) fn entities(tree: &Tree, root: NodeId) -> Vec<NodeId> {
     tree.children(root)
         .iter()
         .copied()
@@ -180,7 +180,7 @@ fn entities(tree: &Tree, root: NodeId) -> Vec<NodeId> {
         .collect()
 }
 
-fn operations(tree: &Tree, root: NodeId) -> Vec<NodeId> {
+pub(crate) fn operations(tree: &Tree, root: NodeId) -> Vec<NodeId> {
     tree.children(root)
         .iter()
         .copied()
@@ -196,7 +196,7 @@ fn operations(tree: &Tree, root: NodeId) -> Vec<NodeId> {
 }
 
 /// The lifecycles of an entity, in effective field order.
-fn lifecycles_of<'a>(tree: &'a Tree, entity: NodeId) -> Vec<Lifecycle<'a>> {
+pub(crate) fn lifecycles_of<'a>(tree: &'a Tree, entity: NodeId) -> Vec<Lifecycle<'a>> {
     if !is_a(tree, entity, TYPE_OBJECT, SUB_ENTITY) {
         return Vec::new();
     }
@@ -238,13 +238,13 @@ fn declared_lifecycles<'a>(tree: &'a Tree, root: NodeId) -> Vec<Lifecycle<'a>> {
 
 /// Whether an entity's lifecycles are live: it declares or inherits a source. A lifecycle on
 /// an entity with no source loads and is inert: it derives no command.
-fn lifecycle_is_live(tree: &Tree, entity: NodeId) -> bool {
+pub(crate) fn lifecycle_is_live(tree: &Tree, entity: NodeId) -> bool {
     tree.children(entity)
         .iter()
         .any(|&c| tree.node(c).type_name == T_SOURCE)
 }
 
-fn transition_from(tree: &Tree, t: NodeId) -> Vec<&str> {
+pub(crate) fn transition_from(tree: &Tree, t: NodeId) -> Vec<&str> {
     string_list(tree, t, A_FROM)
 }
 
@@ -270,7 +270,7 @@ fn reachable_states<'a>(tree: &'a Tree, l: &Lifecycle<'a>) -> Vec<&'a str> {
 }
 
 /// The members no transition leaves (a self-transition counts as leaving).
-fn terminal_states<'a>(tree: &Tree, l: &Lifecycle<'a>) -> Vec<&'a str> {
+pub(crate) fn terminal_states<'a>(tree: &Tree, l: &Lifecycle<'a>) -> Vec<&'a str> {
     let leaving: Vec<&str> = l
         .transitions
         .iter()
@@ -359,14 +359,14 @@ fn check_lifecycle(
 }
 
 /// One command's claim on a transition node, made for its target entity.
-struct Claim {
+pub(crate) struct Claim {
     target: NodeId,
     op: NodeId,
 }
 
 /// The operation's target: the declared `@objectRef` when it names an entity, else the
 /// derived one.
-fn operation_target(env: &Env<'_>, op: NodeId) -> Option<NodeId> {
+pub(crate) fn operation_target(env: &Env<'_>, op: NodeId) -> Option<NodeId> {
     if let Some(declared) = str_attr(env.tree, op, A_OBJECT_REF) {
         return resolve_object_on(env, op, declared)
             .filter(|&n| env.tree.node(n).sub_type == SUB_ENTITY);
@@ -375,7 +375,7 @@ fn operation_target(env: &Env<'_>, op: NodeId) -> Option<NodeId> {
 }
 
 /// Each transition node the declared commands claim, with the claims on it in model order.
-fn claimed_transitions(env: &Env<'_>, root: NodeId) -> Vec<(NodeId, Vec<Claim>)> {
+pub(crate) fn claimed_transitions(env: &Env<'_>, root: NodeId) -> Vec<(NodeId, Vec<Claim>)> {
     let tree = env.tree;
     let mut claimed: Vec<(NodeId, Vec<Claim>)> = Vec::new();
     for op in operations(tree, root) {
@@ -422,7 +422,7 @@ fn claims_on<'c>(
 }
 
 /// Whether `t`, carried by `entity`, derives a command of its own under the setting.
-fn derives_command(
+pub(crate) fn derives_command(
     tree: &Tree,
     claimed: &[(NodeId, Vec<Claim>)],
     settings: &RulesSettings,
@@ -437,7 +437,7 @@ fn derives_command(
 }
 
 /// The entities a transition can derive a command on: concrete, with a source.
-fn command_entities(tree: &Tree, root: NodeId) -> Vec<NodeId> {
+pub(crate) fn command_entities(tree: &Tree, root: NodeId) -> Vec<NodeId> {
     entities(tree, root)
         .into_iter()
         .filter(|&e| !tree.node(e).is_abstract && lifecycle_is_live(tree, e))

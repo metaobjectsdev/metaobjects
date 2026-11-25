@@ -1,0 +1,38 @@
+{
+  "description": "`prose` writes generated text as `///` lines wrapped at a word boundary so no line passes the width; each line of the text is its own paragraph, and `docBreak` writes the bare `///` between two paragraphs.",
+  "dialect": "rust",
+  "ops": [
+    [
+      "open",
+      "impl A {"
+    ],
+    [
+      "prose",
+      "Parse a reply to the prompt that is exactly the JSON of the response type, with nothing around it at all."
+    ],
+    [
+      "docBreak"
+    ],
+    [
+      "prose",
+      "# Errors"
+    ],
+    [
+      "line",
+      "fn f() {}"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "impl A {",
+    "    /// Parse a reply to the prompt that is exactly the JSON of the response type, with nothing",
+    "    /// around it at all.",
+    "    ///",
+    "    /// # Errors",
+    "    fn f() {}",
+    "}"
+  ]
+}

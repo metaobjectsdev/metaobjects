@@ -184,24 +184,6 @@ pub fn literal(text: &str) -> String {
     out
 }
 
-/// `/// ` doc-comment lines for `text` at `indent`, one per line of text, with no trailing
-/// whitespace (an empty line is a bare `///`).
-pub fn doc_comment(text: &str, indent: &str) -> String {
-    let mut out = String::new();
-    for line in text.trim().lines() {
-        let line = line.trim_end();
-        out.push_str(indent);
-        if line.is_empty() {
-            out.push_str("///\n");
-        } else {
-            out.push_str("/// ");
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,11 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn literals_and_doc_comments_are_escaped_and_trimmed() {
+    fn literals_are_escaped() {
         assert_eq!(literal("a\"b\\c\nd"), "\"a\\\"b\\\\c\\nd\"");
-        assert_eq!(
-            doc_comment("One.\n\nTwo.  ", "    "),
-            "    /// One.\n    ///\n    /// Two.\n"
-        );
     }
 }

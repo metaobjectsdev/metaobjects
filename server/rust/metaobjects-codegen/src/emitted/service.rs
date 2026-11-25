@@ -1,0 +1,410 @@
+//! The service layer's mechanics for the `service` generator's crates (ADR-0067 layer 4): the
+//! errors an operation answers with, the store it opens a transaction on, the event a write
+//! reports, and the list page.
+//!
+//! What runs, in which order and against which table is written into each package's service
+//! crate; this crate holds only what every one of them shares. It knows the wire codes of
+//! ADR-0066 §6 and nothing of HTTP: the status of each is here so a transport maps an error the
+//! same way in every app.
+
+use std::fmt;
+use std::future::Future;
+use std::ops::DerefMut;
+
+use meta_store::{Conn, StoreError};
+use meta_support::validation::Violation;
+use serde::Serialize;
+use serde_json::Value;
+
+/// The page size a list answers with when the query names no limit, the same in every port.
+pub const DEFAULT_LIMIT: u64 = 50;
+
+/// Why an operation did not complete. Each answers one wire code (ADR-0066 §6).
+#[derive(Debug)]
+pub enum ServiceError {
+    /// 404 `not_found`: no row has the key.
+    NotFound,
+    /// 403 `forbidden`: the policy refused the permission point.
+    Forbidden,
+    /// 409 `invalid_transition`: the row is in no state the move leaves.
+    InvalidTransition,
+    /// 409 `transition_condition_failed`: the move's `@condition` does not hold for the row.
+    TransitionConditionFailed,
+    /// 409 `state_managed`: a write that is not a transition named another state of a lifecycle.
+    StateManaged,
+    /// 400 `validation`: the body breaks the model's rules. Every one is listed.
+    Validation(Vec<Violation>),
+    /// 400 `limit_too_large`: a list asked for more rows than the page allows.
+    LimitTooLarge { max: u64 },
+    /// 409 with the code: a hook, the event hook or a body refused (a declared `@errors` code
+    /// is answered this way too).
+    Refused { code: String, message: Option<String> },
+    /// The data access failed.
+    Store(StoreError),
+}
+
+impl ServiceError {
+    /// A refusal by `code`, as a hook or the event hook returns one.
+    pub fn refused(code: impl Into<String>) -> Self {
+        ServiceError::Refused { code: code.into(), message: None }
+    }
+
+    /// Its wire code.
+    pub fn code(&self) -> &str {
+        match self {
+            ServiceError::NotFound => "not_found",
+            ServiceError::Forbidden => "forbidden",
+            ServiceError::InvalidTransition => "invalid_transition",
+            ServiceError::TransitionConditionFailed => "transition_condition_failed",
+            ServiceError::StateManaged => "state_managed",
+            ServiceError::Validation(_) => "validation",
+            ServiceError::LimitTooLarge { .. } => "limit_too_large",
+            ServiceError::Refused { code, .. } => code,
+            ServiceError::Store(StoreError::UnknownField { .. } | StoreError::BadValue { .. }) => {
+                "validation"
+            }
+            ServiceError::Store(_) => "internal",
+        }
+    }
+
+    /// Its HTTP status.
+    pub fn status(&self) -> u16 {
+        match self {
+            ServiceError::NotFound => 404,
+            ServiceError::Forbidden => 403,
+            ServiceError::InvalidTransition
+            | ServiceError::TransitionConditionFailed
+            | ServiceError::StateManaged
+            | ServiceError::Refused { .. } => 409,
+            ServiceError::Validation(_) | ServiceError::LimitTooLarge { .. } => 400,
+            ServiceError::Store(StoreError::UnknownField { .. } | StoreError::BadValue { .. }) => {
+                400
+            }
+            ServiceError::Store(_) => 500,
+        }
+    }
+}
+
+impl fmt::Display for ServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ServiceError::Validation(v) => write!(f, "validation: {} problem(s)", v.len()),
+            ServiceError::LimitTooLarge { max } => write!(f, "limit_too_large: at most {max}"),
+            ServiceError::Refused { code, message: Some(m) } => write!(f, "{code}: {m}"),
+            ServiceError::Store(e) => write!(f, "{e}"),
+            other => f.write_str(other.code()),
+        }
+    }
+}
+
+impl std::error::Error for ServiceError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ServiceError::Store(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<StoreError> for ServiceError {
+    fn from(e: StoreError) -> Self {
+        ServiceError::Store(e)
+    }
+}
+
+/// What a declared operation's body may fail with: one of the operation's own `@errors`
+/// (`B`, its contract's business error type), or any service error.
+#[derive(Debug)]
+pub enum BodyError<B> {
+    Business(B),
+    Service(ServiceError),
+}
+
+impl<B> From<ServiceError> for BodyError<B> {
+    fn from(e: ServiceError) -> Self {
+        BodyError::Service(e)
+    }
+}
+
+impl<B> From<StoreError> for BodyError<B> {
+    fn from(e: StoreError) -> Self {
+        BodyError::Service(ServiceError::Store(e))
+    }
+}
+
+impl<B: Serialize> BodyError<B> {
+    /// The service error it answers with: a business error is a refusal by its code.
+    pub fn into_service(self) -> ServiceError {
+        match self {
+            BodyError::Service(e) => e,
+            BodyError::Business(b) => match serde_json::to_value(&b) {
+                Ok(Value::String(code)) => ServiceError::refused(code),
+                _ => ServiceError::refused("internal"),
+            },
+        }
+    }
+}
+
+/// Refuses a body that breaks a rule of the model.
+pub fn validated(violations: Vec<Violation>) -> Result<(), ServiceError> {
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(ServiceError::Validation(violations))
+    }
+}
+
+// ---- the store ---------------------------------------------------------------------------
+
+/// A store a service runs on: a pool it reads from and opens transactions on. Implemented for
+/// `sqlx::PgPool` and `sqlx::SqlitePool`.
+pub trait Db: Send + Sync {
+    /// The connection the generated store functions run on.
+    type Conn: Conn;
+    /// A transaction: dropped without [`Db::commit`], it is rolled back.
+    type Tx: DerefMut<Target = Self::Conn> + Send;
+    /// A pooled connection for a read.
+    type Read: DerefMut<Target = Self::Conn> + Send;
+
+    fn begin(&self) -> impl Future<Output = Result<Self::Tx, StoreError>> + Send;
+    fn commit(tx: Self::Tx) -> impl Future<Output = Result<(), StoreError>> + Send;
+    fn rollback(tx: Self::Tx) -> impl Future<Output = Result<(), StoreError>> + Send;
+    fn read(&self) -> impl Future<Output = Result<Self::Read, StoreError>> + Send;
+}
+
+#[cfg(feature = "postgres")]
+impl Db for sqlx::PgPool {
+    type Conn = sqlx::PgConnection;
+    type Tx = sqlx::Transaction<'static, sqlx::Postgres>;
+    type Read = sqlx::pool::PoolConnection<sqlx::Postgres>;
+
+    async fn begin(&self) -> Result<Self::Tx, StoreError> {
+        Ok(sqlx::Pool::begin(self).await?)
+    }
+    async fn commit(tx: Self::Tx) -> Result<(), StoreError> {
+        Ok(tx.commit().await?)
+    }
+    async fn rollback(tx: Self::Tx) -> Result<(), StoreError> {
+        Ok(tx.rollback().await?)
+    }
+    async fn read(&self) -> Result<Self::Read, StoreError> {
+        Ok(self.acquire().await?)
+    }
+}
+
+#[cfg(feature = "sqlite")]
+impl Db for sqlx::SqlitePool {
+    type Conn = sqlx::SqliteConnection;
+    type Tx = sqlx::Transaction<'static, sqlx::Sqlite>;
+    type Read = sqlx::pool::PoolConnection<sqlx::Sqlite>;
+
+    async fn begin(&self) -> Result<Self::Tx, StoreError> {
+        Ok(sqlx::Pool::begin(self).await?)
+    }
+    async fn commit(tx: Self::Tx) -> Result<(), StoreError> {
+        Ok(tx.commit().await?)
+    }
+    async fn rollback(tx: Self::Tx) -> Result<(), StoreError> {
+        Ok(tx.rollback().await?)
+    }
+    async fn read(&self) -> Result<Self::Read, StoreError> {
+        Ok(self.acquire().await?)
+    }
+}
+
+/// Ends the transaction `tx` an operation ran in: committed when `out` is a success, rolled
+/// back when it is a refusal, so a refusal anywhere undoes every write before it.
+pub async fn finish<D: Db, T>(tx: D::Tx, out: Result<T, ServiceError>) -> Result<T, ServiceError> {
+    match out {
+        Ok(v) => {
+            D::commit(tx).await?;
+            Ok(v)
+        }
+        Err(e) => {
+            // The refusal is the answer; a failed rollback is the connection's to report.
+            let _ = D::rollback(tx).await;
+            Err(e)
+        }
+    }
+}
+
+// ---- what hand-written code is handed ----------------------------------------------------
+
+/// What a body or a hook runs with: the operation's connection (inside its transaction for a
+/// write) and the actor it runs for.
+pub struct Cx<'a, A, C: ?Sized> {
+    pub conn: &'a mut C,
+    pub actor: Option<&'a A>,
+}
+
+/// What kind of write an event reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteKind {
+    Create,
+    Update,
+    Delete,
+    /// A lifecycle moved: a transition's derived command, or a declared command that moved it.
+    Transition,
+    /// A declared command that made no move.
+    Command,
+}
+
+impl WriteKind {
+    /// Its name, as the other ports' events spell it.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            WriteKind::Create => "create",
+            WriteKind::Update => "update",
+            WriteKind::Delete => "delete",
+            WriteKind::Transition => "transition",
+            WriteKind::Command => "command",
+        }
+    }
+}
+
+/// A write, as the event hook is told of it: last, inside the write's transaction, so a
+/// refusal undoes the write.
+#[derive(Debug)]
+pub struct WriteEvent<'a, A> {
+    pub kind: WriteKind,
+    /// The entity written; `None` for a declared command with no target.
+    pub entity: Option<&'static str>,
+    /// The key of the row written.
+    pub key: Option<Value>,
+    /// The operation that wrote: a declared command, or a transition's derived command.
+    pub operation: Option<&'static str>,
+    /// For a transition: the lifecycle's field, the transition, and the states.
+    pub lifecycle: Option<&'static str>,
+    pub transition: Option<&'static str>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    /// The row as written (a create or an update), or as it was (a delete).
+    pub row: Option<Value>,
+    /// The row before an update.
+    pub previous: Option<Value>,
+    pub actor: Option<&'a A>,
+}
+
+impl<'a, A> WriteEvent<'a, A> {
+    /// An event of `kind` with nothing else said.
+    pub fn new(kind: WriteKind, actor: Option<&'a A>) -> Self {
+        WriteEvent {
+            kind,
+            entity: None,
+            key: None,
+            operation: None,
+            lifecycle: None,
+            transition: None,
+            from: None,
+            to: None,
+            row: None,
+            previous: None,
+            actor,
+        }
+    }
+}
+
+/// `value` as JSON, for a policy, an event or a key.
+pub fn json<T: Serialize + ?Sized>(value: &T) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+/// The instant a write stamps an `@autoSet` timestamp with (ADR-0045): ISO 8601 in UTC, to the
+/// millisecond, with its zone, or with none for a `@localTime` field.
+pub fn now(local_time: bool) -> String {
+    let now = chrono::Utc::now();
+    if local_time {
+        now.naive_utc().format("%Y-%m-%dT%H:%M:%S%.3f").to_string()
+    } else {
+        now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    }
+}
+
+/// The wire spelling of a state.
+pub fn state_name<S: Serialize>(state: &S) -> String {
+    match json(state) {
+        Value::String(s) => s,
+        other => other.to_string(),
+    }
+}
+
+// ---- lists -------------------------------------------------------------------------------
+
+/// A page of a list.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Page<T> {
+    pub rows: Vec<T>,
+    /// The number of rows the filter selects, when the list asked for it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<u64>,
+}
+
+/// The page size of a list: the query's limit, else `default`; refused above `max`.
+pub fn page_limit(limit: Option<u64>, default: u64, max: Option<u64>) -> Result<u64, ServiceError> {
+    match (limit, max) {
+        (Some(l), Some(m)) if l > m => Err(ServiceError::LimitTooLarge { max: m }),
+        (Some(l), _) => Ok(l),
+        (None, _) => Ok(default),
+    }
+}
+
+// ---- lifecycles --------------------------------------------------------------------------
+
+/// Whether `state` (a row's lifecycle field, an `Option` of the state or the state) is one of
+/// `from`.
+pub fn in_state<S: Serialize + ?Sized, F: Serialize>(state: &S, from: &[F]) -> bool {
+    let state = json(state);
+    from.iter().any(|f| json(f) == state)
+}
+
+/// One move of a lifecycle, as [`make_move`] makes it: `field` from one of `from` to `to`, under
+/// `condition` (the move's `@condition` as JSON) when it has one.
+#[derive(Debug, Clone, Copy)]
+pub struct Move<'a, S> {
+    pub field: &'a str,
+    pub from: &'a [S],
+    pub to: S,
+    pub condition: Option<&'a str>,
+}
+
+/// Makes the move `m` on the row `key` names: the guarded update of ADR-0066 §6 step 5. A row
+/// another write moved first is `invalid_transition`, and one still in `from` whose condition
+/// does not hold is `transition_condition_failed`.
+pub async fn make_move<S, C>(
+    conn: &mut C,
+    table: &meta_store::Table,
+    key: &(impl Serialize + Sync + ?Sized),
+    m: &Move<'_, S>,
+) -> Result<(), ServiceError>
+where
+    S: Serialize + Sync,
+    C: Conn + ?Sized,
+{
+    let condition = match m.condition {
+        Some(text) => {
+            let value: Value = serde_json::from_str(text).map_err(|e| {
+                ServiceError::Store(StoreError::BadValue {
+                    field: m.field.to_string(),
+                    message: e.to_string(),
+                })
+            })?;
+            Some(meta_store::Condition::from_json(&value)?)
+        }
+        None => None,
+    };
+    let (from, to) = (m.from, &m.to);
+    let condition_ref = condition.as_ref();
+    if meta_store::transition(&mut *conn, table, key, m.field, from, to, condition_ref).await? {
+        return Ok(());
+    }
+    let now: Option<Value> = meta_store::get(&mut *conn, table, key).await?;
+    let Some(now) = now else {
+        return Err(ServiceError::NotFound);
+    };
+    let still = in_state(now.get(m.field).unwrap_or(&Value::Null), from);
+    Err(if still && condition.is_some() {
+        ServiceError::TransitionConditionFailed
+    } else {
+        ServiceError::InvalidTransition
+    })
+}

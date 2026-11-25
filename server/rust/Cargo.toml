@@ -1,18 +1,18 @@
 # The Rust port of MetaObjects. ADR-0065 records why it exists and how it differs from the
 # other ports; its Amendment 3 records that it is a full, publishable language.
 #
-# Four crates:
+# Four crates, on the version line every port shares (`scripts/release.mjs` publishes them):
 #   `metaobjects`          metamodel registry, loader, canonical serializer.
-#   `metaobjects-codegen`  the run engine (skip key, hash manifest, writer) and the
-#                          `entity` generator.
-#   `metaobjects-cli`      the `cargo-meta` binary, so `cargo meta gen` works.
 #   `metaobjects-render`   prompt render, the reply parser and the output-format fragment.
+#   `metaobjects-codegen`  the run engine (skip key, hash manifest, writer) and the shipped
+#                          generators.
+#   `metaobjects-cli`      the `cargo-meta` binary, so `cargo meta gen` works.
 [workspace]
 resolver = "3"
 members = ["metaobjects", "metaobjects-codegen", "metaobjects-cli", "metaobjects-render"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.3.0"
 edition = "2024"
 rust-version = "1.94"
 license = "Apache-2.0"

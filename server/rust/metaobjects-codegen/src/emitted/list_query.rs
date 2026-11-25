@@ -1,0 +1,760 @@
+//! How a list route reads its query string: the filter tree (and/or groups to a depth cap),
+//! the search, the sort and the page, or the named 400 it refuses with.
+//!
+//! A port of the TypeScript reference parser, held to it by the shared parse cases of
+//! `fixtures/list-query-conformance/`. The parse runs before any store sees the query, and the
+//! values it hands on are neutral: a number is a JSON number, a decimal its canonical text, an
+//! instant timestamp its UTC spelling, and every other value the text as sent.
+//!
+//! Faults are found, and the first reported, in this order: bare field parameters; `limit`, then
+//! `offset`; the filter, depth-first in the order its keys were sent; the sort; the search.
+//!
+//! This file is written by the `service-routes` generator into the transport crate
+//! (`meta_http`). Nothing here depends on MetaObjects.
+
+// The crates this lands in are edition 2021, which has no `if let` chains to collapse into.
+#![allow(clippy::collapsible_if)]
+
+use std::collections::HashMap;
+use std::fmt;
+
+use serde_json::{Map, Value};
+
+use super::validation::{is_date, is_uuid};
+use super::wire::{Decimal, Duration};
+
+/// Five levels of `or`/`and` nesting; the sixth is `filter.nesting_too_deep`.
+pub const MAX_NESTING: usize = 5;
+/// At most 100 `in` elements; more is `filter.in_too_large`.
+pub const MAX_IN_LIST: usize = 100;
+
+const SORT_EXPECTED: &str = "sort=<field>:asc|desc";
+const PAGINATION_EXPECTED: &str = "a non-negative integer (0 or more)";
+const INTEGER_EXPECTED: &str = "integer (a whole number)";
+const PLUS_OFFSET_HINT: &str =
+    "a \"+\" in a query string decodes to a space: URL-encode the offset's \"+\" as %2B, or use Z for UTC";
+/// The largest page bound the TypeScript routes accept (`Number.isSafeInteger`).
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+const RESERVED: [&str; 6] = ["filter", "sort", "limit", "offset", "search", "withCount"];
+
+/// How a filter operand is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// Text or an enum member: kept as sent.
+    Text,
+    /// int, long, currency: a JSON number with no fraction.
+    Integer,
+    /// double, float: a JSON number.
+    Number,
+    Boolean,
+    Date,
+    Time,
+    /// A `field.timestamp` instant: a zoneless bound is UTC, a date alone midnight UTC.
+    Instant,
+    /// A `@localTime` timestamp: kept as sent unless it carries a zone.
+    LocalTimestamp,
+    Uuid,
+    Decimal,
+    Duration,
+}
+
+impl Kind {
+    /// The `expected` text of a malformed value, for the kinds that check a format.
+    fn expected(self) -> Option<&'static str> {
+        Some(match self {
+            Kind::Date => "date (YYYY-MM-DD)",
+            Kind::Time => "time (HH:MM[:SS[.fff]])",
+            Kind::Instant | Kind::LocalTimestamp => {
+                "timestamp (YYYY-MM-DD[THH:MM[:SS[.fff]]][Z|±HH:MM])"
+            }
+            Kind::Uuid => "uuid (8-4-4-4-12 hex)",
+            Kind::Decimal => "decimal number (digits, optional fraction, optional exponent)",
+            Kind::Duration => "duration (ISO 8601, e.g. PT1H30M; no years or months)",
+            _ => return None,
+        })
+    }
+}
+
+/// One filterable field: its operators, how its operand is read, and its enum members.
+#[derive(Debug, Clone, Copy)]
+pub struct FilterRule {
+    pub field: &'static str,
+    pub ops: &'static [&'static str],
+    pub kind: Kind,
+    /// The members of a `field.enum`; a value that is not one is refused.
+    pub values: Option<&'static [&'static str]>,
+}
+
+/// One sortable field, and the direction a sort that names no order takes.
+#[derive(Debug, Clone, Copy)]
+pub struct SortRule {
+    pub field: &'static str,
+    pub descending: bool,
+}
+
+/// What one entity's list route accepts.
+#[derive(Debug, Clone, Copy)]
+pub struct ListSpec {
+    pub filters: &'static [FilterRule],
+    pub sorts: &'static [SortRule],
+    /// Every field of the entity a client reads, so a bare `?notes=x` for a field that is not
+    /// filterable is refused with a reason rather than ignored.
+    pub fields: &'static [&'static str],
+}
+
+impl ListSpec {
+    fn filter(&self, field: &str) -> Option<&FilterRule> {
+        self.filters.iter().find(|r| r.field == field)
+    }
+
+    fn allowed(&self) -> Value {
+        names(self.filters.iter().map(|r| r.field))
+    }
+
+    /// The fields `?search` matches: text whose band has `like` (plain text and string-backed
+    /// enums, never a uuid or an int-backed enum).
+    pub fn search_fields(&self) -> Vec<&'static str> {
+        self.filters
+            .iter()
+            .filter(|r| r.kind == Kind::Text && r.ops.contains(&"like"))
+            .map(|r| r.field)
+            .collect()
+    }
+}
+
+/// A node of a parsed filter.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Node {
+    /// One condition. `in` holds a list; `isNull` a boolean.
+    Leaf { field: String, op: String, value: Value },
+    /// Every branch holds.
+    And(Vec<Node>),
+    /// At least one branch holds.
+    Or(Vec<Node>),
+}
+
+/// A case-insensitive substring search over `fields`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Search {
+    pub term: String,
+    pub fields: Vec<&'static str>,
+}
+
+/// One sort key.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sort {
+    pub field: String,
+    pub descending: bool,
+}
+
+/// A parsed list query. Members a query did not send are `None`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ListQuery {
+    pub filter: Option<Node>,
+    pub search: Option<Search>,
+    pub sort: Option<Sort>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+    /// `withCount=true`.
+    pub with_count: bool,
+}
+
+/// A refused list query: the wire code and the members after it in the 400 body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Refusal {
+    pub code: &'static str,
+    pub details: Vec<(&'static str, Value)>,
+}
+
+impl Refusal {
+    fn new(code: &'static str, details: Vec<(&'static str, Value)>) -> Self {
+        Refusal { code, details }
+    }
+
+    /// The 400 body: `{ "error": code, ...details }`.
+    pub fn body(&self) -> Value {
+        let mut body = Map::new();
+        body.insert("error".to_string(), Value::from(self.code));
+        for (k, v) in &self.details {
+            body.insert((*k).to_string(), v.clone());
+        }
+        Value::Object(body)
+    }
+}
+
+impl fmt::Display for Refusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.body())
+    }
+}
+
+impl std::error::Error for Refusal {}
+
+fn names<'a>(items: impl Iterator<Item = &'a str>) -> Value {
+    Value::Array(items.map(Value::from).collect())
+}
+
+/// Parse `raw` (the query string as it arrives, with or without its leading `?`) against `spec`.
+pub fn parse(raw: &str, spec: &ListSpec) -> Result<ListQuery, Refusal> {
+    let q = Params::parse(raw);
+    reject_bare_fields(&q, spec)?;
+    let mut out = ListQuery {
+        limit: page_bound(&q, "limit")?,
+        offset: page_bound(&q, "offset")?,
+        ..ListQuery::default()
+    };
+    if let Some(Param::Map(f)) = q.get("filter") {
+        out.filter = node(f, spec, 0)?;
+    }
+    if let Some(Param::Scalar(s)) = q.get("sort") {
+        out.sort = Some(sort(s, spec)?);
+    }
+    if let Some(Param::Scalar(t)) = q.get("search") {
+        let fields = spec.search_fields();
+        if !t.is_empty() && !fields.is_empty() {
+            out.search = Some(Search { term: t.clone(), fields });
+        }
+    }
+    out.with_count =
+        matches!(q.get("withCount"), Some(Param::Scalar(s)) if s == "true" || s == "1");
+    Ok(out)
+}
+
+fn reject_bare_fields(q: &Params, spec: &ListSpec) -> Result<(), Refusal> {
+    for (key, value) in q.entries() {
+        if RESERVED.contains(&key) {
+            continue;
+        }
+        if spec.filter(key).is_some() {
+            let shown = match value {
+                Param::Scalar(s) => s.as_str(),
+                _ => "<value>",
+            };
+            return Err(Refusal::new(
+                "filter.bare_field",
+                vec![
+                    ("field", Value::from(key)),
+                    ("expected", Value::from(format!("filter[{key}][eq]={shown}"))),
+                ],
+            ));
+        }
+        if spec.fields.contains(&key) {
+            return Err(Refusal::new(
+                "filter.bare_field",
+                vec![
+                    ("field", Value::from(key)),
+                    ("filterable", Value::Bool(false)),
+                    (
+                        "expected",
+                        Value::from(format!("a filterable field — \"{key}\" is not @filterable")),
+                    ),
+                    ("allowed", spec.allowed()),
+                ],
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn page_bound(q: &Params, param: &'static str) -> Result<Option<u64>, Refusal> {
+    let Some(raw) = q.get(param) else { return Ok(None) };
+    let s = raw.text();
+    if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) {
+        if let Ok(n) = s.parse::<u64>() {
+            if n <= MAX_SAFE_INTEGER {
+                return Ok(Some(n));
+            }
+        }
+    }
+    Err(Refusal::new(
+        "pagination.invalid_value",
+        vec![
+            ("param", Value::from(param)),
+            ("value", Value::from(s)),
+            ("expected", Value::from(PAGINATION_EXPECTED)),
+        ],
+    ))
+}
+
+fn node(map: &Params, spec: &ListSpec, depth: usize) -> Result<Option<Node>, Refusal> {
+    if depth > MAX_NESTING {
+        return Err(Refusal::new(
+            "filter.nesting_too_deep",
+            vec![("limit", Value::from(MAX_NESTING))],
+        ));
+    }
+    let mut parts = Vec::new();
+    for (key, value) in map.entries() {
+        if key == "or" || key == "and" {
+            let group = || Refusal::new("invalid_filter_value", vec![("field", Value::from(key))]);
+            let Param::Map(branches) = value else { return Err(group()) };
+            let mut subs = Vec::new();
+            for (_, branch) in branches.entries() {
+                let Param::Map(branch) = branch else { return Err(group()) };
+                if let Some(sub) = node(branch, spec, depth + 1)? {
+                    subs.push(sub);
+                }
+            }
+            match subs.len() {
+                0 => {}
+                1 => parts.push(subs.remove(0)),
+                _ if key == "or" => parts.push(Node::Or(subs)),
+                _ => parts.push(Node::And(subs)),
+            }
+            continue;
+        }
+        let Some(rule) = spec.filter(key) else {
+            return Err(Refusal::new(
+                "invalid_filter_field",
+                vec![("field", Value::from(key)), ("allowed", spec.allowed())],
+            ));
+        };
+        match value {
+            Param::Map(ops) => {
+                for (op, operand) in ops.entries() {
+                    parts.push(leaf(rule, op, &operand.text())?);
+                }
+            }
+            other => parts.push(leaf(rule, "eq", &other.text())?),
+        }
+    }
+    Ok(match parts.len() {
+        0 => None,
+        1 => parts.pop(),
+        _ => Some(Node::And(parts)),
+    })
+}
+
+fn leaf(rule: &FilterRule, op: &str, operand: &str) -> Result<Node, Refusal> {
+    let field = rule.field;
+    if !rule.ops.contains(&op) {
+        return Err(Refusal::new(
+            "invalid_filter_op",
+            vec![
+                ("field", Value::from(field)),
+                ("op", Value::from(op)),
+                ("allowed", names(rule.ops.iter().copied())),
+            ],
+        ));
+    }
+    let value = match op {
+        "in" => {
+            let list = operand
+                .split(',')
+                .map(|v| scalar(rule, op, v.trim()))
+                .collect::<Result<Vec<_>, _>>()?;
+            if list.len() > MAX_IN_LIST {
+                return Err(Refusal::new(
+                    "filter.in_too_large",
+                    vec![("field", Value::from(field)), ("limit", Value::from(MAX_IN_LIST))],
+                ));
+            }
+            Value::Array(list)
+        }
+        "like" => {
+            if operand.starts_with('%') {
+                return Err(Refusal::new(
+                    "filter.leading_wildcard_disallowed",
+                    vec![("field", Value::from(field))],
+                ));
+            }
+            Value::from(operand)
+        }
+        "isNull" => Value::Bool(boolean(operand, field, op)?),
+        _ => scalar(rule, op, operand)?,
+    };
+    Ok(Node::Leaf { field: field.to_string(), op: op.to_string(), value })
+}
+
+fn invalid(field: &str, op: &str, expected: &str, extra: Option<(&'static str, Value)>) -> Refusal {
+    let mut details = vec![
+        ("field", Value::from(field)),
+        ("op", Value::from(op)),
+        ("expected", Value::from(expected)),
+    ];
+    details.extend(extra);
+    Refusal::new("invalid_filter_value", details)
+}
+
+fn scalar(rule: &FilterRule, op: &str, s: &str) -> Result<Value, Refusal> {
+    let field = rule.field;
+    if let Some(members) = rule.values {
+        if !members.contains(&s) {
+            let expected = format!("one of: {}", members.join(", "));
+            let allowed = names(members.iter().copied());
+            return Err(invalid(field, op, &expected, Some(("allowed", allowed))));
+        }
+    }
+    let bad = |extra| invalid(field, op, rule.kind.expected().unwrap_or("number"), extra);
+    Ok(match rule.kind {
+        Kind::Text => Value::from(s),
+        Kind::Boolean => Value::Bool(boolean(s, field, op)?),
+        Kind::Integer | Kind::Number => number(rule, op, s)?,
+        Kind::Date if is_date(s) => Value::from(s),
+        Kind::Time if is_filter_time(s) => Value::from(s),
+        Kind::Uuid if is_uuid(s) => Value::from(s),
+        Kind::Decimal => match Decimal::parse(s) {
+            Ok(d) => Value::from(d.as_str()),
+            Err(_) => return Err(bad(None)),
+        },
+        Kind::Duration if Duration::parse(s).is_ok() => Value::from(s),
+        Kind::Instant | Kind::LocalTimestamp => match Stamp::parse(s) {
+            Some(stamp) => Value::from(stamp.utc(s, rule.kind == Kind::Instant)),
+            None if unencoded_plus_offset(s) => {
+                return Err(bad(Some(("hint", Value::from(PLUS_OFFSET_HINT)))));
+            }
+            None => return Err(bad(None)),
+        },
+        _ => return Err(bad(None)),
+    })
+}
+
+fn number(rule: &FilterRule, op: &str, s: &str) -> Result<Value, Refusal> {
+    let t = s.trim();
+    if rule.kind == Kind::Integer {
+        if let Ok(whole) = t.parse::<i64>() {
+            return Ok(Value::from(whole));
+        }
+    }
+    let n = match t.parse::<f64>() {
+        Ok(n) if n.is_finite() && !t.is_empty() => n,
+        _ => return Err(invalid(rule.field, op, "number", None)),
+    };
+    if rule.kind == Kind::Integer {
+        if n.fract() != 0.0 {
+            return Err(invalid(rule.field, op, INTEGER_EXPECTED, None));
+        }
+        if n >= i64::MIN as f64 && n <= i64::MAX as f64 {
+            return Ok(Value::from(n as i64));
+        }
+    }
+    Ok(Value::from(n))
+}
+
+fn boolean(s: &str, field: &str, op: &str) -> Result<bool, Refusal> {
+    match s {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(invalid(field, op, "boolean", None)),
+    }
+}
+
+fn sort(spec_text: &str, spec: &ListSpec) -> Result<Sort, Refusal> {
+    let (field, order) = match spec_text.split_once(':') {
+        Some((field, order)) => (field, Some(order)),
+        None => (spec_text, None),
+    };
+    let refuse = || {
+        Refusal::new(
+            "invalid_sort",
+            vec![
+                ("field", Value::from(field)),
+                ("expected", Value::from(SORT_EXPECTED)),
+                ("allowed", names(spec.sorts.iter().map(|r| r.field))),
+            ],
+        )
+    };
+    let rule = spec.sorts.iter().find(|r| r.field == field).ok_or_else(refuse)?;
+    let descending = match order.map(str::to_ascii_lowercase).as_deref() {
+        None => rule.descending,
+        Some("asc") => false,
+        Some("desc") => true,
+        Some(_) => return Err(refuse()),
+    };
+    Ok(Sort { field: field.to_string(), descending })
+}
+
+// ---- value formats ------------------------------------------------------------------------
+
+fn two_digits(s: &str) -> Option<u32> {
+    (s.len() == 2 && s.bytes().all(|b| b.is_ascii_digit())).then(|| s.parse().ok())?
+}
+
+/// `HH:MM`, `HH:MM:SS` or `HH:MM:SS.f` with one to nine fraction digits.
+fn is_filter_time(s: &str) -> bool {
+    clock(s).is_some()
+}
+
+/// The hour, minute, second and fraction digits of a time of day.
+fn clock(s: &str) -> Option<(u32, u32, u32, &str)> {
+    let (hm, rest) = (s.get(..5)?, &s[5..]);
+    let (h, m) = hm.split_once(':')?;
+    let (h, m) = (two_digits(h)?, two_digits(m)?);
+    if h > 23 || m > 59 {
+        return None;
+    }
+    if rest.is_empty() {
+        return Some((h, m, 0, ""));
+    }
+    let sec = two_digits(rest.strip_prefix(':')?.get(..2)?)?;
+    let frac = &rest[3..];
+    if sec > 59 {
+        return None;
+    }
+    if frac.is_empty() {
+        return Some((h, m, sec, ""));
+    }
+    let digits = frac.strip_prefix('.')?;
+    (!digits.is_empty() && digits.len() <= 9 && digits.bytes().all(|b| b.is_ascii_digit()))
+        .then_some((h, m, sec, digits))
+}
+
+/// A timestamp bound: a date, then optionally a `T`/space time, then optionally `Z` or a
+/// `±HH[:]MM` offset.
+struct Stamp<'a> {
+    date: &'a str,
+    hour: u32,
+    minute: u32,
+    second: u32,
+    fraction: &'a str,
+    /// The offset in minutes east of UTC, when the bound names a zone.
+    offset: Option<i64>,
+}
+
+impl<'a> Stamp<'a> {
+    fn parse(s: &'a str) -> Option<Stamp<'a>> {
+        let date = s.get(..10)?;
+        if !is_date(date) {
+            return None;
+        }
+        let mut stamp = Stamp { date, hour: 0, minute: 0, second: 0, fraction: "", offset: None };
+        let rest = &s[10..];
+        if rest.is_empty() {
+            return Some(stamp);
+        }
+        let rest = rest.strip_prefix(['T', 't', ' '])?;
+        let zone_at = rest.find(['Z', 'z', '+', '-']).unwrap_or(rest.len());
+        let (time, zone) = rest.split_at(zone_at);
+        (stamp.hour, stamp.minute, stamp.second, stamp.fraction) = clock(time)?;
+        stamp.offset = match zone {
+            "" => None,
+            "Z" | "z" => Some(0),
+            _ => {
+                let sign = if zone.starts_with('-') { -1 } else { 1 };
+                let digits = zone[1..].replacen(':', "", 1);
+                if digits.len() != 4 || zone[1..].len() > 5 {
+                    return None;
+                }
+                let (h, m) = (two_digits(&digits[..2])?, two_digits(&digits[2..])?);
+                if h > 23 || m > 59 {
+                    return None;
+                }
+                Some(sign * i64::from(h * 60 + m))
+            }
+        };
+        Some(stamp)
+    }
+
+    /// The bound in UTC (`YYYY-MM-DDTHH:MM:SS[.fff]Z`), or `s` itself when it names no zone and
+    /// `zoneless_is_utc` is false (a wall clock), or is already spelled that way.
+    fn utc(&self, s: &str, zoneless_is_utc: bool) -> String {
+        if self.offset.is_none() && !zoneless_is_utc {
+            return s.to_string();
+        }
+        let b = s.as_bytes();
+        if b.get(10) == Some(&b'T') && b.get(16) == Some(&b':') && s.ends_with('Z') {
+            return s.to_string();
+        }
+        let days = days_of(self.date);
+        let millis: i64 =
+            format!("{:0<3}", &self.fraction[..self.fraction.len().min(3)]).parse().unwrap_or(0);
+        let seconds = days * 86_400 + i64::from(self.hour * 3600 + self.minute * 60 + self.second)
+            - self.offset.unwrap_or(0) * 60;
+        let (day, second) = (seconds.div_euclid(86_400), seconds.rem_euclid(86_400));
+        let (y, mo, d) = civil(day);
+        let mut text = format!(
+            "{y:04}-{mo:02}-{d:02}T{:02}:{:02}:{:02}",
+            second / 3600,
+            second / 60 % 60,
+            second % 60
+        );
+        if millis != 0 {
+            text.push_str(format!(".{millis:03}").trim_end_matches('0'));
+        }
+        text.push('Z');
+        text
+    }
+}
+
+/// A timestamp bound that fails only because its `+` offset arrived as a space.
+fn unencoded_plus_offset(s: &str) -> bool {
+    let Some((head, zone)) = s.rsplit_once(' ') else { return false };
+    let digits = |z: &str| z.bytes().all(|b| b.is_ascii_digit());
+    let zone_ok = match zone.len() {
+        2 | 4 => digits(zone),
+        5 => zone.as_bytes()[2] == b':' && digits(&zone[..2]) && digits(&zone[3..]),
+        _ => false,
+    };
+    zone_ok && head.len() >= 16 && Stamp::parse(head).is_some_and(|t| t.offset.is_none())
+}
+
+/// Days since 1970-01-01 of a valid `YYYY-MM-DD`.
+fn days_of(date: &str) -> i64 {
+    let y: i64 = date[..4].parse().unwrap_or(1970);
+    let m: i64 = date[5..7].parse().unwrap_or(1);
+    let d: i64 = date[8..10].parse().unwrap_or(1);
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
+    era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468
+}
+
+/// The calendar date of a day count since 1970-01-01.
+fn civil(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
+}
+
+// ---- the query string ---------------------------------------------------------------------
+
+/// One parameter of the bracket grammar: `a[b][c]=v` nests, and a repeated key collects its
+/// values.
+enum Param {
+    Scalar(String),
+    Many(Vec<String>),
+    Map(Params),
+}
+
+impl Param {
+    /// The value as text; a repeated value is its parts joined by commas.
+    fn text(&self) -> String {
+        match self {
+            Param::Scalar(s) => s.clone(),
+            Param::Many(v) => v.join(","),
+            Param::Map(_) => "[object Object]".to_string(),
+        }
+    }
+}
+
+/// A map of parameters. Its entries come back with array-index keys first, in numeric order,
+/// and every other key in the order it was sent, the way the TypeScript routes read them.
+#[derive(Default)]
+struct Params {
+    order: Vec<String>,
+    values: HashMap<String, Param>,
+}
+
+impl Params {
+    fn get(&self, key: &str) -> Option<&Param> {
+        self.values.get(key)
+    }
+
+    fn entries(&self) -> Vec<(&str, &Param)> {
+        let mut index: Vec<(u64, &str)> =
+            self.order.iter().filter_map(|k| array_index(k).map(|i| (i, k.as_str()))).collect();
+        index.sort_by_key(|(i, _)| *i);
+        index
+            .into_iter()
+            .map(|(_, k)| k)
+            .chain(self.order.iter().map(String::as_str).filter(|k| array_index(k).is_none()))
+            .map(|k| (k, &self.values[k]))
+            .collect()
+    }
+
+    fn set(&mut self, path: &[String], value: String) {
+        let key = &path[0];
+        if path.len() == 1 {
+            match self.values.get_mut(key) {
+                None => self.add(key, Param::Scalar(value)),
+                Some(Param::Scalar(first)) => {
+                    let first = std::mem::take(first);
+                    self.values.insert(key.clone(), Param::Many(vec![first, value]));
+                }
+                Some(Param::Many(all)) => all.push(value),
+                // A scalar sent beside a map under the same key: the map keeps its members.
+                Some(Param::Map(_)) => {}
+            }
+            return;
+        }
+        if !matches!(self.values.get(key), Some(Param::Map(_))) {
+            if self.values.contains_key(key) {
+                self.values.insert(key.clone(), Param::Map(Params::default()));
+            } else {
+                self.add(key, Param::Map(Params::default()));
+            }
+        }
+        if let Some(Param::Map(child)) = self.values.get_mut(key) {
+            child.set(&path[1..], value);
+        }
+    }
+
+    fn add(&mut self, key: &str, value: Param) {
+        self.order.push(key.to_string());
+        self.values.insert(key.to_string(), value);
+    }
+
+    fn parse(raw: &str) -> Params {
+        let mut root = Params::default();
+        let raw = raw.strip_prefix('?').unwrap_or(raw);
+        for pair in raw.split('&').filter(|p| !p.is_empty()) {
+            let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+            let path = key_path(&decode(key));
+            if path.first().is_some_and(|k| !k.is_empty()) {
+                root.set(&path, decode(value));
+            }
+        }
+        root
+    }
+}
+
+/// A JavaScript array index: a canonical non-negative integer below 2^32 - 1.
+fn array_index(k: &str) -> Option<u64> {
+    let canonical = !k.is_empty()
+        && k.len() <= 10
+        && k.bytes().all(|b| b.is_ascii_digit())
+        && (k == "0" || !k.starts_with('0'));
+    canonical.then(|| k.parse().ok()).flatten().filter(|&n: &u64| n < 4_294_967_295)
+}
+
+/// `a[b][c]` is a, b, c. Text after the last balanced bracket pair, or an unclosed `[`, stays
+/// part of the last segment.
+fn key_path(key: &str) -> Vec<String> {
+    let Some(open) = key.find('[').filter(|&at| at > 0) else { return vec![key.to_string()] };
+    let mut path = vec![key[..open].to_string()];
+    let mut i = open;
+    while key[i..].starts_with('[') {
+        let Some(close) = key[i + 1..].find(']') else { break };
+        path.push(key[i + 1..i + 1 + close].to_string());
+        i += close + 2;
+    }
+    if i < key.len() {
+        if let Some(last) = path.last_mut() {
+            last.push_str(&key[i..]);
+        }
+    }
+    path
+}
+
+/// Percent-decode `s`, with `+` a space. A `%` that does not start a `%XX` escape is kept.
+fn decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => out.push(b' '),
+            b'%' if i + 2 < bytes.len() => match (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                (Some(hi), Some(lo)) => {
+                    out.push(hi * 16 + lo);
+                    i += 2;
+                }
+                _ => out.push(b'%'),
+            },
+            b => out.push(b),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex(b: u8) -> Option<u8> {
+    (b as char).to_digit(16).map(|d| d as u8)
+}

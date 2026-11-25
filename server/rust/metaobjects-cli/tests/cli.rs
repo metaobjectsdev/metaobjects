@@ -53,11 +53,15 @@ impl Project {
             .current_dir(&self.0)
             // The suite's own environment must not decide what a test sees.
             .env_remove("CI")
-            // An owned generator crate is a real cargo build: keep it in the workspace's
-            // target directory so the engine builds once across runs, and unoptimized.
+            // An owned generator crate is a real cargo build: keep it under the target
+            // directory the suite was built into (the workspace's unless one was chosen), so
+            // the engine builds once across runs, and unoptimized.
             .env(
                 "CARGO_TARGET_DIR",
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/owned-check"),
+                std::env::var_os("CARGO_TARGET_DIR")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target"))
+                    .join("owned-check"),
             )
             .env("CARGO_PROFILE_DEV_OPT_LEVEL", "0")
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
@@ -255,14 +259,26 @@ fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_availabl
     let list: serde_json::Value = serde_json::from_str(&p.read("metaobjects.config.json")).unwrap();
     assert_eq!(
         list["generators"],
-        serde_json::json!(["entity", "client", "commands"])
+        serde_json::json!([
+            "entity",
+            "rules-names",
+            "contract-types",
+            "repository",
+            "service",
+            "client",
+            "commands",
+            "render-helper",
+            "output-parser",
+            "output-prompt"
+        ])
     );
     let out = ok(&p.run(&["meta", "gen", "--list"]));
     assert!(
-        out.contains("metaobjects.config.json runs: entity, client, commands"),
+        out.contains("metaobjects.config.json runs: entity, rules-names, contract-types, repository, service, client, commands, render-helper, output-parser, output-prompt"),
         "{out}"
     );
-    assert_eq!(out.matches("[configured]").count(), 3, "{out}");
+    assert_eq!(out.matches("[configured]").count(), 10, "{out}");
+    assert_eq!(out.matches("[not configured]").count(), 1, "{out}");
     // An edited list is never overwritten by a second init.
     p.write(
         "metaobjects.config.json",
@@ -275,7 +291,7 @@ fn init_writes_the_generator_list_and_gen_list_shows_it_against_what_is_availabl
     );
     let out = ok(&p.run(&["meta", "gen", "--list"]));
     assert!(out.contains("runs: entity\n"), "{out}");
-    assert_eq!(out.matches("[not configured]").count(), 2, "{out}");
+    assert_eq!(out.matches("[not configured]").count(), 10, "{out}");
 }
 
 #[test]
@@ -313,7 +329,7 @@ fn the_generator_list_changes_what_runs_without_an_eject() {
     // Put it back and the crates come back.
     p.write(
         "metaobjects.config.json",
-        "{ \"generators\": [\"entity\", \"client\", \"commands\"] }",
+        "{ \"generators\": [\"entity\", \"rules-names\", \"contract-types\", \"repository\", \"service\", \"client\", \"commands\"] }",
     );
     ok(&p.run(&["meta", "gen"]));
     assert_eq!(p.generated(), full);
@@ -473,7 +489,14 @@ fn an_object_that_goes_away_has_its_files_removed_unless_one_was_edited() {
 fn gen_list_names_the_generators_and_how_an_owned_copy_compares() {
     let p = Project::new("list");
     let out = ok(&p.run(&["meta", "gen", "--list"]));
-    for name in ["entity", "client", "commands"] {
+    for name in [
+        "entity",
+        "client",
+        "commands",
+        "render-helper",
+        "output-parser",
+        "output-prompt",
+    ] {
         assert!(
             out.lines().any(|l| l.starts_with(&format!("{name} - "))),
             "{out}"
@@ -570,7 +593,7 @@ fn eject_copies_the_generator_never_overwrites_and_undo_takes_back_only_identica
     assert_eq!(r.status.code(), Some(2));
     assert!(
         text(&r.stderr).contains(
-            "unknown or non-ejectable generator(s): nope; ejectable: entity, client, commands"
+            "unknown or non-ejectable generator(s): nope; ejectable: entity, rules-names, contract-types, repository, service, service-routes, client, commands, render-helper, output-parser, output-prompt"
         ),
         "{}",
         text(&r.stderr)
@@ -995,8 +1018,15 @@ fn a_bare_verify_runs_the_template_gate_beside_the_codegen_gate() {
     let r = p.run(&["meta", "verify"]);
     assert_eq!(r.status.code(), Some(1));
     assert!(text(&r.stderr).contains("ERR_VAR_NOT_ON_PAYLOAD: nope"));
-    // `--codegen` alone never reads the templates.
-    ok(&p.run(&["meta", "verify", "--codegen"]));
+    // `--codegen` alone runs no template gate: the drift it reports is the render-helper generator's.
+    let r = p.run(&["meta", "verify", "--codegen"]);
+    assert_eq!(r.status.code(), Some(1));
+    let err = text(&r.stderr);
+    assert!(
+        err.contains("render-helper drift: template \"AnswerPrompt\""),
+        "{err}"
+    );
+    assert!(!err.contains("drift error(s) across"), "{err}");
 }
 
 #[test]

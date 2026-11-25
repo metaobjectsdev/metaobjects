@@ -1,0 +1,12 @@
+{
+  "$comment": "The Rust layout ratchet's allowlist (ADR-0063). `unconverted`: generator source that still types its own layout; each entry names what it emits and the writer change that converts it, and is removed when that change lands (the test fails while a converted file keeps its entry). `exempt`: source that writes text which is not generated code; each says why. Neither list may grow: tests/layout_ratchet.rs compares it with the copy at the branch's merge base. Paths are relative to metaobjects-codegen/src.",
+  "unconverted": {},
+  "exempt": {
+    "eject.rs": "Writes the lines `cargo meta eject` prints to the terminal (what was copied, kept or written, and what to change by hand); a message for people, not generated code. The owned crate's Cargo.toml and main.rs it scaffolds go through the writer.",
+    "emitted/pattern.rs": "Fixed code the entity generator copies verbatim into the support crate. Its `'\\n'` and `'\\r'` are the values its pattern parser returns for the `\\n` and `\\r` escapes, not line breaks a generator types.",
+    "engine.rs": "Writes the run's errors for people, one per line, in `RunError`'s `Display`; a message, not generated code.",
+    "fingerprint.rs": "Joins lines into the text a skip-key hash is taken over; the text is never written to a file, so its separator is not layout.",
+    "generator_list.rs": "Writes `metaobjects.config.json`, the JSON generator list `cargo meta init` scaffolds for a person to edit; JSON, not generated source code.",
+    "hashes.rs": "Writes the hash manifest (JSON) and edits the project's `.gitignore` line by line, keeping the lines its owner wrote; neither is generated source code."
+  }
+}

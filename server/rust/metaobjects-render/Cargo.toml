@@ -20,5 +20,8 @@ serde_json.workspace = true
 serde.workspace = true
 indexmap.workspace = true
 
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
+
 [lints]
 workspace = true

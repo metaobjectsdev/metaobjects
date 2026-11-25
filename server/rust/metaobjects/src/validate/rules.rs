@@ -121,7 +121,7 @@ const RESERVED_OPERATION_NAMES: [&str; 5] = ["create", "get", "list", "update", 
 
 /// Wire error codes an operation's route answers on its own, so a body may not declare
 /// them in `@errors`.
-const RESERVED_ERROR_CODES: [&str; 11] = [
+pub const RESERVED_ERROR_CODES: [&str; 11] = [
     "not_found",
     "forbidden",
     "invalid_transition",
@@ -193,7 +193,7 @@ fn placeholders(path: &str) -> Vec<&str> {
 
 /// A path with every placeholder's name removed, so two routes that differ only in what
 /// they call a placeholder compare equal.
-fn route_shape(path: &str) -> String {
+pub fn route_shape(path: &str) -> String {
     let mut out = String::new();
     let mut rest = path;
     while let Some(open) = rest.find('{') {
@@ -431,6 +431,19 @@ pub(crate) fn borrowed_key_entities(ctx: &Env<'_>, value: NodeId) -> Vec<NodeId>
         })
         .map(|(owner, _)| owner)
         .collect()
+}
+
+/// The field of an operation's `@inputRef` value that borrows `target`'s single key field (by
+/// `extends`), when there is one.
+pub(crate) fn borrowed_key_field(ctx: &Env<'_>, op: NodeId, target: NodeId) -> Option<String> {
+    let tree = ctx.tree;
+    let input = str_attr(tree, op, A_INPUT_REF).and_then(|r| resolve_object_on(ctx, op, r))?;
+    let keys = primary_key_fields(tree, target);
+    tree.children(input).iter().copied().find_map(|f| {
+        let (owner, member) = extended_member(ctx, f)?;
+        (tree.node(f).type_name == TYPE_FIELD && owner == target && keys.contains(&member))
+            .then(|| tree.node(f).name.clone())
+    })
 }
 
 /// The base entity of a projection: the entity its extended identity names, else the one

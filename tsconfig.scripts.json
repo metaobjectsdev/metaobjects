@@ -145,6 +145,7 @@
     "scripts/lib/changelog-promote.mjs",
     "scripts/lib/changelog-fragments.mjs",
     "scripts/lib/release-branch.mjs",
+    "scripts/lib/rust-release.mjs",
     "scripts/check-release-tag.mjs"
   ]
 }

@@ -144,13 +144,30 @@ pub fn shop_files() -> Vec<(&'static str, &'static str)> {
 pub const FITNESS: &str =
     include_str!("../../../../../fixtures/persistence-conformance/canonical/meta.fitness.json");
 
+/// The fitness model with the one prompt body it references, at the path the model names:
+/// what a project needs for every shipped generator to run over it.
+pub const FITNESS_PROJECT: [(&str, &str); 2] = [
+    ("metaobjects/meta.fitness.json", FITNESS),
+    (
+        "prompts/fitness/coach-note.mustache",
+        include_str!(
+            "../../../../../fixtures/persistence-conformance/canonical/prompts/fitness/coach-note.mustache"
+        ),
+    ),
+];
+
 // ---- building generated output with the real toolchain ---------------------------------
 
 /// The directory the generated crates are built in: the workspace's own target directory, so
 /// serde and its derive build once and later runs reuse them. A separate sub-directory keeps
 /// this off the outer `cargo test`'s lock.
 pub fn target_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/gen-check")
+    // Under the target directory the tests were built into when one was chosen (a scratch
+    // disk, say), else the workspace's own.
+    std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target"))
+        .join("gen-check")
 }
 
 pub fn cargo(dir: &Path, args: &[&str]) -> std::process::Output {
@@ -205,9 +222,17 @@ pub fn generated_workspace(tag: &str, project: &Scratch, probe: Option<(&str, &s
     } else {
         "\"out/*\""
     };
+    // The prompt crates depend on `metaobjects-render` by version, as an adopter's do; until
+    // it is published the workspace builds them against this checkout's copy.
+    let render = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../metaobjects-render")
+        .canonicalize()
+        .unwrap();
     ws.write(
         "Cargo.toml",
-        &format!("[workspace]\nresolver = \"2\"\nmembers = [{members}]\n"),
+        &format!(
+            "[workspace]\nresolver = \"2\"\nmembers = [{members}]\n\n[patch.crates-io]\nmetaobjects-render = {{ path = {render:?} }}\n"
+        ),
     );
     std::fs::copy(gen_lock(), ws.path().join("Cargo.lock")).unwrap();
     if let Some((dependencies, main)) = probe {
@@ -292,12 +317,14 @@ fn locked(lock: &str) -> std::collections::BTreeSet<String> {
 }
 
 /// After a build: cargo resolved nothing [`gen_lock`] does not name. With `UPDATE_GEN_LOCK=1`
-/// the workspace's lockfile becomes the committed one instead (run it on the shop workspace,
-/// whose probe needs every dependency the generated crates can have).
+/// the registry packages of the workspace's lockfile are merged into the committed one
+/// instead, so each test that pins adds what its crates need (the shop probe's dependencies,
+/// the fitness model's prompt crates) and none drops another's.
 pub fn assert_pinned(ws: &Scratch) {
     let built = ws.read("Cargo.lock");
     if std::env::var_os(UPDATE_GEN_LOCK).is_some() {
-        std::fs::write(gen_lock(), &built).unwrap();
+        let committed = std::fs::read_to_string(gen_lock()).unwrap_or_default();
+        std::fs::write(gen_lock(), merge_locks(&committed, &built)).unwrap();
         return;
     }
     let pinned = locked(&std::fs::read_to_string(gen_lock()).unwrap());
@@ -319,4 +346,47 @@ pub fn run_probe(ws: &Scratch) -> String {
         String::from_utf8_lossy(&probe.stderr)
     );
     String::from_utf8_lossy(&probe.stdout).into_owned()
+}
+
+/// The union of two lockfiles' registry packages, in cargo's order (name, then version), under
+/// the header of `base`. Workspace members and `[[patch.unused]]` entries are left out: each
+/// workspace that reads the lock adds its own.
+fn merge_locks(base: &str, add: &str) -> String {
+    fn packages(
+        lock: &str,
+        into: &mut std::collections::BTreeMap<(String, Vec<u64>, String), String>,
+    ) {
+        for package in lock.split("[[package]]").skip(1) {
+            let body = package.split("\n[[").next().unwrap_or("").trim();
+            let value = |key: &str| {
+                body.lines()
+                    .find_map(|l| l.strip_prefix(key))
+                    .map(|v| v.trim().trim_matches('"').to_string())
+            };
+            if let (Some(name), Some(version), Some(_)) =
+                (value("name = "), value("version = "), value("source = "))
+            {
+                let order = version
+                    .split(['.', '-', '+'])
+                    .map(|p| p.parse().unwrap_or(0))
+                    .collect();
+                into.insert((name, order, version), body.to_string());
+            }
+        }
+    }
+    let header = if base.contains("[[package]]") {
+        base
+    } else {
+        add
+    };
+    let mut out = header.split("[[package]]").next().unwrap_or("").to_string();
+    let mut all = std::collections::BTreeMap::new();
+    packages(base, &mut all);
+    packages(add, &mut all);
+    let blocks: Vec<String> = all
+        .into_values()
+        .map(|b| format!("[[package]]\n{b}\n"))
+        .collect();
+    out.push_str(&blocks.join("\n"));
+    out
 }

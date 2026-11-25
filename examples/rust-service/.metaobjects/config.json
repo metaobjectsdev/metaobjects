@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "migrate": {
+    "foreignKeyIndexes": true
+  },
+  "verify": {
+    "handEdits": "fail"
+  },
+  "api": {
+    "pagination": {
+      "defaultLimit": 50,
+      "maxLimit": 1000
+    },
+    "unknownFields": "reject"
+  }
+}

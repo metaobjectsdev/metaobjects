@@ -77,7 +77,7 @@ impl OrderQuery {
     ];
 
     /// The fields a list request may sort on.
-    pub const SORTS: &[&str] = &["createdAt", "status", "total"];
+    pub const SORTS: &[&str] = &["createdAt", "status", "total", "taxRate", "type"];
 
     /// Every row, in the server's order.
     pub fn new() -> Self {
@@ -326,6 +326,8 @@ pub enum OrderSort {
     CreatedAt,
     Status,
     Total,
+    TaxRate,
+    Type,
 }
 
 impl OrderSort {
@@ -335,6 +337,8 @@ impl OrderSort {
             OrderSort::CreatedAt => "createdAt",
             OrderSort::Status => "status",
             OrderSort::Total => "total",
+            OrderSort::TaxRate => "taxRate",
+            OrderSort::Type => "type",
         }
     }
 }

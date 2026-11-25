@@ -222,6 +222,7 @@ errors, Python error envelopes wrapped as `{"detail": ...}`.)
 | Java (Spring) | `@RestController` (`codegen-spring`) | `ToolProvider`-compile → embedded Tomcat (`TomcatHost`) over a real socket + in-memory repo behind the generated repo interface | in-memory |
 | Kotlin (Spring) | `@RestController` (`codegen-kotlin`) | kotlin-compile-testing → embedded Tomcat (`TomcatHost`) over a real socket + in-memory H2 behind the generated `Table` | in-memory |
 | Python (FastAPI) | `APIRouter` (`router_generator`) | `render_router` → import → `TestClient` + in-memory repo behind the generated DI dependency | in-memory |
+| Rust (axum) | the `service-routes` crate over the generated service and `repository` store (`metaobjects-codegen/tests/api_contract.rs`) | `cargo meta gen` → `cargo build` of a probe → axum on a real socket + a raw HTTP client; `core`, `write-through`, `secret-fields`, `list-query` and `rules` only, the rest on the runner's ledger | SQLite in memory |
 
 **Why the JVM generated lanes run a real Tomcat.** They used to drive the controller
 through MockMvc, which hands it a request no servlet container ever built — and three

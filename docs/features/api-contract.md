@@ -197,8 +197,8 @@ TypeScript's wire names unchanged. Two corpora hold every port to them:
 
 The decision is recorded in [ADR-0068](../../spec/decisions/ADR-0068-list-query-cross-port-contract.md).
 
-**Conformance status:** TypeScript and C# pass both corpora; Java, Kotlin, Python and Rust are
-pending until their 1.3.0 REST-standard work lands. Each port's change flips its own entry, and its
+**Conformance status:** TypeScript, C# and Rust pass both corpora (Rust over its generated axum
+transport); Java, Kotlin and Python are pending until their 1.3.0 REST-standard work lands. Each port's change flips its own entry, and its
 runner holds it to them from then on; [`docs/CONFORMANCE.md`](../CONFORMANCE.md) says which ports
 run them today.
 
@@ -331,9 +331,11 @@ each handler they register instead; an `HTTPException` is rethrown to your
   still name a wired routes generator with no page size (never a failure).
 
   **Every port reads it:** the TypeScript Fastify and Hono routes, the C# minimal-API routes, the
-  Java and Kotlin Spring controllers and the Python FastAPI routers, packaged and ejected (an owned
+  Java and Kotlin Spring controllers, the Python FastAPI routers and the Rust axum routes
+  (`service-routes`), packaged and ejected (an owned
   copy picks it up when it is re-ejected). `fixtures/api-contract-conformance/api-settings/` pins
-  it in the generated lane of every port. Every per-port difference of this kind is collected in
+  it in the generated lane of every port (Rust's api-settings scenarios are on its runner's
+  ledger for now). Every per-port difference of this kind is collected in
   [What differs by language](language-differences.md).
 - `withCount=1` — opt-in flag that switches the list response from
   `[<row>...]` to `{ rows: [<row>...], total: <N> }` (needed for grid

@@ -3,14 +3,15 @@
 _`dimension` / `measure` / `segment` / `object.report` — declare what a dashboard groups by
 and counts, as metadata, validated when the model loads._
 
-**Status:** registered and loader-validated in all five ports (TypeScript, C#, Java,
-Python, Kotlin through Java). Arrived with **metamodel 1.1** (FR-044).
+**Status:** registered and loader-validated in all six ports (TypeScript, C#, Java,
+Python, Kotlin through Java, Rust). Arrived with **metamodel 1.1** (FR-044).
 
 **What a report becomes.** A report that declares a read-only `source.rdb` of `@kind: view`
 is **lowered to a SQL view**: `meta migrate` creates it (Postgres, SQLite and D1; MySQL SQL
 comes from `buildReportViews`, see [MySQL](#mysql)), every port reads it through its own
 runtime, and every port's generators **serve it over REST**: one read-only list route, with
-the standard filter, sort and paging on the derived fields.
+the standard filter, sort and paging on the derived fields. (The Rust transport serves no
+report yet; see [the Rust port](../ports/rust.md#what-does-not-exist-yet).)
 [What a report lowers to](#what-a-report-lowers-to) is the column contract and
 [How a report is served](#how-a-report-is-served) is the REST one. A report with no `source.*`
 stays inert: it is a checked statement of intent. No generator, migration or runtime acts on

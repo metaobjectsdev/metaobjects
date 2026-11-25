@@ -89,12 +89,8 @@ pub fn derive_payload_field_tree(
                         .map(|t| walk(tree, index, t, seen))
                         .unwrap_or_default()
                 });
-                PayloadField {
-                    name: n.name.clone(),
-                    fields: nested,
-                    // Effective array-ness: `isArray` may be inherited through `extends`.
-                    is_array: tree.resolved_is_array(f),
-                }
+                // Effective array-ness: `isArray` may be inherited through `extends`.
+                PayloadField::owned(n.name.clone(), nested, tree.resolved_is_array(f))
             })
             .collect();
         seen.pop();
@@ -106,7 +102,7 @@ pub fn derive_payload_field_tree(
 
 fn field_names(fields: &[PayloadField], out: &mut HashSet<String>) {
     for f in fields {
-        out.insert(f.name.clone());
+        out.insert(f.name.to_string());
         if let Some(nested) = &f.fields {
             field_names(nested, out);
         }

@@ -5,12 +5,16 @@
 //! the other ports, so changing the list never needs an eject:
 //!
 //! ```json
-//! { "generators": ["entity", "client", "commands"] }
+//! { "generators": ["entity", "rules-names", "contract-types", "repository", "service", "client", "commands", "render-helper", "output-parser", "output-prompt"] }
 //! ```
 //!
-//! The list names generators; it takes no options and carries no layer or set settings, because
-//! a layer is only a generator. A project with no such file runs every generator its host
-//! offers, which is what a project did before the file existed. A list may leave a generator
+//! An entry is a generator's name, or `{"name": "...", "options": {...}}` to construct it with
+//! options: they reach the generator through [`crate::Generator::configure`], and a generator
+//! refuses an option it does not take, so a misspelt one fails the run instead of being
+//! ignored. The shipped generators take none yet. The list carries no layer or set settings,
+//! because a layer is only a generator. A project with no such file runs every generator its host
+//! offers but the opt-in ones (the `service-routes` transport, which brings a web framework into
+//! the build), which is what a project did before the file existed. A list may leave a generator
 //! out; generated files of a generator that left the list are swept like those of any
 //! generator that stops emitting them (an edited one is refused by name).
 //!
@@ -20,16 +24,43 @@
 use std::path::Path;
 
 use crate::eject;
+use crate::generator::Options;
 
 /// The file that holds the list, from the project root.
 pub const GENERATOR_LIST_FILE: &str = "metaobjects.config.json";
 
 /// The one key the file takes.
 const KEY: &str = "generators";
+/// The keys an entry written as an object takes.
+const ENTRY_NAME: &str = "name";
+const ENTRY_OPTIONS: &str = "options";
+
+/// One entry of the list: a generator, and the options the project constructs it with
+/// (empty for an entry written as a bare name).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Entry {
+    pub name: String,
+    pub options: Options,
+}
+
+impl Entry {
+    /// An entry with no options.
+    pub fn named(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            options: Options::new(),
+        }
+    }
+}
+
+/// The generator names of `entries`, in order.
+pub fn names(entries: &[Entry]) -> Vec<String> {
+    entries.iter().map(|e| e.name.clone()).collect()
+}
 
 /// The list the project wrote, in the order it wrote it, or `None` when the project has no
 /// such file. Anything wrong with the file is an error naming the file and what to change.
-pub fn read(project_root: &Path) -> Result<Option<Vec<String>>, String> {
+pub fn read(project_root: &Path) -> Result<Option<Vec<Entry>>, String> {
     let path = project_root.join(GENERATOR_LIST_FILE);
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
@@ -40,7 +71,7 @@ pub fn read(project_root: &Path) -> Result<Option<Vec<String>>, String> {
 }
 
 /// The list in `text`, the contents of [`GENERATOR_LIST_FILE`].
-pub fn parse(text: &str) -> Result<Vec<String>, String> {
+pub fn parse(text: &str) -> Result<Vec<Entry>, String> {
     let value: serde_json::Value = serde_json::from_str(text)
         .map_err(|e| format!("{GENERATOR_LIST_FILE} is not valid JSON: {e}"))?;
     let Some(object) = value.as_object() else {
@@ -51,7 +82,7 @@ pub fn parse(text: &str) -> Result<Vec<String>, String> {
     if let Some(unknown) = object.keys().find(|k| k.as_str() != KEY) {
         return Err(format!(
             "{GENERATOR_LIST_FILE} has an unknown key \"{unknown}\". The only key is \"{KEY}\": \
-             the generators to run, by name. Generators take no options here, and a layer is just a generator"
+             the generators to run, each a name or {{\"{ENTRY_NAME}\": ..., \"{ENTRY_OPTIONS}\": {{...}}}}. A layer is just a generator"
         ));
     }
     let Some(list) = object.get(KEY).and_then(|v| v.as_array()) else {
@@ -61,21 +92,60 @@ pub fn parse(text: &str) -> Result<Vec<String>, String> {
             example()
         ));
     };
-    let mut names: Vec<String> = Vec::with_capacity(list.len());
+    let mut entries: Vec<Entry> = Vec::with_capacity(list.len());
     for item in list {
-        let Some(name) = item.as_str() else {
+        let entry = entry(item)?;
+        if entries.iter().any(|e| e.name == entry.name) {
             return Err(format!(
-                "{GENERATOR_LIST_FILE}: every entry of \"{KEY}\" is a generator name (a string), got {item}"
-            ));
-        };
-        if names.iter().any(|n| n == name) {
-            return Err(format!(
-                "{GENERATOR_LIST_FILE}: \"{name}\" is listed twice; a generator runs once"
+                "{GENERATOR_LIST_FILE}: \"{}\" is listed twice; a generator runs once",
+                entry.name
             ));
         }
-        names.push(name.to_string());
+        entries.push(entry);
     }
-    Ok(names)
+    Ok(entries)
+}
+
+/// One entry: a name, or an object with a `name` and optional `options`.
+fn entry(item: &serde_json::Value) -> Result<Entry, String> {
+    let shape = || {
+        format!(
+            "{GENERATOR_LIST_FILE}: every entry of \"{KEY}\" is a generator name (a string) or \
+             {{\"{ENTRY_NAME}\": \"...\", \"{ENTRY_OPTIONS}\": {{...}}}}, got {item}"
+        )
+    };
+    if let Some(name) = item.as_str() {
+        return Ok(Entry::named(name));
+    }
+    let Some(object) = item.as_object() else {
+        return Err(shape());
+    };
+    let Some(name) = object.get(ENTRY_NAME).and_then(|v| v.as_str()) else {
+        return Err(shape());
+    };
+    if let Some(unknown) = object
+        .keys()
+        .find(|k| k.as_str() != ENTRY_NAME && k.as_str() != ENTRY_OPTIONS)
+    {
+        return Err(format!(
+            "{GENERATOR_LIST_FILE}: the entry for \"{name}\" has an unknown key \"{unknown}\"; \
+             an entry takes \"{ENTRY_NAME}\" and \"{ENTRY_OPTIONS}\" (the generator's own options)"
+        ));
+    }
+    let options = match object.get(ENTRY_OPTIONS) {
+        None => Options::new(),
+        Some(serde_json::Value::Object(o)) => o.clone(),
+        Some(other) => {
+            return Err(format!(
+                "{GENERATOR_LIST_FILE}: the \"{ENTRY_OPTIONS}\" of \"{name}\" must be an object of \
+                 option names to values, got {other}"
+            ));
+        }
+    };
+    Ok(Entry {
+        name: name.to_string(),
+        options,
+    })
 }
 
 /// Check a list against the generators a host offers: each name is one of them, and a shipped
@@ -106,10 +176,14 @@ pub fn check(names: &[String], available: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-/// Every shipped generator's name, in the order a run applies them: the list `cargo meta init`
-/// writes.
+/// Every shipped generator's name, in the order a run applies them.
 pub fn shipped_names() -> Vec<&'static str> {
     eject::REFERENCES.iter().map(|r| r.name).collect()
+}
+
+/// Whether a project with no list runs the generator `name`: every one but a shipped opt-in.
+pub fn runs_unlisted(name: &str) -> bool {
+    !eject::reference(name).is_some_and(|r| r.opt_in)
 }
 
 fn example() -> String {
@@ -123,12 +197,14 @@ fn example() -> String {
     )
 }
 
-/// The text `cargo meta init` writes: every shipped generator, so a new project generates what
-/// it always has and removes one by deleting a line.
-pub fn scaffold() -> String {
-    let items = shipped_names()
+/// The text `cargo meta init` writes: every shipped generator but the opt-in ones, and those
+/// too with `opt_in`, so a new project generates what it always has and removes one by deleting
+/// a line.
+pub fn scaffold(opt_in: bool) -> String {
+    let items = eject::REFERENCES
         .iter()
-        .map(|n| format!("    \"{n}\""))
+        .filter(|r| opt_in || !r.opt_in)
+        .map(|r| format!("    \"{}\"", r.name))
         .collect::<Vec<_>>()
         .join(",\n");
     format!("{{\n  \"{KEY}\": [\n{items}\n  ]\n}}\n")
@@ -145,10 +221,25 @@ mod tests {
     #[test]
     fn the_scaffold_parses_and_names_every_shipped_generator_in_run_order() {
         assert_eq!(
-            parse(&scaffold()).unwrap(),
-            s(&["entity", "client", "commands"])
+            names(&parse(&scaffold(false)).unwrap()),
+            s(&[
+                "entity",
+                "rules-names",
+                "contract-types",
+                "repository",
+                "service",
+                "client",
+                "commands",
+                "render-helper",
+                "output-parser",
+                "output-prompt"
+            ])
         );
-        assert!(check(&parse(&scaffold()).unwrap(), &shipped_names()).is_ok());
+        assert!(check(&names(&parse(&scaffold(false)).unwrap()), &shipped_names()).is_ok());
+        let all = names(&parse(&scaffold(true)).unwrap());
+        assert_eq!(all, s(&shipped_names()));
+        assert!(check(&all, &shipped_names()).is_ok());
+        assert!(!runs_unlisted("service-routes") && runs_unlisted("entity"));
     }
 
     #[test]
@@ -162,6 +253,22 @@ mod tests {
                 "needs a \"generators\" list",
             ),
             ("{\"generators\": [1]}", "generator name (a string)"),
+            (
+                "{\"generators\": [{\"options\": {}}]}",
+                "generator name (a string)",
+            ),
+            (
+                "{\"generators\": [{\"name\": \"entity\", \"packages\": []}]}",
+                "the entry for \"entity\" has an unknown key \"packages\"",
+            ),
+            (
+                "{\"generators\": [{\"name\": \"entity\", \"options\": []}]}",
+                "must be an object of option names",
+            ),
+            (
+                "{\"generators\": [\"entity\", {\"name\": \"entity\"}]}",
+                "listed twice",
+            ),
             ("{\"generators\": [\"entity\", \"entity\"]}", "listed twice"),
             (
                 "{\"generators\": [], \"layers\": {}}",
@@ -172,7 +279,20 @@ mod tests {
             assert!(e.contains(wants), "{text}: {e}");
             assert!(e.contains(GENERATOR_LIST_FILE), "{e}");
         }
-        assert_eq!(parse("{\"generators\": []}").unwrap(), Vec::<String>::new());
+        assert_eq!(parse("{\"generators\": []}").unwrap(), Vec::<Entry>::new());
+    }
+
+    #[test]
+    fn an_entry_is_a_name_or_a_name_with_its_options() {
+        let entries =
+            parse(r#"{"generators": ["entity", {"name": "client", "options": {"pageSize": 25}}, {"name": "commands"}]}"#)
+                .unwrap();
+        assert_eq!(names(&entries), s(&["entity", "client", "commands"]));
+        assert!(entries[0].options.is_empty() && entries[2].options.is_empty());
+        assert_eq!(
+            entries[1].options.get("pageSize"),
+            Some(&serde_json::json!(25))
+        );
     }
 
     #[test]
@@ -180,7 +300,8 @@ mod tests {
         let available = shipped_names();
         let e = check(&s(&["entity", "nope"]), &available).unwrap_err();
         assert!(
-            e.contains("\"nope\"") && e.contains("available: entity, client, commands"),
+            e.contains("\"nope\"")
+                && e.contains("available: entity, rules-names, contract-types, repository, service, service-routes, client, commands, render-helper, output-parser, output-prompt"),
             "{e}"
         );
         let e = check(&s(&["client"]), &available).unwrap_err();

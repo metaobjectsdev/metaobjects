@@ -1,0 +1,20 @@
+{
+  "description": "`doc` writes an author's text as `///` lines, one per line of the text, a bare `///` for an empty line and never re-wrapped; the text's own leading and trailing blank lines are dropped.",
+  "dialect": "rust",
+  "ops": [
+    [
+      "doc",
+      "\nThe customer.\n\nSee the billing guide for how a customer is charged, which is a long sentence an author wrote on one line.\n"
+    ],
+    [
+      "line",
+      "pub struct Customer;"
+    ]
+  ],
+  "expected": [
+    "/// The customer.",
+    "///",
+    "/// See the billing guide for how a customer is charged, which is a long sentence an author wrote on one line.",
+    "pub struct Customer;"
+  ]
+}
