@@ -402,12 +402,12 @@ function readCommon(
   else if (secrets.length > 0) problems.push(`${where}: ${app.name} reads ${secrets.length} secret setting(s) (${secrets.join(", ")}) and the deployment names no vault; set @${DEPLOYMENT_ATTR_SECRETS}`);
 
   const tokenSecret = text(node.attr(ATTR_TOKEN_SECRET)) ?? "";
-  const tokenVaultRef = text(node.attr(ATTR_TOKEN_VAULT)) ?? secretsRef;
+  const tokenVaultRef = text(node.attr(ATTR_TOKEN_VAULT));
   let token: DeploymentCommon["token"] | undefined;
-  if (tokenVaultRef === undefined) {
+  if (tokenVaultRef === undefined && secretsRef === undefined) {
     problems.push(`${where}: the deploy token ${tokenSecret} has no vault: set @${ATTR_TOKEN_VAULT} (or @${DEPLOYMENT_ATTR_SECRETS})`);
   } else {
-    const place = vaultPlace(tokenVaultRef, env.name, text(node.attr(ATTR_TOKEN_VAULT)) !== undefined ? ATTR_TOKEN_VAULT : DEPLOYMENT_ATTR_SECRETS, ctx, where, problems);
+    const place = tokenVaultRef === undefined ? vault : vaultPlace(tokenVaultRef, env.name, ATTR_TOKEN_VAULT, ctx, where, problems);
     if (place !== undefined) token = { secret: tokenSecret, place };
   }
 
@@ -473,6 +473,41 @@ function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Set
   return out;
 }
 
+/**
+ * The deployment's value nodes that give a value to a setting the app reads which is not
+ * @secret, each with its setting. Every other value node is refused.
+ */
+function readValues(
+  node: MetaData,
+  app: MetaData,
+  settings: readonly Setting[],
+  ctx: Context,
+  where: string,
+  problems: string[],
+): { readonly node: MetaData; readonly setting: Setting }[] {
+  const out: { node: MetaData; setting: Setting }[] = [];
+  // ADR-0039: resolving, so a value the abstract base or an estate overlay declares counts.
+  for (const v of node.children().filter((c) => c.type === TYPE_VALUE)) {
+    const vWhere = `${where} value.${v.subType} ${v.name}`;
+    const ref = text(v.attr(VALUE_ATTR_SETTING)) ?? "";
+    const setting = settingNamed(ref, ctx.groups);
+    if (setting === undefined) {
+      problems.push(`${vWhere}: @${VALUE_ATTR_SETTING} "${ref}" names no setting (Group.field) of an object.settings in the model`);
+      continue;
+    }
+    if (!settings.includes(setting)) {
+      problems.push(`${vWhere}: ${ref} is not a setting of the groups ${app.name} reads (@${APP_ATTR_SETTINGS})`);
+      continue;
+    }
+    if (setting.secret) {
+      problems.push(`${vWhere}: ${ref} is @secret; its value comes from the vault, never from a value node`);
+      continue;
+    }
+    out.push({ node: v, setting });
+  }
+  return out;
+}
+
 function readWorker(node: MetaData, ctx: Context, problems: string[]): WorkerDeployment | undefined {
   const read = readCommon(node, ctx, problems);
   if (read === undefined) return undefined;
@@ -483,23 +518,10 @@ function readWorker(node: MetaData, ctx: Context, problems: string[]): WorkerDep
   }
 
   // vars: each value node, then each non-secret runtime setting's default.
-  // ADR-0039: resolving, so a value the abstract base or an estate overlay declares counts.
   const fromValue = new Map<string, CloudflareVar>();
-  for (const v of node.children().filter((c) => c.type === TYPE_VALUE)) {
-    const vWhere = `${where} value.${v.subType} ${v.name}`;
-    const ref = text(v.attr(VALUE_ATTR_SETTING)) ?? "";
-    const setting = settingNamed(ref, ctx.groups);
-    if (setting === undefined) {
-      problems.push(`${vWhere}: @${VALUE_ATTR_SETTING} "${ref}" names no setting (Group.field) of an object.settings in the model`);
-      continue;
-    }
-    if (!settings.includes(setting)) problems.push(`${vWhere}: ${ref} is not a setting of the groups ${app.name} reads (@${APP_ATTR_SETTINGS})`);
-    if (setting.secret) {
-      problems.push(`${vWhere}: ${ref} is @secret; its value comes from the vault, never from a value node`);
-      continue;
-    }
+  for (const { node: v, setting } of readValues(node, app, settings, ctx, where, problems)) {
     if (setting.phase === PHASE_BUILD) continue;
-    const value = v.subType === VALUE_SUBTYPE_LITERAL ? (text(v.attr(VALUE_ATTR_LITERAL)) ?? "") : referenceValue(v, env, ctx, vWhere, problems);
+    const value = v.subType === VALUE_SUBTYPE_LITERAL ? (text(v.attr(VALUE_ATTR_LITERAL)) ?? "") : referenceValue(v, env, ctx, `${where} value.${v.subType} ${v.name}`, problems);
     if (value !== undefined) fromValue.set(setting.envName, { name: setting.envName, value, from: `value.${v.subType} ${v.name}${declaredIn(v, node)}` });
   }
   // In the order the settings are declared, so a value moving between the base and an environment moves no line.
@@ -681,11 +703,9 @@ function readPages(node: MetaData, productionBranch: string | undefined, ctx: Co
     problems.push(`${where}: a Pages site uploads a directory of files: ${app.name} needs a build.static with @directory`);
   }
   const plain = settings.filter((s) => !s.secret && s.phase !== PHASE_BUILD).map((s) => s.envName);
-  // ADR-0039: resolving, so a value the abstract base declares counts.
-  const values = node
-    .children()
-    .filter((c) => c.type === TYPE_VALUE && settingNamed(text(c.attr(VALUE_ATTR_SETTING)) ?? "", ctx.groups)?.phase !== PHASE_BUILD)
-    .map((v) => v.name);
+  const values = readValues(node, app, settings, ctx, where, problems)
+    .filter(({ setting }) => setting.phase !== PHASE_BUILD)
+    .map(({ node: v }) => v.name);
   if (plain.length > 0 || values.length > 0) {
     unexpressed.push({
       fact: `Non-secret settings${plain.length > 0 ? ` ${plain.map((n) => `\`${n}\``).join(", ")}` : ""}${values.length > 0 ? ` (value nodes ${values.map((n) => `\`${n}\``).join(", ")})` : ""}`,
@@ -809,15 +829,16 @@ export function readCloudflare(
         problems.push(`${appKeyOf(app)}: ${what} is set in ${workers.filter((d) => get(d) !== undefined).map((d) => d.environment).join(", ")} and not in ${unset.map((d) => d.environment).join(", ")}; Wrangler would fill the gap from the top level, so set it in every environment or none`);
     }
   } else {
-    const serving = new Map<PagesEnvironment, { readonly key: string; readonly vault: VaultPlace }>();
+    const serving = new Map<string, { readonly key: string; readonly vault: VaultPlace }>();
     for (const d of deployments as PagesDeployment[]) {
       if (d.secrets.length === 0 || d.pagesEnvironment === undefined || d.vault === undefined) continue;
-      const other = serving.get(d.pagesEnvironment);
+      const place = JSON.stringify([d.project, d.pagesEnvironment]);
+      const other = serving.get(place);
       if (other === undefined) {
-        serving.set(d.pagesEnvironment, { key: d.key, vault: d.vault });
+        serving.set(place, { key: d.key, vault: d.vault });
       } else if (other.vault.key !== d.vault.key || other.vault.scope.project !== d.vault.scope.project || other.vault.scope.env !== d.vault.scope.env) {
         problems.push(
-          `deployment.pages ${d.key}: serves the Pages ${d.pagesEnvironment} environment, as ${other.key} does, and reads its secrets from ${describeScope(d.vault)}, not from ${describeScope(other.vault)}; Pages keeps one value per name in an environment, so the last deploy overwrites the other's secrets: give both deployments one vault scope`,
+          `deployment.pages ${d.key}: serves the ${d.pagesEnvironment} environment of Pages project ${d.project}, as ${other.key} does, and reads its secrets from ${describeScope(d.vault)}, not from ${describeScope(other.vault)}; Pages keeps one value per name in a project environment, so the last deploy overwrites the other's secrets: give both deployments one vault scope`,
         );
       }
     }

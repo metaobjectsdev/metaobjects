@@ -25,7 +25,6 @@ import {
   PATH_UNEXPRESSED,
   PATH_WRANGLER,
   PATH_WRANGLER_RUNNER,
-  WRANGLER_VERSION,
 } from "./constants.js";
 import { renderDeploy, renderDoctor, renderRunner, renderSyncSecrets, renderUnexpressed, type CloudflarePaths } from "./files.js";
 import { CloudflareModelError, readCloudflare, type CloudflareApp, type ReadCloudflareOptions } from "./model.js";
@@ -37,9 +36,7 @@ export interface CloudflareGeneratorOptions extends ReadCloudflareOptions {
   /** The codegen target the files are written under (its `outDir` should be the repository root). */
   readonly target?: string;
   /** Where each file goes, relative to the target. Every generator must be given the same. */
-  readonly paths?: Partial<Omit<CloudflarePaths, "wranglerVersion">>;
-  /** The wrangler the scripts pin. Default: the version this pack was written against. */
-  readonly wranglerVersion?: string;
+  readonly paths?: Partial<CloudflarePaths>;
 }
 
 function header(generator: string, comment: string): string {
@@ -59,7 +56,6 @@ export function resolvePaths(opts: CloudflareGeneratorOptions): CloudflarePaths 
     syncSecrets: p.syncSecrets ?? PATH_SYNC_SECRETS,
     doctor: p.doctor ?? PATH_DOCTOR,
     unexpressed: p.unexpressed ?? PATH_UNEXPRESSED,
-    wranglerVersion: opts.wranglerVersion ?? WRANGLER_VERSION,
   };
 }
 

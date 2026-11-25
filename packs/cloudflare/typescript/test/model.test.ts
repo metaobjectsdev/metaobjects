@@ -281,6 +281,25 @@ describe("refusals", () => {
     ]);
   });
 
+  test("a deploy token read from the @secrets vault: both deployments read it there, and that vault's problem is reported once", async () => {
+    const fromSecrets = (r: Root): void => {
+      delete child(r, "deployment.worker", "siteBase")["@tokenVault"];
+    };
+    const tokens = (await read(editFixture(ENVS, fromSecrets))).deployments.map((d) => [d.token.secret, d.token.place.key, `${d.token.place.scope.project}/${d.token.place.scope.env}`]);
+    expect(tokens).toEqual([
+      ["ACME_WORKERS_TOKEN", "acme::quiz::keys", "quiz/prod"],
+      ["ACME_WORKERS_TOKEN", "acme::quiz::keys", "quiz/staging"],
+    ]);
+    const noStaging = editFixture(ENVS, (r) => {
+      fromSecrets(r);
+      const keys = child(r, "vault.infisical", "keys");
+      keys["children"] = children(keys).filter((c) => c["scope.env"]?.["name"] !== "staging");
+    });
+    expect(await problems(noStaging)).toEqual([
+      'deployment.worker acme::quiz::siteStaging: vault acme::quiz::keys has no scope.env named "staging" and no @defaultScope, so this environment has no place in it',
+    ]);
+  });
+
   test("one app deployed both as a Worker and as a Pages site", async () => {
     const sources = editFixture(ENVS, (r) => {
       r["metadata.root"].children.push(
@@ -342,14 +361,14 @@ describe("a Pages site's environments", () => {
     expect((await read(noSecrets)).deployments.map((d) => (d as PagesDeployment).pagesEnvironment)).toEqual([undefined]);
   });
 
-  test("two deployments that read secrets and serve one Pages environment: one vault scope generates, differing scopes are refused", async () => {
-    const withStaging = (vault: (keys: Record<string, unknown>, scopes: Node[]) => void): ReturnType<typeof editFixture> =>
+  test("two deployments that read secrets from differing vault scopes: refused when they serve one Pages project's environment, and free to serve the same one in two projects", async () => {
+    const withStaging = (vault: (keys: Record<string, unknown>, scopes: Node[]) => void, staging: Record<string, unknown> = {}): ReturnType<typeof editFixture> =>
       editFixture(PAGES_SECRETS, (r) => {
         const keys = child(r, "vault.infisical", "keys");
         vault(keys, children(keys));
         r["metadata.root"].children.push(
           { "environment.standing": { "name": "staging" } },
-          { "deployment.pages": { name: "siteStaging", extends: "siteBase", "@environment": "staging", "@branch": "staging" } },
+          { "deployment.pages": { name: "siteStaging", extends: "siteBase", "@environment": "staging", "@branch": "staging", ...staging } },
         );
       });
     const served = (app: Awaited<ReturnType<typeof read>>) =>
@@ -366,11 +385,42 @@ describe("a Pages site's environments", () => {
     ]);
     const sync = (await emit(await loadModels(oneScope))).get("deploy/cloudflare/sync-secrets.sh")!;
     expect(sync.match(/  staging\)\n    copy (.*)/)?.[1]).toBe("acme-help-staging staging SEARCH_API_KEY help-site preview");
-    const ownPlace = withStaging((_keys, scopes) => {
-      scopes.push({ "scope.env": { "name": "staging", "@project": "acme-help-staging", "@env": "staging" } });
-    });
-    expect(await problems(ownPlace)).toEqual([
-      "deployment.pages acme::help::siteStaging: serves the Pages preview environment, as acme::help::sitePreview does, and reads its secrets from vault acme::help::keys scope staging (acme-help-staging/staging), not from vault acme::help::keys scope preview (acme-help-preview/preview); Pages keeps one value per name in an environment, so the last deploy overwrites the other's secrets: give both deployments one vault scope",
+    const ownScope = (scopes: Node[]): void => {
+      scopes.push({ "scope.env": { name: "staging", "@project": "acme-help-staging", "@env": "staging" } });
+    };
+    expect(await problems(withStaging((_keys, scopes) => ownScope(scopes)))).toEqual([
+      "deployment.pages acme::help::siteStaging: serves the preview environment of Pages project help-site, as acme::help::sitePreview does, and reads its secrets from vault acme::help::keys scope staging (acme-help-staging/staging), not from vault acme::help::keys scope preview (acme-help-preview/preview); Pages keeps one value per name in a project environment, so the last deploy overwrites the other's secrets: give both deployments one vault scope",
+    ]);
+    // Two projects keep separate secrets, so the same Pages environment in each is no clash.
+    const ownProject = withStaging((_keys, scopes) => ownScope(scopes), { "@branch": "main", "@project": "help-site-staging" });
+    expect(served(await read(ownProject))).toEqual([
+      ["production", "production", "acme-help/prod"],
+      ["preview", "preview", "acme-help-preview/preview"],
+      ["staging", "production", "acme-help-staging/staging"],
+    ]);
+    expect((await emit(await loadModels(ownProject))).get("deploy/cloudflare/sync-secrets.sh")!.match(/  staging\)\n    copy (.*)/)?.[1]).toBe("acme-help-staging staging SEARCH_API_KEY help-site-staging production");
+  });
+
+  test("a value for a secret, for a setting the app does not read, or for no setting is refused on a Pages site as on a Worker; a valid one is listed", async () => {
+    const value = (name: string, setting: string): Node => ({ "value.literal": { name, "@setting": setting, "@literal": "abc" } });
+    const [valid, ...refused] = [value("base", "Search.baseUrl"), value("key", "Search.apiKey"), value("other", "Other.url"), value("nope", "Search.nope")];
+    const withValues = (values: readonly Node[]): ReturnType<typeof editFixture> =>
+      editFixture(PAGES_SECRETS, (r) => {
+        r["metadata.root"].children.push({ "object.settings": { name: "Other", "children": [{ "field.string": { "name": "url", "@envName": "OTHER_URL" } }] } });
+        children(child(r, "object.settings", "Search")).push({ "field.string": { "name": "baseUrl", "@envName": "SEARCH_BASE_URL" } });
+        children(child(r, "deployment.pages", "siteProduction")).push(...values);
+      });
+    const where = "deployment.pages acme::help::siteProduction value.literal";
+    expect(await problems(withValues([valid!, ...refused]))).toEqual([
+      `${where} key: Search.apiKey is @secret; its value comes from the vault, never from a value node`,
+      `${where} other: Other.url is not a setting of the groups site reads (@settings)`,
+      `${where} nope: @setting "Search.nope" names no setting (Group.field) of an object.settings in the model`,
+    ]);
+    const production = (await read(withValues([valid!]))).deployments[0] as PagesDeployment;
+    expect(production.unexpressed.map((f) => f.fact)).toEqual([
+      "Secret values: `SEARCH_API_KEY`",
+      "Non-secret settings `SEARCH_BASE_URL` (value nodes `base`)",
+      "Custom domains `help.example.com`",
     ]);
   });
 });

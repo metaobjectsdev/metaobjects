@@ -62,11 +62,11 @@ and they skip the abstract base.
 | `cloudflareUnexpressedFile()` | `deploy/cloudflare/unexpressed.md` | Per deployment, each fact the files do not hold and how it is carried instead |
 | `cloudflareFiles()` | all six | The six generators with the same options |
 
-Each takes `{ target?, app?, topLevel?, paths?, wranglerVersion? }`. One set of files is for one
-app: a model that deploys several apps to Cloudflare needs `app`. `topLevel` is the environment
-written at the top level of `wrangler.jsonc` (what `wrangler deploy` with no `--env` deploys);
-absent, it is the only environment, else `production`. `paths` moves any file; the scripts name
-each other and the configuration by those paths, so pass every generator the same.
+Each takes `{ target?, app?, topLevel?, paths? }`. One set of files is for one app: a model that
+deploys several apps to Cloudflare needs `app`. `topLevel` is the environment written at the top
+level of `wrangler.jsonc` (what `wrangler deploy` with no `--env` deploys); absent, it is the only
+environment, else `production`. `paths` moves any file; the scripts name each other and the
+configuration by those paths, so pass every generator the same.
 
 ### What `wrangler.jsonc` says
 
@@ -120,8 +120,8 @@ environments and not others (Wrangler would fill the gap from the top level), an
 not a JSON object or sets a generated key, two environments deploying one Worker, one app deployed
 both as a Worker and as a Pages site, a Pages deployment that reads a secret when the model does
 not say which branch is the production branch, two Pages deployments that serve one Pages
-environment and read their secrets from different vault scopes, several apps without `app`, and
-several environments with no top level.
+project's environment and read their secrets from different vault scopes, several apps without
+`app`, and several environments with no top level.
 
 ### Wiring
 

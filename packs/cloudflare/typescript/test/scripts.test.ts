@@ -2,9 +2,10 @@
 // is replaced by a stub first on PATH, and each stub writes what it was given under $STUB_DIR:
 //   keys-axi  logs `<command> --project <P> --env <E> --only <names>` per call; `ls --json`
 //             lists the names the fake vault holds, less $STUB_MISSING; `run` gives every
-//             `--only` name a value of its own (`value-of-<NAME>`), but $STUB_MISSING, then
-//             runs the command
-//   npx       logs its arguments, its environment and its stdin; `secret list` lists the names
+//             `--only` name a value of its own (`value-of-<NAME>`; empty for $STUB_EMPTY), but
+//             $STUB_MISSING, then runs the command
+//   npx       logs its arguments, its environment and its stdin; `secret list` and
+//             `pages secret list` list the names as wrangler prints them
 //   curl      fails when $STUB_CURL_FAIL is 1
 // jq is the real one: the doctor reads the stubs' JSON through it.
 import { afterAll, describe, expect, test } from "bun:test";
@@ -44,7 +45,7 @@ if [ "$sub" = ls ]; then
   exit 0
 fi
 for n in "\${names[@]}"; do
-  [ "$n" = "\${STUB_MISSING:-}" ] || export "$n=value-of-$n"
+  [ "$n" = "\${STUB_MISSING:-}" ] || export "$n=$([ "$n" = "\${STUB_EMPTY:-}" ] || echo "value-of-$n")"
 done
 exec "$@"
 `,
@@ -59,8 +60,16 @@ case "$*" in
     one() { out="$out$sep{\\"name\\":\\"$n\\",\\"type\\":\\"secret\\"}"; sep=","; }
     held one
     echo "$out]" ;;
-  *" secret list"*)
-    one() { echo "  - $n: secret"; }
+  *" pages secret list "*)
+    # \`wrangler pages secret list\` as wrangler 4.168.0 prints it (\`pagesSecretListCommand\` in
+    # packages/wrangler/src/pages/secret/index.ts), with its colour dropped because it is piped
+    project="" environment=production
+    while [ "$#" -gt 1 ]; do
+      case "$1" in --project-name) project="$2" ;; --env) environment="$2" ;; esac
+      shift
+    done
+    echo "The \\"$environment\\" environment of your Pages project \\"$project\\" has access to the following secrets:"
+    one() { echo "  - $n: Value Encrypted"; }
     held one ;;
 esac
 `,
@@ -189,11 +198,20 @@ describe("deploy/cloudflare/wrangler.sh", () => {
     expect({ status: noToken.status, npx: noToken.calls("npx"), stderr: noToken.stderr }).toEqual({
       status: 1,
       npx: [],
-      stderr: `wrangler.sh: the deploy token ${TRIPS_TOKEN} is not in the vault scope\n`,
+      stderr: `wrangler.sh: the deploy token ${TRIPS_TOKEN} is empty or is not in the vault scope\n`,
     });
     const noAccount = run(dir, RUNNER, ["production", "deploy"], { STUB_MISSING: ACCOUNT_ID });
     expect({ status: noAccount.status, npx: noAccount.calls("npx") }).toEqual({ status: 1, npx: [] });
     expect(noAccount.stderr).toContain(`${ACCOUNT_ID} is not in the vault scope`);
+  });
+
+  test("stops before wrangler when the vault holds the deploy token empty: Wrangler would otherwise run as a logged-in account", async () => {
+    const dir = await stage(await emitFixture(TRIPS), [TRIPS_TOKEN, ACCOUNT_ID]);
+    const stopped = { status: 1, npx: [], stderr: `wrangler.sh: the deploy token ${TRIPS_TOKEN} is empty or is not in the vault scope\n` };
+    const runner = run(dir, RUNNER, ["production", "deploy"], { STUB_EMPTY: TRIPS_TOKEN });
+    expect({ status: runner.status, npx: runner.calls("npx"), stderr: runner.stderr }).toEqual(stopped);
+    const deploy = run(dir, "deploy/cloudflare/deploy.sh", ["production", "--no-build", "--no-secrets"], { STUB_EMPTY: TRIPS_TOKEN });
+    expect({ status: deploy.status, npx: deploy.calls("npx"), stderr: deploy.stderr }).toEqual(stopped);
   });
 
   test("keeps the vault's token when the vault entry is itself named CLOUDFLARE_API_TOKEN", async () => {

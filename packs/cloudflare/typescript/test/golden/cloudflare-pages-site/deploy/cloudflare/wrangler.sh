@@ -31,7 +31,7 @@ exec env -u CLOUDFLARE_EMAIL -u CLOUDFLARE_API_KEY -u CLOUDFLARE_API_TOKEN \
   "$KEYS_AXI" run --project "$VAULT_PROJECT" --env "$VAULT_ENV" --only "$TOKEN" CLOUDFLARE_ACCOUNT_ID -- \
   bash -c '
     set -euo pipefail
-    [ -n "${!1+set}" ] || { echo "wrangler.sh: the deploy token $1 is not in the vault scope" >&2; exit 1; }
+    [ -n "${!1:-}" ] || { echo "wrangler.sh: the deploy token $1 is empty or is not in the vault scope" >&2; exit 1; }
     export CLOUDFLARE_API_TOKEN="${!1}"
     [ "$1" = CLOUDFLARE_API_TOKEN ] || unset "$1"
     : "${CLOUDFLARE_ACCOUNT_ID:?CLOUDFLARE_ACCOUNT_ID is not in the vault scope}"

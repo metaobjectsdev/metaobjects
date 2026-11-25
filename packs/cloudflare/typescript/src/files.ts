@@ -10,10 +10,17 @@
  * `wrangler secret put`: no script prints one or puts one on a command line.
  */
 import { posix } from "node:path";
-import { ACCOUNT_ID_SECRET, API_TOKEN_VARIABLE, CLEARED_VARIABLES, DEPLOYMENT_SUBTYPE_PAGES, GLOBAL_KEY_VARIABLES } from "./constants.js";
+import {
+  ACCOUNT_ID_SECRET,
+  API_TOKEN_VARIABLE,
+  CLEARED_VARIABLES,
+  DEPLOYMENT_SUBTYPE_PAGES,
+  GLOBAL_KEY_VARIABLES,
+  WRANGLER_VERSION,
+} from "./constants.js";
 import type { CloudflareApp, CloudflareDeployment, UnexpressedFact } from "./model.js";
 
-/** Where each generated file lives, relative to the repository root, and the pinned wrangler. */
+/** Where each generated file lives, relative to the repository root. */
 export interface CloudflarePaths {
   readonly config: string;
   readonly runner: string;
@@ -21,7 +28,6 @@ export interface CloudflarePaths {
   readonly syncSecrets: string;
   readonly doctor: string;
   readonly unexpressed: string;
-  readonly wranglerVersion: string;
 }
 
 /** A shell word: bare when it is safe, else single-quoted. */
@@ -67,7 +73,7 @@ export function renderRunner(app: CloudflareApp, header: string, paths: Cloudfla
     ...shellHead(
       header,
       [
-        `Runs wrangler ${paths.wranglerVersion} (WRANGLER_VERSION overrides) for ${app.appKey}, as the narrow`,
+        `Runs wrangler ${WRANGLER_VERSION} (WRANGLER_VERSION overrides) for ${app.appKey}, as the narrow`,
         "Cloudflare API token of one environment's deployment. The token and CLOUDFLARE_ACCOUNT_ID are read",
         `from the vault with keys-axi. The global-key variables (${GLOBAL_KEY_VARIABLES.join(", ")}) are unset`,
         `so Wrangler cannot fall back to them, and so is any ${API_TOKEN_VARIABLE} the shell holds; the vault's token then becomes ${API_TOKEN_VARIABLE}.`,
@@ -81,7 +87,7 @@ export function renderRunner(app: CloudflareApp, header: string, paths: Cloudfla
     "",
     'ENVIRONMENT="${1:-}"',
     '[ "$#" -gt 0 ] && shift',
-    `WRANGLER_VERSION="\${WRANGLER_VERSION:-${paths.wranglerVersion}}"`,
+    `WRANGLER_VERSION="\${WRANGLER_VERSION:-${WRANGLER_VERSION}}"`,
     'KEYS_AXI="${KEYS_AXI:-$(command -v keys-axi || echo "$HOME/.local/bin/keys-axi")}"',
     "",
     ...caseBlock(
@@ -95,7 +101,7 @@ export function renderRunner(app: CloudflareApp, header: string, paths: Cloudfla
     `  "$KEYS_AXI" run --project "$VAULT_PROJECT" --env "$VAULT_ENV" --only "$TOKEN" ${ACCOUNT_ID_SECRET} -- \\`,
     "  bash -c '",
     "    set -euo pipefail",
-    '    [ -n "${!1+set}" ] || { echo "wrangler.sh: the deploy token $1 is not in the vault scope" >&2; exit 1; }',
+    '    [ -n "${!1:-}" ] || { echo "wrangler.sh: the deploy token $1 is empty or is not in the vault scope" >&2; exit 1; }',
     `    export ${API_TOKEN_VARIABLE}="\${!1}"`,
     `    [ "$1" = ${API_TOKEN_VARIABLE} ] || unset "$1"`,
     `    : "\${${ACCOUNT_ID_SECRET}:?${ACCOUNT_ID_SECRET} is not in the vault scope}"`,
