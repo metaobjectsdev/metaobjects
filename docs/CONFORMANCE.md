@@ -433,6 +433,19 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 `scripts/integration-test.sh` is the entry point and is wired into
 [`docs/RELEASING.md`](RELEASING.md) §2b as the pre-`latest` gate.
 
+### Independent packs: their own corpora, outside these counts
+
+An independent pack ([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)) keeps its tests
+in `packs/<name>/fixtures/`, never in `fixtures/`, so pack work moves none of the totals, rows or
+matrix cells on this page. Each pack has a pinned vocabulary
+(`packs/<name>/fixtures/expected-vocabulary.json`, the rows it adds to the default bundle, which
+every port that carries the pack byte-matches) and load fixtures in the shared format
+(`packs/<name>/fixtures/conformance/`), run in TypeScript through the corpus-root entry point
+`runCorpus` of `@metaobjectsdev/conformance`. The `packs` lane runs them, blocking for the
+pack's own change and as a canary on core changes. The port rule differs from the bundle's here,
+and only here: a port either carries the pack's provider and passes its whole corpus, or does not
+carry it, and a model that uses it fails there by name. There is no row per pack on this page.
+
 ## Fixture-to-doc mapping
 
 ### `fixtures/conformance/` — metamodel loader + canonical serializer (584)

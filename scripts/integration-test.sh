@@ -100,7 +100,7 @@ run_ts() {
   # sets: it has just built this same tree, and other lanes are reading dist/ while this
   # one runs, so a second build here would rewrite it under them.
   if [ "${MO_CI_WORKSPACE_BUILT:-0}" != "1" ]; then
-    ( cd "$REPO_ROOT" && bun run --filter '*' build ) || { FAIL=1; return; }
+    ( cd "$REPO_ROOT" && bun run build ) || { FAIL=1; return; }
   fi
   # --parallel: the suite is ~50 files whose time sits in a dozen of them (the MySQL,
   # SQLite and D1 corpora), each generating and compiling its own app into a fresh

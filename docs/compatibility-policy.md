@@ -56,6 +56,11 @@ work*. A release can move one without the other, and most releases move neither.
   scaffold wires: codegen is opt-in and the scaffolded selection is empty by design
   (ADR-0034 Amendment 2), so changing what `meta init` starts you with changes nothing
   for a project that already exists.
+- **The provider contract** — what a provider of your own, or an independent pack, is written
+  against: a provider's `id`, `dependencies` and `registerTypes`; the registry's `register`,
+  `extend` and `registerCommonAttrs`; and the provider definition file format
+  ([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)). A pack's core range
+  (`>=1.3.0 <2.0.0`) means something because of this line.
 - **The generator-authoring surface** — what you write your own generator against, in
   four roles per port: the generator interface (including the one declaration of what a
   generator provides), the model walk, the code writer and the naming helpers. Each
@@ -93,6 +98,20 @@ work*. A release can move one without the other, and most releases move neither.
   the promise above on evidence: generated services running on it in an adopter estate with the
   drift gate enforced. Until then a model that declares none of it is unaffected by any change
   to it.
+
+## Independent packs (`packs/`)
+
+An independent pack ([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)) is **outside
+both of core's numbers**. `metamodelVersion` names the default bundle only, and a pack is never
+in it, so a pack's vocabulary change never moves it. A pack's npm, Maven, PyPI or NuGet package
+is never in core's lockstep set, so a pack release never moves a core package. Each pack carries
+one version of its own in `packs/<name>/pack.json`, the same in every port that carries it. A
+break in its vocabulary, or in what a project writes to use it, is a major (a minor while `0.x`).
+Added vocabulary is a minor, and a generator output change is a patch. A pack states the core it
+needs as a bounded range in each port's native manifest (npm as a peer dependency), and core's
+side of that range is the provider contract above. A pack starts at `0.1.0` `preview`, which
+allows any change in any release, and its stability label is a fact about the pack, not about
+core.
 
 ## Shipped libraries (`libraries: [...]`)
 

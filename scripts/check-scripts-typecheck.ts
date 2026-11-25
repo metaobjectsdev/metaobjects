@@ -2,7 +2,7 @@
 /**
  * Gate — repo-root `scripts/` typechecks.
  *
- * `bun test` transpiles per file and never typechecks, and `bun run --filter '*'
+ * `bun test` transpiles per file and never typechecks, and `bun run
  * typecheck` walks WORKSPACE PACKAGES only. So everything under `scripts/` — including
  * every CI gate in the `gates` lane — was never typechecked by anything.
  *

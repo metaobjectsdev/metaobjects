@@ -519,7 +519,7 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
 ## [1.3.0] — unreleased
 
 
-_npm `1.3.0` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_npm `1.3.0` (full lockstep across all 13 `@metaobjectsdev/*` publish candidates)._
 
 **New metamodel vocabulary, experimental: `api.*`, `operation.*`, `binding.*` and `transition.*`
 (ADR-0066).** It is additive: nothing that loaded before stops loading. This vocabulary ships in

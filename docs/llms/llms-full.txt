@@ -208,7 +208,7 @@ bun test
 Bun-first dev workflow; no separate build step. Typecheck across the workspace:
 
 ```bash
-bun run --filter '*' typecheck
+bun run typecheck
 ```
 
 Distribution artifacts remain Node-compatible -- consumers can install via npm/pnpm/bun.

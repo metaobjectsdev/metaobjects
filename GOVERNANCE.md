@@ -117,6 +117,19 @@ MetaObjects, in the way the [`library/`](library/) entries do (see
   which provider registers the attribute. It does not rename it or change what it does, so a
   model that used the attribute under the pack loads and behaves the same once core owns it.
 
+A pack in this repository is one of two kinds
+([ADR-0069](spec/decisions/ADR-0069-independent-packs.md)). A **bundled pack** (`db`, `rules`,
+`reporting`, `requirements` and the others) ships inside each port's core package, is in the
+default bundle and in `expected-registry.json`, and moves with core's version. An **independent
+pack** lives in [`packs/<name>/`](packs/README.md), is outside the default bundle, has its own
+version and changelog, and is carried only by the ports its `pack.json` lists. Metamodel N.M
+names the default bundle only. A pack may depend on core; core never depends on a pack, and the
+`gates` lane fails a change that makes it. A new independent pack starts at `0.1.0` `preview` and
+stays unpublished until an estate project runs it with the drift gate enforced. Because they are
+the rulings this rests on, changing the kinds, the one-way dependency or the naming rule is a
+model-format and compatibility change, and so needs a core maintainer. Building a pack inside
+those rules does not.
+
 ### Releases
 
 The core maintainers decide when a release happens, what version it carries, and what goes in

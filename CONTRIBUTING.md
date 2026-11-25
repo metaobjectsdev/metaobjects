@@ -129,7 +129,8 @@ merge base with the base branch (committed, uncommitted and untracked), maps eac
 with the table in [`scripts/ci-lane-map.txt`](scripts/ci-lane-map.txt), and prints the lanes it
 selected, the lanes it skipped and the rule each path matched, so a reviewer can see what was
 not run. A change confined to one port runs that port (`ts-fast` and `ts-unit` for TypeScript
-and the web client, `java-slow`, `python`, `csharp`); a change to `fixtures/`, `spec/`,
+and the web client, plus the `packs` lane as a canary, `java-slow`, `python`, `csharp`); a change
+to an independent pack under `packs/` runs only `packs` (ADR-0069); a change to `fixtures/`, `spec/`,
 `scripts/` (the map included), `.github/`, `agent-context/`, anything under `docs/` (port
 tests read those pages) or any path no rule claims runs every lane, because unknown means
 full; a change to only the root `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `AGENTS.md`

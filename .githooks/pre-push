@@ -99,7 +99,7 @@ echo "          (skip in an emergency with: git push --no-verify)" >&2
 
 # typecheck resolves cross-package types through each dep's dist/, so build first —
 # exactly what scripts/ci-local.sh's ts-fast lane does before `typecheck`.
-if ! ( cd "$ROOT" && bun run --filter '*' build ) >/tmp/metaobjects-prepush-build.log 2>&1; then
+if ! ( cd "$ROOT" && bun run build ) >/tmp/metaobjects-prepush-build.log 2>&1; then
   echo "" >&2
   echo "  ✖ pre-push BLOCKED: workspace build failed. Last lines:" >&2
   tail -20 /tmp/metaobjects-prepush-build.log | sed 's/^/      /' >&2
@@ -107,7 +107,7 @@ if ! ( cd "$ROOT" && bun run --filter '*' build ) >/tmp/metaobjects-prepush-buil
   exit 1
 fi
 
-if ! ( cd "$ROOT" && bun run --filter '*' typecheck ) >/tmp/metaobjects-prepush-tsc.log 2>&1; then
+if ! ( cd "$ROOT" && bun run typecheck ) >/tmp/metaobjects-prepush-tsc.log 2>&1; then
   echo "" >&2
   echo "  ✖ pre-push BLOCKED: tsc typecheck is RED. This is the gate CI enforces; do not push red." >&2
   echo "" >&2

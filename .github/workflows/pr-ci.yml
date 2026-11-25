@@ -19,7 +19,9 @@ name: pr-ci
 # WHAT RUNS PER PORT: unit tests plus the conformance corpora, not the docker
 # integration suites (integration-tests.yml owns those, on tags and on demand):
 #   ts      — ts-fast (build + typecheck, conformance, completeness) and ts-unit
-#             (the per-package suites)
+#             (the per-package suites), plus packs: the independent packs under
+#             packs/ (ADR-0069), blocking for a pack the PR touches and a canary that
+#             reports without failing for every other
 #   java    — java-slow: the full reactor build with tests on, which already holds the
 #             java and kotlin conformance classes
 #   python / csharp — the port's full test suite and conformance
@@ -97,7 +99,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [ts-fast, ts-unit]
+        lane: [ts-fast, ts-unit, packs]
     steps:
       - uses: actions/checkout@v4
         with:

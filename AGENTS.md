@@ -106,10 +106,11 @@ It blocks commits whose added lines match (`git commit --no-verify` bypasses, di
 
 **Pre-push typecheck gate** (`.githooks/pre-push`, same `core.hooksPath`): `bun test`
 transpiles per-file and does NOT typecheck, so type-broken code can ship green on the
-test suite while `bun run --filter '*' typecheck` — the same check `scripts/ci-local.sh`
+test suite while `bun run typecheck` — the same check `scripts/ci-local.sh`
 runs — goes red, and a direct admin push to `main` bypasses branch protection. This hook closes that hole locally: when a push touches
-`server/typescript/` or `client/web/`, it runs that same `bun run --filter '*' build &&
-… typecheck` pair and **blocks the push when it is red** (~6s on a clean tree;
+`server/typescript/` or `client/web/`, it runs that same `bun run build && bun run
+typecheck` pair (the root scripts, which name core's workspace directories so a pack under
+`packs/` is never in them — ADR-0069) and **blocks the push when it is red** (~6s on a clean tree;
 skipped entirely for non-TS pushes). Bypass in an emergency with `git push --no-verify`
 or `SKIP_TS_TYPECHECK=1 git push`.
 
@@ -128,8 +129,8 @@ for a TYPED boolean, since `-f` sends the string `"true"` and 422s.)
 hosted checks — every check workflow in `.github/workflows/` is a thin wrapper that calls it.
 `--quick` covers `hygiene.yml` in full plus the TypeScript half of `conformance.yml`, and the
 flagless full run
-adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor and `integration-tests.yml`'s
-Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
+adds the C#/Java/Kotlin/Python conformance lanes, the Java reactor, the `packs` lane (ADR-0069) and
+`integration-tests.yml`'s Testcontainers matrix. Run `--quick` before opening a PR and the full script before a tag;
 `MO_CI_LIST_ONLY=1 scripts/ci-local.sh [flags]` prints what a selection would run without
 running it. The no-mistakes validation gate runs the script for you — see `.no-mistakes.yaml`,
 whose `test` command runs `--affected` (only the lanes the change touches, per
@@ -450,14 +451,14 @@ its own canonical serializer already, so `fmt` runs locally everywhere:
 
 ## Running tests
 
-The Bun workspace root is the **repository root** (`/package.json`), which globs `server/typescript/packages/*`, `client/web/packages/*` and the `examples/dynamic-grid` example. Java/Python/C# live outside the JS workspace (not globbed). Run `bun install` **once at the repo root**. Run `bun test` **scoped** — `cd server/typescript && bun test` for the server suite (this also picks up `server/typescript/bunfig.toml`'s test preload), and per-package for `client/web`. **Never run a bare `bun test` at the repo root**: it walks `java/`, `python/`, `csharp/`, and `fixtures/` looking for test files, turning a fast per-package run into many minutes.
+The Bun workspace root is the **repository root** (`/package.json`), which globs `server/typescript/packages/*`, `client/web/packages/*`, the `examples/dynamic-grid` example and `packs/*/typescript` (the independent packs, ADR-0069). Java/Python/C# live outside the JS workspace (not globbed). Run `bun install` **once at the repo root**. Run `bun test` **scoped** — `cd server/typescript && bun test` for the server suite (this also picks up `server/typescript/bunfig.toml`'s test preload), and per-package for `client/web`. **Never run a bare `bun test` at the repo root**: it walks `java/`, `python/`, `csharp/`, `packs/`, and `fixtures/` looking for test files, turning a fast per-package run into many minutes.
 
 ```
 bun install                                        # once, at the repo root
 cd server/typescript && bun test                   # server suite (per-package; a bare run over the whole server suite now exceeds 5 min — scope it)
 cd client/web/packages/<pkg> && bun test           # a single client package
-bun run --filter '*' typecheck                     # whole workspace, from repo root
-bun run --filter '*' build                         # whole workspace, from repo root
+bun run typecheck                                  # core's workspace (not packs/), from repo root
+bun run build                                      # core's workspace (not packs/), from repo root
 ```
 
 ## How to contribute

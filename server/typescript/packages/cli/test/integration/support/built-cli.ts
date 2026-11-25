@@ -79,7 +79,7 @@ export function requireFreshDist(): void {
   throw new Error(
     `${stale.map((s) => s.name).join(", ")}: dist is missing or older than src. This gate runs ` +
       "the BUILT CLI under node, so it cannot be trusted against a stale build.\n" +
-      "Run: bun run --filter '*' build",
+      "Run: bun run build",
   );
 }
 
@@ -103,7 +103,7 @@ export function ensureFreshDist(): void {
     if (build.exitCode !== 0 || isStale(pkg)) {
       throw new Error(
         `${name} dist is missing or older than its src and the in-place rebuild did not fix it — ` +
-          `this gate runs the built CLI under node; run: bun run --filter '*' build\n${build.stderr.toString()}`,
+          `this gate runs the built CLI under node; run: bun run build\n${build.stderr.toString()}`,
       );
     }
   }
