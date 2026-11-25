@@ -58,7 +58,7 @@ function linkPackage(root: string, dir: string, manifest: { name: string; depend
   return join(source, "index.ts");
 }
 
-function makeProject(): { root: string; linkedIndex: string } {
+function makeProject(dependencies: Record<string, string> = {}): { root: string; linkedIndex: string } {
   const root = mkdtempSync(join(SCRATCH, "gen-linked-"));
   made.push(root);
   mkdirSync(join(root, ".git"));
@@ -71,7 +71,7 @@ function makeProject(): { root: string; linkedIndex: string } {
 
   // The linked package: its source lives outside any node_modules, as with a workspace
   // member, a clone or `bun link`, and the project's node_modules holds a symlink to it.
-  const linkedIndex = linkPackage(root, "linked-checkout", { name: LINKED, dependencies: { [ENGINE_PKG]: "*" } }, linkedSource("first\n"));
+  const linkedIndex = linkPackage(root, "linked-checkout", { name: LINKED, dependencies }, linkedSource("first\n"));
 
   writeFileSync(join(root, "metaobjects.config.ts"), `import { defineConfig } from "@metaobjectsdev/codegen-ts";
 import { linked } from "${LINKED}";
@@ -116,10 +116,10 @@ describe("the skip key covers a linked @metaobjectsdev/* generator package (ADR-
     expect(keyFor(await inputsFor(p.root, ENGINE), [])).not.toBe(keyFor(before, []));
   });
 
-  test("an import the CLI aliases onto its engine is not hashed from the project's copy", async () => {
-    // The config imports `@metaobjectsdev/codegen-ts`, and the linked package depends on it;
-    // the CLI points both at its own copy, which the engine half counts. A linked copy in the
-    // project's node_modules never runs, so editing it must leave the key alone.
+  test("an import only the config makes of a package the CLI aliases is not hashed from the project's copy", async () => {
+    // The config imports `@metaobjectsdev/codegen-ts`; the CLI points that import at its own
+    // copy, which the engine half counts. A linked copy in the project's node_modules never
+    // runs for the config, so editing it must leave the key alone.
     const p = makeProject();
     const fakeIndex = linkPackage(p.root, "engine-checkout", { name: ENGINE_PKG }, "export const v = 1;\n");
     expect(CLI_ALIASED_PACKAGES.has(ENGINE_PKG)).toBe(true);
@@ -128,5 +128,17 @@ describe("the skip key covers a linked @metaobjectsdev/* generator package (ADR-
     expect(before.entries.filter((e) => e.kind === "generator-package" && e.name.startsWith(`${ENGINE_PKG}/`))).toEqual([]);
     writeFileSync(fakeIndex, "export const v = 2;\n");
     expect(keyFor(await inputsFor(p.root, ENGINE), [])).toBe(keyFor(before, []));
+  });
+
+  test("a linked package's own dependency on a package the CLI aliases is hashed", async () => {
+    // Only the config file is rewritten onto the CLI's copies; a module inside the pack
+    // resolves the dependency through the project, so that copy runs and must count.
+    const p = makeProject({ [ENGINE_PKG]: "*" });
+    const depIndex = linkPackage(p.root, "engine-checkout", { name: ENGINE_PKG }, "export const v = 1;\n");
+
+    const before = await inputsFor(p.root, ENGINE);
+    expect(before.entries.some((e) => e.kind === "generator-package" && e.name === `${ENGINE_PKG}/index.ts`)).toBe(true);
+    writeFileSync(depIndex, "export const v = 2;\n");
+    expect(keyFor(await inputsFor(p.root, ENGINE), [])).not.toBe(keyFor(before, []));
   });
 });

@@ -7,5 +7,6 @@
   on by `path`, in a build table or a `[patch]`, is now an input too, followed through that crate's
   own path dependencies and the workspace it inherits from; the `metaobjects` and
   `metaobjects-codegen` engine crates are still covered by the engine's own source hash. Both ports
-  bump their fingerprint format, so the first `gen` after upgrading renders once. Before this change, editing such a package's generator code while the model, the config and
-  the lockfile stayed the same left the key unchanged, and `gen` skipped over stale output.
+  bump their fingerprint format, so the first `gen` after upgrading renders once. Before this
+  change, editing such a package's generator code while the model, the config and the lockfile
+  stayed the same left the key unchanged, and `gen` skipped over stale output.

@@ -171,13 +171,10 @@ function packageEntries(kind: string, dir: string): FingerprintEntry[] {
 
 /**
  * The packages a package runs on: every `@metaobjectsdev/*` dependency, followed all the
- * way, by full identity; every other dependency by its `package.json` (its version). A
- * dependency named in `skip` is left out: a generator package's copy of a package the CLI
- * aliases onto its engine never runs, so only the engine's copy counts.
+ * way, by full identity; every other dependency by its `package.json` (its version). The
+ * shared `seen` set counts one physical copy once, so the engine's copy is not repeated.
  */
-function packageClosureEntries(
-  kind: string, rootDir: string, seen: Set<string>, skip: ReadonlySet<string> = new Set(),
-): FingerprintEntry[] {
+function packageClosureEntries(kind: string, rootDir: string, seen: Set<string>): FingerprintEntry[] {
   const entries: FingerprintEntry[] = [];
   const visit = (dir: string): void => {
     let real = dir;
@@ -187,7 +184,6 @@ function packageClosureEntries(
     entries.push(...packageEntries(kind, dir));
     const pkg = readJson(join(dir, "package.json"));
     for (const dep of dependencyNames(pkg)) {
-      if (skip.has(dep)) continue;
       const depDir = findPackageDir(dep, dir);
       if (depDir === undefined) {
         entries.push({ kind, name: `${dep}/package.json`, hash: "absent" });
@@ -286,12 +282,14 @@ function configGraphEntries(configFile: string, projectRoot: string, seen: Set<s
         entries.push({ kind: "generator-package", name, hash: "unresolved" });
         continue;
       }
-      // The engine's own packages are already counted: the CLI aliases the config's imports
-      // of them onto its copies, so the project's copy is not what runs. Only those. Any other
-      // `@metaobjectsdev/*` package (a pack, which the CLI does not depend on) runs from the
-      // project like a third-party one, and a linked copy is hashed by content below.
+      // The CLI aliases the config file's own imports of the engine's packages onto its
+      // copies, so the project's copy is not what runs for those. Any other `@metaobjectsdev/*`
+      // package (a pack, which the CLI does not depend on) runs from the project like a
+      // third-party one, and a linked copy is hashed by content below. A package such a
+      // package depends on is hashed even when the CLI aliases it, because only the config
+      // file is rewritten; at worst that over-approximates.
       if (CLI_ALIASED_PACKAGES.has(name)) continue;
-      entries.push(...packageClosureEntries("generator-package", dir, seen, CLI_ALIASED_PACKAGES));
+      entries.push(...packageClosureEntries("generator-package", dir, seen));
     }
   }
   return entries;
