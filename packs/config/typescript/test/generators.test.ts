@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig, runGen, type Generator } from "@metaobjectsdev/codegen-ts";
@@ -164,6 +164,33 @@ describe("config pack generators", () => {
     });
     for (let i = 0; i < 2; i++) warnings.push(...(await run()).warnings.filter((w) => w.includes("Token.value")));
     expect(warnings).toHaveLength(2);
+  });
+
+  test("the README wiring writes the three files at the project root and nothing under the top-level outDir", async () => {
+    const root = mkdtempSync(join(scratch, "wiring-"));
+    // Exactly the README's wiring: the project's own outDir and dialect, plus a root target at ".".
+    const res = await runGen({
+      config: defineConfig({
+        outDir: "src/generated",
+        dialect: "postgres",
+        targets: { root: { outDir: "." } },
+        generators: [
+          envExampleFile({ target: "root" }),
+          keyManifestFile({ target: "root" }),
+          keysAxiTomlFile({ target: "root" }),
+        ],
+      }),
+      metadata: await loadModel(),
+      projectRoot: root,
+    });
+    expect(res.warnings).toEqual([]);
+    expect(readFileSync(join(root, ".env.example"), "utf8")).toBe(ENV_EXAMPLE);
+    expect(readFileSync(join(root, ".keys-axi.toml"), "utf8")).toBe(KEYS_AXI_TOML);
+    expect(JSON.parse(readFileSync(join(root, "keys.manifest.json"), "utf8")).vaults).toHaveLength(1);
+    // Nothing from these generators lands under the top-level outDir.
+    expect(existsSync(join(root, "src", "generated", ".env.example"))).toBe(false);
+    expect(existsSync(join(root, "src", "generated", "keys.manifest.json"))).toBe(false);
+    expect(existsSync(join(root, "src", "generated", ".keys-axi.toml"))).toBe(false);
   });
 
   test("core's entity generator types a settings group as it does a value object: no table", async () => {

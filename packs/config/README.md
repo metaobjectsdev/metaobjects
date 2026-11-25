@@ -65,13 +65,17 @@ environment; a vault with no scope. Abstract groups are checked too.
 
 ### Wiring
 
-These files belong at the project root, so give them a target whose `outDir` is `"."`:
+These files belong at the project root, so give them a target whose `outDir` is `"."`. The
+top-level `outDir` and `dialect` are the project's own existing settings: `meta gen` requires a
+top-level `outDir`, and `dialect` is needed when the model also has a persisted entity.
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
 import { configProvider, envExampleFile, keyManifestFile, keysAxiTomlFile } from "@metaobjectsdev/pack-config";
 
 export default defineConfig({
+  outDir: "src/generated", // the project's existing setting
+  dialect: "postgres", // the project's existing setting
   providers: [configProvider],
   targets: { root: { outDir: "." } },
   generators: [
