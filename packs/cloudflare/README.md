@@ -54,7 +54,7 @@ and they skip the abstract base.
 | Generator | Writes | What it is |
 |---|---|---|
 | `wranglerConfigFile()` | `wrangler.jsonc` | The Worker's configuration (Workers only) |
-| `cloudflareRunnerScript()` | `deploy/cloudflare/wrangler.sh` | Runs wrangler as the environment's narrow token: `keys-axi run` reads it and `CLOUDFLARE_ACCOUNT_ID`, the token becomes `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_EMAIL`, `CLOUDFLARE_API_KEY` and `CLOUDFLARE_API_TOKEN` are unset first, and `npx wrangler@4.168.0` runs (`WRANGLER_VERSION` overrides) |
+| `cloudflareRunnerScript()` | `deploy/cloudflare/wrangler.sh` | Runs wrangler as the environment's narrow token: `keys-axi run` reads it and `CLOUDFLARE_ACCOUNT_ID`, the global-key variables `CLOUDFLARE_EMAIL` and `CLOUDFLARE_API_KEY` and any `CLOUDFLARE_API_TOKEN` the shell holds are unset, the vault's token becomes `CLOUDFLARE_API_TOKEN`, and `npx wrangler@4.168.0` runs (`WRANGLER_VERSION` overrides) |
 | `cloudflareDeployScript()` | `deploy/cloudflare/deploy.sh` | Exports the build-time settings the model gives values, builds (the app's `build.command` or `build.static @command`), syncs the secrets, then `wrangler deploy [--env <name>]` or `wrangler pages deploy <dir> --project-name --branch --commit-hash` |
 | `cloudflareSyncSecretsScript()` | `deploy/cloudflare/sync-secrets.sh` | Copies each secret setting from its vault scope to the Worker (`wrangler secret put`) or the Pages project (`wrangler pages secret put`), the value through a pipe |
 | `cloudflareDoctorScript()` | `deploy/cloudflare/doctor.sh` | Checks, by name only, that the token, the account id and each secret are in the vault, that each secret is on Cloudflare, that the configuration builds (`wrangler deploy --dry-run`), and that each domain answers |
@@ -99,7 +99,7 @@ name used twice in the Worker's env, a rate limiter period other than 10 or 60, 
 with no value, a value for a secret setting or for a setting the app does not read, a `value.ref`
 Cloudflare cannot resolve, `@jobs` that are not scheduled jobs, both worker-first forms, asset
 attributes with no `build.static`, a Worker with neither `@main` nor assets, a secret setting with
-no vault, a vault with no scope for an environment, an `@extra` that is not a JSON object or sets a
+no vault, a vault with no scope for an environment, `@main`, `@workersDev` or assets set in some environments and not others (Wrangler would fill the gap from the top level), an `@extra` that is not a JSON object or sets a
 generated key, two environments deploying one Worker, one app deployed both as a Worker and as a
 Pages site, several apps without `app`, and several environments with no top level.
 

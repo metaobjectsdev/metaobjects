@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { emit, loadFixture } from "./model.js";
+import { editFixture, emit, loadFixture, loadModels } from "./model.js";
 
 const GOLDEN = join(import.meta.dir, "golden");
 /** `UPDATE_GOLDEN=1 bun test` rewrites the golden files from the generators. */
@@ -19,6 +19,18 @@ function walk(dir: string): string[] {
     return statSync(p).isDirectory() ? walk(p) : [p];
   });
 }
+
+test("a build-time value with shell syntax in it is exported as written, and only when the variable is unset", async () => {
+  const sources = editFixture("cloudflare-pages-site", (r) => {
+    const d = (r["metadata.root"].children.find((c) => c["deployment.pages"]?.["name"] === "siteProduction") as Record<string, Record<string, unknown>>)["deployment.pages"]!;
+    ((d["children"] ??= []) as unknown[]).push({ "value.literal": { name: "url", "@setting": "Site.url", "@literal": `{"a":"$x}'"}` } });
+  });
+  const deploy = (await emit(await loadModels(sources))).get("deploy/cloudflare/deploy.sh")!;
+  const line = deploy.split("\n").find((l) => l.includes("export SITE_URL="))!.trim();
+  const run = (env: Record<string, string>) => spawnSync("bash", ["-c", `${line}; printf %s "$SITE_URL"`], { encoding: "utf8", env: { PATH: process.env.PATH ?? "", ...env } }).stdout;
+  expect(run({})).toBe(`{"a":"$x}'"}`);
+  expect(run({ SITE_URL: "custom" })).toBe("custom");
+});
 
 describe.each(SCENARIOS)("%s", (scenario) => {
   test("the generators write the golden files, and only those", async () => {

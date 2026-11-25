@@ -3,13 +3,14 @@
  * scripts that deploy, copy secrets and check, and the facts the configuration cannot hold.
  *
  * Every Wrangler call runs through `wrangler.sh`, which reads the deployment's narrow API token
- * from the vault with `keys-axi run`, maps it to CLOUDFLARE_API_TOKEN, unsets the global-key
- * variables (which Wrangler would otherwise prefer) and runs a pinned wrangler. A secret's
+ * from the vault with `keys-axi run`, unsets the global-key variables (which Wrangler would
+ * otherwise prefer) and any token the shell already holds, maps the vault's token to
+ * CLOUDFLARE_API_TOKEN and runs a pinned wrangler. A secret's
  * value only ever passes from `keys-axi run`'s environment through a pipe into
  * `wrangler secret put`: no script prints one or puts one on a command line.
  */
 import { posix } from "node:path";
-import { ACCOUNT_ID_SECRET, API_TOKEN_VARIABLE, DEPLOYMENT_SUBTYPE_PAGES, GLOBAL_KEY_VARIABLES } from "./constants.js";
+import { ACCOUNT_ID_SECRET, API_TOKEN_VARIABLE, CLEARED_VARIABLES, DEPLOYMENT_SUBTYPE_PAGES, GLOBAL_KEY_VARIABLES } from "./constants.js";
 import type { CloudflareApp, CloudflareDeployment, UnexpressedFact } from "./model.js";
 
 /** Where each generated file lives, relative to the repository root, and the pinned wrangler. */
@@ -68,8 +69,8 @@ export function renderRunner(app: CloudflareApp, header: string, paths: Cloudfla
       [
         `Runs wrangler ${paths.wranglerVersion} (WRANGLER_VERSION overrides) for ${app.appKey}, as the narrow`,
         "Cloudflare API token of one environment's deployment. The token and CLOUDFLARE_ACCOUNT_ID are read",
-        `from the vault with keys-axi; the token becomes ${API_TOKEN_VARIABLE}, and the global-key`,
-        `variables (${GLOBAL_KEY_VARIABLES.join(", ")}) are unset so Wrangler cannot fall back to them.`,
+        `from the vault with keys-axi. The global-key variables (${GLOBAL_KEY_VARIABLES.join(", ")}) are unset`,
+        `so Wrangler cannot fall back to them, and so is any ${API_TOKEN_VARIABLE} the shell holds; the vault's token then becomes ${API_TOKEN_VARIABLE}.`,
         "",
         "Needs: keys-axi (KEYS_AXI overrides where it is) and npx.",
       ],
@@ -90,7 +91,7 @@ export function renderRunner(app: CloudflareApp, header: string, paths: Cloudfla
     ),
     "",
     "# shellcheck disable=SC2016 # the inner shell expands them: the token never enters this one",
-    `exec env ${GLOBAL_KEY_VARIABLES.map((v) => `-u ${v}`).join(" ")} \\`,
+    `exec env ${CLEARED_VARIABLES.map((v) => `-u ${v}`).join(" ")} \\`,
     `  "$KEYS_AXI" run --project "$VAULT_PROJECT" --env "$VAULT_ENV" --only "$TOKEN" ${ACCOUNT_ID_SECRET} -- \\`,
     "  bash -c '",
     "    set -euo pipefail",
@@ -202,7 +203,7 @@ export function renderDeploy(app: CloudflareApp, header: string, paths: Cloudfla
     "  esac",
     "done",
     ...(anyBuildVar
-      ? caseBlock(app, (d) => (d.buildVars.length === 0 ? [":"] : d.buildVars.flatMap((v) => [`# ${v.from}`, `export ${v.name}="\${${v.name}:-${v.value.replace(/[\\"$`]/g, "\\$&")}}"`])), usage)
+      ? caseBlock(app, (d) => (d.buildVars.length === 0 ? [":"] : d.buildVars.flatMap((v) => [`# ${v.from}`, `[ -n "\${${v.name}:-}" ] || export ${v.name}=${sh(v.value)}`])), usage)
       : [`case "$ENVIRONMENT" in ${environments(app).map(sh).join("|")}) ;; *) echo ${sh(`usage: ${usage} (environments: ${environments(app).join(", ")})`)} >&2; exit 2 ;; esac`]),
     "",
     ...(build?.command === undefined

@@ -25,11 +25,11 @@ done
 case "$ENVIRONMENT" in
   production)
     # acme::docs::Site.url @default
-    export SITE_URL="${SITE_URL:-https://docs.example.com}"
+    [ -n "${SITE_URL:-}" ] || export SITE_URL=https://docs.example.com
     ;;
   preview)
     # acme::docs::Site.url @default
-    export SITE_URL="${SITE_URL:-https://docs.example.com}"
+    [ -n "${SITE_URL:-}" ] || export SITE_URL=https://docs.example.com
     ;;
   *) echo 'usage: bash deploy/cloudflare/deploy.sh <environment> [--no-build] [--no-secrets] (environments: production, preview)' >&2; exit 2 ;;
 esac

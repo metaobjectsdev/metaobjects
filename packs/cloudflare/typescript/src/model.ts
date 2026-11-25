@@ -43,6 +43,18 @@ import {
   VALUE_ATTR_PRODUCED_BY,
   VALUE_ATTR_SETTING,
   VALUE_SUBTYPE_LITERAL,
+  BUILD_ATTR_COMMAND,
+  BUILD_ATTR_DIRECTORY,
+  BUILD_ATTR_WATCH_EXCLUDE,
+  BUILD_ATTR_WATCH_INCLUDE,
+  OUTPUT_HOST,
+  OUTPUT_PUBLIC_URL,
+  RUNTIME_ATTR_COMMAND,
+  RUNTIME_ATTR_DRAIN_SECONDS,
+  RUNTIME_ATTR_HEALTH_PATH,
+  RUNTIME_ATTR_HEALTH_TIMEOUT_SECONDS,
+  RUNTIME_ATTR_PORT,
+  RUNTIME_ATTR_RESTART,
 } from "@metaobjectsdev/pack-delivery";
 import {
   APP_ATTR_NEEDS,
@@ -266,8 +278,8 @@ function readBuild(app: MetaData): CloudflareBuild | undefined {
   // ADR-0039: resolving, so a build the app inherits through `extends` counts.
   const b = app.children().find((c) => c.type === TYPE_BUILD);
   if (b === undefined) return undefined;
-  const command = text(b.attr("command"));
-  const directory = text(b.attr("directory"));
+  const command = text(b.attr(BUILD_ATTR_COMMAND));
+  const directory = text(b.attr(BUILD_ATTR_DIRECTORY));
   return { kind: b.subType, from: `build.${b.subType} ${b.name}`, ...(command !== undefined ? { command } : {}), ...(directory !== undefined ? { directory } : {}) };
 }
 
@@ -313,10 +325,10 @@ function referenceValue(value: MetaData, env: MetaData, ctx: Context, where: str
   const output = text(value.attr(VALUE_ATTR_OUTPUT)) ?? "";
   const target = resolveSystemRef(value, producedBy, VALUE_ATTR_PRODUCED_BY, [TYPE_RESOURCE, TYPE_APP]);
   if (target === undefined) return undefined; // the delivery pack reports it at load
-  if (target.type === TYPE_APP && (output === "host" || output === "publicUrl")) {
+  if (target.type === TYPE_APP && (output === OUTPUT_HOST || output === OUTPUT_PUBLIC_URL)) {
     const d = deploymentOf(target, env, ctx.all);
     const domain = d === undefined ? undefined : refList(d, DEPLOYMENT_ATTR_DOMAINS)[0];
-    if (domain !== undefined) return output === "host" ? domain : `https://${domain}`;
+    if (domain !== undefined) return output === OUTPUT_HOST ? domain : `https://${domain}`;
     problems.push(`${where}: app "${target.name}" has no Cloudflare deployment with @domains in environment ${env.name}, so its ${output} is not known`);
     return undefined;
   }
@@ -350,7 +362,9 @@ function readCommon(
   for (const s of settings.filter((x) => x.phase === PHASE_BUILD && !x.secret)) {
     // ADR-0039: resolving, so a value the abstract base declares counts.
     const v = node.children().find((c) => c.type === TYPE_VALUE && c.subType === VALUE_SUBTYPE_LITERAL && settingNamed(text(c.attr(VALUE_ATTR_SETTING)) ?? "", ctx.groups) === s);
-    const literal = v === undefined ? undefined : text(v.attr(VALUE_ATTR_LITERAL));
+    // An empty literal is a value, as it is for a runtime var: it overrides the @default.
+    const raw = v?.attr(VALUE_ATTR_LITERAL);
+    const literal = typeof raw === "string" ? raw : undefined;
     if (v !== undefined && literal !== undefined) buildVars.push({ name: s.envName, value: literal, from: `value.literal ${v.name}${declaredIn(v, node)}` });
     else if (s.default !== undefined) buildVars.push({ name: s.envName, value: s.default, from: `${s.setting} @default` });
   }
@@ -396,7 +410,7 @@ function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Set
   const out: UnexpressedFact[] = [];
   // ADR-0039: resolving, the processes the app effectively has.
   for (const p of app.children().filter((c) => c.type === TYPE_RUNTIME)) {
-    const set = ["command", "port", "healthPath", "healthTimeoutSeconds", "drainSeconds", "restart"].filter((a) => p.attr(a) !== undefined);
+    const set = [RUNTIME_ATTR_COMMAND, RUNTIME_ATTR_PORT, RUNTIME_ATTR_HEALTH_PATH, RUNTIME_ATTR_HEALTH_TIMEOUT_SECONDS, RUNTIME_ATTR_DRAIN_SECONDS, RUNTIME_ATTR_RESTART].filter((a) => p.attr(a) !== undefined);
     if (set.length > 0) {
       out.push({
         fact: `runtime.process \`${p.name}\` (${set.map((a) => `@${a}`).join(", ")})`,
@@ -409,7 +423,7 @@ function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Set
   const region = text(node.attr(DEPLOYMENT_ATTR_REGION));
   if (region !== undefined) out.push({ fact: `@region \`${region}\``, how: "Cloudflare has no region for a Worker or a Pages site. Smart Placement, if wanted, goes in @extra as `placement`." });
   const b = app.children().find((c) => c.type === TYPE_BUILD);
-  const watch = b === undefined ? [] : [...refList(b, "watchInclude"), ...refList(b, "watchExclude").map((g) => `!${g}`)];
+  const watch = b === undefined ? [] : [...refList(b, BUILD_ATTR_WATCH_INCLUDE), ...refList(b, BUILD_ATTR_WATCH_EXCLUDE).map((g) => `!${g}`)];
   if (watch.length > 0) {
     out.push({ fact: `Watch paths ${watch.map((g) => `\`${g}\``).join(", ")}`, how: "Deploys run from deploy/cloudflare/deploy.sh, not on a push, so nothing watches paths. Workers Builds and Pages Git integration keep their build watch paths in the dashboard." });
   }
@@ -711,6 +725,13 @@ export function readCloudflare(
       const other = seen.get(name);
       if (other !== undefined) problems.push(`deployment.worker ${d.key}: deploys Worker "${name}", as ${other} does; give one a different @script`);
       else seen.set(name, d.key);
+    }
+    // Wrangler inherits these into an env block that omits them: so every environment sets each, or none does.
+    const inherited: [string, (d: WorkerDeployment) => unknown][] = [["@main", (d) => d.main], ["@workersDev", (d) => d.workersDev], ["assets (the app's build.static)", (d) => d.assets]];
+    for (const [what, get] of inherited) {
+      const set = (deployments as WorkerDeployment[]).filter((d) => get(d) !== undefined);
+      if (set.length > 0 && set.length < deployments.length)
+        problems.push(`${appKeyOf(app)}: ${what} is set in ${set.map((d) => d.environment).join(", ")} and not in ${(deployments as WorkerDeployment[]).filter((d) => get(d) === undefined).map((d) => d.environment).join(", ")}; Wrangler would fill the gap from the top level, so set it in every environment or none`);
     }
   }
   if (problems.length > 0) throw new CloudflareModelError(problems);

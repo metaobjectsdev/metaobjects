@@ -45,7 +45,10 @@ export const ACCOUNT_ID_SECRET = "CLOUDFLARE_ACCOUNT_ID";
 /** What Wrangler reads the token from; the scripts set it from the deployment's @tokenSecret. */
 export const API_TOKEN_VARIABLE = "CLOUDFLARE_API_TOKEN";
 /** The global-key variables Wrangler would prefer over a token: the scripts unset them. */
-export const GLOBAL_KEY_VARIABLES: readonly string[] = ["CLOUDFLARE_EMAIL", "CLOUDFLARE_API_KEY", API_TOKEN_VARIABLE];
+export const GLOBAL_KEY_VARIABLES: readonly string[] = ["CLOUDFLARE_EMAIL", "CLOUDFLARE_API_KEY"];
+
+/** What the runner clears before it sets the vault's token: the global key, and any token the shell already holds. */
+export const CLEARED_VARIABLES: readonly string[] = [...GLOBAL_KEY_VARIABLES, API_TOKEN_VARIABLE];
 
 /** The `wrangler` npm package version the generated file and scripts were written against, and that the scripts pin. */
 export const WRANGLER_VERSION = "4.168.0";

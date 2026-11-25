@@ -116,6 +116,17 @@ describe("refusals", () => {
     expect(got).toHaveLength(4);
   });
 
+  test("@main set in one environment and not another: Wrangler would inherit it", async () => {
+    const sources = editFixture(ENVS, (r) => {
+      const base = child(r, "deployment.worker", "siteBase");
+      child(r, "deployment.worker", "siteProduction")["@main"] = base["@main"];
+      delete base["@main"];
+    });
+    expect(await problems(sources)).toEqual([
+      "app.service acme::quiz::Quiz.site: @main is set in production and not in staging; Wrangler would fill the gap from the top level, so set it in every environment or none",
+    ]);
+  });
+
   test("an @extra key the generator writes itself", async () => {
     const sources = editFixture(TRIPS, (r) => {
       child(r, "deployment.worker", "webProduction")["@extra"] = JSON.stringify({ vars: { X: "1" } });
