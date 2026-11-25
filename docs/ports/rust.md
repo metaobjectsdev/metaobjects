@@ -244,7 +244,10 @@ surface (`metaobjects_codegen::{emitted, generator, names, plan, writer}`); the 
 writes (the transport, the command helpers) is inside the generator, so an owned `client` owns its
 transport too. Every file in `codegen/` is an input of the skip key, whether `eject` wrote it or you
 added it (a module beside the generator list, say), so editing any of them regenerates. Only the
-crate's build directory (`codegen/target`) and its `Cargo.lock` are left out.
+crate's build directory (`codegen/target`) and its `Cargo.lock` are left out. A crate it depends on by
+`path` (a linked checkout of a pack's generators, say) is an input too, followed through that crate's
+own path dependencies, except the `metaobjects` and `metaobjects-codegen` engine crates, whose source
+the engine's own hash already covers.
 
 `cargo meta gen --list` shows each owned copy as `identical`, or as `DIFFERS` with how many shipped
 lines it lacks and how many are its own.

@@ -481,6 +481,59 @@ fn every_source_of_an_owned_crate_is_an_input_and_its_build_output_is_not() {
 }
 
 #[test]
+fn a_crate_the_owned_crate_reaches_by_path_is_an_input_and_an_engine_crate_is_not() {
+    // A pack's generators, linked from a checkout: cargo rebuilds the owned binary from their
+    // source, and their version does not move when their code does. A skip that did not see
+    // an edit there would report "nothing changed" over stale output.
+    let p = Scratch::project("owned-path-deps", &shop_files());
+    p.write(
+        "codegen/Cargo.toml",
+        "[package]\nname = \"codegen\"\n\n[[bin]]\nname = \"codegen\"\npath = \"main.rs\"\n\n\
+         [dependencies]\n\
+         metaobjects = { path = \"../engine/metaobjects\" }\n\
+         linked-generators = { path = \"../linked\" }\n\n\
+         [dev-dependencies]\nscratch-only = { path = \"../dev-only\" }\n",
+    );
+    p.write("codegen/main.rs", "fn main() {}\n");
+    p.write(
+        "linked/Cargo.toml",
+        "[package]\nname = \"linked-generators\"\n\n[dependencies.deeper]\npath = \"../deeper\"\n",
+    );
+    p.write("linked/src/lib.rs", "// v1\n");
+    p.write("deeper/Cargo.toml", "[package]\nname = \"deeper\"\n");
+    p.write("deeper/src/lib.rs", "// v1\n");
+    p.write(
+        "engine/metaobjects/Cargo.toml",
+        "[package]\nname = \"metaobjects\"\n",
+    );
+    p.write("engine/metaobjects/src/lib.rs", "// v1\n");
+    p.write(
+        "dev-only/Cargo.toml",
+        "[package]\nname = \"scratch-only\"\n",
+    );
+    p.write("dev-only/src/lib.rs", "// v1\n");
+    gen_ok(&p);
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+
+    // An edit to the linked crate's source, and to a crate it reaches by path in turn.
+    p.write("linked/src/lib.rs", "// v2\n");
+    let r = gen_ok(&p);
+    assert_eq!(r.outcome, Outcome::Generated);
+    assert_eq!(r.no_skip_reason, Some("an input changed"));
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+    p.write("deeper/src/lib.rs", "// v2\n");
+    assert_eq!(gen_ok(&p).outcome, Outcome::Generated);
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+
+    // Not inputs: the linked crate's build output, an engine crate (the engine's own source
+    // hash covers it) and a dev-dependency, which is not built into the owned binary.
+    p.write("linked/target/debug/out.rs", "build output");
+    p.write("engine/metaobjects/src/lib.rs", "// v2\n");
+    p.write("dev-only/src/lib.rs", "// v2\n");
+    assert_eq!(gen_ok(&p).outcome, Outcome::Skipped);
+}
+
+#[test]
 fn naming_an_entity_limits_the_run_and_never_skips_or_stores_a_key() {
     let p = Scratch::project("named", &shop_files());
     gen_ok(&p);

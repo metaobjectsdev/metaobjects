@@ -1,0 +1,128 @@
+// ADR-0064 — the `meta gen` skip key covers the code of every generator package the config
+// imports, `@metaobjectsdev/*` ones included, except the packages the CLI aliases onto its own
+// engine (those are the engine, counted once as such).
+//
+// The defect this pins: the key dropped EVERY `@metaobjectsdev/*` import on the assumption
+// that the CLI aliases it, while the engine half only hashes the CLI's own dependencies. A
+// package the CLI does not depend on (an independent pack, say) was then hashed by nothing,
+// so editing a linked copy's generator left the key unchanged and `meta gen` skipped over
+// stale output.
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { genCommand } from "../src/commands/gen.js";
+import {
+  computeGenInputs, decideGenSkip, keyFor, withModel,
+  type FingerprintEntry, type GenSelection,
+} from "../src/lib/gen-fingerprint.js";
+import { CLI_ALIASED_PACKAGES } from "../src/lib/load-metaobjects-config.js";
+import { collectionLoadOptions } from "../src/lib/collection-load-options.js";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { modelHashTree } from "@metaobjectsdev/codegen-ts";
+
+// Inside the monorepo, so the config's engine imports resolve as in the other command tests.
+const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures/__tmp__");
+const made: string[] = [];
+afterAll(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
+
+/** A `@metaobjectsdev/*` package the CLI does not depend on, linked from a source checkout. */
+const LINKED = "@metaobjectsdev/linked-generator-fixture";
+
+const linkedSource = (text: string) => `export function linked() {
+  return {
+    name: "linked",
+    generate() {
+      return [{ path: "linked.txt", content: ${JSON.stringify(text)} }];
+    },
+  };
+}
+`;
+
+/** A package the CLI aliases onto its engine (see `CLI_ALIASED_PACKAGES`). */
+const ENGINE_PKG = "@metaobjectsdev/codegen-ts";
+
+const ENGINE: FingerprintEntry[] = [{ kind: "engine", name: "(test)", hash: "fixed" }];
+const SELECTION: GenSelection = { entities: [], generators: undefined, strict: false, baseline: "default" };
+
+function makeProject(): { root: string; linkedIndex: string } {
+  mkdirSync(WORKSPACE_TMP, { recursive: true });
+  const root = mkdtempSync(join(WORKSPACE_TMP, "gen-linked-"));
+  made.push(root);
+  mkdirSync(join(root, ".git"));
+  mkdirSync(join(root, "metaobjects"));
+  mkdirSync(join(root, ".metaobjects"));
+  writeFileSync(join(root, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, sources: [] }) + "\n");
+  writeFileSync(join(root, "metaobjects", "meta.shop.json"), JSON.stringify({
+    "metadata.root": { package: "shop", children: [{ "object.value": { name: "Note", children: [{ "field.string": { name: "text" } }] } }] },
+  }) + "\n");
+
+  // The linked package: its source lives outside any node_modules, as with a workspace
+  // member, a clone or `bun link`, and the project's node_modules holds a symlink to it.
+  const source = join(root, "linked-checkout");
+  mkdirSync(source);
+  writeFileSync(join(source, "package.json"), JSON.stringify({ name: LINKED, version: "0.1.0", type: "module", main: "index.ts" }) + "\n");
+  writeFileSync(join(source, "index.ts"), linkedSource("first\n"));
+  mkdirSync(join(root, "node_modules", "@metaobjectsdev"), { recursive: true });
+  symlinkSync(source, join(root, "node_modules", LINKED), "dir");
+
+  writeFileSync(join(root, "metaobjects.config.ts"), `import { defineConfig } from "@metaobjectsdev/codegen-ts";
+import { linked } from "${LINKED}";
+export default defineConfig({ outDir: "generated", generators: [linked()] });
+`);
+  return { root, linkedIndex: join(source, "index.ts") };
+}
+
+async function inputsFor(root: string, engine?: FingerprintEntry[]) {
+  const c = await resolveCollection(root);
+  const model = await loadMemory(c.configDir, collectionLoadOptions(c));
+  return withModel(computeGenInputs(root, c, c, SELECTION, engine), modelHashTree(model));
+}
+
+const quiet = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const log = console.log; const err = console.error;
+  console.log = () => {}; console.error = () => {};
+  try { return await fn(); } finally { console.log = log; console.error = err; }
+};
+
+describe("the skip key covers a linked @metaobjectsdev/* generator package (ADR-0064)", () => {
+  test("after a real gen, editing the linked package's generator makes the next gen render", async () => {
+    const p = makeProject();
+    expect(await quiet(() => genCommand([], p.root, "text"))).toBe(0);
+    expect(readFileSync(join(p.root, "generated", "linked.txt"), "utf-8")).toBe("first\n");
+    expect(decideGenSkip(await inputsFor(p.root))).toEqual({ skip: true, recorded: ["generated/linked.txt"] });
+
+    writeFileSync(p.linkedIndex, linkedSource("second\n"));
+    // The decision `meta gen` makes before rendering. (Rendering again here would prove nothing
+    // more: this process already imported the linked module, and the runtime caches it.)
+    expect(decideGenSkip(await inputsFor(p.root))).toEqual({ skip: false, reason: "an input changed" });
+  });
+
+  test("the linked package is hashed by content; editing it changes the key", async () => {
+    const p = makeProject();
+    const before = await inputsFor(p.root, ENGINE);
+    const names = before.entries.filter((e) => e.kind === "generator-package").map((e) => e.name);
+    expect(names).toContain(`${LINKED}/index.ts`);
+    expect(CLI_ALIASED_PACKAGES.has(LINKED)).toBe(false);
+
+    writeFileSync(p.linkedIndex, linkedSource("second\n"));
+    expect(keyFor(await inputsFor(p.root, ENGINE), [])).not.toBe(keyFor(before, []));
+  });
+
+  test("an import the CLI aliases onto its engine is not hashed from the project's copy", async () => {
+    // The config imports `@metaobjectsdev/codegen-ts`, which the CLI rewrites onto its own
+    // copy: the engine half counts that. A linked copy in the project's node_modules never
+    // runs, so editing it must leave the key alone.
+    const p = makeProject();
+    const fake = join(p.root, "engine-checkout");
+    mkdirSync(fake);
+    writeFileSync(join(fake, "package.json"), JSON.stringify({ name: ENGINE_PKG, version: "0.0.0", main: "index.ts" }) + "\n");
+    writeFileSync(join(fake, "index.ts"), "export const v = 1;\n");
+    symlinkSync(fake, join(p.root, "node_modules", ENGINE_PKG), "dir");
+    expect(CLI_ALIASED_PACKAGES.has(ENGINE_PKG)).toBe(true);
+
+    const before = await inputsFor(p.root, ENGINE);
+    expect(before.entries.filter((e) => e.kind === "generator-package" && e.name.startsWith(`${ENGINE_PKG}/`))).toEqual([]);
+    writeFileSync(join(fake, "index.ts"), "export const v = 2;\n");
+    expect(keyFor(await inputsFor(p.root, ENGINE), [])).toBe(keyFor(before, []));
+  });
+});

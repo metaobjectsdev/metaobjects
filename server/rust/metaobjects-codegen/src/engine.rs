@@ -296,6 +296,118 @@ pub const OWNED_MANIFEST: &str = "codegen/Cargo.toml";
 /// The owned crate's generator list.
 pub const OWNED_MAIN: &str = "codegen/main.rs";
 
+/// The crates whose sources [`ENGINE_SOURCE_HASH`] already covers. A path dependency on one
+/// of them is the engine, counted once as such.
+const ENGINE_CRATES: &[&str] = &["metaobjects", "metaobjects-codegen"];
+
+/// What in a path dependency's directory is not an input: cargo's build output and VCS state.
+const PATH_DEPENDENCY_NOT_INPUTS: &[&str] = &["target", ".git"];
+
+/// Every crate the owned crate reaches through a `path` dependency (a linked or source
+/// checkout: a pack's generators, a sibling crate of the adopter's), followed through each
+/// one's own manifest, by the content of its directory. Its version does not move when its
+/// code does, and cargo rebuilds the owned binary from it, so an edit there changes what the
+/// owned generators emit. An engine crate is left out (see [`ENGINE_CRATES`]); a registry or
+/// git dependency is named by `codegen/Cargo.toml` itself, which the key already hashes.
+fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
+    let mut entries = Vec::new();
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut queue = vec![owned_manifest.to_path_buf()];
+    while let Some(manifest) = queue.pop() {
+        let Ok(text) = std::fs::read_to_string(&manifest) else {
+            continue;
+        };
+        let base = manifest.parent().unwrap_or(Path::new("."));
+        for rel in manifest_path_dependencies(&text) {
+            let dir = base.join(&rel);
+            let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+            if !seen.insert(dir.clone()) {
+                continue;
+            }
+            let dep_manifest = dir.join("Cargo.toml");
+            let Ok(dep_text) = std::fs::read_to_string(&dep_manifest) else {
+                // Cargo will fail on it; until it exists, its absence is the input.
+                entries.push(InputEntry::new(
+                    KIND_GENERATOR,
+                    format!("path-dependency:{rel}"),
+                    ABSENT,
+                ));
+                continue;
+            };
+            let name = manifest_package_name(&dep_text).unwrap_or_else(|| rel.clone());
+            if ENGINE_CRATES.contains(&name.as_str()) {
+                continue;
+            }
+            entries.push(InputEntry::new(
+                KIND_GENERATOR,
+                format!("path-dependency:{name}"),
+                hash_tree_except(&dir, PATH_DEPENDENCY_NOT_INPUTS),
+            ));
+            queue.push(dep_manifest);
+        }
+    }
+    entries
+}
+
+/// The `path` of every dependency a `Cargo.toml` declares in a table the build compiles
+/// (`[dependencies]`, `[build-dependencies]`, their `target.*` and `workspace` forms, and
+/// `[dependencies.<name>]`). Dev-dependencies are not built into the owned binary. A line
+/// scan, not a TOML parser: the forms cargo writes and the scaffold uses are one-line.
+fn manifest_path_dependencies(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_dependencies = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') {
+            let header = line.trim_start_matches('[').split(']').next().unwrap_or("");
+            in_dependencies = header
+                .split('.')
+                .map(|s| s.trim())
+                .any(|s| s == "dependencies" || s == "build-dependencies");
+            continue;
+        }
+        if in_dependencies && let Some(path) = toml_key_string(line, "path") {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// The `[package]` name a `Cargo.toml` declares.
+fn manifest_package_name(text: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package && let Some(name) = toml_key_string(line, "name") {
+            return Some(name);
+        }
+    }
+    None
+}
+
+/// The basic-string value of `key` on one TOML line, whether the line is `key = "v"` or an
+/// inline table holding it (`dep = { path = "v", ... }`).
+fn toml_key_string(line: &str, key: &str) -> Option<String> {
+    let mut from = 0;
+    while let Some(at) = line[from..].find(key).map(|i| i + from) {
+        from = at + key.len();
+        let before = line[..at].chars().next_back();
+        if before.is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+            continue;
+        }
+        let rest = line[from..].trim_start();
+        let Some(rest) = rest.strip_prefix('=') else {
+            continue;
+        };
+        let rest = rest.trim_start().strip_prefix('"')?;
+        return rest.find('"').map(|end| rest[..end].to_string());
+    }
+    None
+}
+
 /// Everything a run knows before it renders: the loaded model, where the files go, the
 /// manifest and the skip key.
 struct Prepared<'g> {
@@ -474,6 +586,7 @@ fn prepare<'g>(
             OWNED_DIR,
             hash_tree_except(&project_root.join(OWNED_DIR), OWNED_NOT_INPUTS),
         ));
+        entries.extend(path_dependency_entries(&project_root.join(OWNED_MANIFEST)));
     }
     let key = fold(&entries);
     let stored = fingerprint::read_stored(&gen_state);
