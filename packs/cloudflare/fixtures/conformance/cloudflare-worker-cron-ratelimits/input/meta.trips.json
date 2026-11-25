@@ -1,0 +1,91 @@
+{
+  "metadata.root": {
+    "package": "acme::trips",
+    "children": [
+      { "system.internal": {
+          "name": "Trips",
+          "@description": "A trip journal: one Worker in front of its assets, with D1, R2, rate limiters and a daily clean-up.",
+          "children": [
+            { "app.service": {
+                "name": "web",
+                "@needs": ["db", "photos"],
+                "@settings": ["Access", "Notify", "Auth"],
+                "children": [
+                  { "build.static": { "name": "client", "@directory": "dist/client", "@command": "pnpm build" } }
+                ]
+            } },
+            { "app.job": { "name": "coverCleanup", "@description": "Deletes cover images no trip references.", "@schedule": "0 4 * * *" } },
+            { "resource.database": { "name": "db" } },
+            { "resource.bucket": { "name": "photos" } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Access",
+          "children": [
+            { "field.string": { "name": "teamDomain", "@envName": "ACCESS_TEAM_DOMAIN", "@required": true } },
+            { "field.string": { "name": "aud", "@envName": "ACCESS_AUD", "@required": true } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Notify",
+          "children": [
+            { "field.string": { "name": "email", "@envName": "NOTIFY_EMAIL", "@required": true } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Auth",
+          "children": [
+            { "field.string": { "name": "sessionSecret", "@envName": "SESSION_SECRET", "@required": true, "@secret": true } },
+            { "field.string": { "name": "resendApiKey", "@envName": "RESEND_API_KEY", "@required": true, "@secret": true } },
+            { "field.string": { "name": "passphrasePepper", "@envName": "PASSPHRASE_PEPPER", "@required": true, "@secret": true } },
+            { "field.string": { "name": "recoveryEncKey", "@envName": "RECOVERY_ENC_KEY", "@required": true, "@secret": true } },
+            { "field.string": { "name": "recoveryHmacKey", "@envName": "RECOVERY_HMAC_KEY", "@required": true, "@secret": true } }
+          ]
+      } },
+      { "vault.infisical": {
+          "name": "keys",
+          "children": [
+            { "scope.env": { "name": "production", "@project": "trips", "@env": "prod" } }
+          ]
+      } },
+      { "vault.infisical": {
+          "name": "deployKeys",
+          "@defaultScope": "dev",
+          "children": [
+            { "scope.env": { "name": "dev", "@project": "acme-deploy" } }
+          ]
+      } },
+      { "environment.standing": { "name": "production" } },
+      { "deployment.worker": {
+          "name": "webProduction",
+          "@app": "Trips.web",
+          "@environment": "production",
+          "@script": "trips",
+          "@main": "src/worker.ts",
+          "@compatibilityDate": "2026-07-01",
+          "@compatibilityFlags": ["nodejs_compat"],
+          "@domains": ["trips.example.com", "www.trips.example.com"],
+          "@workersDev": false,
+          "@assetsBinding": "ASSETS",
+          "@notFound": "single-page-application",
+          "@workerFirst": true,
+          "@jobs": ["Trips.coverCleanup"],
+          "@secrets": "keys",
+          "@tokenVault": "deployKeys",
+          "@tokenSecret": "ACME_WORKERS_TOKEN",
+          "children": [
+            { "cloudflare.d1": { "name": "db", "@databaseName": "trips", "@databaseId": "00000000-0000-4000-8000-000000000003", "@migrationsDir": ".metaobjects/migrations" } },
+            { "cloudflare.r2": { "name": "photos", "@bucketName": "trips-photos" } },
+            { "cloudflare.ratelimit": { "name": "enterLimiter", "@namespaceId": "1001", "@limit": 10, "@period": 60 } },
+            { "cloudflare.ratelimit": { "name": "adminLimiter", "@namespaceId": "1002", "@limit": 200, "@period": 60 } },
+            { "cloudflare.ratelimit": { "name": "loginLimiter", "@namespaceId": "1003", "@limit": 10, "@period": 60 } },
+            { "cloudflare.ratelimit": { "name": "loginLockoutLimiter", "@namespaceId": "1004", "@limit": 4, "@period": 60 } },
+            { "cloudflare.ratelimit": { "name": "recoveryLimiter", "@namespaceId": "1005", "@limit": 3, "@period": 60 } },
+            { "value.literal": { "name": "teamDomain", "@setting": "Access.teamDomain", "@literal": "team.example.com" } },
+            { "value.literal": { "name": "aud", "@setting": "Access.aud", "@literal": "0000000000000000000000000000000000000000000000000000000000000000" } },
+            { "value.literal": { "name": "notifyEmail", "@setting": "Notify.email", "@literal": "host@example.com" } }
+          ]
+      } }
+    ]
+  }
+}

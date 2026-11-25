@@ -1,0 +1,45 @@
+{
+  "metadata.root": {
+    "package": "acme::docs",
+    "children": [
+      { "system.internal": {
+          "name": "Docs",
+          "@description": "A static documentation site on Cloudflare Pages.",
+          "children": [
+            { "app.client": {
+                "name": "site",
+                "@settings": ["Site"],
+                "children": [
+                  { "build.static": { "name": "pages", "@directory": "dist", "@command": "npm run build" } }
+                ]
+            } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Site",
+          "children": [
+            { "field.string": { "name": "url", "@envName": "SITE_URL", "@phase": "build", "@default": "https://docs.example.com" } }
+          ]
+      } },
+      { "vault.infisical": {
+          "name": "deployKeys",
+          "@defaultScope": "dev",
+          "children": [
+            { "scope.env": { "name": "dev", "@project": "acme-deploy" } }
+          ]
+      } },
+      { "environment.standing": { "name": "production" } },
+      { "environment.ephemeral": { "name": "preview" } },
+      { "deployment.pages": {
+          "name": "siteBase",
+          "abstract": true,
+          "@app": "Docs.site",
+          "@project": "docs-site",
+          "@tokenVault": "deployKeys",
+          "@tokenSecret": "ACME_PAGES_TOKEN"
+      } },
+      { "deployment.pages": { "name": "siteProduction", "extends": "siteBase", "@environment": "production", "@branch": "main", "@domains": ["docs.example.com"] } },
+      { "deployment.pages": { "name": "sitePreview", "extends": "siteBase", "@environment": "preview", "@branch": "preview" } }
+    ]
+  }
+}

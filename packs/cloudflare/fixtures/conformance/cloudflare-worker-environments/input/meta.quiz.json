@@ -1,0 +1,101 @@
+{
+  "metadata.root": {
+    "package": "acme::quiz",
+    "children": [
+      { "system.internal": {
+          "name": "Quiz",
+          "@description": "A quiz site: one Worker with static assets, a D1 database and a KV namespace.",
+          "children": [
+            { "app.service": {
+                "name": "site",
+                "@needs": ["db", "rateLimit"],
+                "@settings": ["Limits", "Turnstile", "Search"],
+                "children": [
+                  { "build.static": { "name": "assets", "@directory": "public" } }
+                ]
+            } },
+            { "resource.database": { "name": "db" } },
+            { "resource.keyvalue": { "name": "rateLimit" } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Limits",
+          "children": [
+            { "field.int": { "name": "maxQuestionsPerDay", "@envName": "MAX_QUESTIONS_PER_DAY", "@default": 5 } },
+            { "field.int": { "name": "globalMaxPerDay", "@envName": "GLOBAL_MAX_PER_DAY", "@default": 200 } },
+            { "field.int": { "name": "ipMaxPerDay", "@envName": "IP_MAX_PER_DAY", "@default": 10 } },
+            { "field.string": { "name": "killSwitch", "@envName": "KILL_SWITCH", "@default": "off" } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Turnstile",
+          "children": [
+            { "field.string": { "name": "siteKey", "@envName": "TURNSTILE_SITE_KEY", "@required": true } }
+          ]
+      } },
+      { "object.settings": {
+          "name": "Search",
+          "children": [
+            { "field.string": { "name": "url", "@envName": "SEARCH_URL", "@secret": true } }
+          ]
+      } },
+      { "vault.infisical": {
+          "name": "keys",
+          "children": [
+            { "scope.env": { "name": "production", "@project": "quiz", "@env": "prod" } },
+            { "scope.env": { "name": "staging", "@project": "quiz", "@env": "staging" } }
+          ]
+      } },
+      { "vault.infisical": {
+          "name": "deployKeys",
+          "@defaultScope": "dev",
+          "children": [
+            { "scope.env": { "name": "dev", "@project": "acme-deploy" } }
+          ]
+      } },
+      { "environment.standing": { "name": "production" } },
+      { "environment.standing": { "name": "staging" } },
+      { "deployment.worker": {
+          "name": "siteBase",
+          "abstract": true,
+          "@description": "What every environment of the site shares.",
+          "@app": "Quiz.site",
+          "@script": "quiz",
+          "@main": "src/index.ts",
+          "@compatibilityDate": "2024-12-30",
+          "@compatibilityFlags": ["nodejs_compat"],
+          "@assetsBinding": "ASSETS",
+          "@notFound": "single-page-application",
+          "@workerFirstPaths": ["/api/*", "/c/*"],
+          "@secrets": "keys",
+          "@tokenVault": "deployKeys",
+          "@tokenSecret": "ACME_WORKERS_TOKEN",
+          "children": [
+            { "cloudflare.d1": { "name": "db", "@databaseName": "quiz", "@databaseId": "00000000-0000-4000-8000-000000000001", "@migrationsDir": "migrations" } },
+            { "cloudflare.kv": { "name": "rateLimit", "@namespaceId": "00000000000000000000000000000001" } },
+            { "value.literal": { "name": "siteKey", "@setting": "Turnstile.siteKey", "@literal": "1x00000000000000000000AA" } }
+          ]
+      } },
+      { "deployment.worker": {
+          "name": "siteProduction",
+          "extends": "siteBase",
+          "@environment": "production",
+          "@branch": "main",
+          "@domains": ["quiz.example.com", "www.quiz.example.com"]
+      } },
+      { "deployment.worker": {
+          "name": "siteStaging",
+          "extends": "siteBase",
+          "@description": "Only what differs in staging: its own database, namespace and domain, and the kill switch on.",
+          "@environment": "staging",
+          "@branch": "staging",
+          "@domains": ["staging.quiz.example.com"],
+          "children": [
+            { "cloudflare.d1": { "name": "db", "@databaseName": "quiz-staging", "@databaseId": "00000000-0000-4000-8000-000000000002", "@migrationsDir": "migrations" } },
+            { "cloudflare.kv": { "name": "rateLimit", "@namespaceId": "00000000000000000000000000000002" } },
+            { "value.literal": { "name": "killSwitch", "@setting": "Limits.killSwitch", "@literal": "on" } }
+          ]
+      } }
+    ]
+  }
+}

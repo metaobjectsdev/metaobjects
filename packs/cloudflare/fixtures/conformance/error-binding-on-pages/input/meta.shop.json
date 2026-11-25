@@ -1,0 +1,8 @@
+{ "metadata.root": { "package": "acme::shop", "children": [
+  { "system.internal": { "name": "Shop", "children": [
+    { "app.service": { "name": "site", "@needs": ["db"], "children": [ { "build.static": { "name": "assets", "@directory": "public" } } ] } },
+    { "resource.database": { "name": "db" } } ] } },
+  { "environment.standing": { "name": "production" } },
+  { "deployment.pages": { "name": "siteProduction", "@app": "Shop.site", "@environment": "production", "@project": "shop", "@tokenSecret": "ACME_PAGES_TOKEN", "children": [
+    { "cloudflare.d1": { "name": "db", "@databaseName": "shop" } } ] } }
+]}}

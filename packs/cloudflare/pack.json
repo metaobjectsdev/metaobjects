@@ -1,0 +1,10 @@
+{
+  "id": "metaobjects-cloudflare",
+  "version": "0.1.0",
+  "stability": "preview",
+  "description": "Cloudflare as a deployment platform: deployment.worker (with static assets) and deployment.pages, the Worker's D1, KV, R2, queue and rate limiting bindings, and generators for wrangler.jsonc, a token-scoped wrangler wrapper, the deploy, secret sync and doctor scripts, and the facts no file holds.",
+  "requires": { "metamodel": ">=1.3 <2", "packs": { "metaobjects-delivery": ">=0.1.0 <0.2.0", "metaobjects-config": ">=0.1.0 <0.2.0" } },
+  "ports": {
+    "typescript": { "package": "@metaobjectsdev/pack-cloudflare", "core": ">=1.3.0 <2.0.0", "publish": false }
+  }
+}

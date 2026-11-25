@@ -1,0 +1,7 @@
+{ "metadata.root": { "package": "acme::shop", "children": [
+  { "system.internal": { "name": "Shop", "children": [
+    { "app.service": { "name": "site", "@needs": ["db"], "children": [ { "build.static": { "name": "assets", "@directory": "public" } } ] } },
+    { "resource.database": { "name": "db" } } ] } },
+  { "environment.standing": { "name": "production" } },
+  { "deployment.worker": { "name": "siteProduction", "@app": "Shop.web", "@environment": "production", "@compatibilityDate": "2026-07-01", "@tokenSecret": "ACME_WORKERS_TOKEN" } }
+]}}

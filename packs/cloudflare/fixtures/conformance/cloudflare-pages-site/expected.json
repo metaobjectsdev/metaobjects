@@ -1,0 +1,100 @@
+{
+  "metadata.root": {
+    "package": "acme::docs",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Docs",
+          "@description": "A static documentation site on Cloudflare Pages.",
+          "children": [
+            {
+              "app.client": {
+                "name": "site",
+                "@settings": [
+                  "Site"
+                ],
+                "children": [
+                  {
+                    "build.static": {
+                      "name": "pages",
+                      "@command": "npm run build",
+                      "@directory": "dist"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Site",
+          "children": [
+            {
+              "field.string": {
+                "name": "url",
+                "@default": "https://docs.example.com",
+                "@envName": "SITE_URL",
+                "@phase": "build"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "vault.infisical": {
+          "name": "deployKeys",
+          "@defaultScope": "dev",
+          "children": [
+            {
+              "scope.env": {
+                "name": "dev",
+                "@project": "acme-deploy"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "environment.ephemeral": {
+          "name": "preview"
+        }
+      },
+      {
+        "deployment.pages": {
+          "name": "siteBase",
+          "abstract": true,
+          "@app": "Docs.site",
+          "@project": "docs-site",
+          "@tokenSecret": "ACME_PAGES_TOKEN",
+          "@tokenVault": "deployKeys"
+        }
+      },
+      {
+        "deployment.pages": {
+          "name": "siteProduction",
+          "extends": "acme::docs::siteBase",
+          "@branch": "main",
+          "@domains": [
+            "docs.example.com"
+          ],
+          "@environment": "production"
+        }
+      },
+      {
+        "deployment.pages": {
+          "name": "sitePreview",
+          "extends": "acme::docs::siteBase",
+          "@branch": "preview",
+          "@environment": "preview"
+        }
+      }
+    ]
+  }
+}

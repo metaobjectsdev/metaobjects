@@ -1,0 +1,391 @@
+{
+  "pack": "metaobjects-cloudflare",
+  "types": [
+    {
+      "type": "cloudflare",
+      "subType": "base",
+      "description": "Abstract Cloudflare binding base: one binding of a Worker, a child of a deployment.worker. Its binding name is the node's name in upper snake case (`rateLimit` is RATE_LIMIT). Not authored directly: a `cloudflare.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "cloudflare",
+      "subType": "d1",
+      "description": "Where a resource.database the app needs lives on D1 in this environment. Named after the resource.",
+      "whenToUse": "Each D1 database a Worker binds.",
+      "attrs": [
+        {
+          "name": "databaseId",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The D1 database's id."
+        },
+        {
+          "name": "databaseName",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The D1 database's name."
+        },
+        {
+          "name": "migrationsDir",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The directory of its migrations, from the repository root, for `wrangler d1 migrations`."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "cloudflare",
+      "subType": "kv",
+      "description": "Where a resource.keyvalue the app needs lives in Workers KV in this environment. Named after the resource.",
+      "whenToUse": "Each KV namespace a Worker binds.",
+      "attrs": [
+        {
+          "name": "namespaceId",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The KV namespace's id."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "cloudflare",
+      "subType": "queue",
+      "description": "Where a resource.queue the app sends to lives in Cloudflare Queues in this environment. Named after the resource.",
+      "whenToUse": "Each queue a Worker produces messages on.",
+      "attrs": [
+        {
+          "name": "queue",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The queue's name."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "cloudflare",
+      "subType": "r2",
+      "description": "Where a resource.bucket the app needs lives in R2 in this environment. Named after the resource.",
+      "whenToUse": "Each R2 bucket a Worker binds.",
+      "attrs": [
+        {
+          "name": "bucketName",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The R2 bucket's name."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "cloudflare",
+      "subType": "ratelimit",
+      "description": "A Workers rate limiting binding: at most @limit calls per key in @period seconds.",
+      "whenToUse": "Each rate limiter a Worker checks.",
+      "attrs": [
+        {
+          "name": "limit",
+          "valueType": "int",
+          "isArray": false,
+          "required": true,
+          "description": "The calls allowed per key in one period."
+        },
+        {
+          "name": "namespaceId",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The limiter's namespace id, unique in the account (`1001`)."
+        },
+        {
+          "name": "period",
+          "valueType": "int",
+          "isArray": false,
+          "required": true,
+          "description": "The period in seconds: 10 or 60, the only two Cloudflare accepts."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "deployment",
+      "subType": "pages",
+      "description": "An app deployed as a Cloudflare Pages site in one environment: the directory of its build.static, uploaded by `wrangler pages deploy`. Takes every deployment.base attribute; @branch is the branch the upload is recorded on (the project's production branch, or a preview branch). A Pages project has two environments, production and preview, each with its own variables: the upload of the production branch serves production and every other upload serves preview, and the secret sync writes to the environment the @branch serves. The model states the production branch with the @branch of the deployment.pages in the environment named `production`; when it states none, a deployment that reads a secret is refused.",
+      "whenToUse": "Each (app, environment) pair that ships as a Cloudflare Pages site.",
+      "attrs": [
+        {
+          "name": "app",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The app deployed: `System.app` (`Shop.web`), or `pkg::System.app` from another package. It must resolve to an app.* node (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "branch",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The repository branch whose pushes deploy here."
+        },
+        {
+          "name": "domains",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The public host names that route to the app here."
+        },
+        {
+          "name": "environment",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The environment.* node it deploys to, by name (or `pkg::name`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "project",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The Pages project's name."
+        },
+        {
+          "name": "region",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The platform's region name."
+        },
+        {
+          "name": "replicas",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "How many copies run. Absent means the platform's default."
+        },
+        {
+          "name": "secrets",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The vault the deployment's secret settings come from, by name (a vault.* of the config pack). Recorded by name only: this pack does not require the config pack."
+        },
+        {
+          "name": "tokenSecret",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The name, in the vault, of the narrow Cloudflare API token the deploy scripts use for this site (Pages Write). The scripts map it to CLOUDFLARE_API_TOKEN and unset the global-key variables. The vault entry CLOUDFLARE_ACCOUNT_ID sits beside it."
+        },
+        {
+          "name": "tokenVault",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The vault (a vault.* of the config pack, by name) whose scope for this environment holds @tokenSecret and CLOUDFLARE_ACCOUNT_ID. Absent means the @secrets vault."
+        }
+      ],
+      "children": [
+        {
+          "childType": "value",
+          "childSubType": [
+            "literal",
+            "ref"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    },
+    {
+      "type": "deployment",
+      "subType": "worker",
+      "description": "An app deployed as one Cloudflare Worker, with or without static assets, in one environment. Takes every deployment.base attribute (@app, @environment, @domains, @branch, @secrets, and value.* children) and adds the Worker's own. The facts every environment shares belong on an abstract deployment.worker that each environment's deployment extends; the environment's deployment then holds only what differs there. The wrangler.jsonc generator writes the top-level environment and one complete env block per other environment.",
+      "whenToUse": "Each (app, environment) pair that runs as a Cloudflare Worker.",
+      "attrs": [
+        {
+          "name": "app",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The app deployed: `System.app` (`Shop.web`), or `pkg::System.app` from another package. It must resolve to an app.* node (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "assetsBinding",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The binding the Worker reads its static assets through (`ASSETS`). The assets are the directory of the app's build.static. Absent: the Worker reads none itself."
+        },
+        {
+          "name": "branch",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The repository branch whose pushes deploy here."
+        },
+        {
+          "name": "compatibilityDate",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The Workers runtime compatibility date (`2026-07-01`)."
+        },
+        {
+          "name": "compatibilityFlags",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Workers runtime compatibility flags (`nodejs_compat`)."
+        },
+        {
+          "name": "domains",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The public host names that route to the app here."
+        },
+        {
+          "name": "environment",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The environment.* node it deploys to, by name (or `pkg::name`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "extra",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "A JSON object of Wrangler configuration keys this pack does not model, copied into the environment's block as written. The escape hatch: a key the generator writes itself is refused, and a key Wrangler fills into an env block that omits it (`observability`, `placement`, ...) is set in every environment or in none."
+        },
+        {
+          "name": "jobs",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The app.job nodes this Worker runs on their @schedule (its scheduled handler), as `System.job`. Each must resolve to an app.job with a @schedule; each schedule is a cron trigger."
+        },
+        {
+          "name": "main",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The Worker's entry module from the repository root (`src/index.ts`). Absent for a Worker that only serves assets."
+        },
+        {
+          "name": "notFound",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "allowedValues": [
+            "single-page-application",
+            "404-page",
+            "none"
+          ],
+          "description": "What a request that matches no asset gets: single-page-application (the index page), 404-page (the nearest 404.html) or none (a 404, or the Worker). Cloudflare's own names."
+        },
+        {
+          "name": "region",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The platform's region name."
+        },
+        {
+          "name": "replicas",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "How many copies run. Absent means the platform's default."
+        },
+        {
+          "name": "script",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The Worker's name on Cloudflare. Absent means the app's name. In an env block the name is `<top-level name>-<environment>` (Wrangler's own default) unless this deployment's @script differs from the top level's: two environments never deploy over one Worker."
+        },
+        {
+          "name": "secrets",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The vault the deployment's secret settings come from, by name (a vault.* of the config pack). Recorded by name only: this pack does not require the config pack."
+        },
+        {
+          "name": "tokenSecret",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "The name, in the vault, of the narrow Cloudflare API token the deploy scripts use for this Worker. The scripts map it to CLOUDFLARE_API_TOKEN and unset the global-key variables. The vault entry CLOUDFLARE_ACCOUNT_ID sits beside it."
+        },
+        {
+          "name": "tokenVault",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The vault (a vault.* of the config pack, by name) whose scope for this environment holds @tokenSecret and CLOUDFLARE_ACCOUNT_ID. Absent means the @secrets vault."
+        },
+        {
+          "name": "workerFirst",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "true: the Worker runs before the assets for every request. Not with @workerFirstPaths."
+        },
+        {
+          "name": "workerFirstPaths",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "The route patterns the Worker runs before the assets for (`/api/*`); every other request is served from the assets first. Not with @workerFirst."
+        },
+        {
+          "name": "workersDev",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "Whether the Worker is also served on its workers.dev subdomain. Absent leaves Wrangler's default (served)."
+        }
+      ],
+      "children": [
+        {
+          "childType": "cloudflare",
+          "childSubType": [
+            "d1",
+            "kv",
+            "r2",
+            "queue",
+            "ratelimit"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": null
+        },
+        {
+          "childType": "value",
+          "childSubType": [
+            "literal",
+            "ref"
+          ],
+          "childName": "*",
+          "min": 0,
+          "max": null
+        }
+      ]
+    }
+  ],
+  "extends": [],
+  "commonAttrs": [],
+  "defaultSubTypes": {}
+}

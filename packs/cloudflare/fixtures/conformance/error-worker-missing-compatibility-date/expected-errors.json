@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_MISSING_REQUIRED_ATTR",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.shop.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['deployment.worker']"
+      }
+    }
+  ],
+  "warnings": []
+}
