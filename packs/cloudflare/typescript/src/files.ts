@@ -20,7 +20,7 @@ export interface CloudflarePaths {
   readonly deploy: string;
   readonly syncSecrets: string;
   readonly doctor: string;
-  readonly unexpressed?: string;
+  readonly unexpressed: string;
   readonly wranglerVersion: string;
 }
 

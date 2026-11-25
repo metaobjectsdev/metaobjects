@@ -36,25 +36,16 @@ import {
   TYPE_BUILD,
   TYPE_DEPLOYMENT,
   TYPE_ENVIRONMENT,
-  TYPE_RUNTIME,
   TYPE_VALUE,
   VALUE_ATTR_LITERAL,
   VALUE_ATTR_OUTPUT,
   VALUE_ATTR_PRODUCED_BY,
   VALUE_ATTR_SETTING,
   VALUE_SUBTYPE_LITERAL,
-  BUILD_ATTR_COMMAND,
-  BUILD_ATTR_DIRECTORY,
-  BUILD_ATTR_WATCH_EXCLUDE,
-  BUILD_ATTR_WATCH_INCLUDE,
   OUTPUT_HOST,
   OUTPUT_PUBLIC_URL,
-  RUNTIME_ATTR_COMMAND,
-  RUNTIME_ATTR_DRAIN_SECONDS,
-  RUNTIME_ATTR_HEALTH_PATH,
-  RUNTIME_ATTR_HEALTH_TIMEOUT_SECONDS,
-  RUNTIME_ATTR_PORT,
-  RUNTIME_ATTR_RESTART,
+  readBuild,
+  readProcesses,
 } from "@metaobjectsdev/pack-delivery";
 import {
   APP_ATTR_NEEDS,
@@ -273,14 +264,14 @@ function settingNamed(ref: string, groups: readonly SettingsGroup[]): Setting | 
   return hits[0]!.settings.find((s) => s.setting === `${hits[0]!.key}.${field}`);
 }
 
-/** The app's build (resolving, so an inherited build counts), or undefined. */
-function readBuild(app: MetaData): CloudflareBuild | undefined {
-  // ADR-0039: resolving, so a build the app inherits through `extends` counts.
-  const b = app.children().find((c) => c.type === TYPE_BUILD);
-  if (b === undefined) return undefined;
-  const command = text(b.attr(BUILD_ATTR_COMMAND));
-  const directory = text(b.attr(BUILD_ATTR_DIRECTORY));
-  return { kind: b.subType, from: `build.${b.subType} ${b.name}`, ...(command !== undefined ? { command } : {}), ...(directory !== undefined ? { directory } : {}) };
+/** The app's build as the delivery pack reads it, with the node it comes from. */
+function cloudflareBuild(app: MetaData): CloudflareBuild | undefined {
+  const b = readBuild(app);
+  // ADR-0039: resolving, the same build node readBuild read.
+  const node = app.children().find((c) => c.type === TYPE_BUILD);
+  if (b === undefined || node === undefined) return undefined;
+  const { kind, command, directory } = b;
+  return { kind, from: `build.${kind} ${node.name}`, ...(command !== undefined ? { command } : {}), ...(directory !== undefined ? { directory } : {}) };
 }
 
 interface Context {
@@ -384,7 +375,7 @@ function readCommon(
     if (place !== undefined) token = { secret: tokenSecret, place };
   }
 
-  const build = readBuild(app);
+  const build = cloudflareBuild(app);
   const branch = text(node.attr(DEPLOYMENT_ATTR_BRANCH));
   return {
     app,
@@ -408,9 +399,9 @@ function readCommon(
 /** Facts any Cloudflare deployment leaves to something else: processes, replicas, region, watch paths, build-time settings. */
 function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Setting[], secrets: readonly string[], vault: VaultPlace | undefined): UnexpressedFact[] {
   const out: UnexpressedFact[] = [];
-  // ADR-0039: resolving, the processes the app effectively has.
-  for (const p of app.children().filter((c) => c.type === TYPE_RUNTIME)) {
-    const set = [RUNTIME_ATTR_COMMAND, RUNTIME_ATTR_PORT, RUNTIME_ATTR_HEALTH_PATH, RUNTIME_ATTR_HEALTH_TIMEOUT_SECONDS, RUNTIME_ATTR_DRAIN_SECONDS, RUNTIME_ATTR_RESTART].filter((a) => p.attr(a) !== undefined);
+  for (const p of readProcesses(app)) {
+    // Each attribute the process sets: readProcesses names its fields after them.
+    const set = Object.keys(p).filter((k) => k !== "name");
     if (set.length > 0) {
       out.push({
         fact: `runtime.process \`${p.name}\` (${set.map((a) => `@${a}`).join(", ")})`,
@@ -422,8 +413,8 @@ function commonUnexpressed(node: MetaData, app: MetaData, settings: readonly Set
   if (replicas !== undefined) out.push({ fact: `@replicas ${replicas}`, how: "Cloudflare runs a Worker in every location on demand; there is no replica count to set." });
   const region = text(node.attr(DEPLOYMENT_ATTR_REGION));
   if (region !== undefined) out.push({ fact: `@region \`${region}\``, how: "Cloudflare has no region for a Worker or a Pages site. Smart Placement, if wanted, goes in @extra as `placement`." });
-  const b = app.children().find((c) => c.type === TYPE_BUILD);
-  const watch = b === undefined ? [] : [...refList(b, BUILD_ATTR_WATCH_INCLUDE), ...refList(b, BUILD_ATTR_WATCH_EXCLUDE).map((g) => `!${g}`)];
+  const b = readBuild(app);
+  const watch = b === undefined ? [] : [...b.watchInclude, ...b.watchExclude.map((g) => `!${g}`)];
   if (watch.length > 0) {
     out.push({ fact: `Watch paths ${watch.map((g) => `\`${g}\``).join(", ")}`, how: "Deploys run from deploy/cloudflare/deploy.sh, not on a push, so nothing watches paths. Workers Builds and Pages Git integration keep their build watch paths in the dashboard." });
   }
@@ -708,33 +699,35 @@ export function readCloudflare(
     .filter((d): d is CloudflareDeployment => d !== undefined);
 
   const envs = deployments.map((d) => d.environment);
-  let topLevel = opts.topLevel ?? (envs.length === 1 ? envs[0] : envs.includes(DEFAULT_TOP_LEVEL) ? DEFAULT_TOP_LEVEL : undefined);
+  const topLevel = opts.topLevel ?? (envs.length === 1 ? envs[0] : envs.includes(DEFAULT_TOP_LEVEL) ? DEFAULT_TOP_LEVEL : undefined);
   if (topLevel === undefined) {
     // Only when some deployment read clean: otherwise the problems above are the whole story.
     if (deployments.length > 0) problems.push(`${appKeyOf(app)} deploys to ${envs.join(", ")}, and none is named ${DEFAULT_TOP_LEVEL}: pass { topLevel } to the generators to say which environment \`wrangler deploy\` with no --env deploys`);
-    topLevel = "";
   } else if (deployments.length > 0 && !envs.includes(topLevel)) {
     problems.push(`{ topLevel: "${topLevel}" } names an environment ${appKeyOf(app)} is not deployed to (${envs.join(", ")})`);
   }
-  if (kind === DEPLOYMENT_SUBTYPE_WORKER && topLevel !== "") {
+  if (kind === DEPLOYMENT_SUBTYPE_WORKER) {
+    const workers = deployments as WorkerDeployment[];
     // Two environments must not deploy over one Worker: the env-block names come from the top level's.
-    const top = deployments.find((d) => d.environment === topLevel) as WorkerDeployment | undefined;
-    const seen = new Map<string, string>();
-    for (const d of deployments as WorkerDeployment[]) {
-      const name = top === undefined || d === top ? d.script : workerName(d, top);
-      const other = seen.get(name);
-      if (other !== undefined) problems.push(`deployment.worker ${d.key}: deploys Worker "${name}", as ${other} does; give one a different @script`);
-      else seen.set(name, d.key);
+    const top = topLevel === undefined ? undefined : workers.find((d) => d.environment === topLevel);
+    if (top !== undefined) {
+      const seen = new Map<string, string>();
+      for (const d of workers) {
+        const name = d === top ? d.script : workerName(d, top);
+        const other = seen.get(name);
+        if (other !== undefined) problems.push(`deployment.worker ${d.key}: deploys Worker "${name}", as ${other} does; give one a different @script`);
+        else seen.set(name, d.key);
+      }
     }
     // Wrangler inherits these into an env block that omits them: so every environment sets each, or none does.
     const inherited: [string, (d: WorkerDeployment) => unknown][] = [["@main", (d) => d.main], ["@workersDev", (d) => d.workersDev], ["assets (the app's build.static)", (d) => d.assets]];
     for (const [what, get] of inherited) {
-      const set = (deployments as WorkerDeployment[]).filter((d) => get(d) !== undefined);
-      if (set.length > 0 && set.length < deployments.length)
-        problems.push(`${appKeyOf(app)}: ${what} is set in ${set.map((d) => d.environment).join(", ")} and not in ${(deployments as WorkerDeployment[]).filter((d) => get(d) === undefined).map((d) => d.environment).join(", ")}; Wrangler would fill the gap from the top level, so set it in every environment or none`);
+      const unset = workers.filter((d) => get(d) === undefined);
+      if (unset.length > 0 && unset.length < workers.length)
+        problems.push(`${appKeyOf(app)}: ${what} is set in ${workers.filter((d) => get(d) !== undefined).map((d) => d.environment).join(", ")} and not in ${unset.map((d) => d.environment).join(", ")}; Wrangler would fill the gap from the top level, so set it in every environment or none`);
     }
   }
-  if (problems.length > 0) throw new CloudflareModelError(problems);
+  if (problems.length > 0 || topLevel === undefined) throw new CloudflareModelError(problems);
   const ordered = [...deployments.filter((d) => d.environment === topLevel), ...deployments.filter((d) => d.environment !== topLevel)];
   return { name: app.name, appKey: appKeyOf(app), kind, deployments: ordered, topLevel };
 }

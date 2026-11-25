@@ -5,7 +5,7 @@
  * here only.
  */
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { RESOURCE_ATTR_ENGINE, RESOURCE_ATTR_MANAGED_BY } from "@metaobjectsdev/pack-systems";
+import { MANAGED_BY_EXTERNAL, RESOURCE_ATTR_ENGINE, RESOURCE_ATTR_MANAGED_BY } from "@metaobjectsdev/pack-systems";
 import { BINDING_D1, BINDING_KV, BINDING_QUEUE, BINDING_R2 } from "./constants.js";
 
 /** The resource.* subtype each binding places. A rate limiter places none. */
@@ -15,9 +15,6 @@ const BINDING_RESOURCE: Readonly<Record<string, string>> = {
   [BINDING_R2]: "bucket",
   [BINDING_QUEUE]: "queue",
 };
-
-/** `resource.* @managedBy` value for a resource that lives outside the platform. */
-const MANAGED_BY_EXTERNAL = "external";
 
 /** The resource kind a binding subtype places, or undefined for a binding that places none. */
 export function resourceKindOf(bindingKind: string): string | undefined {

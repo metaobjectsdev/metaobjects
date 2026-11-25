@@ -36,7 +36,11 @@ function entry(key: string, value: Json, comment?: string): Entry {
 }
 
 function obj(...entries: (Entry | undefined)[]): Obj {
-  return new Obj(entries.filter((e): e is Entry => e !== undefined));
+  const kept = entries.filter((e): e is Entry => e !== undefined);
+  // A key written twice would parse as its last value, silently: refuse it here instead.
+  const dup = kept.find((e, i) => kept.findIndex((x) => x.key === e.key) !== i);
+  if (dup !== undefined) throw new Error(`wrangler.jsonc: key "${dup.key}" written twice`);
+  return new Obj(kept);
 }
 
 function isScalar(v: Json): v is string | number | boolean | null {
@@ -95,6 +99,11 @@ function environmentEntries(d: WorkerDeployment, name: string, configPath: strin
   const push = (key: string, value: Json, comment?: string): void => {
     out.push(entry(key, value, comment));
   };
+  /** One binding list, its comment naming each binding's node. */
+  const pushBindings = <K extends CloudflareBinding["kind"]>(key: string, kind: K, one: (b: Extract<CloudflareBinding, { kind: K }>) => Obj, wrap: (list: Obj[]) => Json = (list) => list): void => {
+    const bs = bindingsOf(d, kind);
+    push(key, wrap(bs.map(one)), bs.length === 0 ? `no cloudflare.${kind} binding` : bs.map((b) => b.from).join("\n"));
+  };
   push("name", name, `deployment.worker ${d.key}: environment ${d.environment}`);
   if (d.main !== undefined) push("main", fromConfig(configPath, d.main), "@main");
   push("compatibility_date", d.compatibilityDate, "@compatibilityDate");
@@ -125,35 +134,20 @@ function environmentEntries(d: WorkerDeployment, name: string, configPath: strin
     obj(entry("required", [...d.secrets])),
     "the app's @secret runtime settings: values from the vault, copied by deploy/cloudflare/sync-secrets.sh",
   );
-  push(
-    "d1_databases",
-    bindingsOf(d, "d1").map((b) =>
-      obj(
-        entry("binding", b.binding),
-        entry("database_name", b.databaseName),
-        b.databaseId === undefined ? undefined : entry("database_id", b.databaseId),
-        b.migrationsDir === undefined ? undefined : entry("migrations_dir", fromConfig(configPath, b.migrationsDir)),
-      ),
+  pushBindings("d1_databases", "d1", (b) =>
+    obj(
+      entry("binding", b.binding),
+      entry("database_name", b.databaseName),
+      b.databaseId === undefined ? undefined : entry("database_id", b.databaseId),
+      b.migrationsDir === undefined ? undefined : entry("migrations_dir", fromConfig(configPath, b.migrationsDir)),
     ),
-    comment(bindingsOf(d, "d1"), "d1"),
   );
-  push("kv_namespaces", bindingsOf(d, "kv").map((b) => obj(entry("binding", b.binding), entry("id", b.namespaceId))), comment(bindingsOf(d, "kv"), "kv"));
-  push("r2_buckets", bindingsOf(d, "r2").map((b) => obj(entry("binding", b.binding), entry("bucket_name", b.bucketName))), comment(bindingsOf(d, "r2"), "r2"));
-  push("queues", obj(entry("producers", bindingsOf(d, "queue").map((b) => obj(entry("binding", b.binding), entry("queue", b.queue))))), comment(bindingsOf(d, "queue"), "queue"));
-  push(
-    "ratelimits",
-    bindingsOf(d, "ratelimit").map((b) => obj(entry("name", b.binding), entry("namespace_id", b.namespaceId), entry("simple", obj(entry("limit", b.limit), entry("period", b.period))))),
-    comment(bindingsOf(d, "ratelimit"), "ratelimit"),
-  );
-  if (d.extra !== undefined) {
-    const keys = Object.keys(d.extra);
-    keys.forEach((k, i) => push(k, fromPlain(d.extra![k]), i === 0 ? "@extra: written as the model gives it" : undefined));
-  }
+  pushBindings("kv_namespaces", "kv", (b) => obj(entry("binding", b.binding), entry("id", b.namespaceId)));
+  pushBindings("r2_buckets", "r2", (b) => obj(entry("binding", b.binding), entry("bucket_name", b.bucketName)));
+  pushBindings("queues", "queue", (b) => obj(entry("binding", b.binding), entry("queue", b.queue)), (list) => obj(entry("producers", list)));
+  pushBindings("ratelimits", "ratelimit", (b) => obj(entry("name", b.binding), entry("namespace_id", b.namespaceId), entry("simple", obj(entry("limit", b.limit), entry("period", b.period)))));
+  Object.entries(d.extra ?? {}).forEach(([k, v], i) => push(k, fromPlain(v), i === 0 ? "@extra: written as the model gives it" : undefined));
   return out;
-}
-
-function comment(bs: readonly CloudflareBinding[], kind: string): string {
-  return bs.length === 0 ? `no cloudflare.${kind} binding` : bs.map((b) => b.from).join("\n");
 }
 
 /** An `@extra` value (plain JSON) as a writer value. */

@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { editFixture, emit, loadFixture, loadModels } from "./model.js";
+import { editFixture, emit, emitFixture, loadModels } from "./model.js";
 
 const GOLDEN = join(import.meta.dir, "golden");
 /** `UPDATE_GOLDEN=1 bun test` rewrites the golden files from the generators. */
@@ -34,7 +34,7 @@ test("a build-time value with shell syntax in it is exported as written, and onl
 
 describe.each(SCENARIOS)("%s", (scenario) => {
   test("the generators write the golden files, and only those", async () => {
-    const files = await emit(await loadFixture(scenario));
+    const files = await emitFixture(scenario);
     const golden = join(GOLDEN, scenario);
     if (UPDATE) {
       rmSync(golden, { recursive: true, force: true });
@@ -50,7 +50,7 @@ describe.each(SCENARIOS)("%s", (scenario) => {
   });
 
   test("every script parses, and passes shellcheck where it is installed", async () => {
-    const files = await emit(await loadFixture(scenario));
+    const files = await emitFixture(scenario);
     const dir = mkdtempSync(join(process.env.DEV_SCRATCH ?? tmpdir(), "pack-cloudflare-sh-"));
     try {
       for (const [path, content] of files) {

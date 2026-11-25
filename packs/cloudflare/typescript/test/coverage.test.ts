@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import Ajv from "ajv";
 import { parseGeneratedJsonc } from "../src/index.js";
-import { emit, loadFixture } from "./model.js";
+import { emitFixture } from "./model.js";
 
 type Plain = string | number | boolean | null | Plain[] | { [k: string]: Plain };
 
@@ -108,9 +108,7 @@ const schema = JSON.parse(readFileSync(join(import.meta.dir, "wrangler-schema/co
 // strict: false — the schema carries Wrangler's own `allowTrailingCommas` keyword.
 const validate = new Ajv({ strict: false, allErrors: true }).compile(schema);
 
-async function generated(scenario: string): Promise<Map<string, string>> {
-  return emit(await loadFixture(scenario));
-}
+const generated = emitFixture;
 
 describe("a Worker with assets, D1 and KV (wrangler.jsonc)", () => {
   test("every fact of the reference is at the top level of the generated file", async () => {

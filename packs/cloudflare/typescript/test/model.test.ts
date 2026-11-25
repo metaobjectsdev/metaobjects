@@ -2,7 +2,7 @@
 // node, and every problem in a model is reported at once.
 import { describe, expect, test } from "bun:test";
 import { CloudflareModelError, parseGeneratedJsonc, readCloudflare, type WorkerDeployment } from "../src/index.js";
-import { editFixture, emit, loadFixture, loadModels, type Source } from "./model.js";
+import { editFixture, emit, loadModels, type Source } from "./model.js";
 
 type Node = Record<string, Record<string, unknown>>;
 type Root = { "metadata.root": { children: Node[] } };
@@ -198,8 +198,4 @@ describe("refusals", () => {
     ]);
     expect((await read(both, { app: "Trips.web" })).name).toBe("web");
   });
-});
-
-test("loadFixture loads every success scenario", async () => {
-  for (const s of [ENVS, TRIPS, "cloudflare-pages-site"]) expect((await loadFixture(s)).children().length).toBeGreaterThan(0);
 });

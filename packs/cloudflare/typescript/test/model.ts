@@ -10,7 +10,7 @@ import { provider as deliveryProvider } from "@metaobjectsdev/pack-delivery";
 import { provider as systemsProvider } from "@metaobjectsdev/pack-systems";
 import { cloudflareFiles, provider as cloudflareProvider, type CloudflareGeneratorOptions } from "../src/index.js";
 
-export const CORPUS = join(import.meta.dir, "../../fixtures/conformance");
+const CORPUS = join(import.meta.dir, "../../fixtures/conformance");
 
 export interface Source {
   readonly id: string;
@@ -57,6 +57,15 @@ export async function emit(root: MetaRoot, opts: CloudflareGeneratorOptions = {}
 }
 
 /** A fixture's input with `edit` applied to its one file's JSON: for the refusal tests. */
+const emitted = new Map<string, Promise<Map<string, string>>>();
+
+/** A fixture's generated files with the default options, loaded and emitted once per test file. */
+export function emitFixture(scenario: string): Promise<Map<string, string>> {
+  let files = emitted.get(scenario);
+  if (files === undefined) emitted.set(scenario, (files = loadFixture(scenario).then((root) => emit(root))));
+  return files;
+}
+
 export function editFixture(scenario: string, edit: (root: { "metadata.root": { children: Record<string, Record<string, unknown>>[] } }) => void): Source[] {
   const [only, ...rest] = fixtureSources(scenario);
   if (only === undefined || rest.length > 0) throw new Error(`${scenario}: editFixture needs a fixture with one input file`);
