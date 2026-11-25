@@ -314,17 +314,18 @@ const PATH_DEPENDENCY_NOT_INPUTS: &[&str] = &["target", ".git"];
 fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
     let engine: HashSet<PathBuf> = std::env::split_paths(ENGINE_CRATE_DIRS).collect();
     let mut entries = Vec::new();
-    // Every manifest queued so far, by canonical path: each is read and scanned once.
+    // Every manifest queued so far, by canonical path: each is scanned once.
     let mut queued: HashSet<PathBuf> = HashSet::new();
+    // Every crate directory already hashed: a crate is one entry however it is reached.
+    let mut hashed: HashSet<PathBuf> = HashSet::new();
     let mut queue = Vec::new();
-    let mut enqueue = |manifest: PathBuf, queue: &mut Vec<(PathBuf, String)>| -> Option<String> {
+    let mut enqueue = |manifest: PathBuf, queue: &mut Vec<(PathBuf, String)>| -> String {
         let manifest = std::fs::canonicalize(&manifest).unwrap_or(manifest);
-        if !queued.insert(manifest.clone()) {
-            return None;
-        }
         let text = std::fs::read_to_string(&manifest).unwrap_or_default();
-        queue.push((manifest, text.clone()));
-        Some(text)
+        if queued.insert(manifest.clone()) {
+            queue.push((manifest, text.clone()));
+        }
+        text
     };
     enqueue(owned_manifest.to_path_buf(), &mut queue);
     while let Some((manifest, text)) = queue.pop() {
@@ -339,12 +340,10 @@ fn path_dependency_entries(owned_manifest: &Path) -> Vec<InputEntry> {
         for rel in deps.paths {
             let dir = base.join(&rel);
             let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-            if engine.contains(&dir) {
+            if engine.contains(&dir) || !hashed.insert(dir.clone()) {
                 continue;
             }
-            let Some(dep_text) = enqueue(dir.join("Cargo.toml"), &mut queue) else {
-                continue;
-            };
+            let dep_text = enqueue(dir.join("Cargo.toml"), &mut queue);
             let name = manifest_package_name(&dep_text).unwrap_or(rel);
             // A crate with no manifest: cargo will fail on it; until it exists, its absence
             // is the input.
@@ -1084,6 +1083,35 @@ mod tests {
         let entries = path_dependency_entries(&manifest);
         std::fs::remove_dir_all(&dir).unwrap();
         assert_eq!(entries, Vec::new());
+    }
+
+    #[test]
+    fn a_path_dependency_on_the_workspace_root_it_inherits_from_is_still_hashed() {
+        let scratch =
+            std::env::var_os("DEV_SCRATCH").map_or_else(std::env::temp_dir, PathBuf::from);
+        let dir = scratch.join(format!("mo-engine-ws-root-dep-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("codegen")).unwrap();
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"app\"\n\n[workspace]\nmembers = [\"codegen\"]\n\n\
+             [workspace.dependencies]\nserde = \"1\"\n",
+        )
+        .unwrap();
+        let manifest = dir.join("codegen/Cargo.toml");
+        std::fs::write(
+            &manifest,
+            "[package]\nname = \"codegen\"\n\n[dependencies]\nserde.workspace = true\napp = { path = \"..\" }\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("src/lib.rs"), "// v1\n").unwrap();
+        let before = path_dependency_entries(&manifest);
+        std::fs::write(dir.join("src/lib.rs"), "// v2\n").unwrap();
+        let after = path_dependency_entries(&manifest);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(before.len(), 1);
+        assert_eq!(after.len(), 1);
+        assert_ne!(before, after);
     }
 
     #[test]
