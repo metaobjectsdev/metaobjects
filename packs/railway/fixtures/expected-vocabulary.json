@@ -22,6 +22,13 @@
           "description": "The repository branch whose pushes deploy here."
         },
         {
+          "name": "checkSuites",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "Whether a push waits for the repository's GitHub check suites to pass before Railway deploys it. Absent means Railway's own setting is left as it is."
+        },
+        {
           "name": "domains",
           "valueType": "string",
           "isArray": true,
@@ -34,6 +41,13 @@
           "isArray": false,
           "required": true,
           "description": "The environment.* node it deploys to, by name (or `pkg::name`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)."
+        },
+        {
+          "name": "image",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The container image Railway runs instead of building from a repository (`ghcr.io/acme/worker:1.2.3`)."
         },
         {
           "name": "project",
@@ -55,6 +69,13 @@
           "isArray": false,
           "required": false,
           "description": "How many copies run. Absent means the platform's default."
+        },
+        {
+          "name": "repo",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The GitHub repository Railway builds the service from, as `owner/name`. A deployment names a @repo or an @image: the generated file must declare the source, because a plan of a service with none disconnects it."
         },
         {
           "name": "secrets",

@@ -71,7 +71,8 @@ SQLite so it runs with nothing else installed; the same generated code runs on P
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MetaObjects.Codegen" Version="1.2.0" />
+    <!-- the helpers the generated routes call; before 1.3.0 they were in MetaObjects.Codegen -->
+    <PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
   </ItemGroup>
   <ItemGroup>
@@ -936,9 +937,13 @@ is for samples; on Postgres create the tables with the Node CLI's migrations
 
 EF Core does the rest — the generated entities and `AppDbContext` are plain EF Core with
 no MetaObjects types in them. Note the one exception: generated **routes** emit
-`using MetaObjects.Codegen.Runtime;` for the shared filter/sort helpers, so a project that
-generates routes with the packaged generator references `MetaObjects.Codegen` at runtime.
-Entities-and-DbContext-only projects do not.
+`using MetaObjects.AspNetCore;` for the shared filter/sort helpers, so a project that
+generates routes with the packaged generator references the `MetaObjects.AspNetCore` package
+(`<PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" />`). Entities-and-DbContext-only
+projects do not. `MetaObjects.Codegen` and the `dotnet meta` tool carry no EF Core or ASP.NET Core
+dependency; before 1.3.0 the helpers lived in `MetaObjects.Codegen` under
+`MetaObjects.Codegen.Runtime`, and `dotnet meta gen` / `verify` warn when generated routes import
+`MetaObjects.AspNetCore` and the project compiling them does not reference it.
 
 **Owning the routes, helpers included.** `dotnet meta eject routes` copies the routes
 generator into `codegen/generators/` AND the helper source its output calls into
@@ -947,8 +952,8 @@ generator into `codegen/generators/` AND the helper source its output calls into
 `Iso8601TimestampConverter`, each under the namespace `Codegen.Runtime`. The owned
 generator's output imports `Codegen.Runtime` instead of the package. Compile the folder into
 your app (`<Compile Include="../codegen/runtime/**/*.cs" />`) and the generated routes need
-no `MetaObjects.Codegen` reference; a fix to the filter parser is then an edit in your repo,
-not a wait for a release. What stays in the package is core: `ExtractObject` (the reply
+no `MetaObjects.AspNetCore` reference; a fix to the filter parser is then an edit in your repo,
+not a wait for a release. What stays in `MetaObjects.Codegen` is core: `ExtractObject` (the reply
 parser the prompt tier calls) and `M2MResolver` (metadata-driven M:N traversal), plus the
 loader, registry, render and verify. `dotnet meta gen --list` reports the copy `identical`
 or per-file `DIFFERS`, `verify --codegen` does not treat it as drift, and
@@ -1240,8 +1245,9 @@ Today's `RoutesGenerator` honours pagination (`?limit`/`?offset`), sort
 always sends. Filter operators (`eq` / `ne` / `gt` / `gte` / `lt` / `lte`
 / `in` / `like` / `isNull`) per [`api-contract.md`](../features/api-contract.md)
 ship too — the generated `<Entity>FilterAllowlist` (`FilterAllowlistGenerator`)
-feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
-directly into the generated list handler. A read-only projection
+feeds `ListQueryParser.Parse` + `EfCoreFilterDispatch.Apply`, both wired
+directly into the generated list handler; the REST-standard query (`?search`, `filter[or]` / `filter[and]`,
+the named refusals) is read the same way. A read-only projection
 (`source.rdb @kind: view`) and a view-backed report get the same filter and sort
 on their list route, against an allowlist of their own fields.
 
@@ -1252,19 +1258,16 @@ the route binds the body (the app's System.Text.Json options). What each setting
 [api-contract](../features/api-contract.md) ([page size](../features/api-contract.md#sort--pagination), [unknown fields](../features/api-contract.md#unknown-request-fields-apiunknownfields)).
 `dotnet meta init` writes `.metaobjects/config.json` with the same new-project settings as `meta init`:
 `api.pagination` 50/1000, `api.unknownFields: reject`, `verify.handEdits: fail` and
-`migrate.foreignKeyIndexes: true`; an existing config is left alone. `dotnet meta verify --codegen` prints a
-non-failing advisory (`unbounded-list-pages`, stderr, exit code unchanged) when the run includes the routes
-generator and the project sets no `api.pagination`; plain `verify` says nothing, because only `--codegen`
-runs the generator list.
+`migrate.foreignKeyIndexes: true`; an existing config is left alone. A project that sets no `api.pagination`
+still pages: a list with no `limit` answers the first 50 rows (`ApiSettings.DefaultPageLimit`, the default of
+every port) and an explicit `limit` is served as asked, with no maximum. A bound that is not a non-negative
+integer is `400 pagination.invalid_value` with or without the setting.
 
 **Known gaps** (full list with workarounds in
 [KNOWN_GAPS.md](https://github.com/metaobjectsdev/metaobjects/blob/main/server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md)):
-no `filter[or]` / `filter[and]` boolean grouping and a single sort key only (both outside the
-cross-port contract today); the `<Entity>View` / `<Entity>Views` names are reserved for a
+a single sort key only (`G3`); the sort set is wider than the contract's sortable set (`G10`); the `<Entity>View` / `<Entity>Views` names are reserved for a
 write-through entity's generated read model; an `EmitMappedClass` override does not reach that
-read model; M:N traversal on a write-through entity is not routed through the replica view; the
-ordered-comparison filter fallback in `EfCoreFilterDispatch` needs a hand-written typed
-dispatcher for some column types; there is no metadata-driven runtime tier (EF Core output is
+read model; M:N traversal on a write-through entity is not routed through the replica view; there is no metadata-driven runtime tier (EF Core output is
 generated code), and no `migrate` surface (EF Core Migrations, or the Node `meta migrate` reference helper).
 
 ## Capability snapshot

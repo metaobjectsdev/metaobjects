@@ -20,7 +20,9 @@ public sealed record ApiRequest(
     // Report export (docs/features/api-contract.md, "Report export"): headers SENT with the request,
     // and `expect.headers` — lower-cased name -> exact value, null = the header is absent.
     IReadOnlyDictionary<string, string>? Headers = null,
-    IReadOnlyDictionary<string, string?>? ExpectHeaders = null);
+    IReadOnlyDictionary<string, string?>? ExpectHeaders = null,
+    // `rawBody`: sent byte-for-byte as application/json (how a scenario sends a body that is not JSON).
+    string? RawBody = null);
 
 /// <summary>A scenario file (one <c>*.yaml</c> under <c>scenarios/</c>).</summary>
 public sealed record ApiScenario(
@@ -151,7 +153,9 @@ public static class ApiContractScenarioLoader
             ExpectStatus: status,
             ExpectBody: expectBody,
             Headers: sentHeaders,
-            ExpectHeaders: expectHeaders);
+            ExpectHeaders: expectHeaders,
+            RawBody: r.TryGetValue("rawBody", out var raw) ? raw as string
+                ?? throw new InvalidOperationException($"{yamlPath}: 'rawBody' must be a string") : null);
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
 
 > Part of the `metaobjects-authoring` skill, "Your own vocabulary". Read it when the project
 > needs a subtype or an attribute the core does not ship, and its C# tools load the metadata.
+> Shape the vocabulary first: `semantic-modelling.md`.
 
 A provider is a public class implementing `IMetaDataTypeProvider`, with a public parameterless
 constructor: an `Id`, the provider ids it depends on, and a `RegisterTypes(registry)` body that

@@ -206,31 +206,52 @@ public sealed class VerifySubverbTests : IDisposable
     }
 
     [Fact]
-    public void Codegen_with_routes_and_no_pagination_advises_and_keeps_exit0()
+    public void Codegen_with_routes_and_no_pagination_has_no_page_size_advisory()
     {
+        // A project without api.pagination pages at 50 (ApiSettings.DefaultPageLimit), so the retired
+        // unbounded-list-pages advisory is never printed.
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
         GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
 
         var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
         Assert.Equal(0, r.ExitCode);
-        Assert.Contains(r.Advisories, a => a.Contains("unbounded-list-pages"));
+        Assert.DoesNotContain(r.Advisories, a => a.Contains("unbounded-list-pages"));
     }
 
     [Fact]
-    public void Codegen_with_pagination_set_has_no_advisory()
+    public void Codegen_routes_in_a_project_without_the_helper_package_warn_and_keep_exit0()
     {
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        File.WriteAllText(Path.Combine(_tmp, "App.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk.Web">
+              <ItemGroup><PackageReference Include="MetaObjects.Codegen" Version="1.2.3" /></ItemGroup>
+            </Project>
+            """);
+        var gen = GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
+        var genWarning = Assert.Single(gen.Result!.Warnings, w => w.Contains(HelperRuntime.PackageId));
+        // The allowlist (FilterFieldRule, SortFieldRule) and the routes both import it.
+        Assert.Contains("SubscriberFilterAllowlist.g.cs and 1 other generated file(s) import MetaObjects.AspNetCore", genWarning);
+
+        var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
+        Assert.Equal(0, r.ExitCode);
+        var warning = Assert.Single(r.Advisories, a => a.Contains(HelperRuntime.PackageId));
+        Assert.Contains("App.csproj", warning);
+        Assert.Contains("<PackageReference Include=\"MetaObjects.AspNetCore\"", warning);
+    }
+
+    [Fact]
+    public void Codegen_routes_in_a_project_that_references_the_helper_package_do_not_warn()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EntityMetadata);
+        File.WriteAllText(Path.Combine(_tmp, "App.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk.Web">
+              <ItemGroup><PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" /></ItemGroup>
+            </Project>
+            """);
         GenSuite.Run(MetaDir, OutDir, "Acme.Generated");
 
-        var opts = TemplatesOpts(templates: false, codegen: true);
-        var r = VerifyCommand.RunSubverbs(new VerifyCommand.Options
-        {
-            MetadataDir = opts.MetadataDir, Generators = opts.Generators, TemplatesRoot = opts.TemplatesRoot,
-            OutDir = opts.OutDir, Namespace = opts.Namespace, Codegen = true, Templates = false,
-            Api = new ApiSettings(new ApiPagination(50, 1000)),
-        });
-        // (Exit is not asserted: the committed output was generated without a page size, so it drifts.)
-        Assert.Empty(r.Advisories);
+        var r = VerifyCommand.RunSubverbs(TemplatesOpts(templates: false, codegen: true));
+        Assert.DoesNotContain(r.Advisories, a => a.Contains(HelperRuntime.PackageId));
     }
 
     [Fact]

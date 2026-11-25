@@ -133,7 +133,7 @@ public static class EjectableGenerators
     /// <para>
     /// The SECOND edit applies only to a generator whose output imports the helper
     /// runtime (<see cref="HelperRuntime.UsedBy"/> — today, routes): its
-    /// <c>HelperRuntimeNamespace</c> constant moves from <c>MetaObjects.Codegen.Runtime</c>
+    /// <c>HelperRuntimeNamespace</c> constant moves from <c>MetaObjects.AspNetCore</c>
     /// to <c>Codegen.Runtime</c>, the owned copy eject writes beside it
     /// (<see cref="HelperRuntime"/>). Every other line is untouched.
     /// </para>

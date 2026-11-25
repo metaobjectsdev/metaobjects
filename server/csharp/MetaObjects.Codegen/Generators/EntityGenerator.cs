@@ -1722,7 +1722,7 @@ public class EntityGenerator : IGenerator
     // #234 — true iff the entity has any strict field.uri / field.inet (needs MetaNetValidation).
     private static bool HasStrictNetField(MetaObject entity) => entity.Fields().Any(ContractMembers.IsStrictNetField);
 
-    // ADR-0019 Amendment 1 — the decimal wire form. This text is the Runtime/DecimalWire.cs
+    // ADR-0019 Amendment 1 — the decimal wire form. This text is the MetaObjects.AspNetCore/DecimalWire.cs
     // source with its namespace swapped in; DecimalWireTests gates the two byte-for-byte.
     // It lives HERE (not read from the HelperRuntime resource) so an ejected EntityGenerator stays
     // self-contained, the way the MetaNetValidation text is. The text is fixed code, so it goes in
@@ -2063,7 +2063,7 @@ public static class DecimalWire
     }
 
     // field.duration — the duration wire form (fixtures/duration-wire/). This text is the
-    // Runtime/DurationWire.cs source with its namespace as __NS__; DurationWireTests gates the two
+    // MetaObjects.AspNetCore/DurationWire.cs source with its namespace as __NS__; DurationWireTests gates the two
     // byte-for-byte after the namespace swap. It lives HERE (not read from the HelperRuntime
     // resource) so an ejected EntityGenerator stays self-contained, the way DecimalWire's is.
 

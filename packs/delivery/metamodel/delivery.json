@@ -14,7 +14,8 @@
       "subType": "base",
       "description": "Abstract build base: the attributes every build.* shares. A build is a child of an app and says how its deployable is made, the same in every environment. Not authored directly: a `build.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED).",
       "children": [
-        { "type": "attr", "subType": "string", "name": "watchExclude", "isArray": true, "min": 0, "max": 1, "description": "Repository path globs whose change must not start a new build (`docs/**`, `*.md`). A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists." }
+        { "type": "attr", "subType": "string", "name": "watchInclude", "isArray": true, "min": 0, "max": 1, "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists." },
+        { "type": "attr", "subType": "string", "name": "watchExclude", "isArray": true, "min": 0, "max": 1, "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists." }
       ]
     },
     {
@@ -104,7 +105,8 @@
       "whenToUse": "A setting whose value only the platform knows once the resource or app exists.",
       "children": [
         { "type": "attr", "subType": "string", "name": "producedBy", "min": 1, "max": 1, "description": "The node that produces the value: a resource.* or app.*, as `System.child` (`Shop.db`, or `pkg::System.child`). It must resolve (ERR_DELIVERY_UNRESOLVED_REF)." },
-        { "type": "attr", "subType": "string", "name": "output", "min": 1, "max": 1, "allowedValues": ["url", "host", "port", "user", "password", "privateUrl", "publicUrl"], "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply." }
+        { "type": "attr", "subType": "string", "name": "output", "min": 1, "max": 1, "allowedValues": ["url", "host", "port", "user", "password", "privateUrl", "publicUrl"], "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply." },
+        { "type": "attr", "subType": "string", "name": "path", "min": 0, "max": 1, "description": "A path appended to a URL output (`/api`): the address of one context of the producing app. Only on a url, privateUrl or publicUrl output; a platform generator refuses it on another." }
       ]
     }
   ],

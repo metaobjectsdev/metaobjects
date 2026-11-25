@@ -3,6 +3,7 @@
 > Part of the `metaobjects-authoring` skill, "Your own vocabulary". Read it when the project
 > needs a subtype or an attribute the core does not ship, and its Kotlin tools load the
 > metadata.
+> Shape the vocabulary first: `semantic-modelling.md`.
 
 Kotlin runs on the JVM registry, so a provider is a class implementing
 `com.metaobjects.registry.MetaDataTypeProvider`, written in Kotlin: a provider id, the JVM

@@ -9,7 +9,7 @@ that is not part of core, built and versioned as if it were its own repository
 | [`config`](config/README.md) | settings groups, `@secret` / `@envName` / `@phase`, vaults (Infisical) and their scopes; `.env.example`, key manifest and `.keys-axi.toml` generators | core | TypeScript |
 | [`systems`](systems/README.md) | systems, apps (service, client, job), resources | core | TypeScript |
 | [`delivery`](delivery/README.md) | environments, builds, runtime processes, deployments, value bindings | `systems` | TypeScript |
-| [`railway`](railway/README.md) | `deployment.railway` (vocabulary only; the emitter is later work) | `delivery` | TypeScript |
+| [`railway`](railway/README.md) | `deployment.railway`; `.railway/railway.ts` (Railway Infrastructure as Code), unexpressed-facts list, secret sync, deploy and doctor scripts and a deploy skill | `delivery`, `config` | TypeScript |
 | [`cloudflare`](cloudflare/README.md) | `deployment.worker`, `deployment.pages` and a Worker's D1, KV, R2, queue and rate limiting bindings; `wrangler.jsonc`, token-scoped deploy, secret sync and doctor script generators | `delivery`, `config` | TypeScript |
 
 An independent pack is not in the default bundle. A project opts in by naming its provider. It is

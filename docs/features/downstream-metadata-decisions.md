@@ -140,6 +140,8 @@ your metadata.
 
 ## See also
 
+- [semantic-modelling.md](semantic-modelling.md) — how to shape the vocabulary once you have
+  decided to add it: type, subtype, generator and configuration.
 - [extending-with-providers.md](extending-with-providers.md) — the mechanics (provider
   contract, `register`/`extend`, wiring, error codes, the decision table).
 - [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md)

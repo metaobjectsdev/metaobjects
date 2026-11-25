@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>MetaObjects.AspNetCore</RootNamespace>
+    <PackageId>MetaObjects.AspNetCore</PackageId>
+    <Title>MetaObjects.AspNetCore</Title>
+    <Description>The helper runtime the routes MetaObjects generates for ASP.NET Core call: the filter parser, the EF Core filter dispatch, validation and constraint-error mapping, and the decimal, duration and timestamp wire forms. Your app references it; the MetaObjects.Codegen package and the dotnet meta tool do not. `dotnet meta eject routes` copies this source into your repository to own.</Description>
+  </PropertyGroup>
+  <!-- The helper set is CLOSED: it compiles against ASP.NET Core + EF Core alone and references
+       no MetaObjects assembly, so `dotnet meta eject routes` can copy it into an adopter's repo
+       as it is (MetaObjects.Codegen embeds these files' source for that, see HelperRuntime.cs). -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
+  </ItemGroup>
+</Project>

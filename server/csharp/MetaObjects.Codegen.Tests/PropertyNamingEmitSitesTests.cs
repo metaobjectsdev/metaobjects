@@ -229,7 +229,7 @@ public class PropertyNamingEmitSitesTests
         paths.Add(typeof(Microsoft.EntityFrameworkCore.ModelBuilder).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.RelationalDatabaseFacadeExtensions).Assembly.Location);
         paths.Add(typeof(Microsoft.EntityFrameworkCore.PrimaryKeyAttribute).Assembly.Location);
-        paths.Add(typeof(MetaObjects.Codegen.Runtime.FilterParser).Assembly.Location);
+        paths.Add(typeof(MetaObjects.AspNetCore.ListQueryParser).Assembly.Location);
         var refs = paths.Where(File.Exists).Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
         var comp = CSharpCompilation.Create("all_sites_" + Guid.NewGuid().ToString("N"), trees, refs,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
@@ -309,16 +309,15 @@ public class PropertyNamingEmitSitesTests
         var vehicle = One(files, "VehicleRoutes.g.cs");
         Assert.Contains("\"XTitle\" =>", gizmo);
         Assert.Contains("EF.Property<object>(x!, \"XTitle\")", gizmo);
-        Assert.Contains("[\"XTitle\"] = true", gizmo);            // @sortableDefaultOrder keys
+        Assert.Contains("[\"XTitle\"] = new SortFieldRule(\"desc\", \"XTitle\"),", gizmo); // @sortableDefaultOrder keys
         Assert.DoesNotContain("\"Title\"", gizmo);
         Assert.Contains("EF.Property<object>(x!, \"XPlate\")", vehicle);        // TPH base
-        Assert.Contains("[\"XSeatCount\"] = \"XSeatCount\",", vehicle);         // per-subtype sort allowlist
+        Assert.Contains("[\"XSeatCount\"] = new SortFieldRule(property: \"XSeatCount\"),", vehicle); // per-subtype sort rules
         // A rename beyond case: ?sort= also takes the field name (the key ?filter[...] takes), resolved to the property.
-        Assert.Contains("Dictionary<string, string> SortAllowlist", gizmo);
-        Assert.Contains("[\"title\"] = \"XTitle\",", gizmo);
-        Assert.Contains("[\"XTitle\"] = \"XTitle\",", gizmo);
-        Assert.Contains("[\"seatCount\"] = \"XSeatCount\",", vehicle);
-        Assert.Contains("[\"plate\"] = \"XPlate\",", vehicle);
+        Assert.Contains("Dictionary<string, SortFieldRule> SortRules", gizmo);
+        Assert.Contains("[\"title\"] = new SortFieldRule(\"desc\", \"XTitle\"),", gizmo);
+        Assert.Contains("[\"seatCount\"] = new SortFieldRule(property: \"XSeatCount\"),", vehicle);
+        Assert.Contains("[\"plate\"] = new SortFieldRule(property: \"XPlate\"),", vehicle);
         Assert.DoesNotContain("\"Plate\"", vehicle);
         // M:N junction: the FK properties and the target key, by their resolved names.
         Assert.Contains("EF.Property<long>(j, \"XVehicleId\")", vehicle);
@@ -355,7 +354,7 @@ public class PropertyNamingEmitSitesTests
         Assert.Contains("[\"title\"] = \"XTitle\"", allowlist);
         var gizmo = One(files, "GizmoRoutes.g.cs");
         Assert.Contains("GizmoFilterAllowlist.PropertyByField", gizmo);
-        Assert.Contains("EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates, GizmoFilterAllowlist.PropertyByField)", gizmo);
+        Assert.Contains("EfCoreFilterDispatch.Apply(q, listQuery, GizmoFilterAllowlist.Rules, GizmoFilterAllowlist.PropertyByField)", gizmo);
     }
 
     private sealed class FilterRow
@@ -363,20 +362,53 @@ public class PropertyNamingEmitSitesTests
         public long OwnerKey { get; set; }
     }
 
+    private static MetaObjects.AspNetCore.ListQuery OwnerQuery(string operand) =>
+        new(new MetaObjects.AspNetCore.FilterLeaf("ownerRef", "eq", operand), null, null, null, null);
+
+    private static readonly IReadOnlyDictionary<string, MetaObjects.AspNetCore.FilterFieldRule> OwnerRules =
+        new Dictionary<string, MetaObjects.AspNetCore.FilterFieldRule>
+        {
+            ["ownerRef"] = new(MetaObjects.AspNetCore.FilterValueKind.Number, "eq") { Integer = true },
+        };
+
     [Fact]
     public void The_filter_dispatch_finds_a_property_the_resolver_renamed_beyond_case()
     {
-        var predicates = new[] { new MetaObjects.Codegen.Runtime.FilterPredicate("ownerRef", "eq", "5") };
         var map = new Dictionary<string, string> { ["ownerRef"] = "OwnerKey" };
         var rows = new[] { new FilterRow { OwnerKey = 5 }, new FilterRow { OwnerKey = 6 } }.AsQueryable();
 
         // With the map the field resolves to its property; without it the lookup misses (the 500 this guards).
-        var filtered = MetaObjects.Codegen.Runtime.EfCoreFilterDispatch.ApplyFilter(rows, predicates, map).ToList();
+        var filtered = MetaObjects.AspNetCore.EfCoreFilterDispatch.Apply(rows, OwnerQuery("5"), OwnerRules, map).ToList();
         Assert.Equal(5, Assert.Single(filtered).OwnerKey);
-        Assert.Throws<InvalidOperationException>(() => MetaObjects.Codegen.Runtime.EfCoreFilterDispatch.ApplyFilter(rows, predicates));
+        Assert.Throws<InvalidOperationException>(() => MetaObjects.AspNetCore.EfCoreFilterDispatch.Apply(rows, OwnerQuery("5"), OwnerRules));
 
-        var bad = MetaObjects.Codegen.Runtime.EfCoreFilterDispatch.Validate<FilterRow>(
-            MetaObjects.Codegen.Runtime.FilterParseResult.Ok([new MetaObjects.Codegen.Runtime.FilterPredicate("ownerRef", "eq", "not-a-number")]), map);
+        var bad = MetaObjects.AspNetCore.EfCoreFilterDispatch.Validate<FilterRow>(OwnerQuery("not-a-number"), map);
+        Assert.Equal("invalid_filter_value", bad?.Error);
+    }
+
+#pragma warning disable CS0618 // the flat-filter path is obsolete (removed in 2.0) but must keep working until then
+    [Fact]
+    public void The_obsolete_flat_filter_path_still_parses_validates_and_filters()
+    {
+        var map = new Dictionary<string, string> { ["ownerRef"] = "OwnerKey" };
+        var rows = new[] { new FilterRow { OwnerKey = 5 }, new FilterRow { OwnerKey = 6 } }.AsQueryable();
+        var query = new Microsoft.AspNetCore.Http.QueryCollection(new Dictionary<string, Microsoft.Extensions.Primitives.StringValues>
+        {
+            ["filter[ownerRef][eq]"] = "5",
+        });
+
+        var parsed = MetaObjects.AspNetCore.FilterParser.Parse(
+            query,
+            new HashSet<string> { "ownerRef" },
+            new Dictionary<string, HashSet<string>> { ["ownerRef"] = new() { "eq" } });
+        var validated = MetaObjects.AspNetCore.EfCoreFilterDispatch.Validate<FilterRow>(parsed, map);
+        Assert.Null(validated.ErrorEnvelope);
+        var filtered = MetaObjects.AspNetCore.EfCoreFilterDispatch.ApplyFilter(rows, validated.Predicates, map).ToList();
+        Assert.Equal(5, Assert.Single(filtered).OwnerKey);
+
+        var bad = MetaObjects.AspNetCore.EfCoreFilterDispatch.Validate<FilterRow>(
+            MetaObjects.AspNetCore.FilterParseResult.Ok([new MetaObjects.AspNetCore.FilterPredicate("ownerRef", "eq", "not-a-number")]), map);
         Assert.Equal("invalid_filter_value", bad.ErrorEnvelope);
     }
+#pragma warning restore CS0618
 }

@@ -10,10 +10,16 @@
 // (see docs/features/api-contract.md):
 //   - GET list honours ?limit=N&offset=N pagination. With `api.pagination` set, no limit
 //     takes `defaultLimit` and a limit above `maxLimit` is 400 { "error": "limit_too_large",
-//     "maxLimit": N }; without it, no limit returns every row.
-//   - GET list honours ?sort=<field>:asc|desc against a static SortAllowlist
-//     derived from the entity's scalar fields (case-insensitive lookup).
-//     Unknown field → 400 { "error": "invalid_sort", "field": ... }.
+//     "maxLimit": N }; without it, no limit answers 50 rows (ApiSettings.DefaultPageLimit,
+//     the default of every port) and an explicit limit is served as asked.
+//   - GET list honours ?sort=<field>:asc|desc against static SortRules derived from the
+//     entity's scalar fields (case-insensitive lookup); ?sort=<field> takes the field's
+//     @sortableDefaultOrder. Unknown field → 400 { "error": "invalid_sort", "field": ... }.
+//   - GET list honours ?search= (case-insensitive, over the filterable text fields) and
+//     filter[or][i] / filter[and][i] groups, five levels deep. A bare ?<field>= is
+//     400 filter.bare_field and a leading % on like is filter.leading_wildcard_disallowed.
+//   - A body that is not JSON is 400 { "error": "invalid_json" }, and a path id the key's type
+//     cannot hold is 400 { "error": "invalid_id" } (RouteErrors).
 //   - Create, PATCH and PUT: under `api.unknownFields: reject` (the default) a body key no
 //     field declares is 400 { "error": "unknown_fields", "fields": [...] } (UnknownFieldCheck);
 //     under `drop` it is ignored. A failed validation is 400 { "error": "validation",
@@ -28,12 +34,12 @@
 //     on POST, with no /{id} address at all (a report has no identity).
 //
 // Filter operators (eq/ne/gt/gte/lt/lte/in/like/isNull) ship via FR-009 — the
-// generated list handler calls FilterParser.Parse against the per-entity
+// generated list handler calls ListQueryParser.Parse against the per-entity
 // <Entity>FilterAllowlist (emitted by FilterAllowlistGenerator), then
-// dispatches the resulting predicates onto the IQueryable<T> via
-// EfCoreFilterDispatch.ApplyFilter. Those helpers (and ValueObjectValidator,
+// applies the parsed filter tree and search onto the IQueryable<T> via
+// EfCoreFilterDispatch.Apply. Those helpers (and ValueObjectValidator,
 // ConstraintErrors) live in the namespace HelperRuntimeNamespace names: the
-// package's MetaObjects.Codegen.Runtime for the packaged generator, the adopter's
+// MetaObjects.AspNetCore package for the packaged generator, the adopter's
 // own codegen/runtime/ copy (Codegen.Runtime) once `dotnet meta eject routes` has
 // copied both — see MetaObjects.Codegen.HelperRuntime.
 
@@ -50,11 +56,11 @@ public class RoutesGenerator : PerEntityGenerator
 {
     public override string Name => "routes-generator";
 
-    // Where the emitted routes import FilterParser / EfCoreFilterDispatch /
+    // Where the emitted routes import ListQueryParser / EfCoreFilterDispatch / RouteErrors /
     // ValueObjectValidator / ConstraintErrors from. `dotnet meta eject routes` rewrites
     // this one line to "Codegen.Runtime" and copies those helpers' source into
     // codegen/runtime/, so an owned copy's output binds to code the adopter owns.
-    private const string HelperRuntimeNamespace = "MetaObjects.Codegen.Runtime";
+    private const string HelperRuntimeNamespace = "MetaObjects.AspNetCore";
 
     public override bool Filter(MetaObject entity) =>
         // FR-044: a report has routes iff it is served (see AppliesTo).
@@ -173,20 +179,14 @@ public class RoutesGenerator : PerEntityGenerator
             w.Line("var maxRows = format is null ? listMaxRows : exportMaxRows;");
             tooLarge = "format is null ? " + tooLarge + " : ReportExportHttp.TooLarge(maxRows)";
         }
-        w.Line("long? limit = null;");
-        w.Line("long offset = 0;");
-        w.Line("if (qs.TryGetValue(\"limit\", out var limitRaw))");
-        w.Open("{");
-        w.Line("if (!long.TryParse(limitRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsedLimit) || parsedLimit < 1)");
-        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = limitRaw.ToString(), expected = $\"an integer from 1 to {maxRows}\" });");
-        w.Line("if (parsedLimit > maxRows)");
+        // ListQueryParser has refused a bound that is not a non-negative integer; a report also refuses
+        // limit=0 (a bad bound, not an empty answer) and a limit above the cap.
+        w.Line("var limit = listQuery.Limit;");
+        w.Line("if (limit == 0)");
+        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"limit\", value = \"0\", expected = $\"an integer from 1 to {maxRows}\" });");
+        w.Line("if (limit > maxRows)");
         using (w.Hanging()) w.Line($"return {tooLarge};");
-        w.Line("limit = parsedLimit;");
-        w.Close("}");
-        w.Line("if (qs.TryGetValue(\"offset\", out var offsetRaw)");
-        using (w.Hanging()) w.Line("&& (!long.TryParse(offsetRaw, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out offset) || offset < 0))");
-        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"pagination.invalid_value\", param = \"offset\", value = offsetRaw.ToString(), expected = \"a non-negative integer (0 or more)\" });");
-        w.Line("if (offset > 0) q = q.Skip((int)System.Math.Min(offset, int.MaxValue));");
+        WriteSkip(w);
         w.Line("q = q.Take((int)(limit ?? maxRows + 1L));");
         w.Blank();
         w.Line("var rows = await q.ToListAsync();");
@@ -359,8 +359,7 @@ public class RoutesGenerator : PerEntityGenerator
         w.Open("{");
         // Static sort allowlist (case-insensitive) so the qs ?sort=field:dir
         // is gated against the entity's scalar fields.
-        WriteSortAllowlist(w, "SortAllowlist", p.SortFieldNodes, ctx.Config);
-        WriteSortDefaultOrder(w, entity, "SortDefaultDesc", ctx.Config);
+        WriteSortRules(w, "SortRules", p.SortFieldNodes, ctx.Config);
         if (p.Writable) WriteKnownFields(w, [entity], ctx.Root);
         WriteUnauthenticatedRoutesDoc(w, p.Cls, p.IsProjection);
         w.Line($"public static IEndpointRouteBuilder Map{p.Cls}Routes(this IEndpointRouteBuilder app, string prefix = \"/api\")");
@@ -447,34 +446,11 @@ public class RoutesGenerator : PerEntityGenerator
         }
         w.Line($"IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
         w.Blank();
-        w.Line("// Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
         var fm = FilterMapArg($"{cls}FilterAllowlist", p.Entity, p.Ctx.Config);
-        w.Line($"var filter = EfCoreFilterDispatch.Validate<{readCls}>(FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField){fm});");
-        w.Line("if (filter.ErrorEnvelope is not null)");
-        // `field` names the rejected filter field — required cross-port on every
-        // filter envelope, so a caller with several filters knows which one failed.
-        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        w.Line($"q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fm});");
-        w.Blank();
-        w.Line("// Sort: ?sort=field:asc|desc against the static allowlist.");
-        w.Line("if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
-        w.Open("{");
-        w.Line("var parts = sortRaw.ToString().Split(':', 2);");
-        w.Line("var field = parts[0];");
-        w.Line("if (!SortAllowlist.TryGetValue(field, out var resolved))");
-        using (w.Hanging()) w.Line("return Results.BadRequest(new { error = \"invalid_sort\", field });");
-        // `?sort=field` with no `:order` takes the field's DECLARED @sortableDefaultOrder.
-        // Keyed on `resolved` — the allowlist's canonical Pascal spelling — so a
-        // case-insensitive wire name still finds its declaration. Ascending stays the
-        // fallback HERE, one place per port.
-        w.Line("var desc = parts.Length > 1");
-        using (w.Hanging()) w.Line("? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
-        using (w.Hanging()) w.Line(": SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        if (p.SqliteSort)
-            w.Line($"q = ApplySort{cls}(q, resolved, desc, db.Database.ProviderName?.Contains(\"Sqlite\", System.StringComparison.OrdinalIgnoreCase) == true);");
-        else
-            w.Line($"q = ApplySort{cls}(q, resolved, desc);");
-        w.Close("}");
+        WriteListQuery(w, readCls, $"{cls}FilterAllowlist", fm, "SortRules",
+            p.SqliteSort
+                ? $"ApplySort{cls}(q, __sortProp, desc, db.Database.ProviderName?.Contains(\"Sqlite\", System.StringComparison.OrdinalIgnoreCase) == true)"
+                : $"ApplySort{cls}(q, __sortProp, desc)");
         w.Blank();
         if (p.IsReport)
         {
@@ -483,8 +459,7 @@ public class RoutesGenerator : PerEntityGenerator
         }
         else
         {
-            w.Line("// Pagination: ?offset=N first (skip), then ?limit=N (take).");
-            WriteOffsetLimit(w, p.Ctx.Root.Api.Pagination, "offsetRaw", "offset", "limitRaw", "limit");
+            WriteListPage(w, p.Ctx.Root.Api.Pagination);
             w.Blank();
             w.Line("var rows = await q.ToListAsync();");
         }
@@ -495,7 +470,7 @@ public class RoutesGenerator : PerEntityGenerator
             w.Line($"if (!withCount) return {OkResult("rows", credentials)};");
         else
             w.Line($"if (!withCount) return format is null ? {OkResult("rows", credentials)} : ReportExportHttp.Json(http, \"{route}\", rows{ExportOmit(credentials, false)});");
-        w.Line($"var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates{fm});");
+        w.Line($"var totalQ = EfCoreFilterDispatch.Apply(db.{readDbSet}.AsNoTracking(), listQuery, {cls}FilterAllowlist.Rules{fm});");
         w.Line("var total = await totalQ.CountAsync();");
         if (export is null)
             w.Line($"return {OkResult("new { rows, total }", credentials, envelope: true)};");
@@ -508,10 +483,13 @@ public class RoutesGenerator : PerEntityGenerator
     protected virtual void WriteGetRoute(CsWriter w, StandardRoutesPlan p)
     {
         w.Blank();
-        w.Line("app.MapGet(prefix + \"/" + p.Route + "/{id}\", async (" + p.PkType + " id, " + p.ContextType + " db) =>");
-        using (w.Hanging()) w.Line("await db." + p.ReadDbSet + ".FindAsync(id) is { } found");
-        using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", p.Credentials));
-        using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
+        w.Line("app.MapGet(prefix + \"/" + p.Route + "/{id}\", async (HttpContext http, " + p.ContextType + " db) =>");
+        w.Open("{");
+        WriteReadId(w, p.PkType!);
+        w.Line("return await db." + p.ReadDbSet + ".FindAsync(id) is { } found");
+        using (w.Hanging()) w.Line("? " + OkResult("found", p.Credentials));
+        using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" });");
+        w.Close("});");
     }
 
     /// <summary>The create route: <c>POST /&lt;route&gt;</c> (see <see cref="WriteCreateHandler"/>).</summary>
@@ -558,13 +536,14 @@ public class RoutesGenerator : PerEntityGenerator
         // is a 400. The per-key merge (shared with the TPH per-subtype handler) is
         // emitted by WritePartialMergeLoop.
         w.Blank();
-        w.Line("async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + p.PkType + " id, HttpContext http, " + p.ContextType + " db)");
+        w.Line("async System.Threading.Tasks.Task<IResult> Update" + cls + "(HttpContext http, " + p.ContextType + " db)");
         w.Open("{");
+        WriteReadId(w, p.PkType!);
         w.Line("var existing = await db." + dbSet + ".FindAsync(id);");
         w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         w.Line("System.Text.Json.JsonDocument body;");
         w.Line("try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        w.Line("catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }");
         w.Line("using var bodyScope = body;");
         w.Line("if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
         WriteUnknownFieldsCheck(w, ctx.Root, "body");
@@ -603,8 +582,9 @@ public class RoutesGenerator : PerEntityGenerator
     protected virtual void WriteDeleteRoute(CsWriter w, StandardRoutesPlan p)
     {
         w.Blank();
-        w.Line("app.MapDelete(prefix + \"/" + p.Route + "/{id}\", async (" + p.PkType + " id, " + p.ContextType + " db) =>");
+        w.Line("app.MapDelete(prefix + \"/" + p.Route + "/{id}\", async (HttpContext http, " + p.ContextType + " db) =>");
         w.Open("{");
+        WriteReadId(w, p.PkType!);
         w.Line("var existing = await db." + p.DbSet + ".FindAsync(id);");
         w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         w.Line("db." + p.DbSet + ".Remove(existing);");
@@ -754,8 +734,7 @@ public class RoutesGenerator : PerEntityGenerator
         w.Open("{");
 
         // Polymorphic sort allowlist over the base scalar columns.
-        WriteSortAllowlist(w, "SortAllowlist", p.SortFieldNodes, ctx.Config);
-        WriteSortDefaultOrder(w, baseEntity, "SortDefaultDesc", ctx.Config);
+        WriteSortRules(w, "SortRules", p.SortFieldNodes, ctx.Config);
         // One known set for the whole hierarchy: a sibling subtype's column is declared, so it is not unknown.
         WriteKnownFields(w, p.Hierarchy, ctx.Root);
 
@@ -770,8 +749,7 @@ public class RoutesGenerator : PerEntityGenerator
             var subSortFields = st.Entity.Fields()
                 .Where(f => CSharpNaming.ScalarFor(f.SubType) is not null && !f.ResolvedIsArray() && !p.HierarchyCredentials.Contains(f.Name))
                 .ToList();
-            WriteSortAllowlist(w, $"{subClsName}SortAllowlist", subSortFields, ctx.Config);
-            WriteSortDefaultOrder(w, st.Entity, $"{subClsName}SortDefaultDesc", ctx.Config);
+            WriteSortRules(w, $"{subClsName}SortRules", subSortFields, ctx.Config);
         }
 
         WriteUnauthenticatedRoutesDoc(w, baseCls, readOnly: false);
@@ -833,23 +811,12 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line("var qs = http.Request.Query;");
         w.Line($"IQueryable<{baseCls}> q = db.{dbSet}.AsNoTracking();");
         var fmB = FilterMapArg($"{baseCls}FilterAllowlist", p.BaseEntity, ctx.Config);
-        w.Line($"var filter = EfCoreFilterDispatch.Validate<{baseCls}>(FilterParser.Parse(qs, {baseCls}FilterAllowlist.Fields, {baseCls}FilterAllowlist.OpsByField){fmB});");
-        w.Line("if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        w.Line($"q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmB});");
-        w.Line("if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
-        w.Open("{");
-        w.Line("var parts = sortRaw.ToString().Split(':', 2);");
-        w.Line("if (!SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new { error = \"invalid_sort\", field = parts[0] });");
-        w.Line("var desc = parts.Length > 1");
-        using (w.Hanging()) w.Line("? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
-        using (w.Hanging()) w.Line(": SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        w.Line("q = ApplySort(q, resolved, desc);");
-        w.Close("}");
-        WriteOffsetLimit(w, ctx.Root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
+        WriteListQuery(w, baseCls, $"{baseCls}FilterAllowlist", fmB, "SortRules", "ApplySort(q, __sortProp, desc)");
+        WriteListPage(w, ctx.Root.Api.Pagination);
         w.Line("var rows = await q.ToListAsync();");
         w.Line("var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         w.Line($"if (!withCount) return {OkResult("rows", p.BaseCredentials)};");
-        w.Line($"var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates{fmB}).CountAsync();");
+        w.Line($"var total = await EfCoreFilterDispatch.Apply(db.{dbSet}.AsNoTracking(), listQuery, {baseCls}FilterAllowlist.Rules{fmB}).CountAsync();");
         w.Line($"return {OkResult("new { rows, total }", p.BaseCredentials, envelope: true)};");
         w.Close("});");
     }
@@ -858,10 +825,13 @@ public class RoutesGenerator : PerEntityGenerator
     protected virtual void WriteTphGetRoute(CsWriter w, TphRoutesPlan p)
     {
         w.Blank();
-        w.Line("app.MapGet(prefix + \"/" + p.BaseRoute + "/{id}\", async (" + p.PkType + " id, " + p.ContextType + " db) =>");
-        using (w.Hanging()) w.Line($"await db.{p.DbSet}.AsNoTracking().FirstOrDefaultAsync(x => x.{p.PkProp} == id) is {{ }} found");
-        using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", p.BaseCredentials));
-        using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
+        w.Line("app.MapGet(prefix + \"/" + p.BaseRoute + "/{id}\", async (HttpContext http, " + p.ContextType + " db) =>");
+        w.Open("{");
+        WriteReadId(w, p.PkType!);
+        w.Line($"return await db.{p.DbSet}.AsNoTracking().FirstOrDefaultAsync(x => x.{p.PkProp} == id) is {{ }} found");
+        using (w.Hanging()) w.Line("? " + OkResult("found", p.BaseCredentials));
+        using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" });");
+        w.Close("});");
     }
 
     /// <summary>The polymorphic sort dispatch over the base's scalar columns (reflection-free, through <c>EF.Property</c>).</summary>
@@ -1001,29 +971,22 @@ public class RoutesGenerator : PerEntityGenerator
     protected static string KeyMatch(IEnumerable<string> keys) =>
         string.Join(" || ", keys.Select(k => $"string.Equals(prop.Name, \"{k}\", System.StringComparison.OrdinalIgnoreCase)"));
 
-    // A sort allowlist (case-insensitive): `TryGetValue(key, out var resolved)` gives the CLR property to
-    // sort on. Without a rename beyond case it is the set of property names (the field name matches one
-    // ignoring case), as ever. When a resolver renamed a property beyond case it is a map that accepts the
-    // field name too, so `?sort=` takes the same key as `?filter[...]` (which keys on the field name)
-    // and the property name a client may have read from a response.
-    protected virtual void WriteSortAllowlist(CsWriter w, string name, IReadOnlyList<MetaField> fields, GenConfig config)
+    // The sort rules (case-insensitive) a list route hands ListQueryParser: each key gives the CLR property to
+    // sort on and the field's DECLARED @sortableDefaultOrder. The keys are the property names (the field name
+    // matches one ignoring case); when a resolver renamed a property beyond case the field name is a key too,
+    // so `?sort=` takes the same key as `?filter[...]` (which keys on the field name) and the property name a
+    // client may have read from a response.
+    protected virtual void WriteSortRules(CsWriter w, string name, IReadOnlyList<MetaField> fields, GenConfig config)
     {
-        var pairs = fields.Select(f => (Field: f.Name, Prop: CSharpNaming.PropertyName(f, config))).ToList();
-        if (pairs.All(p => string.Equals(p.Field, p.Prop, StringComparison.OrdinalIgnoreCase)))
-        {
-            w.Line($"private static readonly System.Collections.Generic.HashSet<string> {name} = new(System.StringComparer.OrdinalIgnoreCase)");
-            w.Open("{");
-            foreach (var p in pairs) w.Line($"\"{p.Prop}\",");
-            w.Close("};");
-            w.Blank();
-            return;
-        }
-        w.Line($"private static readonly System.Collections.Generic.Dictionary<string, string> {name} = new(System.StringComparer.OrdinalIgnoreCase)");
+        var pairs = fields.Select(f => (Field: f.Name, Prop: CSharpNaming.PropertyName(f, config), Order: f.Attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) as string)).ToList();
+        w.Line($"private static readonly System.Collections.Generic.Dictionary<string, SortFieldRule> {name} = new(System.StringComparer.OrdinalIgnoreCase)");
         w.Open("{");
         // Property names first, so a field name that spells another field's property never shadows it.
         var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var p in pairs) if (keys.Add(p.Prop)) w.Line($"[\"{p.Prop}\"] = \"{p.Prop}\",");
-        foreach (var p in pairs) if (keys.Add(p.Field)) w.Line($"[\"{p.Field}\"] = \"{p.Prop}\",");
+        static string Rule((string Field, string Prop, string? Order) p) =>
+            p.Order is "asc" or "desc" ? $"new SortFieldRule(\"{p.Order}\", \"{p.Prop}\")" : $"new SortFieldRule(property: \"{p.Prop}\")";
+        foreach (var p in pairs) if (keys.Add(p.Prop)) w.Line($"[\"{p.Prop}\"] = {Rule(p)},");
+        foreach (var p in pairs) if (keys.Add(p.Field)) w.Line($"[\"{p.Field}\"] = {Rule(p)},");
         w.Close("};");
         w.Blank();
     }
@@ -1214,37 +1177,60 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line($"if (UnknownFieldCheck.Reject({bodyVar}.RootElement, {KnownFieldsConst}, http) is {{ }} __unknown) return __unknown;");
     }
 
-    // The offset + limit lines of a list route. Without `api.pagination` they are exactly what they always
-    // were; with it, no limit takes defaultLimit and one above maxLimit is 400 limit_too_large.
-    protected virtual void WriteOffsetLimit(CsWriter w, ApiPagination? page, string offRaw, string off, string limRaw, string lim)
+    // The first line of an item handler: the `{id}` route value read as the key's type, or 400 invalid_id
+    // (RouteErrors). The handler binds no typed id itself, because ASP.NET Core's binding answers an
+    // unparsable one with an empty 400.
+    protected virtual void WriteReadId(CsWriter w, string pkType) =>
+        w.Line($"if (!RouteErrors.TryReadId<{pkType}>(http, out var id)) return RouteErrors.InvalidId();");
+
+    // The offset + limit lines of a list route, over the bounds ListQueryParser already read (a bound that is
+    // present but not a non-negative integer was refused there, pagination.invalid_value). No limit takes
+    // `api.pagination`'s defaultLimit, or ApiSettings.DefaultPageLimit (50, as in every port) when the project
+    // sets no block; with the block, a limit above maxLimit is 400 limit_too_large, and without it there is no
+    // maximum. `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
+    // The parsed ?offset, skipped (an offset is at most 2^53 - 1; EF's Skip takes an int).
+    private static void WriteSkip(CsWriter w)
     {
+        w.Line("if (listQuery.Offset is { } __offset && __offset > 0)");
+        using (w.Hanging()) w.Line("q = q.Skip((int)System.Math.Min(__offset, int.MaxValue));");
+    }
+
+    protected virtual void WriteListPage(CsWriter w, ApiPagination? page)
+    {
+        w.Line("// Pagination: ?offset=N first (skip), then ?limit=N (take).");
+        WriteSkip(w);
         if (page is not null)
-        {
-            // An offset that is present but not a non-negative int is refused, as the TypeScript routes answer,
-            // never read as "absent" and answered with a page the client did not ask for.
-            w.Line($"if (qs.TryGetValue(\"offset\", out var {offRaw}Bad) && !(int.TryParse({offRaw}Bad, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}Bad) && {off}Bad >= 0))");
-            using (w.Hanging()) w.Line($"return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"offset\", value = {offRaw}Bad.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
-        }
-        w.Line($"if (qs.TryGetValue(\"offset\", out var {offRaw}) && int.TryParse({offRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {off}) && {off} > 0)");
-        using (w.Hanging()) w.Line($"q = q.Skip({off});");
-        if (page is null)
-        {
-            w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}) && int.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} > 0)");
-            using (w.Hanging()) w.Line($"q = q.Take({lim});");
-            return;
-        }
-        w.Line($"// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
-        // A negative or non-numeric limit is refused with the malformed-bound envelope, as the TypeScript routes answer.
-        w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}Neg) && !(long.TryParse({limRaw}Neg, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}Neg) && {lim}Neg >= 0))");
-        using (w.Hanging()) w.Line($"return Results.BadRequest(new {{ error = \"pagination.invalid_value\", param = \"limit\", value = {limRaw}Neg.ToString(), expected = \"a non-negative integer (0 or more)\" }});");
-        w.Line($"var __take = {page.DefaultLimit};");
-        // `limit=0` is a page of zero rows, as every other port serves it, not "no limit".
-        w.Line($"if (qs.TryGetValue(\"limit\", out var {limRaw}) && long.TryParse({limRaw}, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var {lim}) && {lim} >= 0)");
+            w.Line("// api.pagination: no limit takes defaultLimit; a limit above maxLimit is refused.");
+        else
+            w.Line("// No api.pagination: no limit takes the default page of 50; an explicit limit is served as asked.");
+        w.Line($"var __take = {page?.DefaultLimit ?? ApiSettings.DefaultPageLimit};");
+        w.Line("if (listQuery.Limit is { } __limit)");
         w.Open("{");
-        w.Line($"if ({lim} > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
-        w.Line($"__take = (int){lim};");
-        w.Close($"}}");
-        w.Line($"q = q.Take(__take);");
+        if (page is not null)
+            w.Line($"if (__limit > {page.MaxLimit}) return Results.BadRequest(new {{ error = \"limit_too_large\", maxLimit = {page.MaxLimit} }});");
+        w.Line("__take = (int)System.Math.Min(__limit, int.MaxValue);");
+        w.Close("}");
+        w.Line("q = q.Take(__take);");
+    }
+
+    // The REST standard's list handling (ListQueryParser): the filter tree with or/and groups, ?search, the
+    // sort, and the named refusals (filter.bare_field, filter.leading_wildcard_disallowed,
+    // filter.nesting_too_deep, invalid_filter_value, invalid_sort, pagination.invalid_value), then the parsed
+    // filter and search applied to `q` and the sort through `sortExpr` (which reads `__sortProp`, the CLR
+    // property, and `desc`). Leaves `listQuery` in scope for the page bounds and the withCount total.
+    protected virtual void WriteListQuery(CsWriter w, string entityType, string allowlist, string fm, string sortRules, string sortExpr)
+    {
+        w.Line("// ?filter[...] (or/and groups), ?search, ?sort and the page bounds, against the allowlist.");
+        w.Line($"var __parsed = ListQueryParser.Parse(http.Request.QueryString.Value, {allowlist}.Rules, {sortRules}, {allowlist}.FieldNames);");
+        w.Line("if (__parsed.Error is { } __refused) return Results.BadRequest(__refused.Body());");
+        w.Line("var listQuery = __parsed.Query!;");
+        w.Line($"if (EfCoreFilterDispatch.Validate<{entityType}>(listQuery{fm}) is {{ }} __invalid) return Results.BadRequest(__invalid.Body());");
+        w.Line($"q = EfCoreFilterDispatch.Apply(q, listQuery, {allowlist}.Rules{fm});");
+        w.Line($"if (listQuery.Sort is {{ }} __sort && {sortRules}[__sort.Field].Property is {{ }} __sortProp)");
+        w.Open("{");
+        w.Line("var desc = __sort.Descending;");
+        w.Line($"q = {sortExpr};");
+        w.Close("}");
     }
 
     protected virtual void WriteCreateHandler(
@@ -1267,7 +1253,7 @@ public class RoutesGenerator : PerEntityGenerator
         WriteJsonOptsLocal(w);
         w.Line("System.Text.Json.JsonDocument __body;");
         w.Line("try { __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        w.Line("catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }");
         w.Line("using var __bodyScope = __body;");
         w.Line("if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
         using (w.Hanging()) w.Line("return ValidationIssues.Unreadable();");
@@ -1781,32 +1767,24 @@ public class RoutesGenerator : PerEntityGenerator
         w.Line("var qs = http.Request.Query;");
         w.Line($"IQueryable<{subType}> q = db.{dbSet}.OfType<{subType}>().AsNoTracking();");
         var fmS = FilterMapArg(subAllowlist, st.Entity, config);
-        w.Line($"var filter = EfCoreFilterDispatch.Validate<{subType}>(FilterParser.Parse(qs, {subAllowlist}.Fields, {subAllowlist}.OpsByField){fmS});");
-        w.Line("if (filter.ErrorEnvelope is not null) return Results.BadRequest(new { error = filter.ErrorEnvelope, field = filter.Field });");
-        w.Line($"q = EfCoreFilterDispatch.ApplyFilter(q, filter.Predicates{fmS});");
-        w.Line("if (qs.TryGetValue(\"sort\", out var sortRaw) && !string.IsNullOrWhiteSpace(sortRaw))");
-        w.Open("{");
-        w.Line("var parts = sortRaw.ToString().Split(':', 2);");
-        w.Line($"if (!{subCls}SortAllowlist.TryGetValue(parts[0], out var resolved)) return Results.BadRequest(new {{ error = \"invalid_sort\", field = parts[0] }});");
-        w.Line("var desc = parts.Length > 1");
-        using (w.Hanging()) w.Line("? string.Equals(parts[1], \"desc\", System.StringComparison.OrdinalIgnoreCase)");
-        using (w.Hanging()) w.Line($": {subCls}SortDefaultDesc.TryGetValue(resolved, out var dd) && dd;");
-        w.Line("q = " + NullsLargestSort("q", "EF.Property<object>(x!, resolved)") + ";");
-        w.Close("}");
-        WriteOffsetLimit(w, root.Api.Pagination, "offRaw", "off", "limRaw", "lim");
+        WriteListQuery(w, subType, subAllowlist, fmS, $"{subCls}SortRules", NullsLargestSort("q", "EF.Property<object>(x!, __sortProp)"));
+        WriteListPage(w, root.Api.Pagination);
         w.Line("var rows = await q.ToListAsync();");
         w.Line("var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         w.Line($"if (!withCount) return {OkResult("rows", credentials)};");
-        w.Line($"var total = await EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.OfType<{subType}>().AsNoTracking(), filter.Predicates{fmS}).CountAsync();");
+        w.Line($"var total = await EfCoreFilterDispatch.Apply(db.{dbSet}.OfType<{subType}>().AsNoTracking(), listQuery, {subAllowlist}.Rules{fmS}).CountAsync();");
         w.Line($"return {OkResult("new { rows, total }", credentials, envelope: true)};");
         w.Close("});");
 
         // Per-subtype get: GET /<base>/<seg>/{id} — scoped (cross-subtype → 404).
         w.Blank();
-        w.Line("app.MapGet(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
-        using (w.Hanging()) w.Line($"await db.{dbSet}.OfType<{subType}>().AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
-        using (w.Hanging()) using (w.Hanging()) w.Line("? " + OkResult("found", credentials));
-        using (w.Hanging()) using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" }));");
+        w.Line("app.MapGet(prefix + \"/" + subRoute + "/{id}\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
+        w.Open("{");
+        WriteReadId(w, pkType!);
+        w.Line($"return await db.{dbSet}.OfType<{subType}>().AsNoTracking().FirstOrDefaultAsync(x => x.{pkProp} == id) is {{ }} found");
+        using (w.Hanging()) w.Line("? " + OkResult("found", credentials));
+        using (w.Hanging()) w.Line(": Results.NotFound(new { error = \"not_found\" });");
+        w.Close("});");
 
         // Per-subtype create: POST /<base>/<seg> — discriminator injected by EF via the
         // subtype CLR type; the POST body OMITS the discriminator. FR-036 #4: the @required-key
@@ -1829,13 +1807,14 @@ public class RoutesGenerator : PerEntityGenerator
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
         w.Blank();
-        w.Line("async System.Threading.Tasks.Task<IResult> Update" + subCls + "(" + pkType + " id, HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db)");
+        w.Line("async System.Threading.Tasks.Task<IResult> Update" + subCls + "(HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db)");
         w.Open("{");
+        WriteReadId(w, pkType!);
         w.Line($"var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         w.Line("System.Text.Json.JsonDocument body;");
         w.Line("try { body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body); }");
-        w.Line("catch (System.Text.Json.JsonException) { return ValidationIssues.Unreadable(); }");
+        w.Line("catch (System.Text.Json.JsonException) { return RouteErrors.InvalidJson(); }");
         w.Line("using var bodyScope = body;");
         w.Line("if (body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return ValidationIssues.Unreadable();");
         WriteUnknownFieldsCheck(w, root, "body");
@@ -1858,8 +1837,9 @@ public class RoutesGenerator : PerEntityGenerator
 
         // Per-subtype delete: DELETE /<base>/<seg>/{id} — scoped (cross-subtype → 404).
         w.Blank();
-        w.Line("app.MapDelete(prefix + \"/" + subRoute + "/{id}\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
+        w.Line("app.MapDelete(prefix + \"/" + subRoute + "/{id}\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
         w.Open("{");
+        WriteReadId(w, pkType!);
         w.Line($"var existing = await db.{dbSet}.OfType<{subType}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         w.Line("if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         w.Line($"db.{dbSet}.Remove(existing);");
@@ -1959,8 +1939,9 @@ public class RoutesGenerator : PerEntityGenerator
             ? JunctionProperty(nav.Target, tf[0], config) : "Id";
 
         w.Blank();
-        w.Line("app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (" + pkType + " id, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
+        w.Line("app.MapGet(prefix + \"/" + sourceRoute + "/{id}/" + relSeg + "\", async (HttpContext http, " + ValueObjectNames.ContextTypeRef(config) + " db) =>");
         w.Open("{");
+        WriteReadId(w, pkType);
         if (sourceScope is not null)
         {
             // Rule c — prove the id names a row of THIS subtype before touching the
@@ -2026,22 +2007,6 @@ public class RoutesGenerator : PerEntityGenerator
     /// default into its map. <c>Attr()</c> is the RESOLVING accessor (ADR-0039), so an
     /// order inherited via <c>extends</c> is honoured.
     /// </remarks>
-    protected virtual void WriteSortDefaultOrder(CsWriter w, MetaObject owner, string constName, GenConfig config)
-    {
-        w.Line($"private static readonly System.Collections.Generic.Dictionary<string, bool> {constName} = new(System.StringComparer.OrdinalIgnoreCase)");
-        w.Open("{");
-        foreach (var f in owner.Fields())
-        {
-            if (CSharpNaming.ScalarFor(f.SubType) is null || f.ResolvedIsArray()) continue;
-            if (f.Attr(FIELD_ATTR_SORTABLE_DEFAULT_ORDER) is not string v) continue;
-            if (v != "asc" && v != "desc") continue;
-            w.Line($"[\"{CSharpNaming.PropertyName(f, config)}\"] = {(v == "desc" ? "true" : "false")},");
-        }
-        w.Close("};");
-        w.Blank();
-    }
-
-
     /// <summary>
     /// The emitted sort expression for one column, with nulls LARGER than any value: ASC puts
     /// them last, DESC first, on every provider (Postgres's own default; SQLite and MySQL

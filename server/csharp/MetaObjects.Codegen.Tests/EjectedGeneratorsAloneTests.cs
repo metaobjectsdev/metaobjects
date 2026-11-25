@@ -317,7 +317,7 @@ public class EjectedGeneratorsAloneTests
         SharedModelTestSupport.Configure(alone.Generator);
         // The ONE documented difference: a generator whose output imports the helper runtime imports the
         // adopter's owned copy once ejected — `using Codegen.Runtime;` where the packaged output says
-        // `using MetaObjects.Codegen.Runtime;`. Nothing else.
+        // `using MetaObjects.AspNetCore;`. Nothing else.
         var usesRuntime = HelperRuntime.UsedBy(EjectableGenerators.ReadSource(name)!);
         string Expected(string content) => usesRuntime
             ? content.Replace($"using {HelperRuntime.PackagedNamespace};", $"using {HelperRuntime.OwnedNamespace};", StringComparison.Ordinal)

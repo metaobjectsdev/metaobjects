@@ -205,7 +205,7 @@ public class SecretFieldsCodegenTests
 
         var routes = new RoutesGenerator().Generate(ctx)
             .Single(f => System.IO.Path.GetFileName(f.Path) == "AccountRoutes.g.cs").Content;
-        var start = routes.IndexOf("SortAllowlist", StringComparison.Ordinal);
+        var start = routes.IndexOf("SortRules", StringComparison.Ordinal);
         var end = routes.IndexOf("MapAccountRoutes", StringComparison.Ordinal);
         Assert.True(start >= 0 && end > start, routes);
         var sort = routes[start..end];
@@ -254,7 +254,7 @@ public class SecretFieldsCodegenTests
 
         var routes = new RoutesGenerator().Generate(ctx)
             .Single(f => System.IO.Path.GetFileName(f.Path) == "ThingRoutes.g.cs").Content;
-        var start = routes.IndexOf("SortAllowlist", StringComparison.Ordinal);
+        var start = routes.IndexOf("SortRules", StringComparison.Ordinal);
         var end = routes.IndexOf("MapThingRoutes", StringComparison.Ordinal);
         Assert.True(start >= 0 && end > start, routes);
         var sort = routes[start..end];

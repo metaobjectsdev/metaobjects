@@ -49,5 +49,7 @@ port's generated list route honours the REST standard; a hand-rolled reference s
 answer every scenario by construction.
 
 Runners: TypeScript `server/typescript/packages/integration-tests/test/api-contract-list-query.test.ts`
-(one Postgres container for the file, reseeded before every scenario). The other ports'
+(one Postgres container for the file, reseeded before every scenario), and C#
+`server/csharp/MetaObjects.IntegrationTests/Api/ApiContractListQueryConformanceTest.cs` (the
+generated routes on Kestrel against Postgres). Both run every scenario. The other ports'
 runners arrive with their 1.3.0 REST-standard work.

@@ -1,0 +1,137 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "system.internal": {
+          "name": "Shop",
+          "@description": "One service deployed to two environments from one abstract deployment: the base holds what is true in both, each environment's deployment holds only what differs.",
+          "children": [
+            {
+              "app.service": {
+                "name": "server",
+                "@settings": [
+                  "Runtime"
+                ],
+                "children": [
+                  {
+                    "build.dockerfile": {
+                      "name": "image",
+                      "@path": "server/Dockerfile",
+                      "@watchInclude": [
+                        "server/**"
+                      ]
+                    }
+                  },
+                  {
+                    "runtime.process": {
+                      "name": "web",
+                      "@healthPath": "/health",
+                      "@port": 8080
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.settings": {
+          "name": "Runtime",
+          "children": [
+            {
+              "field.string": {
+                "name": "logLevel",
+                "@envName": "LOG_LEVEL"
+              }
+            },
+            {
+              "field.string": {
+                "name": "banner",
+                "@envName": "BANNER"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "production"
+        }
+      },
+      {
+        "environment.standing": {
+          "name": "staging"
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "server-base",
+          "abstract": true,
+          "@app": "Shop.server",
+          "@project": "acme-shop",
+          "@repo": "acme/shop",
+          "@service": "shop",
+          "children": [
+            {
+              "value.literal": {
+                "name": "log",
+                "@literal": "info",
+                "@setting": "Runtime.logLevel"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "server-production",
+          "extends": "acme::shop::server-base",
+          "@branch": "main",
+          "@domains": [
+            "shop.example.com"
+          ],
+          "@environment": "production",
+          "@replicas": 2,
+          "children": [
+            {
+              "value.literal": {
+                "name": "banner",
+                "@literal": "production",
+                "@setting": "Runtime.banner"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "deployment.railway": {
+          "name": "server-staging",
+          "extends": "acme::shop::server-base",
+          "@branch": "staging",
+          "@domains": [
+            "staging.shop.example.com"
+          ],
+          "@environment": "staging",
+          "children": [
+            {
+              "value.literal": {
+                "name": "log",
+                "@literal": "debug",
+                "@setting": "Runtime.logLevel"
+              }
+            },
+            {
+              "value.literal": {
+                "name": "banner",
+                "@literal": "staging",
+                "@setting": "Runtime.banner"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
