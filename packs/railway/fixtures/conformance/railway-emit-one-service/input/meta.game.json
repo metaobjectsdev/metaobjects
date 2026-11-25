@@ -1,0 +1,59 @@
+{
+  "metadata.root": {
+    "package": "acme::game",
+    "children": [
+      { "system.internal": {
+          "name": "Game",
+          "@description": "One Spring service in one repository, with its database and cache beside it on Railway.",
+          "children": [
+            { "app.service": {
+                "name": "server",
+                "@needs": ["db", "cache"],
+                "@settings": ["Database", "Redis", "Llm"],
+                "children": [
+                  { "build.dockerfile": {
+                      "name": "image",
+                      "@watchExclude": ["/.archive/**", "/.claude/**", "/.docs/**", "/.github/**", "/.githooks/**", "/.metaobjects/*.md", "/.metaobjects/.agent-context.json", "/.specify/**", "/.test-prompts/**", "/assets/**", "/docs/**", "/e2e-tests/**", "/scripts/**", "/*.md", "/TODOs"]
+                  } },
+                  { "runtime.process": {
+                      "name": "web",
+                      "@port": 8080,
+                      "@healthPath": "/actuator/health/container",
+                      "@healthTimeoutSeconds": 300,
+                      "@drainSeconds": 180,
+                      "@restart": "onFailure"
+                  } }
+                ]
+            } },
+            { "resource.database": { "name": "db", "@engine": "postgres", "@version": "18" } },
+            { "resource.cache": { "name": "cache", "@engine": "redis" } }
+          ]
+      } },
+      { "object.settings": { "name": "Database", "children": [
+        { "field.string": { "name": "url", "@required": true } }
+      ]}},
+      { "object.settings": { "name": "Redis", "children": [
+        { "field.string": { "name": "url", "@required": true } }
+      ]}},
+      { "object.settings": { "name": "Llm", "children": [
+        { "field.string": { "name": "apiKey", "@required": true, "@secret": true, "@envName": "LLM_API_KEY" } },
+        { "field.string": { "name": "model", "@default": "small" } }
+      ]}},
+      { "vault.infisical": { "name": "keys", "children": [
+        { "scope.env": { "name": "production", "@project": "acme-game", "@env": "prod" } }
+      ]}},
+      { "environment.standing": { "name": "production" } },
+      { "deployment.railway": {
+          "name": "server-production",
+          "@app": "Game.server",
+          "@environment": "production",
+          "@project": "game",
+          "@service": "game",
+          "@repo": "acme/game",
+          "@branch": "main",
+          "@checkSuites": false,
+          "@secrets": "keys"
+      } }
+    ]
+  }
+}

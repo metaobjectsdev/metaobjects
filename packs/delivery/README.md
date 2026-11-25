@@ -13,13 +13,13 @@ in one environment on one platform, and holds only what differs there.
 | Node | Where | What it is | Attributes |
 |---|---|---|---|
 | `environment.standing`, `.ephemeral`, `.local` | document root | A named environment: production, a pull-request preview, a workstation | (documentation only) |
-| `build.dockerfile` | under an `app.*`, at most one build | Built as an image from a Dockerfile | `@path`, `@context`, `@watchExclude` |
-| `build.command` | under an `app.*` | Built by a command the platform's builder runs | `@command`, `@watchExclude` |
-| `build.static` | under an `app.*` | A directory of files served as they are | `@directory`, `@command`, `@watchExclude` |
+| `build.dockerfile` | under an `app.*`, at most one build | Built as an image from a Dockerfile | `@path`, `@context`, `@watchInclude`, `@watchExclude` |
+| `build.command` | under an `app.*` | Built by a command the platform's builder runs | `@command`, `@watchInclude`, `@watchExclude` |
+| `build.static` | under an `app.*` | A directory of files served as they are | `@directory`, `@command`, `@watchInclude`, `@watchExclude` |
 | `runtime.process` | under an `app.*` | How one of its processes runs | `@command`, `@port`, `@healthPath`, `@healthTimeoutSeconds`, `@drainSeconds`, `@restart` (`always`, `onFailure`, `never`) |
 | `deployment.<platform>` | document root | An app in an environment on a platform. A **platform pack** registers the subtype (the [`railway`](../railway/README.md) pack registers `deployment.railway`) | `@app`, `@environment`, `@domains`, `@replicas`, `@region`, `@branch`, `@secrets`, plus the platform's own |
 | `value.literal` | under a deployment | A setting's fixed value there | `@setting`, `@literal` |
-| `value.ref` | under a deployment | A setting's value produced by another node at deploy time | `@setting`, `@producedBy`, `@output` |
+| `value.ref` | under a deployment | A setting's value produced by another node at deploy time | `@setting`, `@producedBy`, `@output`, `@path` |
 
 `deployment.base` is the abstract anchor platform packs specialise (`extendsBase: true`); this pack
 registers no concrete deployment, and an authored `deployment.base` fails to load

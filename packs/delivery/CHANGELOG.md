@@ -11,3 +11,7 @@ This pack's own changelog (ADR-0069). The root `CHANGELOG.md` records core only.
   `@secrets` and `@setting` are names only. A deployment holds one value per `@setting`
   (`ERR_DELIVERY_DUPLICATE_SETTING`) and a model one deployment per (`@app`, `@environment`)
   (`ERR_DELIVERY_DUPLICATE_DEPLOYMENT`). TypeScript port.
+- `@watchInclude` on every `build.*`, beside `@watchExclude`: the paths whose change starts a
+  build, for an app that lives in one directory of a monorepo.
+- `@path` on `value.ref`: a path appended to a URL output (`/api`), for a setting that addresses
+  one context of another app.

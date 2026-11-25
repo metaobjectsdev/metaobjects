@@ -11,7 +11,14 @@
           "valueType": "string",
           "isArray": true,
           "required": false,
-          "description": "Repository path globs whose change must not start a new build (`docs/**`, `*.md`). A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
         }
       ],
       "children": []
@@ -34,7 +41,14 @@
           "valueType": "string",
           "isArray": true,
           "required": false,
-          "description": "Repository path globs whose change must not start a new build (`docs/**`, `*.md`). A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
         }
       ],
       "children": []
@@ -64,7 +78,14 @@
           "valueType": "string",
           "isArray": true,
           "required": false,
-          "description": "Repository path globs whose change must not start a new build (`docs/**`, `*.md`). A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
         }
       ],
       "children": []
@@ -94,7 +115,14 @@
           "valueType": "string",
           "isArray": true,
           "required": false,
-          "description": "Repository path globs whose change must not start a new build (`docs/**`, `*.md`). A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+          "description": "Repository path globs whose change must not start a new build (`docs/**`, `/*.md`), written as gitignore-style globs from the repository root; an exclusion wins over an inclusion. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
+        },
+        {
+          "name": "watchInclude",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Repository path globs whose change starts a new build (`api/**`), written as gitignore-style globs from the repository root. Absent means every path: a monorepo app names only its own directories. A platform that has no place for them in its own file gets them as a fact to set by hand, which its generator lists."
         }
       ],
       "children": []
@@ -313,6 +341,13 @@
             "publicUrl"
           ],
           "description": "Which of its values: url, host, port, user, password, privateUrl, publicUrl. A platform generator maps the name to the platform's own reference and refuses one it cannot supply."
+        },
+        {
+          "name": "path",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "A path appended to a URL output (`/api`): the address of one context of the producing app. Only on a url, privateUrl or publicUrl output; a platform generator refuses it on another."
         },
         {
           "name": "producedBy",
