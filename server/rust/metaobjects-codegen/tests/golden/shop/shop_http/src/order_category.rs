@@ -5,11 +5,8 @@
 use meta_http::{BodySpec, ListSpec};
 
 /// What `GET /order_categories` accepts.
-pub static LIST: ListSpec = ListSpec {
-    filters: &[],
-    sorts: &[],
-    fields: &["orderId", "categoryId"],
-};
+pub static LIST: ListSpec =
+    ListSpec { filters: &[], sorts: &[], fields: &["orderId", "categoryId"] };
 
 /// What a body sent to `/order_categories` may carry.
 pub static BODY: BodySpec = BodySpec {

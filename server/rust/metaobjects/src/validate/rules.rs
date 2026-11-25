@@ -193,7 +193,7 @@ fn placeholders(path: &str) -> Vec<&str> {
 
 /// A path with every placeholder's name removed, so two routes that differ only in what
 /// they call a placeholder compare equal.
-fn route_shape(path: &str) -> String {
+pub fn route_shape(path: &str) -> String {
     let mut out = String::new();
     let mut rest = path;
     while let Some(open) = rest.find('{') {
