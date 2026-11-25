@@ -26,7 +26,7 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
 - [ ] **D. Prompt pillar.** Every LLM prompt-construction site (see `prompt-anti-patterns.md`),
   including the **unlinked payload** count: for each `@payloadRef` object, how many of its
   fields are linked to the entity field they copy.
-- [ ] **E. Owned generators & scaffold-and-own** (see "Owned-codegen & scaffold-and-own assessment" in `SKILL.md`).
+- [ ] **E. Owned generators & scaffold-and-own** (see "Owned generators and generator gaps" in `SKILL.md`).
 - [ ] **E2. Capability ledger — `requirement.*`** (see `references/requirements.md` and the
   Requirement axis of the capability checklist). The one axis whose hunt is hand-written
   PROSE rather than hand-written code: a `CAPABILITIES.md`, a README features table, a
