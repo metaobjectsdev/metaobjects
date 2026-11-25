@@ -752,12 +752,13 @@ maintenance-branch procedure either, because core can be cut from `main` with pa
 flight.
 
 A pack is released on its own, tagged `pack-<name>-v<version>`. Core's tag patterns, the site
-deploy and the metamodel gate's baseline all ignore that tag. Until a pack is published
-(`"publish": false` in `pack.json`, `"private": true` on its npm package), adopter projects use
-it from the private prerelease registry (`docs/features/prerelease.md`). It publishes once an
-estate project runs it with the drift gate enforced. The pack release script, the pack version
-gate and the test against the lowest published core in its range are built before that first
-publish.
+deploy and the metamodel gate's baseline all ignore that tag. A pack stays unpublished
+(`"publish": false` in `pack.json`, `"private": true` on its npm package) until an estate
+project runs it with the drift gate enforced. A pack's prerelease path — publishing it to the
+private registry for that adopter run — does not exist yet (`docs/features/prerelease.md`
+covers the core lockstep set only) and is built in a follow-up before the first adopter run.
+The pack release script, the pack version gate and the test against the lowest published core
+in its range are built before that first publish.
 
 # Releasing the C# packages to NuGet
 

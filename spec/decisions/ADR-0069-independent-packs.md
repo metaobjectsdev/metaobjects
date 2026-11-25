@@ -182,10 +182,11 @@ Core's own `build` and `typecheck` (the root `package.json` scripts, used by the
 
 ### 8. Publishing
 
-A pack stays **unpublished** (`"publish": false`, its npm package `private`) and is used by
-adopter projects through the private prerelease registry (`docs/features/prerelease.md`) until
-one estate project runs it with the drift gate enforced. Only then does it publish, as `0.x`
-`preview`. This is the bar a `preview` library meets before promotion (`docs/features/libraries.md`), and the one ADR-0035 Amendment 6 sets for new vocabulary (ruling 3) and for a helper leaving `0.x` (ruling 2). A pack release
+A pack stays **unpublished** (`"publish": false`, its npm package `private`) until one estate
+project runs it with the drift gate enforced; only then does it publish, as `0.x` `preview`.
+A pack's prerelease path — publishing it to the private registry for that adopter run — does
+not exist yet (`docs/features/prerelease.md` covers the core lockstep set only) and is built in
+a follow-up before the first adopter run. This is the bar a `preview` library meets before promotion (`docs/features/libraries.md`), and the one ADR-0035 Amendment 6 sets for new vocabulary (ruling 3) and for a helper leaving `0.x` (ruling 2). A pack release
 is tagged `pack-<name>-v<version>`, which the core release tags (`v<M>.<m>.<p>`), the site deploy
 and the metamodel gate's baseline all ignore. The per-registry release path (a pack release
 script, a pack version gate against its last tag, and a test against the lowest published core
