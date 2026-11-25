@@ -11,7 +11,7 @@ const scratch = mkdtempSync(join(process.env.DEV_SCRATCH ?? tmpdir(), "pack-conf
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 /** A dry run: every rendered file by its path relative to the output directory, nothing written. */
-async function render(generators: Generator[], model?: unknown): Promise<Map<string, string>> {
+async function render(generators: Generator[], model?: unknown, warnings?: string[]): Promise<Map<string, string>> {
   const out = join(scratch, "out");
   const res = await runGen({
     config: defineConfig({ outDir: out, extStyle: "none", dbImport: "../db", dialect: "sqlite", generators }),
@@ -19,6 +19,7 @@ async function render(generators: Generator[], model?: unknown): Promise<Map<str
     projectRoot: scratch,
     dryRun: true,
   });
+  warnings?.push(...res.warnings);
   const files = new Map<string, string>();
   for (const [abs, content] of res.rendered ?? []) files.set(abs.slice(out.length + 1), content);
   return files;
@@ -115,6 +116,43 @@ describe("config pack generators", () => {
       { "object.entity": { name: "Customer", children: [{ "field.long": { name: "id" } }, { "identity.primary": { name: "id", "@fields": "id" } }] } },
     ] } };
     expect((await render([envExampleFile(), keyManifestFile(), keysAxiTomlFile()], entityOnly)).size).toBe(0);
+  });
+
+  test("setting attributes on a field outside a settings group warn once per run, not per generator", async () => {
+    const generators = [envExampleFile(), keyManifestFile(), keysAxiTomlFile()];
+    const misplaced = { "metadata.root": { package: "acme::app", children: [
+      { "object.value": { name: "Token", children: [{ "field.string": { name: "value", "@secret": true } }] } },
+      { "object.settings": { name: "Ok", children: [{ "field.string": { name: "x", "@secret": true, "@phase": "build" } }] } },
+    ] } };
+    const first: string[] = [];
+    await render(generators, misplaced, first);
+    const found = first.filter((w) => w.includes("only mean something on a field of an object.settings"));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("acme::app::Token.value: @secret");
+    expect(found[0]).not.toContain("Ok.x");
+
+    const second: string[] = [];
+    await render(generators, misplaced, second);
+    expect(second.filter((w) => w.includes("acme::app::Token.value"))).toHaveLength(1);
+
+    const clean: string[] = [];
+    await render(generators, undefined, clean);
+    expect(clean.filter((w) => w.includes("only mean something"))).toEqual([]);
+  });
+
+  test("a second run over the same loaded root warns again", async () => {
+    const root = await loadModel({ "metadata.root": { package: "acme::app", children: [
+      { "object.value": { name: "Token", children: [{ "field.string": { name: "value", "@envName": "TOKEN" } }] } },
+    ] } });
+    const warnings: string[] = [];
+    const run = () => runGen({
+      config: defineConfig({ outDir: join(scratch, "out"), extStyle: "none", dbImport: "../db", dialect: "sqlite", generators: [envExampleFile(), keyManifestFile()] }),
+      metadata: root,
+      projectRoot: scratch,
+      dryRun: true,
+    });
+    for (let i = 0; i < 2; i++) warnings.push(...(await run()).warnings.filter((w) => w.includes("Token.value")));
+    expect(warnings).toHaveLength(2);
   });
 
   test("core's entity generator types a settings group as it does a value object: no table", async () => {

@@ -52,7 +52,7 @@ function vaultsInScope(ctx: GenContext): Vault[] {
   return readVaults(ctx.loadedRoot, (key) => ctx.select?.(key) ?? true);
 }
 
-/** Roots already checked for misplaced setting attributes: warn once per run, whichever generators run. */
+/** Runs already checked for misplaced setting attributes (a run shares one `entities` array): warn once per run, whichever generators run. */
 const checked = new WeakSet<object>();
 
 function generator(name: string, opts: ConfigGeneratorOptions, generate: (ctx: GenContext) => EmittedFile[]): Generator {
@@ -60,8 +60,8 @@ function generator(name: string, opts: ConfigGeneratorOptions, generate: (ctx: G
     name,
     ...(opts.target !== undefined ? { target: opts.target } : {}),
     generate(ctx) {
-      if (!checked.has(ctx.loadedRoot)) {
-        checked.add(ctx.loadedRoot);
+      if (!checked.has(ctx.entities)) {
+        checked.add(ctx.entities);
         for (const w of misplacedSettingAttrs(scopedObjects(ctx))) ctx.warn(`${PACKAGE}: ${w}`);
       }
       return generate(ctx);
