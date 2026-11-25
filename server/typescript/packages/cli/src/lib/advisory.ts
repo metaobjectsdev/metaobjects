@@ -115,6 +115,7 @@ export const RULE_REMOVED_PROP_PREFIX = "removed-prop:";
 export const RULE_LIBRARY_PREFIX = "library-prefix-unprovenanced";
 export const RULE_UNINDEXED_FK = "unindexed-foreign-key";
 export const RULE_REFERENTIAL_ACTION_CONFLICT = "overridden-referential-action";
+export const RULE_UNENFORCED_LIFECYCLE = "unenforced-lifecycle";
 
 /** The next-step line for `n` rows of one advisory kind, each naming what the rows are. */
 const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (n: number) => string }> = [
@@ -127,6 +128,11 @@ const ADVISORY_HELP: ReadonlyArray<{ matches: (rule: string) => boolean; line: (
     matches: (r) => r === RULE_REFERENTIAL_ACTION_CONFLICT,
     line: (n) =>
       `${n} foreign key(s) whose two sides disagree on the referential action — see antiPatterns.rows[] (rule "${RULE_REFERENTIAL_ACTION_CONFLICT}")`,
+  },
+  {
+    matches: (r) => r === RULE_UNENFORCED_LIFECYCLE,
+    line: (n) =>
+      `${n} entit(ies) with a lifecycle no service generator enforces — see antiPatterns.rows[] (rule "${RULE_UNENFORCED_LIFECYCLE}")`,
   },
   {
     matches: (r) => r === RULE_MISSING_BASE_URL,
@@ -241,6 +247,22 @@ export function unindexedFkRows(
     file: f.file,
     line: 0,
     rule: RULE_UNINDEXED_FK,
+    construct: f.construct,
+    message: f.message,
+  }));
+}
+
+/**
+ * Lifecycles no service generator enforces, in the same row shape. `construct` is the entity's
+ * FQN; there is no line, for the same reason as {@link unindexedFkRows}.
+ */
+export function unenforcedLifecycleRows(
+  findings: readonly { file: string; construct: string; message: string }[],
+): AdvisoryFindingRow[] {
+  return findings.map((f) => ({
+    file: f.file,
+    line: 0,
+    rule: RULE_UNENFORCED_LIFECYCLE,
     construct: f.construct,
     message: f.message,
   }));

@@ -292,6 +292,57 @@ describe("init() — the owned-codegen tier is empty on purpose", () => {
     }
   });
 
+  test("--with-services wires the recommended service list, and still copies no generator", async () => {
+    const result = await init({ cwd, withServices: true });
+    const configSrc = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configSrc).toContain(
+      'import { entityFile, rulesNamesFile, contractTypes, serviceFile, serviceRoutesFile } from "@metaobjectsdev/codegen-ts/generators";',
+    );
+    expect(configSrc).toContain("generators: [entityFile(), rulesNamesFile(), contractTypes(), serviceFile(), serviceRoutesFile()]");
+    expect(readdirSync(join(cwd, "codegen", "generators"))).toEqual([]);
+    // What the wired output needs is said at init, not at the first failing compile.
+    const said = result.warnings.join("\n");
+    expect(said).toContain("--with-services");
+    for (const pkg of ["@metaobjectsdev/runtime-ts", "drizzle-orm", "zod", "fastify"]) expect(said).toContain(pkg);
+  });
+
+  test("--with-services on D1 generates the service without an interactive transaction", async () => {
+    await init({ cwd, withServices: true, d1: true });
+    const configSrc = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configSrc).toContain("serviceFile({ interactiveTransactions: false })");
+    expect(configSrc).toContain('dialect: "sqlite"');
+  });
+
+  test("--with-services and --with-docs together share one import and one list", async () => {
+    await init({ cwd, withServices: true, withDocs: true });
+    const configSrc = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configSrc.match(/^import .* from "@metaobjectsdev\/codegen-ts\/generators";$/gm)?.length).toBe(1);
+    expect(configSrc).toContain("serviceRoutesFile(), docsFile(), apiDocsFile()]");
+  });
+
+  test("--with-services on a project that already has a config leaves it alone and says what to add", async () => {
+    writeFileSync(join(cwd, "metaobjects.config.ts"), "export default {};\n", "utf8");
+    const result = await init({ cwd, withServices: true });
+    expect(readFileSync(join(cwd, "metaobjects.config.ts"), "utf8")).toBe("export default {};\n");
+    expect(result.warnings.join("\n")).toContain("serviceFile()");
+  });
+
+  test("--with-services writes the service and its transport on the first `meta gen`", async () => {
+    const dir = mkGenProjectDir("with-services-");
+    try {
+      await init({ cwd: dir, withServices: true, quiet: true });
+      mkdirSync(join(dir, "metaobjects"), { recursive: true });
+      writeFileSync(join(dir, "metaobjects", "meta.probe.json"), PROBE_ENTITY, "utf8");
+      const { genCommand } = await import("../src/commands/gen.js");
+      expect(await genCommand([], dir)).toBe(0);
+      const written = (readdirSync(dir, { recursive: true }) as string[]).filter((f) => !f.includes(".metaobjects/") && !f.includes("node_modules/"));
+      expect(written.some((f) => f.endsWith("/service/index.ts"))).toBe(true);
+      expect(written.some((f) => f.endsWith("/transport/fastify.ts"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("--print-only forecasts the same: the tier, not files in it", async () => {
     const result = await init({ cwd, printOnly: true });
     expect(result.created).toContain("codegen/generators");

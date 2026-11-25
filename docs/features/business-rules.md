@@ -28,9 +28,9 @@ declared write rules, behind a thin Fastify transport (`service-routes`) or Hono
 [The service layer](#the-service-layer-typescript)). It also writes a command per transition and a
 shell per declared command and query, and enforces at run time what this page declares: the
 permission point, the state check, the guarded update, `state_managed` and the declared errors, held to the shared API tests' `rules/` corpus. The other ports' services are
-later 1.3.0 work. A lifecycle in a project that wires no service generator will be advised by
-`verify` once that check lands; until then the flat routes enforce nothing and `verify` says
-nothing about it. Every flat generator writes byte-identical code for
+later 1.3.0 work. A lifecycle in a project that wires no service generator covering it is
+named by Node `meta verify` as an advisory (rule `unenforced-lifecycle`, never an exit code); the
+flat routes enforce nothing. Every flat generator writes byte-identical code for
 a model with this vocabulary and the same model without it. The design is [ADR-0066](../../spec/decisions/ADR-0066-business-rules-operations-and-lifecycles.md).
 
 **Experimental.** This vocabulary, its loader rules, its `verify` checks and its settings may
@@ -403,6 +403,14 @@ await withWriteTransaction(db, async (tx) => {
   await service.createOrder({ title: "second" }, { tx });
 });
 ```
+
+A new project gets the recommended list with `meta init --with-services`: `entityFile()`,
+`rulesNamesFile()`, `contractTypes()`, `serviceFile()` and `serviceRoutesFile()` (on `--d1`, the
+service is `serviceFile({ interactiveTransactions: false })`), and init prints what their output
+needs installed. It is a list, not a mode: swap `serviceRoutesFile()` for `serviceRoutesHonoFile()`,
+or narrow `serviceFile()` with its `filter`, as with any generator. In a project that declares a
+lifecycle and wires no service generator covering it, `meta verify` advises that nothing generated
+enforces it (rule `unenforced-lifecycle`); the flat routes write the lifecycle field like any other.
 
 Both import the entity module (`entity`, for the table and the allowlists) and the contract types
 (`contract-types`), written to the same target, and `@metaobjectsdev/runtime-ts`'s `service` and
