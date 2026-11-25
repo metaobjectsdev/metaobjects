@@ -329,6 +329,9 @@ export interface AgentSchemaPageData {
   readonly physical: boolean;
   /** The dialect a physical page names; `""` on a model-only page. */
   readonly dialect: string;
+  /** The project chose a `meta migrate` dialect: the page tells a reader to change the schema
+   *  with `meta migrate`. Otherwise with the project's own migration tool, fed by `meta schema`. */
+  readonly hasMigrate: boolean;
   readonly descriptionNudge: boolean;
   readonly hasTables: boolean;
   readonly tables: readonly AgentSchemaTable[];
@@ -517,6 +520,7 @@ export function agentSchemaPageData(
     generatedMarker: GENERATED_MARKER,
     physical,
     dialect: physical ? input.dialect : "",
+    hasMigrate: input.migrate,
     descriptionNudge: !anyDescription && input.tables.length > 0,
     hasTables: tables.length > 0,
     tables,

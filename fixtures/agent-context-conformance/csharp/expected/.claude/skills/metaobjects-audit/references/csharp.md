@@ -1,9 +1,10 @@
 # C# port — audit reference
 
 The C# port targets .NET consumers (EF Core + ASP.NET Minimal API). Codegen runs
-through the `dotnet meta` .NET tool (`MetaObjects.Cli`). Schema migration and
-live-DB drift are **Node-`meta`-only** (ADR-0015) — `dotnet meta` has no `migrate`
-subcommand and `dotnet meta verify --db` is rejected with exit 2.
+through the `dotnet meta` .NET tool (`MetaObjects.Cli`). Schema migration is EF Core
+Migrations or the Node `meta migrate` reference helper, and live-DB drift is the Node
+`meta verify --db` (ADR-0015) — `dotnet meta` has no `migrate` subcommand and
+`dotnet meta verify --db` is rejected with exit 2.
 
 ---
 

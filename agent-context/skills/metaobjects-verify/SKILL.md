@@ -139,13 +139,12 @@ with `ERR_DEPENDENCY_SNAPSHOT_STALE` naming the fix: run `meta deps sync`.
 `verify` has four drift checks. Run the ones your project uses in CI.
 
 - **`--db`** — schema drift. Introspects the live database and fails if it has
-  diverged from metadata. This is a **schema concern, so it is the Node toolchain's
-  job regardless of your server language** (see migrations below). The JVM ports
-  have no schema surface of their own — ADR-0015 Decision 2 removed the old
-  dev/test auto-create validator (OMDB is pure data-access) — so a JVM, Python, or
-  C# project's dev/test databases are provisioned the same way production is: by
-  applying the Node-emitted SQL. The Node `verify --db` is the only DB-vs-metadata
-  gate, for every port.
+  diverged from metadata. It lives in the Node `meta` CLI and works **whatever tool
+  migrated the database** (see migrations below). The JVM ports have no schema
+  surface of their own — ADR-0015 Decision 2 removed the old dev/test auto-create
+  validator (OMDB is pure data-access) — so a JVM, Python, or C# project's dev/test
+  databases are provisioned the same way production is: by the project's migration
+  tool. The Node `verify --db` is the only DB-vs-metadata gate, for every port.
 
 - **`--codegen`** — regeneration drift. Re-runs generation and diffs the result
   against the committed generated files; a stale generated part (someone skipped a
@@ -203,8 +202,8 @@ Dependency drift (`--deps`) per port:
 | C# | `dotnet meta verify --deps` |
 
 Every non-TS port's `verify` rejects `--db` outright (exit 2, "schema verify is the
-migrate engine") — schema drift always runs through the Node `meta verify --db`,
-per the shared-migration-engine doctrine below.
+migrate engine") — schema drift runs through the Node `meta verify --db`, whichever
+tool the project migrates with (see below).
 
 A clean run is silent; a failure names the entity/template, the drifted artifact,
 and (for templates) the missing reference. **Bias toward trusting the tool** — a
@@ -255,14 +254,15 @@ Generated output is already covered upstream — every port's generators referen
 names artifact instead of embedding the literal — so this ratchet is only ever about your
 code. The remedy for a hit is the `<Entity>Names` constant (`metaobjects-runtime-ui`).
 
-## Schema migrations are the shared TypeScript engine — for every port
+## Schema migrations: `meta migrate` is the reference helper, one option — for every port
 
-This is the load-bearing architectural fact (ADR-0015): **schema migrations are
-owned by one shared TypeScript engine, regardless of your server language.** The
-Node `meta migrate` and `meta verify --db` are the migration + live-DB-drift
-toolchain for TS, Java, Kotlin, C#, and Python alike.
+**Each language's native migration tool is first-class** (EF Core Migrations, Flyway
+or Liquibase, Exposed, Alembic, sqlx), handed the schema `npx meta schema` prints. The
+Node `meta migrate` is the reference migration helper, one option for TS, Java,
+Kotlin, C#, Python and Rust alike, and `meta verify --db` checks the live database
+whichever tool migrated it.
 
-What this means in practice:
+When the project uses `meta migrate`:
 
 - The Node `meta` CLI emits the migration SQL (diffing metadata → DDL) and applies
   it. You point it at the same database your server connects to:

@@ -82,10 +82,10 @@ load, a refused file, drift), 2 a usage error. An unknown flag names the flags t
 An owned generator crate that fails to build, or a generator in it that panics, is a failed run: 1,
 with the compiler's or the panic's own message.
 
-There is no `migrate`, no `verify --db` and no `fmt` in `cargo meta`. Schema migrations and database
-checks are the Node `meta` tool's for every server language
-([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md)); a Rust project runs
-`meta migrate` beside `cargo meta gen`, as a Java, C# or Python project does.
+There is no `migrate`, no `verify --db` and no `fmt` in `cargo meta`. Schema migrations run in your
+own migration tool (sqlx migrations, say), handed the schema `meta schema` prints; the Node
+`meta migrate` is the reference migration helper, one option, and the database check is the Node
+`meta verify --db` ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md)).
 
 ## What `gen` writes
 
@@ -339,8 +339,9 @@ CLI package is `metaobjects-cli` and installs a `cargo-meta` binary: the command
 `cargo meta`. Nothing is reserved on crates.io; reserving a name is a publish, and waits for the
 owner's go.
 
-The schema stays where it is for every port: migrations and database checks run in the Node `meta`
-tool ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md);
+The schema stays where it is for every port: migrations run in the project's own tool or the Node
+`meta migrate` reference helper, and database checks in the Node `meta`
+([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md);
 [What differs by language](../features/language-differences.md)).
 
 ## Build and test

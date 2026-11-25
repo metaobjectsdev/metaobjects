@@ -28,21 +28,6 @@ truth. Code, schema and migrations are generated from it and are disposable.
 2. **Generate.** `dotnet meta gen`. `dotnet meta eject <name>` copies a generator into the repo
    to change what it emits.
 
-### Schema (every stack: the Node `meta` CLI owns it, so Java, Kotlin, C#, Python and Rust projects need Node too)
-
-Never hand-write DDL, and never `ALTER` a live database by hand.
-
-- First migration (needs a reachable, empty database):
-  `npx meta migrate --from-db --db <url> --dialect <dialect> --slug init` writes
-  `.metaobjects/migrations/<timestamp>-init/up.sql` and `down.sql`.
-- At boot or deploy: `npx meta migrate apply-pending --db <url>`.
-- A later change: edit the metadata, regenerate, then
-  `npx meta migrate --dialect <dialect> --slug <name>` (offline, from the committed snapshot).
-  A renamed field needs `--rename-column <table>.<old_column>=<new_column>` (an object:
-  `--rename-table <old>=<new>`) to keep its data. A destructive change is refused until you
-  allow its kind by name: `--allow drop-check` for a changed enum, `--allow drop-column` only
-  when the data should go.
-
 ### Requirements, when the metadata declares `requirement.*` nodes
 
 A commit that changes behaviour updates them in the same commit: `@status: live` once a claim
@@ -51,10 +36,8 @@ is built (never before), a new node for new behaviour.
 ### Before you call it done
 
 - `dotnet meta verify --codegen` (the generated code and the requirements).
-- `npx meta verify --db <url>` (the live schema matches the metadata).
 
-Commit the metadata, the generated code, `.metaobjects/migrations/` and
-`.metaobjects/.gen-state/.hashes/`.
+Commit the metadata, the generated code and `.metaobjects/.gen-state/.hashes/`.
 
 ## Calling the generated REST API
 
@@ -66,7 +49,7 @@ When the project serves the generated routes (any port):
   fields filter.
 - `?sort=<field>:asc|desc`, `?limit=N&offset=N`; `withCount=1` returns `{"rows", "total"}`.
   Always send `limit`: without it the project's `api.pagination.defaultLimit` applies, or with
-  none set TypeScript and C# return every row, the other ports 50; above `maxLimit` is 400.
+  none set C# returns every row, the other ports 50; above `maxLimit` is 400.
 - `PUT` is the same partial update as `PATCH`. Send only declared fields: an undeclared key is
   400 `unknown_fields` (unless `api.unknownFields` is `drop`).
 - Errors are `{"error": "<code>"}`: 400 for validation (`issues` lists each problem) and for

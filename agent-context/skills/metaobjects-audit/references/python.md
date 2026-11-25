@@ -1,8 +1,9 @@
 # Python port — audit reference
 
 The Python port targets FastAPI consumers. Codegen runs through the **`metaobjects`
-console-script** (`pip install metaobjects`). Schema migration and live-DB drift
-are **Node-`meta`-only** (ADR-0015) — the `metaobjects` console-script has no
+console-script** (`pip install metaobjects`). Schema migration is the project's own
+tool (Alembic) or the Node `meta migrate` reference helper, and live-DB drift is the Node
+`meta verify --db` (ADR-0015) — the `metaobjects` console-script has no
 `migrate` subcommand and `metaobjects verify --db` is rejected with exit 2. The
 runtime persistence tier is the `ObjectManager` (metadata-driven CRUD over
 SQLAlchemy Core or asyncpg), or a hand-written repository implementation.

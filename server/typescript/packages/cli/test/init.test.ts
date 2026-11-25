@@ -70,6 +70,14 @@ describe("init() — next-steps message (S1)", () => {
 
   // A first-run user read "Ship in later sub-projects: meta ingest … meta serve …" as
   // commands to try. None of them exists; internal roadmap names do not belong in output.
+  // `meta migrate` is the reference migration helper, one option: an init that chose no
+  // dialect picked no migration tool, so it is not told to run one.
+  test("names the migrate step only when a dialect was chosen", () => {
+    expect(nextStepsBlock()).not.toContain("meta migrate");
+    expect(nextStepsBlock("sqlite")).toContain("meta migrate --from-db");
+    expect(nextStepsBlock("d1")).toContain("meta migrate --dialect d1");
+  });
+
   test("names no command that does not exist", () => {
     const block = nextStepsBlock();
     expect(block).not.toMatch(/sub-project/i);
@@ -662,6 +670,28 @@ describe("init --dialect", () => {
     expect(read("metaobjects.config.ts")).toContain('dialect: "mysql"');
     expect(JSON.parse(read(".metaobjects/config.json")).migrate).toBeUndefined();
     expect(nextStepsBlock("mysql")).toContain("does not own MySQL schema");
+  });
+  test("the always-on file carries the meta migrate steps only when a migrate dialect was chosen", async () => {
+    const schemaHeading = "### Schema, with the reference migration helper";
+    expect(await initCommand([], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).not.toContain(schemaHeading);
+    expect(read(".metaobjects/AGENTS.md")).not.toContain("verify --db");
+    // A refresh reads the choice from the project's own migrate.dialect.
+    const cfgPath = join(cwd, ".metaobjects", "config.json");
+    const cfg = JSON.parse(read(".metaobjects/config.json"));
+    writeFileSync(cfgPath, JSON.stringify({ ...cfg, migrate: { ...cfg.migrate, dialect: "sqlite" } }, null, 2));
+    expect(await initCommand(["--refresh-docs"], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).toContain(schemaHeading);
+    expect(read(".metaobjects/AGENTS.md")).toContain("npx meta verify --db <url>");
+  });
+  test("a chosen dialect writes the meta migrate steps; MySQL, which migrate does not own, does not", async () => {
+    const schemaHeading = "### Schema, with the reference migration helper";
+    expect(await initCommand(["--dialect", "postgres"], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).toContain(schemaHeading);
+    rmSync(join(cwd, ".metaobjects"), { recursive: true, force: true });
+    rmSync(join(cwd, "metaobjects"), { recursive: true, force: true });
+    expect(await initCommand(["--dialect", "mysql", "--force"], cwd)).toBe(0);
+    expect(read(".metaobjects/AGENTS.md")).not.toContain(schemaHeading);
   });
   test("an unknown dialect, or --d1 with another dialect, is a usage error and writes nothing", async () => {
     expect(await initCommand(["--dialect", "oracle"], cwd)).toBe(2);

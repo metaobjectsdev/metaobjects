@@ -333,6 +333,7 @@ function agentSchema(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]):
       provenance: built.provenance,
       columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
       qualify: qualifiedDbName,
+      migrate: true,
     };
   } catch {
     return undefined;

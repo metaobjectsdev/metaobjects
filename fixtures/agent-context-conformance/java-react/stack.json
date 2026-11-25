@@ -1,1 +1,1 @@
-{ "servers": ["java"], "clients": ["react"] }
+{ "servers": ["java"], "clients": ["react"], "migrate": true }

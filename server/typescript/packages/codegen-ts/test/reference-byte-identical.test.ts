@@ -1512,6 +1512,7 @@ describe("ADR-0034 Amendments 8 and 9 — the requirements and agent-docs refere
       provenance: built.provenance,
       columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
       qualify: qualifiedDbName,
+      migrate: true,
     };
   }
 

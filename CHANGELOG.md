@@ -53,6 +53,17 @@ here.**
   under any name is seen as the stock one is. The old markers are deprecated and still read, so an
   owned copy that sets them keeps working; a re-ejected copy declares `provides`.
 
+- **`meta migrate` is the reference migration helper, one option, in the docs and the agent
+  files.** Each port page now leads with its native migration path (EF Core Migrations, Flyway or
+  Liquibase, Exposed, Alembic, sqlx), handed the schema `meta schema` prints. The always-on
+  `.metaobjects/AGENTS.md` carries the `meta migrate` steps, the `verify --db` step and the
+  `.metaobjects/migrations/` commit line only when the project chose a migrate dialect
+  (`migrate.dialect` in `.metaobjects/config.json`, which `meta init --dialect` writes); `meta init`
+  prints its migrate step on the same condition. The generated `agent/schema.md` says to change the
+  schema with `meta migrate` on the same condition, and otherwise with the project's own migration
+  tool. The shared page data gains `hasMigrate`, and the shipped agent tree (manifest schema `2`)
+  ships every stack with and without the steps, the second with a `-migrate` id suffix.
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint

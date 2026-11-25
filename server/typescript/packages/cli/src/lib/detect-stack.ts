@@ -89,8 +89,16 @@ export function assertKnownStackValues(overrides: { servers: string[]; clients: 
   }
 }
 
-/** Resolve the stack: explicit --server/--client overrides take precedence; otherwise detect. */
-export async function resolveStack(cwd: string, overrides: { servers: string[]; clients: string[] }): Promise<Stack> {
+/**
+ * Resolve the stack: explicit --server/--client overrides take precedence; otherwise detect.
+ * `migration` says the project chose a `meta migrate` dialect; it is not detected, because only
+ * the project's config (or the `meta init` flag that writes it) states it.
+ */
+export async function resolveStack(
+  cwd: string,
+  overrides: { servers: string[]; clients: string[] },
+  migration = false,
+): Promise<Stack> {
   const validServers = SERVER_LANGS as readonly string[];
   const validClients = CLIENT_FRAMEWORKS as readonly string[];
   const oServers = overrides.servers
@@ -99,7 +107,7 @@ export async function resolveStack(cwd: string, overrides: { servers: string[]; 
   const oClients = overrides.clients
     .map((c) => canonical<ClientFramework>(c, validClients, CLIENT_ALIASES))
     .filter((c): c is ClientFramework => c !== undefined);
-  if (oServers.length > 0 || oClients.length > 0) return makeStack(oServers, oClients);
+  if (oServers.length > 0 || oClients.length > 0) return makeStack(oServers, oClients, migration);
   const detected = detectStack(probe(cwd));
-  return makeStack(detected.servers, detected.clients);
+  return makeStack(detected.servers, detected.clients, migration);
 }

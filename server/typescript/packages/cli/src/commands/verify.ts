@@ -1882,6 +1882,7 @@ export async function verifyCommand(
           config.dialect,
           (m) => log.warn(`verify --codegen: [agent-docs] ${m}`),
           codegenSchema,
+          genCollection.migrateDialect !== undefined,
         ),
         schemaSettings: codegenSchema,
         requirementLedger,
@@ -1907,7 +1908,7 @@ export async function verifyCommand(
           const probe = await computeCodegenDrift(config, codegenRoot, genConfigDir, genCollection.inScope,
             genCollection.ownFiles, {
               sourceRoots: sourceRootsOf(genCollection),
-              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema),
+              agentSchema: () => buildAgentSchemaInput(codegenRoot, config.dialect, () => {}, codegenSchema, genCollection.migrateDialect !== undefined),
               schemaSettings: codegenSchema,
               requirementLedger,
               inLedger: genCollection.inLedger,

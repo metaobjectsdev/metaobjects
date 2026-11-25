@@ -5,7 +5,7 @@
 The tables, columns and keys this model declares. Read it before writing a query, a migration, or anything that names a table or a column. SQL types, defaults, indexes, checks, constraint names and referential actions are not on this page: the migration files carry them.
 
 - The **DDL is not repeated here.** The migration files are the DDL, they are generated, and they are what runs — this page describes the schema they produce.
-- Change the schema by changing the **metadata** and running `meta migrate`. Never hand-apply SQL to a live database: it drifts from the migration history and collides at the next migrate.
+- Change the schema by changing the **metadata** and writing the migration with the project's migration tool, from the schema `meta schema` prints. Never hand-apply SQL to a live database: it drifts from the migration history and collides at the next migration.
 - `Field` and `Declared` are the METADATA names. Edit those; the column name follows.
 
 ## Tables

@@ -64,14 +64,20 @@ It leaves out the dialect facts: the SQL type and default columns, indexes (and 
 them), foreign-key constraint names and referential actions. Only the TypeScript page,
 written from the expected schema, carries those; `agent/ui.md` stays a TypeScript page.
 
+One project setting reaches the page: `hasMigrate` is true when the project's
+`.metaobjects/config.json` sets `migrate.dialect` (it chose `meta migrate`, the reference
+migration helper). The page then says to change the schema with `meta migrate`; otherwise with
+the project's own migration tool, from the schema `meta schema` prints. A case sets it with
+`input/.metaobjects/config.json`; a case without one is false.
+
 ## Cases
 
 | Case | Pins |
 |---|---|
 | `ledger-and-claims` | A nested functional tree (L1 to L5, heading depth to h6 when embedded), a title that is kept, a description holding a `#` line, a statement with a line break and one with a `\|`, an architectural entry with no level, a retired entry (in the ledger, in no index), the node index with its statements, TOON quoting of commas, colons and line breaks. |
 | `ledger-unclaimed` | One requirement (the singular count), no claim (the "No requirement resolves" paragraph), a disposition, a statement TOON must quote because it reads as a literal (`true`). |
-| `schema-model` | Tables with descriptions, an increment key, a TPH subtype's column on its base table, a foreign key, a view with passthrough and aggregate lineage, relationships both ways, string- and int-backed enums, a sourceless value's enum left out. |
-| `schema-report-view` | A report's view (the Views intro that names reports), the description nudge, a `@default` left off the page. |
+| `schema-model` | Tables with descriptions, an increment key, a TPH subtype's column on its base table, a foreign key, a view with passthrough and aggregate lineage, relationships both ways, string- and int-backed enums, a sourceless value's enum left out, a project that chose `meta migrate` (`hasMigrate`). |
+| `schema-report-view` | A report's view (the Views intro that names reports), the description nudge (naming `meta schema`: no migrate dialect), a `@default` left off the page. |
 
 ## Runners
 

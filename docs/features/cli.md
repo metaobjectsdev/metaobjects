@@ -28,7 +28,7 @@ command surface splits in two:
 | Project scaffold (`init`) | Node `meta` | `meta init` | TS projects; `--dialect sqlite\|postgres\|mysql\|d1` writes the codegen `dialect` in `metaobjects.config.ts` and, for sqlite, postgres and d1, `migrate.dialect` in `.metaobjects/config.json` (d1 is `--d1`; MySQL schema is not `meta migrate`'s). A new `.metaobjects/config.json` also carries `"api": { "pagination": { "defaultLimit": 50, "maxLimit": 1000 }, "unknownFields": "reject" }`, the generated list routes' page size and the refusal of undeclared write keys ([api-contract.md](api-contract.md)); for `--dialect sqlite` it also adds `@libsql/kysely-libsql` to the project's `dependencies`, the SQLite driver the CLI's optional peer names (run your package manager's install afterwards); `--force` over an existing config does not add it. `--with-services` wires the recommended service list ([business-rules.md](business-rules.md#the-service-layer-typescript)) instead of the empty one, and `--with-docs` the two docs generators |
 | **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); non-Node CLIs redirect here |
 | **Expected schema** (`schema`) | **Node `meta`** | `meta schema [--dialect <d>] [--as ddl\|json]` | **any backend** — read-only: prints the schema the metadata expects as DDL or as the neutral document ([schema-snapshot-format.md](schema-snapshot-format.md)); reads no database; writes nothing unless `--out` names a file |
-| **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — schema is Node-only (ADR-0015) |
+| **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — the reference migration helper, one option beside each language's own tool (ADR-0015) |
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
 | **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; part of the bare-`verify` default |
@@ -847,14 +847,15 @@ content, every port must produce the same canonical bytes, or classify the
 same refusal (`"overlay"` vs `"error"`). Each port's own test suite runs it,
 the same way `fixtures/conformance/` gates the loader.
 
-## Schema is Node-only — by design
+## The schema commands are in the Node `meta` — by design
 
-No port other than the Node `meta` exposes `migrate` or `verify --db`. The C#,
+No port other than the Node `meta` exposes `schema`, `migrate` or `verify --db`. The C#,
 Java, Python, and Kotlin command surfaces are **codegen only** (`gen` + codegen
 `verify`), and so is the Rust port's `cargo meta`: it rejects `verify --db`
 with exit 2 and names `meta verify --db`. The Java port's former `metaobjects:migrate` / live-DB `metaobjects:verify` Maven
 goals and the C#/Python migrate surfaces were removed in the schema-authority
-consolidation; the only schema entry point anywhere is the Node `meta`.
+consolidation. `meta migrate` is the reference migration helper, one option: a project may
+migrate with its own language's tool instead, handed the expected schema `meta schema` prints.
 
 ## Migration output formats (`--migration-format`)
 

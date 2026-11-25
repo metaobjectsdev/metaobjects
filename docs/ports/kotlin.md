@@ -513,8 +513,10 @@ initialization timeout for a large model. Both are the Maven plugin's, shared wi
 [Select objects](java.md#generate) on the Java page for what narrows, what stays whole-model,
 and the refusals.
 
-Schema migrations are owned by the TypeScript toolchain — see the
-[Migrations section](../features/migrations-and-drift.md#kotlin) for the `meta migrate` commands.
+Schema migrations run in your own migration tool (Exposed's migration support, Flyway):
+`meta schema` prints the schema the metadata expects to hand it. The Node `meta migrate` is the
+reference migration helper, one option — see the
+[Migrations section](../features/migrations-and-drift.md#kotlin) for its commands.
 
 ## Use
 

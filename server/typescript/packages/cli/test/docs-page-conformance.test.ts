@@ -47,7 +47,7 @@ async function load(dir: string): Promise<MetaRoot> {
 }
 
 /** Every pinned output of one case, by path under `expected/`. An absent page is no entry. */
-async function outputsOf(root: MetaRoot): Promise<Map<string, string>> {
+async function outputsOf(root: MetaRoot, migrate: boolean): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const json = (v: unknown): string => `${JSON.stringify(v, null, 2)}\n`;
 
@@ -71,7 +71,7 @@ async function outputsOf(root: MetaRoot): Promise<Map<string, string>> {
     skipRedundantChecks: false,
     foreignKeyIndexes: false,
     foreignKeyTargets: "refuse",
-  });
+  }, migrate);
   if (schema !== undefined) {
     const naming = physicalNamingOf(root).columns;
     const data = agentSchemaPageData(root, schema, naming, { physical: false });
@@ -81,6 +81,15 @@ async function outputsOf(root: MetaRoot): Promise<Map<string, string>> {
     }
   }
   return out;
+}
+
+/** The case chose a `meta migrate` dialect: its `input/.metaobjects/config.json` sets
+ *  `migrate.dialect`. Feeds the schema page's `hasMigrate`. */
+function choseMigrateDialect(inputDir: string): boolean {
+  const path = join(inputDir, ".metaobjects", "config.json");
+  if (!existsSync(path)) return false;
+  const config = JSON.parse(readFileSync(path, "utf8")) as { migrate?: { dialect?: string } };
+  return config.migrate?.dialect !== undefined;
 }
 
 function expectedOf(dir: string): Map<string, string> {
@@ -106,7 +115,7 @@ describe("docs-page-conformance", () => {
   for (const name of cases) {
     test(name, async () => {
       const caseDir = join(CORPUS, name);
-      const actual = await outputsOf(await load(join(caseDir, "input")));
+      const actual = await outputsOf(await load(join(caseDir, "input")), choseMigrateDialect(join(caseDir, "input")));
       const expectedDir = join(caseDir, "expected");
       if (UPDATE) {
         rmSync(expectedDir, { recursive: true, force: true });

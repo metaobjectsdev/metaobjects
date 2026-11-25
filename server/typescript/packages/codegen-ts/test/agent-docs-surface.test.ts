@@ -270,7 +270,19 @@ describe("agent/schema.md", () => {
     provenance: new Map([["public.orders", "acme::shop::Order"]]),
     columnType: (c) => (c.name === "id" ? "BIGINT" : "VARCHAR(64)"),
     qualify: (o) => `${o.schema ?? "public"}.${o.name}`,
+    migrate: true,
     ...over,
+  });
+
+  // T1 — `meta migrate` is one option. Only a project that chose its dialect is told to run it;
+  // any other project changes the schema with its own tool, fed by `meta schema`.
+  test("the page names meta migrate only for a project that chose a migrate dialect", async () => {
+    const withMigrate = renderAgentSchemaPage(await load(MODEL), input(), "snake_case");
+    expect(withMigrate).toContain("Change the schema by changing the **metadata** and running `meta migrate`.");
+    const without = renderAgentSchemaPage(await load(MODEL), input({ migrate: false }), "snake_case");
+    expect(without).toContain("writing the migration with the project's migration tool, from the schema `meta schema` prints.");
+    expect(without).not.toContain("meta migrate");
+    expect(without).not.toContain("{{");
   });
 
   // F76 — a `btree (ts DESC)` recency index rendered as "on `ts`", reading as ascending on the
@@ -576,6 +588,7 @@ describe("agent/schema.md — the claims it makes about the model", () => {
     ]),
     columnType: () => "TEXT",
     qualify: (o) => `${o.schema ?? "public"}.${o.name}`,
+    migrate: true,
   });
 
   test("the Enums section covers only enums the physical schema HOLDS", async () => {
@@ -653,6 +666,7 @@ describe("agent/schema.md — the claims it makes about the model", () => {
       provenance: new Map([["public.v_status_totals", "acme::billing::StatusTotals"]]),
       columnType: () => "TEXT",
       qualify: (o) => `${o.schema ?? "public"}.${o.name}`,
+      migrate: true,
     };
     const withReport = renderAgentSchemaPage(await load(billing(true)), schema, "snake_case");
     expect(withReport).toContain(
