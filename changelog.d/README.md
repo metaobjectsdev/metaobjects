@@ -8,7 +8,9 @@ At release time `scripts/release.mjs` puts every fragment at the top of `[Unrele
 file-name order, and deletes the files. The release commit then holds one `CHANGELOG.md`, as
 before. To fold them in by hand, for example to prepare a release section ahead of the cut, run
 `node scripts/changelog-fragments.mjs --assemble`. `--preview` prints the result without writing
-anything.
+anything. When the release's own section was prepared ahead of the cut (a `## [<version>]` heading
+already in `CHANGELOG.md`), `release.mjs` stops rather than open a second one: fold the
+fragments into that section by hand with `--assemble`, then re-run.
 
 ## Format
 

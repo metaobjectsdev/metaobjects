@@ -242,12 +242,10 @@ ok(`packed deps verified: all @metaobjectsdev/* pinned to ${VERSION}`);
 // One file per change (scripts/lib/changelog-fragments.mjs) keeps parallel PRs from
 // conflicting in CHANGELOG.md; here they become ordinary [Unreleased] entries and the files
 // go, so the release commit carries one CHANGELOG and an empty changelog.d/.
+// Assembled and promoted in memory first: a "split" layout stops the release before any
+// fragment is deleted.
 const fragments = readFragments(FRAGMENT_DIR);
-if (fragments.length) {
-  writeFileSync("CHANGELOG.md", assembleChangelog(readFileSync("CHANGELOG.md", "utf8"), fragments));
-  for (const f of fragments) rmSync(join(FRAGMENT_DIR, f.name));
-  ok(`${fragments.length} changelog fragment(s) assembled into [Unreleased]`);
-}
+const assembled = assembleChangelog(readFileSync("CHANGELOG.md", "utf8"), fragments);
 
 // --- promote CHANGELOG [Unreleased] → [VERSION], or date a prepared [VERSION] ----
 // The rule and its cases live in scripts/lib/changelog-promote.mjs (tested by
@@ -255,12 +253,23 @@ if (fragments.length) {
 // was started, and is restamped with the release date here rather than by hand.
 const today = out("date +%F");
 const promoted = promoteChangelog(
-  readFileSync("CHANGELOG.md", "utf8"),
+  assembled,
   VERSION,
   today,
   `_npm \`${VERSION}\` (full lockstep across all ${set.length} \`@metaobjectsdev/*\` publish candidates)._`,
 );
+if (promoted.action === "split") {
+  die(
+    `CHANGELOG has entries under [Unreleased] (${fragments.length} from changelog.d/) above a prepared [${VERSION}] section. ` +
+      "Fold them into that section by hand (node scripts/changelog-fragments.mjs --assemble, then move them), and re-run.",
+  );
+}
+if (fragments.length) {
+  for (const f of fragments) rmSync(join(FRAGMENT_DIR, f.name));
+  ok(`${fragments.length} changelog fragment(s) assembled into [Unreleased]`);
+}
 if (promoted.action === "nothing") {
+  if (fragments.length) writeFileSync("CHANGELOG.md", assembled);
   console.warn(`\x1b[33m! CHANGELOG has no entries and no [${VERSION}] section — add one before releasing\x1b[0m`);
 } else {
   writeFileSync("CHANGELOG.md", promoted.text);

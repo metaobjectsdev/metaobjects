@@ -3519,7 +3519,7 @@ def _cmd_agent_docs(args: argparse.Namespace) -> int:
             out=out,
             wire_root=not args.no_wire_root,
         )
-    except ShippedContextError as err:
+    except (ShippedContextError, ParseError) as err:
         print(f"metaobjects agent-docs: {err}", file=sys.stderr)
         return 2
     print(

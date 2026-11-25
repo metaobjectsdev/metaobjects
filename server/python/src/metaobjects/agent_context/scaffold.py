@@ -54,6 +54,12 @@ class Manifest:
     #: Serialized as ``generatedBy`` — the SAME key as the TS reference, so a
     #: polyglot repo can cross-read the manifest regardless of which port wrote it.
     generated_by: str | None = None
+    #: ``skillsDir`` as the TS reference records it: set only for a non-default skills
+    #: directory (``meta init --skills-dir``). Read so ``agent-docs`` can refuse a project it
+    #: cannot serve. ``contentHash`` is deliberately not carried: this port rewrites the files
+    #: and cannot compute the TS content hash, so keeping the old one would claim the new
+    #: content is the old; without it the TS staleness check falls back to ``generatedBy``.
+    skills_dir: str | None = None
 
     def to_json(self) -> dict[str, object]:
         out: dict[str, object] = {"version": self.version}
@@ -62,6 +68,8 @@ class Manifest:
         out["servers"] = list(self.servers)
         out["clients"] = list(self.clients)
         out["files"] = dict(self.files)
+        if self.skills_dir is not None:
+            out["skillsDir"] = self.skills_dir
         return out
 
     @staticmethod
@@ -75,12 +83,14 @@ class Manifest:
         servers = data.get("servers", [])
         clients = data.get("clients", [])
         generated_by = data.get("generatedBy")
+        skills_dir = data.get("skillsDir")
         return Manifest(
             version=int(data.get("version", 1)),  # type: ignore[arg-type]
             servers=[str(x) for x in servers] if isinstance(servers, list) else [],
             clients=[str(x) for x in clients] if isinstance(clients, list) else [],
             files=files,
             generated_by=str(generated_by) if generated_by is not None else None,
+            skills_dir=str(skills_dir) if skills_dir is not None else None,
         )
 
 

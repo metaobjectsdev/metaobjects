@@ -31,15 +31,6 @@ export function dialectModule(dialect: Dialect): DialectModule {
 }
 
 /**
- * Write the `Db` type alias (recording its import) a generated queries module is parameterised over
- * (ADR-0008 — `db` is passed in). Every type argument is as open as Drizzle's own constraint
- * allows, so any driver's database handle assigns — a schema-carrying `drizzle(client,
- * { schema })` as well as a schema-less one.
- *
- * SQLite accepts a sync and an async driver: the service layer drives a sync driver's transaction
- * itself (`@metaobjectsdev/runtime-ts/service`), so no tier needs to narrow it.
- */
-/**
  * @deprecated The 1.2 form of {@link writeDbType}: the import line and the alias as text, kept so
  * an owned 1.2 queries generator still loads.
  */
@@ -63,6 +54,15 @@ export function dbTypeBlock(dialect: Dialect): { import: string; alias: string }
   }
 }
 
+/**
+ * Write the `Db` type alias (recording its import) a generated queries module is parameterised over
+ * (ADR-0008 — `db` is passed in). Every type argument is as open as Drizzle's own constraint
+ * allows, so any driver's database handle assigns — a schema-carrying `drizzle(client,
+ * { schema })` as well as a schema-less one.
+ *
+ * SQLite accepts a sync and an async driver: the service layer drives a sync driver's transaction
+ * itself (`@metaobjectsdev/runtime-ts/service`), so no tier needs to narrow it.
+ */
 export function writeDbType(w: TsWriter, dialect: Dialect): void {
   switch (dialect) {
     case "postgres": {

@@ -144,7 +144,15 @@ def chose_migrate_dialect(project_dir: str | Path | None) -> bool:
     path = Path(project_dir) / _METAOBJECTS_DIR / _CONFIG_FILE
     if not path.is_file():
         return False
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        # Refused as `read_neutral_config` refuses it: a typo'd config must not read as "no
+        # dialect" and quietly drop the migrate steps.
+        raise ParseError(
+            f"{path} exists but could not be read as JSON: {e}",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        ) from e
     migrate = raw.get("migrate") if isinstance(raw, dict) else None
     return isinstance(migrate, dict) and migrate.get("dialect") is not None
 

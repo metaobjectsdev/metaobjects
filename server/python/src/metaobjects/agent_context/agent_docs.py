@@ -111,6 +111,15 @@ def run_agent_docs(
         else:
             servers = [DEFAULT_SERVER]
     tree = load_shipped()
+    shipped_skills = str(tree.manifest["skillsDir"])
+    if prior is not None and prior.skills_dir not in (None, shipped_skills):
+        # The shipped files install under the default skills directory only; writing them
+        # there would prune the project's own copies and lose its choice.
+        raise ShippedContextError(
+            f"agent-context: this project keeps its skills under {prior.skills_dir!r} "
+            f"(meta init --skills-dir); metaobjects agent-docs writes only {shipped_skills!r}. "
+            f"Refresh with: npx meta agent-docs --skills-dir {prior.skills_dir}"
+        )
     # Read from the project config on every run, as TypeScript does at init and refresh.
     migration = chose_migrate_dialect(out)
     assembled = materialize(tree, servers, clients, docs_ref_for_version(version), migration)
@@ -140,7 +149,7 @@ def run_agent_docs(
         (out / orphan).unlink()
         # Drop a skill directory this just emptied, never the skills directory itself.
         parent = (out / orphan).parent
-        skills = out / str(tree.manifest["skillsDir"])
+        skills = out / shipped_skills
         while parent != skills and parent != out and parent.is_dir() and not any(parent.iterdir()):
             parent.rmdir()
             parent = parent.parent

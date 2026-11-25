@@ -132,6 +132,19 @@ def test_a_rerun_writes_nothing_and_keeps_the_recorded_stack(tmp_path: Path) -> 
     assert all(p.stat().st_mtime == 1_000_000 for p in files)
 
 
+def test_a_project_with_its_own_skills_dir_is_refused_untouched(tmp_path: Path) -> None:
+    run_agent_docs(servers=["python"], clients=[], out=tmp_path, wire_root=False, version=RELEASE)
+    manifest_path = tmp_path / AGENT_CONTEXT_MANIFEST_PATH
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["skillsDir"] = ".agents/skills"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(ShippedContextError) as err:
+        run_agent_docs(servers=[], clients=[], out=tmp_path, wire_root=False, version=RELEASE)
+    assert "npx meta agent-docs --skills-dir .agents/skills" in str(err.value)
+    assert {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+
+
 def test_a_hand_edited_file_is_kept_and_the_fresh_text_goes_beside_it(tmp_path: Path) -> None:
     run_agent_docs(servers=["python"], clients=[], out=tmp_path, wire_root=False, version=RELEASE)
     agents = tmp_path / ".metaobjects/AGENTS.md"

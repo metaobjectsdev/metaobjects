@@ -154,8 +154,13 @@ export function warnUnmarkedRoutesGenerators(
   warn: (msg: string) => void,
 ): void {
   if (!generators.some((g) => providesOf(g).apiDocs !== undefined)) return;
+  // The raw fields, not `providesOf`: a bare `emitsHonoRoutes` marker says the run mounts Hono
+  // routes but carries no `expose` or `filter`, so such a copy is stale here too.
   const stale = generators.filter(
-    (g) => (g.name === "routes-file" || g.name === "routes-file-hono") && providesOf(g).routes === undefined,
+    (g) =>
+      (g.name === "routes-file" || g.name === "routes-file-hono") &&
+      g.provides?.routes === undefined &&
+      g.mountsRoutes === undefined,
   );
   if (stale.length === 0) return;
   const names = stale.map((g) => `'${g.name}'`).join(", ");

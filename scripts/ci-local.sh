@@ -1007,11 +1007,20 @@ gate_completeness_diff() {
   stryker_run --mutate "$(echo "$changed" | paste -sd, -)"
 }
 gate_doc_template_drift() {
-  bash scripts/sync-doc-templates.sh \
-    && git diff --exit-code -- \
-        server/typescript/packages/codegen-ts/templates \
-        server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts \
-        server/python/src/metaobjects/render/bundled_templates
+  local copies=(
+    server/typescript/packages/codegen-ts/templates
+    server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
+    server/python/src/metaobjects/render/bundled_templates
+  )
+  bash scripts/sync-doc-templates.sh || return 1
+  git diff --exit-code -- "${copies[@]}" || return 1
+  # `git diff` cannot see a copy the sync wrote that was never committed (a new template).
+  local untracked
+  untracked=$(git ls-files --others --exclude-standard -- "${copies[@]}")
+  if [ -n "$untracked" ]; then
+    echo "  untracked template copies (commit them):"; echo "$untracked" | sed 's/^/    /'
+    return 1
+  fi
 }
 # The Python wheel's copy of the shipped agent files must equal the repo-root tree.
 gate_python_agent_context_drift() {
