@@ -35,9 +35,8 @@ export const DELIVERY_DEFINITION = definition as ProviderDefinition;
 
 /** The validator a platform pack attaches to its `deployment.<platform>` subtype. */
 export const validateDeployment: NodeValidator = (node, ctx) => {
-  const error = ctx.error.bind(ctx);
-  checkRefs(node, DEPLOYMENT_ATTR_APP, [TYPE_APP], ERR_DELIVERY_UNRESOLVED_REF, error);
-  checkRefs(node, DEPLOYMENT_ATTR_ENVIRONMENT, [TYPE_ENVIRONMENT], ERR_DELIVERY_UNRESOLVED_REF, error);
+  checkRefs(node, DEPLOYMENT_ATTR_APP, [TYPE_APP], ERR_DELIVERY_UNRESOLVED_REF, ctx);
+  checkRefs(node, DEPLOYMENT_ATTR_ENVIRONMENT, [TYPE_ENVIRONMENT], ERR_DELIVERY_UNRESOLVED_REF, ctx);
 };
 
 // `deployment.base` is abstract, but the parser treats a `<type>.base` as abstract only
@@ -67,7 +66,7 @@ const validateBuild: NodeValidator = (node, ctx) => {
 };
 
 const validateValue: NodeValidator = (node, ctx) => {
-  checkRefs(node, VALUE_ATTR_FROM, [TYPE_RESOURCE, TYPE_APP], ERR_DELIVERY_UNRESOLVED_REF, ctx.error.bind(ctx));
+  checkRefs(node, VALUE_ATTR_FROM, [TYPE_RESOURCE, TYPE_APP], ERR_DELIVERY_UNRESOLVED_REF, ctx);
 };
 
 export const provider: MetaDataTypeProvider = {

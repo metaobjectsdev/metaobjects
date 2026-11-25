@@ -12,9 +12,11 @@ import {
   CHILD_REF_SEPARATOR,
   PACKAGE_SEPARATOR,
   effectivePackageOf,
+  referrerPackageFor,
   resolveRef,
   topLevelNodeOf,
   type MetaData,
+  type ValidationContext,
 } from "@metaobjectsdev/metadata";
 import { TYPE_SYSTEM } from "./constants.js";
 
@@ -27,12 +29,15 @@ function enclosingSystem(node: MetaData): MetaData | undefined {
 /**
  * The node `ref` names, seen from `from`, or undefined when it names nothing. The
  * caller checks the kind: a reference to the wrong kind of node is the caller's error.
+ * Given the attribute the reference sits in, a qualified or top-level name resolves in
+ * the package of the node that wrote it (ADR-0059 R3), so an inherited reference means
+ * what it meant where it was written.
  */
-export function resolveSystemRef(from: MetaData, ref: string): MetaData | undefined {
+export function resolveSystemRef(from: MetaData, ref: string, attr?: string): MetaData | undefined {
   const top = topLevelNodeOf(from);
   const root = top.parent;
   if (root === undefined) return undefined;
-  const pkg = effectivePackageOf(top);
+  const pkg = attr === undefined ? effectivePackageOf(top) : referrerPackageFor(from, attr);
   if (!ref.includes(CHILD_REF_SEPARATOR) && !ref.includes(PACKAGE_SEPARATOR)) {
     // ADR-0039: resolving, so a system that `extends` another sees its inherited children.
     const sibling = enclosingSystem(from)?.children().find((c) => c.name === ref);
@@ -57,16 +62,16 @@ export function checkRefs(
   attr: string,
   kinds: readonly string[],
   code: string,
-  error: (code: string, node: MetaData, message: string) => void,
+  ctx: ValidationContext,
 ): void {
   for (const ref of refList(node, attr)) {
-    const target = resolveSystemRef(node, ref);
+    const target = resolveSystemRef(node, ref, attr);
     const label = `${node.type}.${node.subType} "${node.name}" @${attr} "${ref}"`;
     const want = kinds.join(" or ");
     if (target === undefined) {
-      error(code, node, `${label} does not resolve to a ${want}.`);
+      ctx.error(code, node, `${label} does not resolve to a ${want}.`);
     } else if (!kinds.some((k) => k === target.type || k === `${target.type}.${target.subType}`)) {
-      error(code, node, `${label} resolves to ${target.type}.${target.subType}, not a ${want}.`);
+      ctx.error(code, node, `${label} resolves to ${target.type}.${target.subType}, not a ${want}.`);
     }
   }
 }

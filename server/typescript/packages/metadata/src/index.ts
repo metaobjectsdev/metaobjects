@@ -376,6 +376,7 @@ export {
   refMatchesObject,
   resolveObjectRef,
   resolveRef,
+  referrerPackageFor,
   lookupCanonical,
   refTarget,
   spellRef,

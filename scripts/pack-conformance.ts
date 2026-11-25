@@ -41,7 +41,9 @@ export async function runPackConformance(name: string, root: string = REPO_ROOT)
   const errorCodes = [...(await loadErrorCodes(join(root, "fixtures/conformance", ERROR_CODES)))];
   for (const p of closure) {
     // A pack with no codes of its own has no file; loadErrorCodes reads that as none.
-    errorCodes.push(...(await loadErrorCodes(join(packDir(byId.get(p.id) ?? name, root), PACK_CORPUS, ERROR_CODES))));
+    const dir = byId.get(p.id);
+    if (dir === undefined) throw new Error(`pack ${name}: required pack ${p.id} has no directory under packs/`);
+    errorCodes.push(...(await loadErrorCodes(join(packDir(dir, root), PACK_CORPUS, ERROR_CODES))));
   }
   return runCorpus({
     corpusRoot,

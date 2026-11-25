@@ -35,9 +35,8 @@ export class MetaSystemNode extends MetaData {}
 export const SYSTEMS_DEFINITION = definition as ProviderDefinition;
 
 const validateApp: NodeValidator = (node, ctx) => {
-  const error = ctx.error.bind(ctx);
-  checkRefs(node, APP_ATTR_NEEDS, [TYPE_RESOURCE], ERR_SYSTEMS_UNRESOLVED_REF, error);
-  checkRefs(node, APP_ATTR_CALLS, [TYPE_APP, `${TYPE_SYSTEM}.${SYSTEM_SUBTYPE_EXTERNAL}`], ERR_SYSTEMS_UNRESOLVED_REF, error);
+  checkRefs(node, APP_ATTR_NEEDS, [TYPE_RESOURCE], ERR_SYSTEMS_UNRESOLVED_REF, ctx);
+  checkRefs(node, APP_ATTR_CALLS, [TYPE_APP, `${TYPE_SYSTEM}.${SYSTEM_SUBTYPE_EXTERNAL}`], ERR_SYSTEMS_UNRESOLVED_REF, ctx);
 };
 
 /** A factory for every type a definition declares, and a validator for each of `validated`'s types. */
