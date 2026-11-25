@@ -157,8 +157,10 @@ and `docs/CONFORMANCE.md` never move for pack work.
 
 ### 7. CI: a lane of its own, and a canary on core changes
 
-`packs` is a lane in `scripts/ci-local.sh`, selectable by `--affected` and run by the hosted
-TypeScript job (`.github/workflows/pr-ci.yml`). The lane map gives `packs/*` that lane only, so a
+`packs` is a lane in `scripts/ci-local.sh`, selectable by `--affected`, run on every pull
+request by the hosted TypeScript job (`.github/workflows/pr-ci.yml`) and on every push to `main`
+by its own job in `.github/workflows/local-ci.yml`, which is in the known-green lane map
+(`scripts/ci-ports-to-run.sh`) like every other lane. The lane map gives `packs/*` that lane only, so a
 pack-only change selects no core lane (asserted by `scripts/test-ci-lane-selection.sh`). For each
 pack with a TypeScript port, the lane runs the pack's typecheck, the pinned-vocabulary and
 leaves-core-alone check, its load corpus and its own tests, against core's working tree.
