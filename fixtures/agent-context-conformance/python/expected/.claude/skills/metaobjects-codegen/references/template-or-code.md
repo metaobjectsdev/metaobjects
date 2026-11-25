@@ -24,8 +24,8 @@ here.** §5 (*Preserving hand edits*) states MetaObjects ships exactly one hand-
 no shipped generator on any port emits a generated-base + hand-owned-concrete pair, or a
 write-if-absent file; §6 names the `skip-existing` merge strategy `runGen` accepts for
 building that pair yourself, reachable only from a programmatic caller (no CLI flag selects
-it); §7 (*Safety*) is the per-port write-decision mechanism behind "What codegen does" step 4
-above.
+it); §7 (*Safety*) is the per-port write-decision mechanism behind "What a `gen` run does,
+and when it refuses to write" in `SKILL.md`.
 
 **A template is not limited to documents.** It emits source as readily as docs — that is
 what the neutral data dict is for.

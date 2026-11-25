@@ -349,6 +349,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
         forgeConfig.dialect,
         (m) => { const w = `[agent-docs] ${m}`; log.warn(w); warnings.push(w); },
         schemaOptions,
+        genCollection.migrateDialect !== undefined,
       ),
       // The Prisma schema names its keys by the same conventions migrate uses.
       schemaSettings: schemaOptions,
@@ -653,6 +654,7 @@ async function listCatalogCommand(
           forgeConfig.dialect,
           () => {},
           schemaOptions,
+          genCollection.migrateDialect !== undefined,
         ),
         // The Prisma schema names its keys by the same conventions migrate uses.
         ...(schemaOptions !== undefined && { schemaSettings: schemaOptions }),

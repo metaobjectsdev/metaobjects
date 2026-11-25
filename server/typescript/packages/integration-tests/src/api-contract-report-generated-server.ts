@@ -23,7 +23,7 @@ import { indexEmitted, type OutputLayout } from "./output-layout.ts";
 import {
   DEFAULT_PHYSICAL_NAMING, resolveColumnName, resolveTableName, type MetaRoot,
 } from "@metaobjectsdev/metadata";
-import { entityFile, reportExport, routesFile } from "@metaobjectsdev/test-generators";
+import { entityFile, reportExport, routesFile } from "@metaobjectsdev/codegen-ts/generators";
 import { apiGenerators, serveApi, type ApiLane } from "./api-lane.ts";
 import pg from "pg";
 import { executeSql } from "./postgres-sql.ts";

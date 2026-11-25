@@ -27,6 +27,22 @@ has two checks:
    (compare as JSON values).
 2. **Page.** Rendering the template with that data produces `expected/<page>` byte for byte.
 
+Under the page data sits one more layer, `expected/rows/`, the rows each builder starts from:
+
+| Rows | What they are | The same shape as |
+|---|---|---|
+| `rows/requirements.json` | One row per requirement in the ledger, in declaration order: `path`, `depth`, `title`, `subType`, `level`, `status`, `disposition`, `trackedBy`, `statement`, `counterexample`, `description`, `implementedBy` (as written), `claimedConcerns` (the `type.subType` of each target that resolves). Both requirements pages are built from these. | What the docs site's explorer graph holds: the requirement node's attributes plus its verify ledger row |
+| `rows/schema.json` | The model-only schema: tables (name, schema, description, primary key, columns with `nullable`, `identity` and `description`, foreign keys as columns → table and columns), views (name, schema), and `declaredBy` (each table or view → the declaring object). | A subset of `meta schema --as json` (the `serializeSnapshot` format), the storage lens's input |
+
+These rows are how the 1.3.0 docs-page design pass (D0a) settles the shapes: the docs site
+reuses the rows rather than pinning a second shape for the same facts, so a later site lens is
+built over these rows, not a new extraction. A port checks its rows first (compare as JSON
+values), then its page data, then the bytes. The model-only page data follows from the rows
+and the model alone; the TypeScript runner proves it by rebuilding the page from
+`rows/schema.json` (`schemaInputFromRows`). `cli/test/docs-page-shapes.test.ts` holds the
+requirement rows equal to the explorer graph's (on `fixtures/explorer-conformance/shop/`) and
+the schema rows to a subset of `meta schema`'s output.
+
 A page the case does not list is a page the port must NOT write: a model with no
 `requirement.*` node gets neither requirements page, and a model with no table and no view
 gets no schema page.
@@ -64,19 +80,27 @@ It leaves out the dialect facts: the SQL type and default columns, indexes (and 
 them), foreign-key constraint names and referential actions. Only the TypeScript page,
 written from the expected schema, carries those; `agent/ui.md` stays a TypeScript page.
 
+One project setting reaches the page: `hasMigrate` is true when the project's
+`.metaobjects/config.json` sets `migrate.dialect` (it chose `meta migrate`, the reference
+migration helper). The page then says to change the schema with `meta migrate`; otherwise with
+the project's own migration tool, from the schema `meta schema` prints. A case sets it with
+`input/.metaobjects/config.json`; a case without one is false.
+
 ## Cases
 
 | Case | Pins |
 |---|---|
 | `ledger-and-claims` | A nested functional tree (L1 to L5, heading depth to h6 when embedded), a title that is kept, a description holding a `#` line, a statement with a line break and one with a `\|`, an architectural entry with no level, a retired entry (in the ledger, in no index), the node index with its statements, TOON quoting of commas, colons and line breaks. |
 | `ledger-unclaimed` | One requirement (the singular count), no claim (the "No requirement resolves" paragraph), a disposition, a statement TOON must quote because it reads as a literal (`true`). |
-| `schema-model` | Tables with descriptions, an increment key, a TPH subtype's column on its base table, a foreign key, a view with passthrough and aggregate lineage, relationships both ways, string- and int-backed enums, a sourceless value's enum left out. |
-| `schema-report-view` | A report's view (the Views intro that names reports), the description nudge, a `@default` left off the page. |
+| `schema-model` | Tables with descriptions, an increment key, a TPH subtype's column on its base table, a foreign key, a view with passthrough and aggregate lineage, relationships both ways, string- and int-backed enums, a sourceless value's enum left out, a project that chose `meta migrate` (`hasMigrate`). |
+| `schema-report-view` | A report's view (the Views intro that names reports), the description nudge (naming `meta schema`: no migrate dialect), a `@default` left off the page. |
 
 ## Runners
 
 - TypeScript: `server/typescript/packages/cli/test/docs-page-conformance.test.ts`.
   Regenerate with `UPDATE_DOCS_PAGE_FIXTURES=1 bun test test/docs-page-conformance.test.ts`
   from that package, and review the diff: it is the cross-port contract.
-- C#, Java (Kotlin through Java), Python and Rust: their page generators are planned and
-  will run every case.
+- Python: `server/python/tests/conformance/test_docs_page_conformance.py` (rows, page data,
+  then the bytes the `requirements` and `agent-docs` generators write).
+- C#, Java (Kotlin through Java) and Rust: their page generators are planned and will run
+  every case.

@@ -36,8 +36,11 @@ conformance corpora. This guide covers how to propose changes.
    unit and conformance tests of the ports your change touches (`pr-ci.yml`); the docker
    integration suites run on release tags and on manual dispatch — see the *Local CI*
    section below.
-4. Open a **pull request** against `main` and fill out the PR template.
-5. A maintainer reviews the change and the checks on the pull request before merge. Who can
+4. If users would notice the change, add a changelog entry as a new file under
+   [`changelog.d/`](changelog.d/README.md). Do not edit `CHANGELOG.md` directly: the release
+   folds the fragments into it.
+5. Open a **pull request** against `main` and fill out the PR template.
+6. A maintainer reviews the change and the checks on the pull request before merge. Who can
    approve what, and which changes need a core maintainer, is in
    [GOVERNANCE.md](GOVERNANCE.md#how-decisions-are-made).
 
@@ -144,7 +147,12 @@ a selection without running anything. The flagless run above is unchanged and is
 The full run does its tree-writing steps first (install, the drift gates, one workspace
 build), then runs the rest as parallel lanes: at most `MO_CI_JOBS` at once, default 8. Each
 lane's output prints as one block when the lane finishes, so lanes never interleave. The
-summary gives every step's time, the slowest steps and each lane's wall time. `--quick` and
+summary gives every step's time, the slowest steps and each lane's wall time. A waiting lane
+starts only while the machine has `MO_CI_LANE_MIN_FREE_MB` of memory available (default
+8192, plus as much again for each lane started in the last 30 seconds; `0` turns it off), so
+a run on a busy machine queues its lanes. Without that check the run drove the machine down
+to the out-of-memory killer, and a killed test host looked like a test crash.
+`scripts/test-ci-lane-memory.sh` (in the `gates` lane) pins the rule. `--quick` and
 `--only` run serially. `MO_CI_PY_WORKERS` (default 8), `MO_CI_TS_WORKERS` (default 6) and
 `MO_CI_JVM_FORKS` (default 3) set the worker counts for pytest-xdist, the TypeScript
 integration suite and the TypeScript `codegen-ts` conformance suite, and the JVM

@@ -81,6 +81,12 @@ lines, and `templates/requirements/*.mustache` and `templates/agent/*.mustache` 
 (the other ports' status is in [CONFORMANCE.md](../CONFORMANCE.md)), and its README states what the model-only schema page (`physical: false`, the page a port without
 the expected schema writes) leaves out.
 
+The corpus also pins the rows those builders start from (`expected/rows/`): `RequirementRow[]`
+(`requirementRows`) for both requirements pages, and `SchemaRows` (`schemaRows`, a subset of the
+`meta schema --as json` shape) for the model-only schema page. These are the rows the docs site
+reads too: the requirement rows are what the explorer graph holds, and the schema rows are part
+of the storage lens's input. One shape serves the pages and the site, so it is not pinned twice.
+
 ### Neutral structural shapes → `EntityTemplateData` / `PackageTemplateData` / `ModelTemplateData`
 
 The declarative template scopes (`scope: "perEntity" | "perPackage" | "perModel"`

@@ -17,7 +17,7 @@ Upgrading from 1.0.x: [upgrading-1.0-to-1.1.md](../../docs/features/migrations/u
 
 ## What it does NOT cover (out of scope)
 
-- **Schema migrations.** Per [ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md) the migration engine is owned by the TypeScript toolchain; the C# migrate engine and its `migrate` / `--from-db` CLI surface were removed. Use the Node `meta` CLI (`meta migrate`, `meta verify --db`) for schema. This is *only* about schema — C# codegen and runtime data access are first-class here.
+- **Schema migrations.** Use EF Core Migrations (`dotnet ef migrations add` over the generated `AppDbContext`), or the Node `meta migrate` reference migration helper, one option ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md)). The C# migrate engine and its `migrate` / `--from-db` CLI surface were removed; the live-database check is the Node `meta verify --db`. This is *only* about schema — C# codegen and runtime data access are first-class here.
 - **Byte-equal generated code.** Each language emits its own idiomatic output; byte equivalence is a goal at the render/canonical-serializer layer, not the codegen layer. Cross-port codegen parity is enforced behaviourally, through the api-contract corpus.
 - The `dbProvider` provider — the metamodel conformance corpus uses only `metaobjects-core-types`.
 

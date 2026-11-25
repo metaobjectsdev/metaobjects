@@ -268,8 +268,8 @@ object AuthorTable : Table("authors") {
 
 `MetaObjects.Codegen` (via `dotnet meta gen`) emits an EF Core entity class (a mutable
 `class` with data-annotation attributes, not a `record`), a `DbSet` on the generated
-`AppDbContext`, and a `CREATE TABLE` in the migration emitted by the Node `meta migrate`
-(schema is Node-owned, ADR-0015). The sample below is the output of `EntityGenerator` with
+`AppDbContext`, and a `CREATE TABLE` in the migration EF Core Migrations scaffolds, or the one
+the Node `meta migrate` reference helper emits (ADR-0015). The sample below is the output of `EntityGenerator` with
 `--namespace Acme.Blog`.
 
 ```csharp

@@ -83,7 +83,7 @@ SQLite so it runs with nothing else installed; the same generated code runs on P
 The C# CLI is invoked as `dotnet meta` (command `dotnet-meta`), or run directly
 from the repo via `dotnet run --project server/csharp/MetaObjects.Cli`. It is
 deliberately **not** a bare `meta` executable — that name belongs to the
-canonical Node `meta` CLI, which owns schema + TS codegen (ADR-0015).
+Node `meta` CLI (TypeScript codegen and the reference migration helper, ADR-0015).
 
 ## Configure
 
@@ -471,8 +471,9 @@ init is unchanged. The api pages carry a "Model / metadata" link only when the e
 `ModelBaseUrl`: the C# port writes no model pages of its own, so a relative link would resolve to
 nothing and is omitted.
 
-Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
-`gen` + `verify` only.
+Schema migrations: the native path is EF Core Migrations, `dotnet ef migrations add` over the
+generated `AppDbContext` (ADR-0015 Amendment 1). The Node `meta migrate` is the reference
+migration helper, one option. The C# CLI is `gen` + `verify` only.
 
 A declarative Mustache template-spec is one more entry in `codegen/Generators.cs`; see
 [Declarative template-codegen](#declarative-template-codegen-templatespecgenerator) below.
@@ -1264,7 +1265,7 @@ write-through entity's generated read model; an `EmitMappedClass` override does 
 read model; M:N traversal on a write-through entity is not routed through the replica view; the
 ordered-comparison filter fallback in `EfCoreFilterDispatch` needs a hand-written typed
 dispatcher for some column types; there is no metadata-driven runtime tier (EF Core output is
-generated code), and no `migrate` surface (schema is TypeScript-owned).
+generated code), and no `migrate` surface (EF Core Migrations, or the Node `meta migrate` reference helper).
 
 ## Capability snapshot
 

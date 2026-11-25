@@ -61,6 +61,14 @@ work*. A release can move one without the other, and most releases move neither.
   `extend` and `registerCommonAttrs`; and the provider definition file format
   ([ADR-0069](../spec/decisions/ADR-0069-independent-packs.md)). A pack's core range
   (`>=1.3.0 <2.0.0`) means something because of this line.
+- **The generator-authoring surface** — what you write your own generator against, in
+  four roles per port: the generator interface (including the one declaration of what a
+  generator provides), the model walk, the code writer and the naming helpers. Each
+  port's modules are listed in the `surface` block of
+  `fixtures/generator-registry-conformance/registry.json`, and each port pins their
+  exported names with a snapshot test. Removing or renaming a name there is a major of
+  that port's codegen package; adding one is a minor (ADR-0034 Amendment 12, ADR-0035
+  Amendment 7).
 
 > **What this costs you, stated plainly.** Post-1.0 the caret rule stops being a gate —
 > `^1.0.0` accepts `1.1.0` — so a metamodel change can reach you on a routine update
@@ -72,6 +80,9 @@ work*. A release can move one without the other, and most releases move neither.
 
 ## What is NOT covered (may change in a MINOR)
 
+- **The rest of the codegen engine.** An owned generator may still import any engine
+  module the eject contract allows, but only the authoring surface above is promised; the
+  other modules may change in any release.
 - **Generator internals and the reference templates themselves.** Generated code is
   yours and disposable — its internals are not a public API. See
   [own-your-codegen](features/own-your-codegen.md).

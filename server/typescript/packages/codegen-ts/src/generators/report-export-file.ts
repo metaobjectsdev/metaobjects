@@ -14,7 +14,7 @@ import {
  * emits nothing a project did not wire it for.
  *
  * Wiring it does two things. It emits one `<Report>.export.ts` per served report plus ONE shared
- * `report-export-writers.ts` per target, and it marks the run (`emitsReportExport`) so the routes
+ * `report-export-writers.ts` per target, and it marks the run (`provides.reportExport`) so the routes
  * generators emit the `format` branch on a report list route and import that module. A project that
  * wires no `report-export` gets routes byte-identical to before export existed.
  *
@@ -48,7 +48,7 @@ export function reportExport(opts?: ReportExportOpts): Generator {
   }
   const generator: Generator = {
     name: "report-export",
-    emitsReportExport: true,
+    provides: { reportExport: true },
     generate: async (ctx: GenContext): Promise<EmittedFile[]> => {
       const layout = ctx.config.outputLayout ?? DEFAULT_OUTPUT_LAYOUT;
       const extStyle = ctx.config.extStyle ?? "js";

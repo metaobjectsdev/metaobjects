@@ -2,7 +2,8 @@
 // Postgres, SQLite and MySQL. Kept apart from view-ddl-emit.ts on purpose: the projection
 // emitter quotes conditionally (`quoteIfNeeded`) and is Postgres/SQLite only; a report
 // quotes every identifier unconditionally, so a measure named `order` is valid DDL.
-import { tphScopeSql } from "./view-ddl-emit.js";
+import { tphScopeSql, viewDdlText, writeSelectList } from "./view-ddl-emit.js";
+import type { CodeWriter } from "../writer/code-writer.js";
 import type { JoinNode } from "./view-spec.js";
 import type { ReportAggregate, ReportColumn, ReportDerivedTerm, ReportViewSpec } from "./report-spec.js";
 import { AGG_ALL, AGG_ANY, DERIVED_FN_ADD, DERIVED_FN_DIVIDE, DERIVED_FN_SUBTRACT } from "@metaobjectsdev/metadata";
@@ -206,7 +207,8 @@ function onPredicate(node: JoinNode, parentAlias: string, d: ReportDialect): str
     : `${node.alias}.${fk} = ${parentAlias}.${pk}`;
 }
 
-function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOptions): string {
+/** One LEFT OUTER JOIN per node, the node's own joins after it, every one at the same level. */
+function writeJoin(w: CodeWriter, node: JoinNode, parentAlias: string, options: ReportEmitOptions): void {
   const table = tableOf(node.targetEntity, options);
   const d = options.dialect;
   // Every generated join is LEFT OUTER.
@@ -215,9 +217,8 @@ function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOpti
   const scope = node.tphScope !== undefined
     ? ` AND ${node.alias}.${q(node.tphScope.column, d)}${tphScopeSql(node.tphScope.values, (v) => typeof v === "number" ? String(v) : `'${v.replace(/'/g, "''")}'`)}`
     : "";
-  let sql = `  ${kw} ${relation(node.targetEntity, table, options)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}${scope}`;
-  for (const child of node.children) sql += "\n" + renderJoin(child, node.alias, options);
-  return sql;
+  w.line(`${kw} ${relation(node.targetEntity, table, options)} ${node.alias} ON ${onPredicate(node, parentAlias, d)}${scope}`);
+  for (const child of node.children) writeJoin(w, child, node.alias, options);
 }
 
 /**
@@ -226,7 +227,7 @@ function renderJoin(node: JoinNode, parentAlias: string, options: ReportEmitOpti
  * introduces @from's table under the base alias. The report scope is ANDed onto that join's ON:
  * it filters facts, never spine rows, so there is no WHERE. Onward joins hang off S's alias.
  */
-function spineFrom(spec: ReportViewSpec, depth: number, options: ReportEmitOptions): string {
+function writeSpineFrom(w: CodeWriter, spec: ReportViewSpec, depth: number, options: ReportEmitOptions): void {
   const d = options.dialect;
   // The chain: the single root, then its single child, down to S. Rule R9 routes every dimension
   // through the spine, so nothing branches off above S; a tree that does would hold a join this
@@ -244,16 +245,15 @@ function spineFrom(spec: ReportViewSpec, depth: number, options: ReportEmitOptio
     );
   }
   const spine = chain[chain.length - 1]!;
-  let sql = `  FROM ${relation(spine.targetEntity, tableOf(spine.targetEntity, options), options)} ${spine.alias}`;
+  w.line(`FROM ${relation(spine.targetEntity, tableOf(spine.targetEntity, options), options)} ${spine.alias}`);
   for (let i = chain.length - 1; i >= 0; i--) {
     const parentAlias = i === 0 ? spec.joinTree.baseAlias : chain[i - 1]!.alias;
     const parentEntity = i === 0 ? spec.joinTree.baseEntity : chain[i - 1]!.targetEntity;
     const parentTable = relation(parentEntity, i === 0 ? options.baseTableName : tableOf(parentEntity, options), options);
     const scope = i === 0 && spec.where !== undefined ? ` AND ${cond(spec.where, d)}` : "";
-    sql += `\n  LEFT OUTER JOIN ${parentTable} ${parentAlias} ON ${onPredicate(chain[i]!, parentAlias, d)}${scope}`;
+    w.line(`LEFT OUTER JOIN ${parentTable} ${parentAlias} ON ${onPredicate(chain[i]!, parentAlias, d)}${scope}`);
   }
-  for (const child of spine.children) sql += "\n" + renderJoin(child, spine.alias, options);
-  return sql;
+  for (const child of spine.children) writeJoin(w, child, spine.alias, options);
 }
 
 export function emitReportViewDdl(spec: ReportViewSpec, options: ReportEmitOptions): string {
@@ -267,22 +267,18 @@ export function emitReportViewDdl(spec: ReportViewSpec, options: ReportEmitOptio
       : `${spec.joinTree.baseAlias}.${first.referenceHolder === "source" ? first.fkColumn : first.pkColumn}`;
   // Rendered once: a dimension's SELECT expression is its GROUP BY term, so they cannot differ.
   const cols = spec.columns.map((c) => column(c, d, factRef));
-  const select = cols.map((c) => `    ${c.expr} AS ${c.alias}`).join(",\n");
   const groupBy = cols.filter((c) => c.grouped).map((c) => c.expr);
 
-  let from: string;
-  if (spec.spineDepth === undefined) {
-    const base = spec.joinTree.baseAlias;
-    const joins = spec.joinTree.joins.map((j) => renderJoin(j, base, options)).join("\n");
-    from =
-      `  FROM ${relation(spec.joinTree.baseEntity, options.baseTableName, options)} ${base}` +
-      (joins === "" ? "" : `\n${joins}`) +
-      (spec.where === undefined ? "" : `\n  WHERE ${cond(spec.where, d)}`);
-  } else {
-    from = spineFrom(spec, spec.spineDepth, options);
-  }
-  const body = `  SELECT\n${select}\n${from}` + (groupBy.length === 0 ? "" : `\n  GROUP BY ${groupBy.join(", ")}`);
-
-  if (options.bodyOnly) return body;
-  return `CREATE VIEW ${q(spec.viewName, d)} AS\n${body};`;
+  return viewDdlText(q(spec.viewName, d), options.bodyOnly, (w) => {
+    writeSelectList(w, cols.map((c) => `${c.expr} AS ${c.alias}`));
+    if (spec.spineDepth === undefined) {
+      const base = spec.joinTree.baseAlias;
+      w.line(`FROM ${relation(spec.joinTree.baseEntity, options.baseTableName, options)} ${base}`);
+      for (const j of spec.joinTree.joins) writeJoin(w, j, base, options);
+      if (spec.where !== undefined) w.line(`WHERE ${cond(spec.where, d)}`);
+    } else {
+      writeSpineFrom(w, spec, spec.spineDepth, options);
+    }
+    if (groupBy.length > 0) w.line(`GROUP BY ${groupBy.join(", ")}`);
+  });
 }

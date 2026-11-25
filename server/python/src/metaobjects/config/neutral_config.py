@@ -134,6 +134,36 @@ def find_project_dir(start: Path) -> Path | None:
     return None
 
 
+def _read_config_json(path: Path) -> object:
+    """``path`` parsed as JSON, or ``None`` when there is no such file. A file that exists but
+    does not parse raises ``ParseError``."""
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ParseError(
+            f"{path} exists but could not be read as JSON: {e}",
+            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
+        ) from e
+
+
+def chose_migrate_dialect(project_dir: str | Path | None) -> bool:
+    """Whether the project chose a ``meta migrate`` dialect: ``migrate.dialect`` is set in its
+    ``.metaobjects/config.json`` (``meta init --dialect`` / ``--d1`` writes it; MySQL writes
+    none). The agent files and the schema page then give the reference migration helper's
+    steps; otherwise the project's own migration tool, fed by ``meta schema``."""
+    if project_dir is None:
+        return False
+    # A typo'd config raises here as it does for `read_neutral_config`: it must not read as
+    # "no dialect" and quietly drop the migrate steps.
+    raw = _read_config_json(Path(project_dir) / _METAOBJECTS_DIR / _CONFIG_FILE)
+    if raw is None:
+        return False
+    migrate = raw.get("migrate") if isinstance(raw, dict) else None
+    return isinstance(migrate, dict) and migrate.get("dialect") is not None
+
+
 def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     """Read the neutral subset from ``config_dir/.metaobjects/config.json``.
 
@@ -143,16 +173,9 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
     default directory with no diagnostic.
     """
     path = config_dir / _METAOBJECTS_DIR / _CONFIG_FILE
-    if not path.is_file():
+    raw = _read_config_json(path)
+    if raw is None:
         return None
-
-    try:
-        raw = json.loads(path.read_text())
-    except (OSError, ValueError) as e:
-        raise ParseError(
-            f"{path} exists but could not be read as JSON: {e}",
-            code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
-        ) from e
 
     if not isinstance(raw, dict):
         raise ParseError(

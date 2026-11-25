@@ -868,7 +868,7 @@ but **not** built yet — do not assume any of the following exists:
   which requirements are the project's own and whether coverage is measured, asserted in
   TypeScript, Python, Java and C# through each port's requirement gate and through its
   `requirement-tests` identities walk, and in TypeScript through the rows the requirements
-  pages list (the documentation generators that list requirements are TypeScript-only). `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
+  pages list (only the TypeScript runner checks those rows). `transport-cases.json` beside it pins the `npm`, `python`, `maven` and `nuget` transports
   themselves (32 cases: packages laid out under a temp `node_modules`, on a temp
   Python import path, as a jar in a temp local Maven repository and as a package in a temp NuGet
   cache, the directory each resolves to, the exact lock `sync` writes, and

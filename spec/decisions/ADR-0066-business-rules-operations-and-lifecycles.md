@@ -282,8 +282,8 @@ behaviour. The service generators are what act on `rules.lifecycle.create` and
 The shells are the service generators an app adds (ADR-0067). TypeScript's `service` generator is
 the first, held to the shared API tests' `fixtures/api-contract-conformance/rules/` corpus; each
 other port's lands in its own 1.3.0 service work. A project that declares a lifecycle and wires no
-service generator will be told so by `verify`, as an advisory, once that check lands; the flat
-routes enforce nothing. This is what the shells are held to:
+service generator covering it is told so by `verify`, as an advisory (Node `meta verify` emits it
+as rule `unenforced-lifecycle`); the flat routes enforce nothing. This is what the shells are held to:
 
 1. Load the row: 404 when it is absent.
 2. Validate the operation's `@inputRef` input, when it has one (400 `validation`), then call the

@@ -1,8 +1,9 @@
 # Java port — audit reference
 
 The Java port targets Spring Boot consumers on Maven. Codegen runs as a build-time
-Maven plugin goal (`mvn metaobjects:generate`). Schema migration and live-DB drift
-are **Node-`meta`-only** (ADR-0015) — the Maven plugin has no migrate goal.
+Maven plugin goal (`mvn metaobjects:generate`). Schema migration is the project's own
+tool (Flyway, Liquibase) or the Node `meta migrate` reference helper, and live-DB drift is
+the Node `meta verify --db` (ADR-0015) — the Maven plugin has no migrate goal.
 The runtime persistence tier is **OMDB** (`metaobjects-omdb`,
 `com.metaobjects.manager.db.ObjectManagerDB`).
 

@@ -367,8 +367,15 @@ def _emit(
                 finally:
                     stack.pop()
             else:
-                # truthy scalar — render body once in current context
-                _emit(tok.children, stack, out, format_)
+                # Truthy scalar: render the body once with the scalar as the context, so the
+                # implicit iterator `{{.}}` names it (a string-valued section, as in the spec).
+                # A name lookup skips a non-mapping context, so the body still sees the
+                # enclosing mappings exactly as before.
+                stack.append(value)
+                try:
+                    _emit(tok.children, stack, out, format_)
+                finally:
+                    stack.pop()
 
 
 def _resolve(path: str, stack: list[Any]) -> Any:

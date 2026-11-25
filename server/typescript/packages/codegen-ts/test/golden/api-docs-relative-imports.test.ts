@@ -19,7 +19,7 @@
 //   in the run. The builder gates rest-hono on `includeHonoRoutes`; the api-docs
 //   GENERATOR now AUTO-DETECTS that flag from the active generator suite
 //   (`ctx.config.includeHonoRoutes`, aggregated by the runner from a
-//   `routesFileHono` generator's `emitsHonoRoutes` marker).
+//   `routesFileHono` generator's `provides.routes` declaration).
 
 import { describe, test, expect, afterAll, setDefaultTimeout } from "bun:test";
 import { COMPILE_TEST_TIMEOUT_MS } from "../compile-timeout.js";
@@ -379,12 +379,10 @@ describe("Fix 2: api-docs documents Hono routes when the Hono generator is in th
     expect(agentFile.content).not.toContain("routes.hono");
   });
 
-  test("the routesFileHono generator carries the emitsHonoRoutes marker (runner aggregates it)", () => {
-    const hono = routesFileHono();
-    expect((hono as Generator & { emitsHonoRoutes?: boolean }).emitsHonoRoutes).toBe(true);
-    // The default Fastify routes generator does NOT carry it.
-    const fastify = routesFile();
-    expect((fastify as Generator & { emitsHonoRoutes?: boolean }).emitsHonoRoutes).not.toBe(true);
+  test("the routesFileHono generator declares Hono routes (runner aggregates it)", () => {
+    expect(routesFileHono().provides?.routes?.framework).toBe("hono");
+    // The default Fastify routes generator declares Fastify.
+    expect(routesFile().provides?.routes?.framework).toBe("fastify");
   });
 
   // ADR-0034 Amendment 9: apiDocsFile() listed in `generators` is run by `meta gen`, into the

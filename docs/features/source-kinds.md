@@ -393,8 +393,8 @@ object AuthorViewTable : Table("v_author") {
 "view"` the generated `AppDbContext` calls `entity.ToView(AuthorViewNames.SourcePrimaryView)` —
 `names` is the opt-in C# constants generator, so when selected the view name is referenced from the
 generated constants artifact, not respelled. The `CREATE VIEW` body is emitted by the
-**Node** `meta migrate` (schema is Node-owned — ADR-0015; the C# migrate surface was
-removed), not by `dotnet meta`.
+**Node** `meta migrate` reference helper, or printed by `meta schema` for your own migration tool
+(ADR-0015; the C# migrate surface was removed), not by `dotnet meta`.
 
 ```csharp
 // generated/AppDbContext.cs (excerpt) — view registration

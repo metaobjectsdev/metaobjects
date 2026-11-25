@@ -7,6 +7,9 @@
 //   map.html                        S2  the model map (slices, colour-by)
 //   model/<pkg>/<Name>.html         S3  an object page (entity, value, projection, report)
 //                                   S4  a prompt page (and any other template)
+//                                       a generic page for any other top-level type
+//   model/<pkg>/<Name>.<type>-<subType>.html   the same, for a node whose name another
+//                                       type's node holds in its package
 //   requirements/{features,qualities}.html                S5
 //   requirements/<pkg>/<dotted.path>.html                 S6
 //   matrix.html, trace.html, gaps.html, api.html, prompts.html, model/index.html, model/<pkg>/index.html
@@ -193,6 +196,7 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
   }
   for (const n of ix.objects) page("explorer-object.html.mustache", pagesModel.objectPage(n), "map", n.name, pagesModel.object(n), true);
   for (const t of ix.templates) page("explorer-prompt.html.mustache", pagesModel.objectPage(t), "prompts", t.name, pagesModel.prompt(t, opts.texts?.get(t.id)));
+  for (const n of ix.others) page("explorer-node.html.mustache", pagesModel.objectPage(n), "map", n.name, pagesModel.node(n));
   for (const r of ix.requirements) page("explorer-requirement.html.mustache", pagesModel.reqPage(r), "requirements", pagesModel.reqLabel(r), pagesModel.requirement(r));
 
   for (const a of EXPLORER_ASSET_NAMES) write(`assets/${a}`, loadFrom(BUNDLED_ASSETS, a, opts.assetsDir));
@@ -260,6 +264,10 @@ function graphData(ix: ExplorerIndex, p: Pages): Record<string, unknown> {
       if (f.inheritedFrom !== undefined) continue;
       search.push({ t: `${n.name}.${f.name}`, s: `field.${f.subType}`, h: p.pageOf(f.id) ?? p.objectPage(n), k: `${n.name}.${f.name} ${f.id}`.toLowerCase() });
     }
+  }
+  for (const n of ix.others) {
+    const desc = typeof n.attrs[DOC_ATTR_DESCRIPTION] === "string" ? (n.attrs[DOC_ATTR_DESCRIPTION] as string) : "";
+    search.push({ t: n.name, s: `${n.type}.${n.subType}${n.package !== "" ? ` · ${n.package}` : ""}`, h: p.objectPage(n), k: `${n.name} ${n.id} ${desc}`.toLowerCase() });
   }
   for (const r of ix.requirements) {
     search.push({

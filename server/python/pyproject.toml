@@ -89,11 +89,11 @@ build-backend = "hatchling.build"
 packages = ["src/metaobjects"]
 exclude = ["**/KNOWN_GAPS.md"]
 
-# No agent-context ships in this package. `metaobjects agent-docs` redirects to the Node
-# scaffolder (`npx meta agent-docs --server python`), which owns that content, so the wheel
-# and sdist carry none of it and an agent-context/ edit never makes PyPI publish.
-# hatch_build.py is a deliberate no-op, kept only so tooling that names the hook does not break.
-[tool.hatch.build.hooks.custom]
+# The shipped agent files (`metaobjects agent-docs`) are a COMMITTED copy of the repo-root
+# agent-context-shipped/ tree under src/metaobjects/agent_context/shipped/, so the default
+# package inclusion above puts them in the wheel and sdist and the command needs no Node.
+# scripts/sync-python-agent-context.sh refreshes the copy; a gate and
+# tests/unit/test_agent_docs.py fail when it drifts. No build hook is involved.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

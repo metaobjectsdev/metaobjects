@@ -724,6 +724,7 @@ export default defineConfig({
         provenance: built.provenance,
         columnType: (c: SchemaColumnLike) => columnTypeSql(c as never, dialect),
         qualify: qualifiedDbName,
+        migrate: true,
       };
       const out: Record<string, string> = {};
       const files = await agentDocsFile({ schema }).generate(docsCtx(metadata));

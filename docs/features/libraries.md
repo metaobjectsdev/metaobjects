@@ -13,6 +13,11 @@ A **library** is that design, declared as metadata and shipped with MetaObjects:
 { "schema_version": 1, "sources": [], "libraries": ["iam"] }
 ```
 
+The neutral `libraries` key is read by the TypeScript, Python, C# and Rust surfaces.
+Java and Kotlin name their libraries in the Maven plugin's `<loader><libraries>`
+element instead of this key ([metadata-sources.md](metadata-sources.md) owns the
+per-port read).
+
 An agent working in your repo can now see that the capability exists, resolve against
 it, and build on it. Nothing else happens — which is the part worth reading twice.
 

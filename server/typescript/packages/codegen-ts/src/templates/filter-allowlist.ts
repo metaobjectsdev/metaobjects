@@ -1,5 +1,6 @@
 import { flatSurfaceFields } from "../flattened.js";
-import { code, type Code } from "../poet.js";
+import type { Code } from "../poet.js";
+import { TsWriter } from "../writer/ts-writer.js";
 import { MetaField, MetaObject } from "@metaobjectsdev/metadata";
 import {
   FIELD_SUBTYPE_BOOLEAN,
@@ -199,22 +200,28 @@ function filterRuleLiteral(rule: FilterAllowlistRule): string {
 }
 
 export function renderFilterAllowlist(entity: MetaObject, exclude?: string, ctx?: RenderContext): Code {
+  const w = new TsWriter();
+  writeFilterAllowlist(w, entity, exclude, ctx);
+  return w.toCode();
+}
+
+/** Write `<Entity>FilterAllowlist` into `w`, importing its type. */
+export function writeFilterAllowlist(w: TsWriter, entity: MetaObject, exclude?: string, ctx?: RenderContext): void {
   const rules = filterAllowlistRules(entity, exclude, ctx);
-  if (rules.length === 0) {
-    return code`
-import type { FilterAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
+  const type = w.useType("FilterAllowlist", allowlistTypesFrom(entity, ctx));
+  writeAllowlist(w, `${entity.name}FilterAllowlist`, type, rules.map(([name, rule]) => `${name}: ${filterRuleLiteral(rule)}`));
+}
 
-export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowlist;
-`;
+/** `export const <name> = { <rows> } as const satisfies <type>;`, on one line when it has no rows. */
+function writeAllowlist(w: TsWriter, name: string, type: string, rows: readonly string[]): void {
+  w.blank();
+  if (rows.length === 0) {
+    w.line(`export const ${name} = {} as const satisfies ${type};`);
+    return;
   }
-  const rows = rules.map(([name, rule]) => `  ${name}: ${filterRuleLiteral(rule)}`).join(",\n");
-  return code`
-import type { FilterAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
-
-export const ${entity.name}FilterAllowlist = {
-${rows}
-} as const satisfies FilterAllowlist;
-`;
+  w.block(`export const ${name} = {`, () => {
+    for (const r of rows) w.line(r, ",");
+  }, `} as const satisfies ${type};`);
 }
 
 /** The sortable fields and their rules, as data (what `<Entity>SortAllowlist` carries). */
@@ -239,23 +246,15 @@ export function sortAllowlistRules(
 }
 
 export function renderSortAllowlist(entity: MetaObject, exclude?: string, ctx?: RenderContext): Code {
+  const w = new TsWriter();
+  writeSortAllowlist(w, entity, exclude, ctx);
+  return w.toCode();
+}
+
+/** Write `<Entity>SortAllowlist` into `w`, importing its type. */
+export function writeSortAllowlist(w: TsWriter, entity: MetaObject, exclude?: string, ctx?: RenderContext): void {
   const rules = sortAllowlistRules(entity, exclude, ctx);
-  if (rules.length === 0) {
-    return code`
-import type { SortAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
-
-export const ${entity.name}SortAllowlist = {} as const satisfies SortAllowlist;
-`;
-  }
-  const rows = rules
-    .map(([name, rule]) =>
-      `  ${name}: ${rule.defaultOrder === undefined ? "{}" : `{ defaultOrder: ${JSON.stringify(rule.defaultOrder)} as const }`}`)
-    .join(",\n");
-  return code`
-import type { SortAllowlist } from ${JSON.stringify(allowlistTypesFrom(entity, ctx))};
-
-export const ${entity.name}SortAllowlist = {
-${rows}
-} as const satisfies SortAllowlist;
-`;
+  const type = w.useType("SortAllowlist", allowlistTypesFrom(entity, ctx));
+  writeAllowlist(w, `${entity.name}SortAllowlist`, type, rules.map(([name, rule]) =>
+    `${name}: ${rule.defaultOrder === undefined ? "{}" : `{ defaultOrder: ${JSON.stringify(rule.defaultOrder)} as const }`}`));
 }
