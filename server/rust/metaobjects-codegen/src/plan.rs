@@ -18,6 +18,7 @@ use metaobjects::naming::{
     primary_rdb_source, source_is_read_only,
 };
 use metaobjects::node::{NodeId, PACKAGE_SEP, Tree};
+use metaobjects::reference::reference_nodes_of;
 use metaobjects::validate::util::{ObjectIndex, ops_for_field};
 use serde_json::Value;
 
@@ -849,11 +850,16 @@ impl Plan {
         let mut structs: Vec<StructPlan> = Vec::new();
         let mut by_node: HashMap<NodeId, usize> = HashMap::new();
         let index = ObjectIndex::build(tree, root);
+        // A reference node loads and resolves but another run owns it. The load already
+        // refused a reference-only template, so the set is empty only when there is none.
+        let reference =
+            reference_nodes_of(tree, root, &collection.reference_ids).unwrap_or_default();
         for &id in tree.own_children(root) {
             let n = tree.node(id);
             if n.type_name != TYPE_OBJECT
                 || !matches!(n.sub_type.as_str(), OBJECT_ENTITY | OBJECT_VALUE)
                 || n.is_abstract
+                || reference.contains(&tree.resolution_key(id))
             {
                 continue;
             }

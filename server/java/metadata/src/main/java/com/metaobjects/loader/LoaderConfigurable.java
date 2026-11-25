@@ -71,6 +71,17 @@ public interface LoaderConfigurable {
         }
 
         /**
+         * Reference sources: metadata files that load into the same root as {@link #getSources()} (so
+         * references resolve against them) but whose nodes no generator emits when only they declare
+         * them. A {@code default} for the same reason as {@link #getLibraries()}.
+         *
+         * @return source strings in the same forms {@link #getSources()} accepts; never null
+         */
+        default List<String> getReferenceSources() {
+            return java.util.Collections.emptyList();
+        }
+
+        /**
          * FR-023 — the project's resolved metadata dependencies. Their committed snapshot artifacts
          * are loaded FIRST, ahead of {@link #getSources()}, each under its {@code dep:<name>/<artifact>}
          * source id. A {@code default} for the same reason as {@link #getLibraries()}: this interface

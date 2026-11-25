@@ -28,3 +28,8 @@ class MetaRoot(MetaData):
         self.rules_settings: RulesSettings = DEFAULT_RULES_SETTINGS
         # The project `api` setting (page size, unknown-field rule), attached the same way; read with `api_of()`.
         self.api: ApiSettings = ApiSettings()
+        # The resolution keys of the top-level nodes only REFERENCE sources declare
+        # (`{"path": ..., "reference": true}` in `.metaobjects/config.json`). They load and
+        # resolve like any other node; no generator emits them, because another run owns them.
+        # Set by the project-aware load; empty for a tree loaded with no reference source.
+        self.reference_nodes: frozenset[str] = frozenset()

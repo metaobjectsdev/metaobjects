@@ -19,7 +19,7 @@ from .dependencies import (
     read_lock,
     verify_snapshot,
 )
-from .neutral_config import DEFAULT_METADATA_DIR, NeutralConfig, read_neutral_config
+from .neutral_config import DEFAULT_METADATA_DIR, SOURCE_KEY_REFERENCE, NeutralConfig, read_neutral_config
 
 
 def _list_metadata_files(directory: Path) -> list[Path]:
@@ -56,7 +56,7 @@ def _normalize(p: Path) -> Path:
     return Path(os.path.abspath(p))
 
 
-def _validate_kinds(specs: list[dict[str, str]]) -> None:
+def _validate_kinds(specs: list[dict[str, object]]) -> None:
     """Validate every spec's kind before ANY filesystem access.
 
     Mirrors `sources.ts`'s `orderedPathSpecs` (`.map(toPathSpec)` runs over the
@@ -76,12 +76,21 @@ def _validate_kinds(specs: list[dict[str, str]]) -> None:
             )
 
 
-def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]:
+def resolve_sources(config_dir: Path, specs: list[dict[str, object]]) -> list[Path]:
     """Resolve a declared source SET to a de-duplicated list of metadata files.
 
     A relative ``path`` resolves against ``config_dir`` — the directory HOLDING
     the ``.metaobjects/`` folder — never against the process working directory.
     """
+    return resolve_sources_with_reference(config_dir, specs)[0]
+
+
+def resolve_sources_with_reference(
+    config_dir: Path, specs: list[dict[str, object]]
+) -> tuple[list[Path], frozenset[Path]]:
+    """:func:`resolve_sources`, plus which of those files are REFERENCE files: reached only
+    by ``{"path": ..., "reference": true}`` specs. One ordinary spec reaching the same file
+    makes it the project's own (ordinary wins)."""
     # Whole-list kind validation FIRST — see `_validate_kinds`.
     _validate_kinds(specs)
 
@@ -92,12 +101,13 @@ def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]
     # de-dup below is order-independent); only decides which declared path's
     # `ERR_SOURCE_UNRESOLVED` fires first when more than one is simultaneously
     # unresolvable.
-    ordered_specs = sorted(specs, key=lambda s: s["path"])
+    ordered_specs = sorted(specs, key=lambda s: str(s["path"]))
 
     seen: dict[Path, None] = {}
+    ordinary: set[Path] = set()
 
     for spec in ordered_specs:
-        raw = Path(spec["path"])
+        raw = Path(str(spec["path"]))
         target = raw if raw.is_absolute() else (config_dir / raw)
 
         if not target.exists():
@@ -109,9 +119,12 @@ def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]
 
         found = _list_metadata_files(target) if target.is_dir() else [target]
         for f in found:
-            seen.setdefault(_normalize(f), None)
+            n = _normalize(f)
+            seen.setdefault(n, None)
+            if spec.get(SOURCE_KEY_REFERENCE) is not True:
+                ordinary.add(n)
 
-    return list(seen)
+    return list(seen), frozenset(p for p in seen if p not in ordinary)
 
 
 def _make_in_migrate_scope(
@@ -142,8 +155,17 @@ def _make_in_migrate_scope(
     return predicate
 
 
+#: The `FileSource` id prefix of a reference source's file (`ref:<config-relative path>`),
+#: like a dependency artifact's `dep:` — its provenance can never be mistaken for one of the
+#: project's own files.
+REFERENCE_ID_PREFIX = "ref:"
+
+
 def _collection_from_own_files(
-    root: Path, own_files: list[Path], cfg: NeutralConfig | None
+    root: Path,
+    own_files: list[Path],
+    cfg: NeutralConfig | None,
+    reference_files: frozenset[Path] = frozenset(),
 ) -> Collection:
     """The tail shared by `resolve_collection_full` (own files via the source
     ladder) and `build_collection` (own files from an external surface, e.g.
@@ -176,6 +198,12 @@ def _collection_from_own_files(
     # own return order) — see `Collection.files`.
     dep_paths = [Path(dep.artifact_path) for dep in dependencies]
     file_ids: dict[Path, str] = {p: dep.source_id for p, dep in zip(dep_paths, dependencies)}
+    reference_file_ids = {
+        p: f"{REFERENCE_ID_PREFIX}{Path(os.path.relpath(p, root)).as_posix()}"
+        for p in own_files
+        if p in reference_files
+    }
+    file_ids.update(reference_file_ids)
     own_files_t = tuple(own_files)
 
     return Collection(
@@ -195,6 +223,7 @@ def _collection_from_own_files(
         rules=rules,
         api=api,
         requirements_inherit=tuple(cfg.requirements_inherit if cfg is not None else []),
+        reference_ids=frozenset(reference_file_ids.values()),
     )
 
 
@@ -235,8 +264,8 @@ def resolve_collection_full(root: Path) -> Collection:
             )
         specs = [{"path": DEFAULT_METADATA_DIR}]
 
-    own_files = resolve_sources(root, specs)
-    return _collection_from_own_files(root, own_files, cfg)
+    own_files, reference_files = resolve_sources_with_reference(root, specs)
+    return _collection_from_own_files(root, own_files, cfg, reference_files)
 
 
 def resolve_collection(root: Path) -> list[Path]:

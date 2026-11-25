@@ -31,6 +31,7 @@ public class LoaderConfigurationBuilder {
     private ClassLoader classLoader;
     private List<String> sources = new ArrayList<>();
     private List<String> libraries = new ArrayList<>();
+    private List<String> referenceSources = new ArrayList<>();
     private Map<String, String> arguments = new HashMap<>();
     private com.metaobjects.config.DependencySet dependencies = com.metaobjects.config.DependencySet.EMPTY;
     
@@ -59,6 +60,19 @@ public class LoaderConfigurationBuilder {
         return this;
     }
     
+    /**
+     * Reference sources — see {@link LoaderConfigurable.LoaderConfiguration#getReferenceSources()}.
+     *
+     * @param referenceSources source strings in the forms {@link #sources} accepts; null is ignored
+     * @return this builder
+     */
+    public LoaderConfigurationBuilder referenceSources(List<String> referenceSources) {
+        if (referenceSources != null) {
+            this.referenceSources.addAll(referenceSources);
+        }
+        return this;
+    }
+
     /**
      * MetaObjects-shipped library packages to load alongside the sources — see
      * {@link LoaderConfigurable.LoaderConfiguration#getLibraries()}.
@@ -111,7 +125,8 @@ public class LoaderConfigurationBuilder {
     
     public LoaderConfigurable.LoaderConfiguration build() {
         return new LoaderConfigurationImpl(sourceDir, classLoader, new ArrayList<>(sources),
-                new ArrayList<>(libraries), new HashMap<>(arguments), dependencies);
+                new ArrayList<>(libraries), new HashMap<>(arguments), dependencies,
+                new ArrayList<>(referenceSources));
     }
     
     /**
@@ -124,17 +139,25 @@ public class LoaderConfigurationBuilder {
         private final List<String> libraries;
         private final Map<String, String> arguments;
         private final com.metaobjects.config.DependencySet dependencies;
+        private final List<String> referenceSources;
 
         public LoaderConfigurationImpl(String sourceDir, ClassLoader classLoader,
                                      List<String> sources, List<String> libraries,
                                      Map<String, String> arguments,
-                                     com.metaobjects.config.DependencySet dependencies) {
+                                     com.metaobjects.config.DependencySet dependencies,
+                                     List<String> referenceSources) {
             this.sourceDir = sourceDir;
             this.classLoader = classLoader;
             this.sources = sources;
             this.libraries = libraries;
             this.arguments = arguments;
             this.dependencies = dependencies;
+            this.referenceSources = referenceSources;
+        }
+
+        @Override
+        public List<String> getReferenceSources() {
+            return referenceSources;
         }
         
         @Override

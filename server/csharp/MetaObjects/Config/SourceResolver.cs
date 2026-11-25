@@ -11,8 +11,15 @@ using MetaObjects.Loader;
 
 namespace MetaObjects.Config;
 
+/// <summary>One resolved metadata file; <see cref="Reference"/> when every spec reaching it is a reference source.</summary>
+public sealed record ResolvedSourceFile(string Path, bool Reference);
+
 public static class SourceResolver
 {
+    /// <summary>The boolean key a <c>path</c> source may carry: <c>{ "path": "replies", "reference": true }</c>.
+    /// Held on the spec dictionary as the string "true" (a false value is dropped at read time).</summary>
+    public const string SourceKeyReference = "reference";
+
     /// Resolve a declared source SET to a de-duplicated list of metadata files.
     /// A relative `path` resolves against `configDir` — the directory HOLDING the
     /// `.metaobjects/` folder — never against the process working directory.
@@ -32,14 +39,21 @@ public static class SourceResolver
     public static IReadOnlyList<string> ResolveSources(
         string configDir,
         IReadOnlyList<IReadOnlyDictionary<string, string>> specs)
+        => ResolveSourceFiles(configDir, specs).Select(f => f.Path).ToList();
+
+    /// <summary><see cref="ResolveSources"/> that also says which files are reference files: a file is
+    /// one only when EVERY spec reaching it is a reference spec (an ordinary spec wins).</summary>
+    public static IReadOnlyList<ResolvedSourceFile> ResolveSourceFiles(
+        string configDir,
+        IReadOnlyList<IReadOnlyDictionary<string, string>> specs)
     {
         // Pass 1 — kind validation across the WHOLE set, no filesystem I/O yet.
-        var pathSpecs = new List<string>(specs.Count);
+        var pathSpecs = new List<(string Path, bool Reference)>(specs.Count);
         foreach (var spec in specs)
         {
             if (spec.TryGetValue("path", out var rawPath))
             {
-                pathSpecs.Add(rawPath);
+                pathSpecs.Add((rawPath, spec.ContainsKey(SourceKeyReference)));
             }
             else
             {
@@ -57,13 +71,18 @@ public static class SourceResolver
         // order-independent); only decides which declared path's
         // `ERR_SOURCE_UNRESOLVED` fires first when more than one is
         // simultaneously unresolvable.
-        pathSpecs.Sort(StringComparer.Ordinal);
+        pathSpecs.Sort((a, b) =>
+        {
+            var c = StringComparer.Ordinal.Compare(a.Path, b.Path);
+            return c != 0 ? c : a.Reference.CompareTo(b.Reference);
+        });
 
         // Pass 2 — resolve each validated path spec against the filesystem.
         var seen = new List<string>();
         var known = new HashSet<string>(StringComparer.Ordinal);
+        var ordinary = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var rawPath in pathSpecs)
+        foreach (var (rawPath, isReference) in pathSpecs)
         {
             var target = Path.IsPathRooted(rawPath) ? rawPath : Path.GetFullPath(Path.Combine(configDir, rawPath));
 
@@ -94,16 +113,21 @@ public static class SourceResolver
             {
                 var full = Path.GetFullPath(f);
                 if (known.Add(full)) seen.Add(full);
+                if (!isReference) ordinary.Add(full);
             }
         }
 
-        return seen;
+        return seen.Select(f => new ResolvedSourceFile(f, !ordinary.Contains(f))).ToList();
     }
 
     /// The full ladder: declared `sources`, else the default directory.
     /// Only the DEFAULT may be silently absent — a declared source that does not
     /// resolve is `ERR_SOURCE_UNRESOLVED`, a louder failure than "nothing declared".
     public static IReadOnlyList<string> ResolveCollection(string root)
+        => ResolveCollectionFiles(root).Select(f => f.Path).ToList();
+
+    /// <summary><see cref="ResolveCollection"/> with each file's reference flag.</summary>
+    public static IReadOnlyList<ResolvedSourceFile> ResolveCollectionFiles(string root)
     {
         root = Path.GetFullPath(root);
         // Only `sources` is read here; `naming` is the caller's to check (MetadataLocation reads
@@ -125,6 +149,6 @@ public static class SourceResolver
             };
         }
 
-        return ResolveSources(root, specs);
+        return ResolveSourceFiles(root, specs);
     }
 }

@@ -10,6 +10,21 @@ here.**
 
 ## [Unreleased]
 
+- **Reference sources: name a prompt's reply type that another run generates.** A `sources`
+  entry may carry `"reference": true` (Maven: `<loader><referenceSources>`). Its files load into
+  the same tree, so a prompt's `@responseRef` (and any other reference) resolves against them,
+  and no generator emits a type for a node declared only there. The prompt keeps its parser,
+  output-format fragment and extractor, naming the reply type the other run generates. Before
+  this, a reply type owned by another generator run could not be named at all (the load
+  refused the unresolved `@responseRef`), and merging its files into the prompt's tree generated
+  every reply type a second time. A `template.*` declared only in a reference source is refused
+  (`ERR_REFERENCE_SOURCE_TEMPLATE`). Every port, pinned by `fixtures/reference-source-conformance/`.
+- **The template check reads `@responseRef`.** `verify`'s template gate now reports
+  `ERR_RESPONSE_UNRESOLVED` (error) for a reply type with no readable field, and
+  `ERR_RESPONSE_TAG_UNDECLARED` (warning) for an xml prompt's `@requiredTags` tag that names
+  neither the reply type nor a field in it. TypeScript, Java (and so Kotlin), C# and Python,
+  pinned by `fixtures/response-verify-conformance/`; Rust ships no template gate.
+
 - **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
 
 - **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint

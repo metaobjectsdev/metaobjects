@@ -31,11 +31,16 @@ public class GeneratorUtil {
      * another project's to generate: a generator emits nothing for it, exactly as the TypeScript
      * and Python selection points do. False for anything that is not an object, and for every tree
      * loaded without dependencies.
+     *
+     * <p>Also true for a REFERENCE node: one declared only by sources the project marks
+     * {@code "reference": true}. It loads and resolves, but another run generates it.</p>
      */
     public static boolean isImported(MetaData md) {
         if (!(md instanceof MetaObject)) return false;
         MetaDataLoader loader = md.getLoader();
         if (loader == null) return false;
+        // A reference node (declared only by `reference` sources) is another run's to generate.
+        if (loader.getRoot().getReferenceNodes().contains(md.getName())) return true;
         com.metaobjects.config.DependencySet deps = loader.getRoot().getDependencySet();
         return !deps.isEmpty() && !deps.inScope(md.getName());
     }

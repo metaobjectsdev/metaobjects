@@ -14,6 +14,7 @@ public class LoaderParam {
     private String classname = null;
     private String sourceDir = null;
     private List<String> sources = null;
+    private List<String> referenceSources = null;
     private List<String> libraries = null;
     private List<String> filters = null;
 
@@ -108,6 +109,26 @@ public class LoaderParam {
      */
     public void setSources(List<String> sources) {
         this.sources = sources;
+    }
+
+    /**
+     * Reference sources — {@code <referenceSources><source>…</source></referenceSources>}: metadata
+     * files resolved like {@link #getSources()} that load into the same model (so {@code @responseRef},
+     * {@code extends} and {@code @objectRef} resolve against them) but that no generator emits when
+     * only they declare a node. Another run owns those nodes' generated types.
+     *
+     * @return the reference source paths, or null if not set
+     */
+    public List<String> getReferenceSources() {
+        return referenceSources;
+    }
+
+    /**
+     * Set the reference sources.
+     * @param referenceSources reference source file paths
+     */
+    public void setReferenceSources(List<String> referenceSources) {
+        this.referenceSources = referenceSources;
     }
 
     /**

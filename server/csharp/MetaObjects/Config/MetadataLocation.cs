@@ -58,6 +58,11 @@ public sealed record ResolvedMetadata(
     /// constructor and <c>Deconstruct</c> keep the signatures they had.</summary>
     public EnumDefaults? Enums { get; init; }
 
+    /// <summary>The absolute paths of the project's reference files (<c>{ "path": ..., "reference": true }</c>
+    /// sources), a subset of <see cref="Files"/>. <see cref="Load"/> records the nodes only they declare on
+    /// the root (<see cref="MetaRoot.ReferenceNodes"/>), which every generator skips.</summary>
+    public IReadOnlySet<string>? ReferenceFiles { get; init; }
+
     /// <summary>ADR-0066 — the project's business-rules settings (<c>rules</c> and <c>verify</c> in config.json); null when no config was read.</summary>
     public RulesSettings? Rules { get; init; }
 
@@ -80,6 +85,11 @@ public sealed record ResolvedMetadata(
         result.Root.Api = Api ?? ApiSettings.Default;
         result.Root.EnumDefaults = Enums ?? EnumDefaults.Default;
         result.Root.Rules = Rules ?? RulesSettings.Default;
+        if (ReferenceFiles is { Count: > 0 } referenceFiles && result.Errors.Count == 0)
+        {
+            result.Root.ReferenceNodes = ReferenceSources.NodesOf(result.Root, referenceFiles, out var referenceRefusal);
+            if (referenceRefusal is not null) return result with { Errors = [referenceRefusal], State = "error" };
+        }
         if (Imports is null) return result;
 
         result.Root.ImportScope = Imports;
@@ -176,6 +186,22 @@ public static class MetadataLocation
             return new ResolvedMetadata(Path.Combine(cwd, NeutralConfig.DefaultMetadataDir), defaultFiles, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums, Rules = cfg?.Rules, Api = cfg?.Api };
         }
 
+        var hasReference = specs.Any(sp => sp.ContainsKey(SourceResolver.SourceKeyReference));
+        if (specs.Count > 1 && hasReference)
+        {
+            // Reference sources load through the resolved FILE list into the one root, so several
+            // sources are fine here; the directory is the first ordinary source (what a Files-less
+            // caller would have walked), and only the ordinary sources' files are the project's own.
+            var resolvedFiles = SourceResolver.ResolveSourceFiles(cwd, specs);
+            var firstOrdinary = specs.FirstOrDefault(sp => !sp.ContainsKey(SourceResolver.SourceKeyReference) && sp.ContainsKey("path"));
+            var dir = firstOrdinary is null ? cwd : Path.GetFullPath(Path.Combine(cwd, firstOrdinary["path"]));
+            return new ResolvedMetadata(dir, resolvedFiles.Select(f => f.Path).ToList(), libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg))
+            {
+                Enums = cfg?.Enums, Rules = cfg?.Rules, Api = cfg?.Api,
+                ReferenceFiles = resolvedFiles.Where(f => f.Reference).Select(f => f.Path).ToHashSet(StringComparer.Ordinal),
+            };
+        }
+
         if (specs.Count > 1)
         {
             // MetaDataLoader.FromDirectory takes ONE directory; refuse rather than load
@@ -189,7 +215,8 @@ public static class MetadataLocation
 
         // Exactly one declared source. ResolveSources validates it (ERR_SOURCE_KIND_UNSUPPORTED /
         // ERR_SOURCE_UNRESOLVED) and returns the `_pending`-excluded file list to load.
-        var files = SourceResolver.ResolveSources(cwd, specs);
+        var sourceFiles = SourceResolver.ResolveSourceFiles(cwd, specs);
+        var files = sourceFiles.Select(f => f.Path).ToList();
         var rawPath = specs[0]["path"]; // present: ResolveSources would have thrown otherwise
         var resolved = Path.IsPathRooted(rawPath) ? rawPath : Path.GetFullPath(Path.Combine(cwd, rawPath));
 
@@ -203,6 +230,10 @@ public static class MetadataLocation
                 "\"sources\" at the file's containing directory.");
         }
 
-        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg)) { Enums = cfg?.Enums, Rules = cfg?.Rules, Api = cfg?.Api };
+        return new ResolvedMetadata(resolved, files, libraries, naming, wire, cfg?.OutDir, imports, cfg?.Namespace, LoadProviders(cfg))
+        {
+            Enums = cfg?.Enums, Rules = cfg?.Rules, Api = cfg?.Api,
+            ReferenceFiles = sourceFiles.Any(f => f.Reference) ? sourceFiles.Where(f => f.Reference).Select(f => f.Path).ToHashSet(StringComparer.Ordinal) : null,
+        };
     }
 }

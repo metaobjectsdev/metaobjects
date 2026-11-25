@@ -274,6 +274,23 @@
       "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
       "expectError": true,
       "errorIsNative": true
+    },
+    {
+      "name": "a-reference-source-resolves-its-files-like-any-other",
+      "tree": {
+        "model/meta.users.json": "{\"metadata.root\":{\"children\":[]}}",
+        "replies/meta.replies.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }, { "path": "replies", "reference": true }] },
+      "expectFiles": ["model/meta.users.json", "replies/meta.replies.json"]
+    },
+    {
+      "name": "a-reference-flag-that-is-not-a-boolean-is-an-error",
+      "tree": {
+        "model/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model", "reference": "yes" }] },
+      "expectError": true
     }
   ]
 }

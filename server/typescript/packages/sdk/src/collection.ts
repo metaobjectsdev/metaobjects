@@ -10,7 +10,7 @@
 // today (`DEFAULT_SOURCES` in `sources.ts`); a project that declares
 // `sources` can point anywhere. No other call site may assume the directory
 // name — this is where that assumption is allowed to live, exactly once.
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
 import {
   ParseError,
@@ -50,6 +50,9 @@ import {
   type ResolvedSource,
   type SourceSpec,
 } from "./sources.js";
+
+/** The `FileSource` id prefix of a reference source's file (`ref:<config-relative path>`). */
+export const REFERENCE_ID_PREFIX = "ref:";
 
 export interface Collection {
   /** Directory whose config declared this collection (or the resolved start
@@ -124,6 +127,12 @@ export interface Collection {
    *  contributed carries provenance naming the dependency rather than a filename
    *  that reads like a local file. */
   readonly fileIds: ReadonlyMap<string, string>;
+  /** The `FileSource` ids of the project's REFERENCE files (`{ "path": …, "reference": true }`
+   *  sources): `ref:<config-relative path>`, also present in {@link fileIds}. A top-level node
+   *  every one of whose declarations came from these ids is a reference node — it loads and
+   *  resolves, and no generator here emits it (`MetaRoot.referenceNodes`). Empty when the
+   *  project declares no reference source. */
+  readonly referenceIds: ReadonlySet<string>;
   /** FR-023 — the sorted union of every dependency's `packages`: THE exclusion
    *  key (DESIGN §11.5). Package-keyed, not node-keyed. */
   readonly importedPackages: readonly string[];
@@ -440,6 +449,14 @@ export async function resolveCollection(
     id: d.sourceId,
   }));
   const ownFiles = ownSources.map((s) => s.file);
+  // A reference file loads under `ref:<config-relative path>` — a prefixed id, like a
+  // dependency artifact's `dep:`, so its provenance can never be mistaken for (or collide
+  // by basename with) one of the project's own files.
+  const referenceFileIds = new Map(
+    ownSources
+      .filter((s) => s.reference === true)
+      .map((s): [string, string] => [s.file, `${REFERENCE_ID_PREFIX}${relative(configDir, s.file).split(sep).join("/")}`]),
+  );
 
   const scope = compileScope(toScope(scopeSpec));
   const inCoverage = (fqn: string): boolean => {
@@ -471,7 +488,11 @@ export async function resolveCollection(
     foreignKeyIndexes,
     foreignKeyTargets,
     handEdits,
-    fileIds: new Map(dependencies.map((d) => [d.artifactPath, d.sourceId])),
+    fileIds: new Map([
+      ...dependencies.map((d): [string, string] => [d.artifactPath, d.sourceId]),
+      ...referenceFileIds,
+    ]),
+    referenceIds: new Set(referenceFileIds.values()),
     importedPackages: [...importedPackages].sort(),
     importedNodes,
     imported,

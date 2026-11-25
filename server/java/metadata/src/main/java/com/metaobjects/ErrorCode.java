@@ -392,6 +392,13 @@ public enum ErrorCode {
     /** FR-023: a local top-level node is declared into a package owned by a dependency. */
     ERR_DEPENDENCY_PACKAGE_NOT_OWNED,
 
+    /**
+     * A {@code template.*} is declared only in reference sources
+     * ({@code {"path": ..., "reference": true}}): its parser and payload type would be generated
+     * by nobody, so the load refuses it.
+     */
+    ERR_REFERENCE_SOURCE_TEMPLATE,
+
     /** FR-023: a dependency's {@code metamodelVersion} major differs from this toolchain's. */
     ERR_DEPENDENCY_METAMODEL_INCOMPATIBLE,
 

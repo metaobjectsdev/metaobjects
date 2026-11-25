@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **46 shared conformance corpora** under
+The MetaObjects standard ships **48 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -47,7 +47,9 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 18 (11 error-shape + 4 compose-load + 3 attr-ownership) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
-| [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 28 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 30 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/reference-source-conformance/`](../fixtures/reference-source-conformance/) | 6 cases | ✓ (reference implementation) | ✓ | inherits via Java (plus its own codegen exclusion test) | ✓ | ✓ |
+| [`fixtures/response-verify-conformance/`](../fixtures/response-verify-conformance/) | 7 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/dependency-conformance/`](../fixtures/dependency-conformance/) | 47 cases (36 resolution, 7 of them with a ledger arm, + 11 check) + 32 transport cases | ✓ (reference implementation; all four arms) | ✓ (resolution arm, all 36, ledger included; check arm, all 11) | inherits via Java | ✓ (resolution arm, all 36, ledger included; check arm, all 11, as `verify --deps`) | ✓ (resolution arm, all 36 identically, ledger included; check arm, all 11, as `deps check` and `verify --deps`; the transport arm is Node-only) |
 | [`fixtures/shared-model-conformance/`](../fixtures/shared-model-conformance/) | 15 cases (9 publish + 6 refusal) | ✓ (reference implementation) | ✓ (all 15; `SharedModelConformanceTest`) | inherits via Java (`KotlinSharedModelGeneratorTest` pins the generator) | ✓ (all 15; `SharedModelConformanceTests`) | ✓ (all 15; `test_shared_model_conformance.py`) |
@@ -80,8 +82,8 @@ green, with every validation pass the TypeScript loader runs, in the same order,
 `rules-check-conformance` (all 16 cases, the `verify` business-rules gate);
 `yaml-conformance`, 18 of 19 (the one on `yaml-conformance-expected-failures.json`,
 `yaml-ref-root-escape`, waits for the ADR-0059 root-level `::` reference rules, which are
-reference resolution, not a validation pass); `source-resolution-conformance` (all 28
-cases); `naming-conformance` (all of it); `codegen-skip-conformance` (ADR-0064), on both its
+reference resolution, not a validation pass); `source-resolution-conformance` (all 30
+cases); `reference-source-conformance` (all 6 cases); `naming-conformance` (all of it); `codegen-skip-conformance` (ADR-0064), on both its
 `gen` and its `verify` columns, for every case the port can meet (the three it cannot, two
 about templates and one about the three-way merge, are named with their reason in its
 runner); `validation-conformance`, every case, through the generated `validate()`;
@@ -426,7 +428,7 @@ Per-port runners + commands:
 | Kotlin | `cd server/java && mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -f server/java/integration-tests-kotlin/pom.xml test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | `dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj --filter "FullyQualifiedName~ApiContractConformanceTest"` (needs Docker) |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | `cd server/python && uv run --extra integration pytest tests/integration/test_api_contract.py` (needs Docker) |
-| Rust | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, naming, skip, validation, wire-vector, writer, generator-registry, render, extract and output-prompt corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
+| Rust | `cd server/rust && cargo test` (registry, metamodel, YAML, source-resolution, reference-source, naming, skip, validation, wire-vector, writer, generator-registry, render, extract and output-prompt corpora; the codegen-compile and scale gates, which run `cargo check` on generated crates and drive the generated client over HTTP against a local stub) | — | — |
 
 The `persistence-conformance` corpus is intentionally **on-demand** — none of the
 unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
@@ -578,9 +580,9 @@ that reads real views, so it runs full stack on Postgres, SQLite and MySQL
 port, and on D1's local runtime in TypeScript. The `decimal/` sub-corpus does the same over
 decimal columns.
 
-### `fixtures/source-resolution-conformance/` (28 cases)
+### `fixtures/source-resolution-conformance/` (30 cases)
 
-All 28 cases → [features/metadata-sources.md](features/metadata-sources.md) (how a
+All 30 cases → [features/metadata-sources.md](features/metadata-sources.md) (how a
 declared `sources` set resolves to a file list). Companion to
 `scope-conformance/` below — `sources` decides which files are read, `scope`
 filters what is emitted from them. The corpus is file-shaped: one committed
@@ -602,6 +604,28 @@ the same Maven plugin as Java):
 `server/csharp/MetaObjects.Conformance.Tests/SourceResolutionConformanceTests.cs`,
 `server/python/tests/conformance/test_source_resolution_conformance.py`, and
 `server/java/metadata/src/test/java/com/metaobjects/config/SourceResolutionConformanceTest.java`.
+
+### `fixtures/reference-source-conformance/` (6 cases)
+
+All 6 cases → [features/metadata-sources.md](features/metadata-sources.md#reference-sources--loaded-to-resolve-against-never-generated).
+A `sources` entry with `"reference": true` loads its files into the same tree, so a
+prompt's `@responseRef` resolves against them, and its nodes are excluded from every
+generator. The corpus pins the reference-node SET (every declaring file a reference file;
+an ordinary declaration or an ordinary spec reaching the same file wins) and the refusal of
+a reference-only template (`ERR_REFERENCE_SOURCE_TEMPLATE`). Runners:
+`server/typescript/packages/sdk/test/reference-source-conformance.test.ts`, C#
+`ReferenceSourceConformanceTests`, Java `ReferenceSourceConformanceTest` (Kotlin through the
+same loader), Python `test_reference_source_conformance.py` and Rust
+`metaobjects/tests/reference_source_conformance.rs`. That codegen emits no type for a
+reference node while a local prompt's parser still emits is proven by a per-port codegen test
+(TypeScript, C#, Java, Kotlin and Python; Rust, which emits no prompt code, proves the exclusion alone).
+
+### `fixtures/response-verify-conformance/` (7 cases)
+
+All 7 cases → [features/templates-and-payloads.md](features/templates-and-payloads.md#drift-detection-verify).
+What the template gate reports about a prompt's reply: `ERR_RESPONSE_UNRESOLVED` and, for an
+xml prompt, `ERR_RESPONSE_TAG_UNDECLARED`. Run by TypeScript, C#, Java (Kotlin through the
+same Maven goal) and Python. Rust ships no template gate, so it is not a Rust corpus.
 
 ### `fixtures/scope-conformance/` (10 cases)
 
@@ -879,7 +903,7 @@ JSON and verify payload feeds it unchanged.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the nine corpora mapped above (metamodel 584 + yaml 19 + verify 45
-+ render 26 + persistence 68 + api-contract 179 + source-resolution 28 + scope 10 +
++ render 26 + persistence 68 + api-contract 179 + source-resolution 30 + scope 10 +
 dependency 47) each map to a feature doc, and so do the two requirement corpora, `rules-check-conformance`, `shared-model-conformance`, the
 `cube-model` corpus, `explorer-conformance` and `list-query-conformance`, whose case lists live in their own READMEs. None are orphaned today. The remaining
 corpora in the totals table gate tooling contracts (registry manifests, provider
