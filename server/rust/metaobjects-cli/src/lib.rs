@@ -582,7 +582,7 @@ fn cmd_verify(
     }
     if s.has("--db") {
         return Err(Usage(format!(
-            "`{TOOL} verify --db` does not exist: checking a schema against a live database is the Node `meta` command's job (`meta verify --db`, the reference helper, ADR-0015), whichever tool built the schema."
+            "`{TOOL} verify --db` does not exist: checking a schema against a live database is the reference migration helper's (`meta migrate`, `meta verify --db`), one option; a native tool is equally good (ADR-0015 Amendment 2)."
         )));
     }
     if s.has("--deps") {
