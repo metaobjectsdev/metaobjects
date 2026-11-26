@@ -1656,7 +1656,8 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   controller, the TPH base controller and the read-only (projection and report) controller, with
   the filter pipeline, the M:N traversal routes, the sort surface and the credential redactor they
   share. Its entry leaves the layout ratchet's allowlist. **Its output changes in layout only:**
-  imports in one sorted group, no blank line at the start or end of the controller class, and two
+  imports in one sorted group, no blank line at the start or end of the controller class, one blank
+  line where the TPH controller wrote two (before its exception handlers), and two
   bodies the old text builder indented one level off now indented by their blocks (the Exposed 1.x
   `WhereOp` loop, and a PATCH handler whose only automatic column is an `@autoSet` one).
   Regenerating shows those diffs and nothing else. The `protected open` hooks an `open` subclass

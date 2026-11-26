@@ -2824,7 +2824,7 @@ private fun appendSortDefaultOrders(
 }
 
 /**
- * The generated Kotlin expression resolving a sort FIELD NAME to its Exposed column.
+ * Writes the `q = q.orderBy(...)` statement whose `when` resolves a sort FIELD NAME to its Exposed column.
  *
  * Deliberately NOT `$table.columns.first { it.name == field }`. Exposed's `Column.name` is
  * the PHYSICAL SQL identifier — `created_at` under the default snake_case strategy — while
