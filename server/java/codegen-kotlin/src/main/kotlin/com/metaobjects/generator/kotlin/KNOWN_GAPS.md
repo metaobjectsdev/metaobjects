@@ -252,7 +252,7 @@ corpus today; opens when a real consumer needs it.
 
 ## `ObjectField` skipped in sort allowlist + `rowTo<Entity>` mapping
 
-**Status:** Day-1 limitation in [`KotlinSpringControllerGenerator.kt:228`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinSpringControllerGenerator.kt#L228).
+**Status:** Day-1 limitation in [`KotlinSpringControllerGenerator.kt`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinSpringControllerGenerator.kt) (the sort allowlist and the `rowTo<Entity>` mapper; search for `Sort allowlist`).
 
 A `field.object` (jsonb or flattened storage) is not eligible for `?sort=` in
 the generated controller and is skipped in the `rowTo<Entity>(...)` mapper
