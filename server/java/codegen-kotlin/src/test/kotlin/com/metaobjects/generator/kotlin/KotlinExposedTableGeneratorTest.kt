@@ -1107,7 +1107,7 @@ class KotlinExposedTableGeneratorTest {
      * instead of `varchar(...)`. The Kotlin data class property type stays `String` (ADR-0037:
      * `@dbColumnType` is physical-only) — `uuidString`'s custom `ColumnType<String>` converts at
      * the Kotlin-value boundary, delegating every JDBC/DDL concern to Exposed's own
-     * `UUIDColumnType` (see `KotlinExposedTableGenerator.uuidStringSupportBlock`'s doc). Previously
+     * `UUIDColumnType` (see `KotlinExposedTableGenerator.writeUuidStringSupport`'s doc). Previously
      * this emitted a bare `uuid("col")` — a native `Column<UUID>` that was self-consistent on the
      * table alone but mismatched the generated entity/controller's `String` property, which never
      * compiled once a controller was generated+compiled for such an entity (issue found fixing

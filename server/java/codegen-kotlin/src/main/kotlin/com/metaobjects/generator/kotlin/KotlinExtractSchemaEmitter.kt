@@ -8,6 +8,8 @@ import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
+import com.metaobjects.generator.writer.CodeWriter
 
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.DoubleField
@@ -21,13 +23,6 @@ import com.metaobjects.field.StringField
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.util.GeneratedFileWriter
 import com.metaobjects.`object`.MetaObject
-import com.squareup.kotlinpoet.BOOLEAN
-import com.squareup.kotlinpoet.DOUBLE
-import com.squareup.kotlinpoet.FLOAT
-import com.squareup.kotlinpoet.INT
-import com.squareup.kotlinpoet.LONG
-import com.squareup.kotlinpoet.STRING
-import com.squareup.kotlinpoet.TypeName
 import java.nio.file.Path
 import java.util.Properties
 
@@ -110,63 +105,58 @@ object KotlinExtractSchemaEmitter {
         val (pkg, short) = PackageMapping.splitFqn(vo.name)
         val mirror = mirrorName(vo)
         val fields = vo.metaFields.toList()
-        return buildString {
-            append("// GENERATED — DO NOT EDIT — lenient extraction mirror of value object `")
-            append(vo.name)
-            append("`\n")
-            if (pkg.isNotEmpty()) append("package ").append(pkg).append("\n\n")
-            append("import com.metaobjects.render.extract.ExtractMap\n\n")
-            append("/**\n")
-            append(" * All-nullable mirror of [").append(short).append("] for tolerant extraction: a partial model\n")
-            append(" * reply still maps. [toStrict] converts it once no `@required` field was lost or malformed.\n")
-            append(" */\n")
-            append("data class ").append(mirror).append("(\n")
-            for (field in fields) {
-                append("    val ").append(field.name).append(": ").append(mirrorPropertyType(field)).append(" = null,\n")
+        val w = KotlinWriter().packageName(pkg)
+        w.header("// GENERATED — DO NOT EDIT — lenient extraction mirror of value object `${vo.name}`")
+        w.use("com.metaobjects.render.extract.ExtractMap")
+        w.doc(
+            "All-nullable mirror of [$short] for tolerant extraction: a partial model",
+            "reply still maps. [toStrict] converts it once no `@required` field was lost or malformed.",
+        )
+        val properties = fields.map { "val ${it.name}: ${mirrorPropertyType(it)} = null" }
+        w.block(listOf("data class $mirror", CodeWriter.list("(", properties, ")"), " {")) {
+            w.doc("The strict [$short]. Call only once the extract report shows no lost or malformed required field.")
+            w.block("fun toStrict(): $short = $short(", ")") {
+                for (field in fields) {
+                    w.line("${field.name} = ${strictArg(field, vo, provided)},")
+                }
             }
-            append(") {\n\n")
-            append("    /** The strict [").append(short).append("]. Call only once the extract report shows no lost or malformed required field. */\n")
-            append("    fun toStrict(): ").append(short).append(" = ").append(short).append("(\n")
-            for (field in fields) {
-                append("        ").append(field.name).append(" = ").append(strictArg(field, vo, provided)).append(",\n")
+            w.blank()
+            w.block("companion object {") {
+                w.doc("Map an assembled ValueObject (a Map) onto the typed mirror; null-tolerant.")
+                w.line("@JvmStatic")
+                w.block("fun fromMap(d: Map<String, Any?>?): $mirror? {") {
+                    w.line("if (d == null) return null")
+                    w.block("return $mirror(", ")") {
+                        for (field in fields) {
+                            w.line("${field.name} = ${fromMapArg(field)},")
+                        }
+                    }
+                }
+                // The two helpers only a nested value object needs: `asMap` for a single nested
+                // object (and inside mapObjectList), `mapObjectList` for an array of them.
+                val nestedFields = fields.filter { objectRefValueObject(it) != null }
+                if (nestedFields.isNotEmpty()) {
+                    w.blank()
+                    w.doc("Null-tolerant cast of an assembled value to a Map (a ValueObject IS a Map).")
+                    w.line("@Suppress(\"UNCHECKED_CAST\")")
+                    w.line("private fun asMap(v: Any?): Map<String, Any?>? = v as? Map<String, Any?>")
+                }
+                if (nestedFields.any { it.isArrayType() }) {
+                    w.blank()
+                    w.doc("Map each element of an assembled List<Map> via [fn]; null/absent -> null; non-Map elements skipped.")
+                    w.block("private fun <T> mapObjectList(d: Map<String, Any?>, key: String, fn: (Map<String, Any?>) -> T): List<T>? {") {
+                        w.line("val v = d[key] as? List<*> ?: return null")
+                        w.line("val outList = ArrayList<T>(v.size)")
+                        w.block("for (elem in v) {") {
+                            w.line("val m = asMap(elem)")
+                            w.line("if (m != null) outList.add(fn(m))")
+                        }
+                        w.line("return outList")
+                    }
+                }
             }
-            append("    )\n\n")
-            append("    companion object {\n\n")
-            append("        /** Map an assembled ValueObject (a Map) onto the typed mirror; null-tolerant. */\n")
-            append("        @JvmStatic\n")
-            append("        fun fromMap(d: Map<String, Any?>?): ").append(mirror).append("? {\n")
-            append("            if (d == null) return null\n")
-            append("            return ").append(mirror).append("(\n")
-            for (field in fields) {
-                append("                ").append(field.name).append(" = ").append(fromMapArg(field)).append(",\n")
-            }
-            append("            )\n")
-            append("        }\n")
-            // The two helpers only a nested value object needs: `asMap` for a single nested
-            // object (and inside mapObjectList), `mapObjectList` for an array of them.
-            val nestedFields = fields.filter { objectRefValueObject(it) != null }
-            if (nestedFields.isNotEmpty()) {
-                append("\n")
-                append("        /** Null-tolerant cast of an assembled value to a Map (a ValueObject IS a Map). */\n")
-                append("        @Suppress(\"UNCHECKED_CAST\")\n")
-                append("        private fun asMap(v: Any?): Map<String, Any?>? = v as? Map<String, Any?>\n")
-            }
-            if (nestedFields.any { it.isArrayType() }) {
-                append("\n")
-                append("        /** Map each element of an assembled List<Map> via [fn]; null/absent -> null; non-Map elements skipped. */\n")
-                append("        private fun <T> mapObjectList(d: Map<String, Any?>, key: String, fn: (Map<String, Any?>) -> T): List<T>? {\n")
-                append("            val v = d[key] as? List<*> ?: return null\n")
-                append("            val outList = ArrayList<T>(v.size)\n")
-                append("            for (elem in v) {\n")
-                append("                val m = asMap(elem)\n")
-                append("                if (m != null) outList.add(fn(m))\n")
-                append("            }\n")
-                append("            return outList\n")
-                append("        }\n")
-            }
-            append("    }\n")
-            append("}\n")
         }
+        return w.toString()
     }
 
     /**
@@ -256,7 +246,7 @@ object KotlinExtractSchemaEmitter {
         // Scalar arrays: the mirror is always List<String> (ExtractMap.asStringList stringifies
         // every element), so each element parses to the strict element type.
         if (field.isArrayType()) {
-            val conv = fromStringConversion(field, KotlinTypeMapper.payloadTypeName(field))
+            val conv = fromStringConversion(field, KotlinTypeMapper.payloadTypeName(field).toString())
             val base = if (nullable) "$name?.filterNotNull()" else "$name!!.filterNotNull()"
             if (conv == null) return base
             return if (nullable) "$base?.map { $conv }" else "$base.map { $conv }"
@@ -275,7 +265,8 @@ object KotlinExtractSchemaEmitter {
         }
 
         // A single scalar: parse when the mirror leaf is a String and the strict type is not.
-        val strict = KotlinTypeMapper.payloadTypeName(field)
+        // The type mapper describes a type as a KotlinPoet value; it is compared by its qualified name.
+        val strict = KotlinTypeMapper.payloadTypeName(field).toString()
         val conv = if (mirrorScalar(field) == strict) null else fromStringConversion(field, strict)
         return when {
             conv == null && nullable -> name
@@ -285,13 +276,13 @@ object KotlinExtractSchemaEmitter {
         }
     }
 
-    /** The mirror's non-null leaf type for a single scalar (see [mirrorPropertyType]). */
-    private fun mirrorScalar(field: MetaField<*>): TypeName = when (field) {
-        is IntegerField -> INT
-        is LongField    -> LONG
-        is DoubleField  -> DOUBLE
-        is BooleanField -> BOOLEAN
-        else            -> STRING
+    /** The qualified name of the mirror's non-null leaf type for a single scalar (see [mirrorPropertyType]). */
+    private fun mirrorScalar(field: MetaField<*>): String = when (field) {
+        is IntegerField -> "kotlin.Int"
+        is LongField    -> "kotlin.Long"
+        is DoubleField  -> "kotlin.Double"
+        is BooleanField -> "kotlin.Boolean"
+        else            -> "kotlin.String"
     }
 
     /**
@@ -299,16 +290,16 @@ object KotlinExtractSchemaEmitter {
      * [strict] is itself `String`. Fails loud at codegen time for a type with no safe parse, rather
      * than emitting Kotlin that does not compile.
      */
-    private fun fromStringConversion(field: MetaField<*>, strict: TypeName): String? {
+    private fun fromStringConversion(field: MetaField<*>, strict: String): String? {
         if (KotlinTypeMapper.isJsonbOpenBag(field)) return "kotlinx.serialization.json.Json.parseToJsonElement(it)"
         return when (strict) {
-            STRING  -> null
-            INT     -> "it.toInt()"
-            LONG    -> "it.toLong()"      // also field.currency (minor-unit Long)
-            DOUBLE  -> "it.toDouble()"
-            FLOAT   -> "it.toFloat()"
-            BOOLEAN -> "it.toBoolean()"
-            else -> when (strict.toString()) {
+            "kotlin.String"  -> null
+            "kotlin.Int"     -> "it.toInt()"
+            "kotlin.Long"    -> "it.toLong()"      // also field.currency (minor-unit Long)
+            "kotlin.Double"  -> "it.toDouble()"
+            "kotlin.Float"   -> "it.toFloat()"
+            "kotlin.Boolean" -> "it.toBoolean()"
+            else -> when (strict) {
                 "java.util.UUID"          -> "java.util.UUID.fromString(it)"
                 "java.math.BigDecimal"    -> "java.math.BigDecimal(it)"
                 "java.net.URI"            -> "java.net.URI(it)"

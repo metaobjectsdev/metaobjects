@@ -35,7 +35,7 @@ object AssetTable : Table("assets") {
     val ownerId = uuid("ownerId")
     // `field.string` + `@dbColumnType:uuid` — a DELIBERATE divergence from what the generator
     // now emits (`uuidString("externalId")`, a `Column<String>`; see
-    // KotlinExposedTableGenerator.uuidStringSupportBlock's doc). That change exists to agree
+    // KotlinExposedTableGenerator.writeUuidStringSupport's doc). That change exists to agree
     // with a GENERATED entity/controller's `String` property (ADR-0037) — a concern this
     // hand-written table never has, since its only caller is this file's own runner, which
     // reads/writes a `java.util.UUID` directly and normalizes it itself (lowercases it

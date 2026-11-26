@@ -6,8 +6,8 @@ import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.ColumnType
 import org.jetbrains.exposed.sql.DecimalColumnType
 import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
 import org.jetbrains.exposed.sql.UUIDColumnType
+import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
 import org.jetbrains.exposed.sql.vendors.currentDialect
 
 private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
@@ -103,4 +103,3 @@ internal class MetaDecimalArrayColumnType : ColumnType<List<BigDecimal>>() {
 /** Column builder for an `isArray` `field.decimal`: a `Column<List<java.math.BigDecimal>>`. */
 internal fun Table.portableDecimalArray(name: String): Column<List<BigDecimal>> =
     registerColumn(name, MetaDecimalArrayColumnType())
-

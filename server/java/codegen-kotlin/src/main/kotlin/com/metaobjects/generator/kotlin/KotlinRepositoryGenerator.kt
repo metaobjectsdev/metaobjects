@@ -12,6 +12,8 @@ import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
+import com.metaobjects.generator.writer.CodeWriter
 
 import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
@@ -23,7 +25,6 @@ import com.metaobjects.`object`.MetaObject
 import com.metaobjects.source.MetaSource
 import java.io.OutputStream
 import java.io.PrintWriter
-import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
@@ -172,24 +173,26 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val hasAutoSet = autoSetFields.isNotEmpty()
         val hasOnUpdate = onUpdateFields.isNotEmpty()
 
-        // Emit the non-PK, non-autoSet ("regular") columns of an insert into the current builder,
+        val w = KotlinWriter().packageName(pkg)
+
+        // Emit the non-PK, non-autoSet ("regular") columns of an insert into the current block,
         // then (when present) the shared autoSet stamping. `preserve` == insertPreserving: write
         // the autoSet columns verbatim from the dto rather than stamping now().
-        fun StringBuilder.appendInsertColumns(preserve: Boolean) {
+        fun insertColumns(preserve: Boolean) {
             for (field in scalarFields) {
                 if (field.name == pkFieldName) continue
                 if (field.name in autoSetNames) continue
-                append("            it[$writeObj.${field.name}] = dto.${field.name}\n")
+                w.line("it[$writeObj.${field.name}] = dto.${field.name}")
             }
             if (hasAutoSet) {
-                append("            applyAutoSetColumns(it${if (preserve) ", dto, stampAutoSet = false" else ""})\n")
+                w.line("applyAutoSetColumns(it", if (preserve) ", dto, stampAutoSet = false" else "", ")")
             }
         }
 
         // The whole insert transaction body, branching on `identity.primary @generation`. Shared by
         // `insert` (preserve=false → stamp) and `insertPreserving` (preserve=true → verbatim) so the
         // PK/read-back logic has one definition.
-        fun StringBuilder.appendInsertBody(preserve: Boolean) {
+        fun insertBody(preserve: Boolean) {
             // Writes target the write table; the by-PK read-back routes to the read object
             // (the view for a write-through entity) so the returned entity carries derived fields.
             // #214 cross-port notes: (D4) the re-read keys on the SINGLE primary key
@@ -202,197 +205,197 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             // data-oriented ports degrade to the table row instead) — a documented limitation.
             when {
                 incrementPk -> {
-                    append("        val newId = $writeObj.insert {\n")
-                    appendInsertColumns(preserve)
-                    append("        }[$writeObj.$pkFieldName]\n")
-                    append("        $readObj.selectAll().where { $readObj.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
+                    w.block("val newId = $writeObj.insert {", "}[$writeObj.$pkFieldName]") { insertColumns(preserve) }
+                    w.line("$readObj.selectAll().where { $readObj.$pkFieldName eq newId }.single().let(::rowTo$shortName)")
                 }
                 uuidPk -> {
-                    append("        val newId = UUID.randomUUID()\n")
-                    append("        $writeObj.insert {\n")
-                    append("            it[$writeObj.$pkFieldName] = newId\n")
-                    appendInsertColumns(preserve)
-                    append("        }\n")
-                    append("        $readObj.selectAll().where { $readObj.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
+                    w.line("val newId = UUID.randomUUID()")
+                    w.block("$writeObj.insert {") {
+                        w.line("it[$writeObj.$pkFieldName] = newId")
+                        insertColumns(preserve)
+                    }
+                    w.line("$readObj.selectAll().where { $readObj.$pkFieldName eq newId }.single().let(::rowTo$shortName)")
                 }
                 else -> {
-                    append("        $writeObj.insert {\n")
-                    append("            it[$writeObj.$pkFieldName] = dto.$pkFieldName\n")
-                    appendInsertColumns(preserve)
-                    append("        }\n")
-                    append("        $readObj.selectAll().where { $readObj.$pkFieldName eq dto.$pkFieldName }.single().let(::rowTo$shortName)\n")
+                    w.block("$writeObj.insert {") {
+                        w.line("it[$writeObj.$pkFieldName] = dto.$pkFieldName")
+                        insertColumns(preserve)
+                    }
+                    w.line("$readObj.selectAll().where { $readObj.$pkFieldName eq dto.$pkFieldName }.single().let(::rowTo$shortName)")
                 }
             }
         }
 
-        val src = buildString {
-            if (pkg.isNotEmpty()) append("package $pkg\n\n")
+        w.use(ExposedImports.core(api, "ResultRow"))
+        // issue #390: under 1.x, SqlExpressionBuilder is gone from the operators'
+        // perspective — eq/and/... are top-level imports and deleteWhere's lambda no
+        // longer provides SqlExpressionBuilder as an implicit receiver (see [delete]).
+        if (api == ExposedApi.V1) w.use(ExposedImports.core(api, "eq"))
+        else w.use(ExposedImports.core(api, "SqlExpressionBuilder"))
+        w.use(ExposedImports.jdbc(api, "deleteWhere"))
+        w.use(ExposedImports.jdbc(api, "insert"))
+        w.use(ExposedImports.jdbc(api, "selectAll"))
+        // The @autoSet stamping helper writes through the common insert/update supertype.
+        if (hasAutoSet) w.use(ExposedImports.statements(api, "UpdateBuilder"))
+        w.use(ExposedImports.statements(api, "UpdateStatement"))
+        w.use(ExposedImports.jdbc(api, "update"))
+        w.use(ExposedImports.transactions(api, "transaction"))
+        // java.util.UUID surfaces when the PK is a client-generated uuid, or any column is uuid.
+        if (uuidPk || hasUuidColumn) w.use("java.util.UUID")
 
-            append("import ${ExposedImports.core(api, "ResultRow")}\n")
-            // issue #390: under 1.x, SqlExpressionBuilder is gone from the operators'
-            // perspective — eq/and/... are top-level imports and deleteWhere's lambda no
-            // longer provides SqlExpressionBuilder as an implicit receiver (see [delete]).
-            if (api == ExposedApi.V1) append("import ${ExposedImports.core(api, "eq")}\n")
-            else append("import ${ExposedImports.core(api, "SqlExpressionBuilder")}\n")
-            append("import ${ExposedImports.jdbc(api, "deleteWhere")}\n")
-            append("import ${ExposedImports.jdbc(api, "insert")}\n")
-            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
-            // The @autoSet stamping helper writes through the common insert/update supertype.
-            if (hasAutoSet) append("import ${ExposedImports.statements(api, "UpdateBuilder")}\n")
-            append("import ${ExposedImports.statements(api, "UpdateStatement")}\n")
-            append("import ${ExposedImports.jdbc(api, "update")}\n")
-            append("import ${ExposedImports.transactions(api, "transaction")}\n")
-            // java.util.UUID surfaces when the PK is a client-generated uuid, or any column is uuid.
-            if (uuidPk || hasUuidColumn) append("import java.util.UUID\n")
-            append("\n")
-
-            append("/**\n")
-            append(" * GENERATED — persistence repository base for $shortName. Do not hand-edit.\n")
-            append(" *\n")
-            append(" * `open` so a consumer can subclass and override; NOT `@Repository` (a subclass\n")
-            append(" * would create an ambiguous bean — wiring is the consumer's, per FR-035 §8.2).\n")
-            append(" */\n")
-            append("open class $repoName {\n\n")
-
+        w.doc(
+            "GENERATED — persistence repository base for $shortName. Do not hand-edit.",
+            "",
+            "`open` so a consumer can subclass and override; NOT `@Repository` (a subclass",
+            "would create an ambiguous bean — wiring is the consumer's, per FR-035 §8.2).",
+        )
+        w.block("open class $repoName {") {
             // --- row-mapper (verbatim shape from the controller's rowTo) ---
             // Reads the READ object's row (the view for a write-through entity) and maps ALL scalar
             // fields incl. derived — the derived columns live only on the view.
-            append("    /** Map an Exposed ResultRow to the $shortName data class. */\n")
-            append("    open fun rowTo$shortName(row: ResultRow): $shortName = $shortName(\n")
-            for (field in readScalarFields) {
-                append("        ${field.name} = row[$readObj.${field.name}],\n")
+            w.doc("Map an Exposed ResultRow to the $shortName data class.")
+            w.block("open fun rowTo$shortName(row: ResultRow): $shortName = $shortName(", ")") {
+                for (field in readScalarFields) {
+                    w.line("${field.name} = row[$readObj.${field.name}],")
+                }
             }
-            append("    )\n\n")
+            w.blank()
 
             // --- findById ---
-            append("    /** The $shortName with this primary key, or null. */\n")
-            append("    open fun findById(id: $pkParamType): $shortName? = transaction {\n")
-            append("        $readObj.selectAll().where { $readObj.$pkFieldName eq id }.singleOrNull()?.let(::rowTo$shortName)\n")
-            append("    }\n\n")
+            w.doc("The $shortName with this primary key, or null.")
+            w.block("open fun findById(id: $pkParamType): $shortName? = transaction {") {
+                w.line("$readObj.selectAll().where { $readObj.$pkFieldName eq id }.singleOrNull()?.let(::rowTo$shortName)")
+            }
+            w.blank()
 
             // --- @autoSet stamping (issue #203) ---
             if (hasAutoSet) {
-                append("    /**\n")
-                append("     * Write the `@autoSet` timestamp columns of $shortName into an insert/update builder\n")
-                append("     * (the CRUD layer owns them — the caller does not supply them). ONE column-list\n")
-                append("     * definition shared by insert / insertPreserving / update / patch:\n")
-                append("     *  - `stampAutoSet` — stamp `now()` (base CRUD) vs. write the [dto] value verbatim\n")
-                append("     *    (insertPreserving, for import/restore/replication that keep original timestamps);\n")
-                append("     *  - `includeOnCreate` — write the write-once onCreate columns (insert) or skip them\n")
-                append("     *    (update/patch never rewrite created_at — the latent lost-update bug otherwise).\n")
-                append("     * [dto] is only read on the verbatim path, so the stamping callers pass null.\n")
-                append("     * `now()` is keyed off each COLUMN's temporal type, so it generalizes beyond Instant.\n")
-                append("     */\n")
-                append("    protected open fun applyAutoSetColumns(\n")
-                append("        stmt: UpdateBuilder<*>,\n")
-                append("        dto: $shortName? = null,\n")
-                append("        stampAutoSet: Boolean = true,\n")
-                append("        includeOnCreate: Boolean = true,\n")
-                append("    ) {\n")
-                if (onCreateFields.isNotEmpty()) {
-                    append("        if (includeOnCreate) {\n")
-                    for (field in onCreateFields) {
-                        append("            stmt[$writeObj.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
+                w.text(
+                    """
+                    /**
+                     * Write the `@autoSet` timestamp columns of $shortName into an insert/update builder
+                     * (the CRUD layer owns them — the caller does not supply them). ONE column-list
+                     * definition shared by insert / insertPreserving / update / patch:
+                     *  - `stampAutoSet` — stamp `now()` (base CRUD) vs. write the [dto] value verbatim
+                     *    (insertPreserving, for import/restore/replication that keep original timestamps);
+                     *  - `includeOnCreate` — write the write-once onCreate columns (insert) or skip them
+                     *    (update/patch never rewrite created_at — the latent lost-update bug otherwise).
+                     * [dto] is only read on the verbatim path, so the stamping callers pass null.
+                     * `now()` is keyed off each COLUMN's temporal type, so it generalizes beyond Instant.
+                     */
+                    """
+                )
+                val params = CodeWriter.list(
+                    "(",
+                    listOf(
+                        "stmt: UpdateBuilder<*>", "dto: $shortName? = null",
+                        "stampAutoSet: Boolean = true", "includeOnCreate: Boolean = true",
+                    ),
+                    ")",
+                )
+                w.block(listOf("protected open fun applyAutoSetColumns", params, " {")) {
+                    if (onCreateFields.isNotEmpty()) {
+                        w.block("if (includeOnCreate) {") {
+                            for (field in onCreateFields) {
+                                w.line("stmt[$writeObj.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}")
+                            }
+                        }
                     }
-                    append("        }\n")
+                    for (field in onUpdateFields) {
+                        w.line("stmt[$writeObj.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}")
+                    }
                 }
-                for (field in onUpdateFields) {
-                    append("        stmt[$writeObj.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
-                }
-                append("    }\n\n")
+                w.blank()
             }
 
             // --- insert (branches on @generation) ---
             // @autoSet columns are stamped now() by applyAutoSetColumns — a fresh row's onUpdate
             // column equals its onCreate column, and the dto's value for them is ignored (#203).
-            append("    /** Insert a $shortName and return it with the persisted primary key. */\n")
-            append("    open fun insert(dto: $shortName): $shortName = transaction {\n")
-            appendInsertBody(preserve = false)
-            append("    }\n\n")
+            w.doc("Insert a $shortName and return it with the persisted primary key.")
+            w.block("open fun insert(dto: $shortName): $shortName = transaction {") { insertBody(preserve = false) }
+            w.blank()
 
             // --- insertPreserving (escape hatch; only when the entity declares @autoSet fields) ---
             if (hasAutoSet) {
-                append("    /**\n")
-                append("     * Insert a $shortName writing its `@autoSet` timestamp columns VERBATIM from the dto\n")
-                append("     * instead of stamping `now()` — the import / restore / replication escape hatch that\n")
-                append("     * must keep the original timestamps. Primary-key handling matches [insert].\n")
-                append("     */\n")
-                append("    open fun insertPreserving(dto: $shortName): $shortName = transaction {\n")
-                appendInsertBody(preserve = true)
-                append("    }\n\n")
+                w.doc(
+                    "Insert a $shortName writing its `@autoSet` timestamp columns VERBATIM from the dto",
+                    "instead of stamping `now()` — the import / restore / replication escape hatch that",
+                    "must keep the original timestamps. Primary-key handling matches [insert].",
+                )
+                w.block("open fun insertPreserving(dto: $shortName): $shortName = transaction {") { insertBody(preserve = true) }
+                w.blank()
             }
 
             // --- update (full-row, present-non-null) ---
             // @autoSet onUpdate columns are stamped now(); onCreate columns are SKIPPED entirely —
             // a full-row update never rewrites created_at from the dto's (possibly stale) value (#203).
-            append("    /** Overwrite every column of the row (present-non-null merge). Null if no such row. */\n")
-            append("    open fun update(id: $pkParamType, dto: $shortName): $shortName? = transaction {\n")
-            append("        val n = $writeObj.update({ $writeObj.$pkFieldName eq id }) {\n")
-            for (field in scalarFields) {
-                if (field.name == pkFieldName) continue
-                // @autoSet columns are owned by applyAutoSetColumns (onUpdate stamped, onCreate
-                // skipped) — never in the caller-value merge loop.
-                if (field.name in autoSetNames) continue
-                // Required fields are non-null in the DTO → write unconditionally (a null-guard would
-                // be an always-true `-Werror` warning). Optional fields are nullable → guard, so an
-                // absent value does not clobber the stored one. Matches the controller PATCH fix.
-                if (KotlinGenUtil.isRequiredField(field)) {
-                    append("            it[$writeObj.${field.name}] = dto.${field.name}\n")
-                } else {
-                    append("            if (dto.${field.name} != null) it[$writeObj.${field.name}] = dto.${field.name}\n")
+            w.doc("Overwrite every column of the row (present-non-null merge). Null if no such row.")
+            w.block("open fun update(id: $pkParamType, dto: $shortName): $shortName? = transaction {") {
+                w.block("val n = $writeObj.update({ $writeObj.$pkFieldName eq id }) {") {
+                    for (field in scalarFields) {
+                        if (field.name == pkFieldName) continue
+                        // @autoSet columns are owned by applyAutoSetColumns (onUpdate stamped, onCreate
+                        // skipped) — never in the caller-value merge loop.
+                        if (field.name in autoSetNames) continue
+                        // Required fields are non-null in the DTO → write unconditionally (a null-guard would
+                        // be an always-true `-Werror` warning). Optional fields are nullable → guard, so an
+                        // absent value does not clobber the stored one. Matches the controller PATCH fix.
+                        if (KotlinGenUtil.isRequiredField(field)) {
+                            w.line("it[$writeObj.${field.name}] = dto.${field.name}")
+                        } else {
+                            w.line("if (dto.${field.name} != null) it[$writeObj.${field.name}] = dto.${field.name}")
+                        }
+                    }
+                    if (hasOnUpdate) w.line("applyAutoSetColumns(it, includeOnCreate = false)")
                 }
+                w.line("if (n == 0) null else $readObj.selectAll().where { $readObj.$pkFieldName eq id }.single().let(::rowTo$shortName)")
             }
-            if (hasOnUpdate) {
-                append("            applyAutoSetColumns(it, includeOnCreate = false)\n")
-            }
-            append("        }\n")
-            append("        if (n == 0) null else $readObj.selectAll().where { $readObj.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
-            append("    }\n\n")
+            w.blank()
 
             // --- patch (Exposed statement-lambda) ---
-            append("    /**\n")
-            append("     * Partial update — the block sets only the columns it names, e.g.\n")
-            append("     * `repo.patch(id) { it[${writeObj}.<col>] = value }`. A renamed or dropped column is a\n")
-            append("     * COMPILE error, not a silently skipped write. Null if no such row.\n")
+            val patchDoc = mutableListOf(
+                "Partial update — the block sets only the columns it names, e.g.",
+                "`repo.patch(id) { it[$writeObj.<col>] = value }`. A renamed or dropped column is a",
+                "COMPILE error, not a silently skipped write. Null if no such row.",
+            )
             if (hasOnUpdate) {
-                append("     * `@autoSet` onUpdate columns are stamped BEFORE the block runs, so a partial\n")
-                append("     * update still bumps them even if the block does not name them (#203).\n")
+                patchDoc += "`@autoSet` onUpdate columns are stamped BEFORE the block runs, so a partial"
+                patchDoc += "update still bumps them even if the block does not name them (#203)."
             }
-            append("     */\n")
-            append("    open fun patch(id: $pkParamType, block: $writeObj.(UpdateStatement) -> Unit): $shortName? = transaction {\n")
-            if (hasOnUpdate) {
-                // Stamp onUpdate first, then let the caller's block win on any column it names.
-                append("        val n = $writeObj.update({ $writeObj.$pkFieldName eq id }) {\n")
-                append("            applyAutoSetColumns(it, includeOnCreate = false)\n")
-                append("            this.block(it)\n")
-                append("        }\n")
-            } else {
-                append("        val n = $writeObj.update({ $writeObj.$pkFieldName eq id }, body = block)\n")
+            w.doc(*patchDoc.toTypedArray())
+            w.block("open fun patch(id: $pkParamType, block: $writeObj.(UpdateStatement) -> Unit): $shortName? = transaction {") {
+                if (hasOnUpdate) {
+                    // Stamp onUpdate first, then let the caller's block win on any column it names.
+                    w.block("val n = $writeObj.update({ $writeObj.$pkFieldName eq id }) {") {
+                        w.line("applyAutoSetColumns(it, includeOnCreate = false)")
+                        w.line("this.block(it)")
+                    }
+                } else {
+                    w.line("val n = $writeObj.update({ $writeObj.$pkFieldName eq id }, body = block)")
+                }
+                w.line("if (n == 0) null else $readObj.selectAll().where { $readObj.$pkFieldName eq id }.single().let(::rowTo$shortName)")
             }
-            append("        if (n == 0) null else $readObj.selectAll().where { $readObj.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
-            append("    }\n\n")
+            w.blank()
 
             // --- delete ---
-            append("    /** Delete by primary key; true if a row was removed. */\n")
-            append("    open fun delete(id: $pkParamType): Boolean = transaction {\n")
-            if (api == ExposedApi.V1) {
-                // issue #390: under 1.x `eq` is a plain top-level import — deleteWhere's lambda
-                // no longer provides an implicit SqlExpressionBuilder receiver, so the `with(...)`
-                // wrapper 0.x needed is both unnecessary and unavailable (SqlExpressionBuilder
-                // is not imported in this file under V1 — see the import block above).
-                append("        $writeObj.deleteWhere { $writeObj.$pkFieldName eq id } > 0\n")
-            } else {
-                // `eq` must resolve through SqlExpressionBuilder inside deleteWhere's receiver (same
-                // gotcha the controller documents — a bare `Table.pk eq id` is "Unresolved reference: eq").
-                append("        $writeObj.deleteWhere { with(SqlExpressionBuilder) { $writeObj.$pkFieldName eq id } } > 0\n")
+            w.doc("Delete by primary key; true if a row was removed.")
+            w.block("open fun delete(id: $pkParamType): Boolean = transaction {") {
+                if (api == ExposedApi.V1) {
+                    // issue #390: under 1.x `eq` is a plain top-level import — deleteWhere's lambda
+                    // no longer provides an implicit SqlExpressionBuilder receiver, so the `with(...)`
+                    // wrapper 0.x needed is both unnecessary and unavailable (SqlExpressionBuilder
+                    // is not imported in this file under V1 — see the import block above).
+                    w.line("$writeObj.deleteWhere { $writeObj.$pkFieldName eq id } > 0")
+                } else {
+                    // `eq` must resolve through SqlExpressionBuilder inside deleteWhere's receiver (same
+                    // gotcha the controller documents — a bare `Table.pk eq id` is "Unresolved reference: eq").
+                    w.line("$writeObj.deleteWhere { with(SqlExpressionBuilder) { $writeObj.$pkFieldName eq id } } > 0")
+                }
             }
-            append("    }\n")
-
-            append("}\n")
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$repoName.kt")
-        GeneratedFileWriter.write(outFile, src)
+        GeneratedFileWriter.write(outFile, w.toString())
     }
 
     /**

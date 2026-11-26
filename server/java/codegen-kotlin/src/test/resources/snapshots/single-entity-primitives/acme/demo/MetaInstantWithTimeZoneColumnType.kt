@@ -43,4 +43,3 @@ internal class MetaInstantWithTimeZoneColumnType :
  */
 internal fun Table.instantWithTimeZone(name: String): Column<Instant> =
     registerColumn(name, MetaInstantWithTimeZoneColumnType())
-

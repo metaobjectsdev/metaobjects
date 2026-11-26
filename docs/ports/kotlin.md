@@ -16,7 +16,7 @@ classes.
 
 Two modules:
 
-- **`metaobjects-codegen-kotlin`** — 16 KotlinPoet-based generators.
+- **`metaobjects-codegen-kotlin`** — the generators; most lay their output out through `KotlinWriter` (ADR-0063), and the layout ratchet's allowlist names the ones still on KotlinPoet.
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 

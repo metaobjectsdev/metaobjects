@@ -1,0 +1,25 @@
+{
+  "description": "A name with no dot is in the root package: a file in a named package imports it, a file in the root package does not.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "use",
+      "RootTable"
+    ],
+    [
+      "package",
+      "com.acme"
+    ],
+    [
+      "line",
+      "val t = RootTable"
+    ]
+  ],
+  "expected": [
+    "package com.acme",
+    "",
+    "import RootTable",
+    "",
+    "val t = RootTable"
+  ]
+}

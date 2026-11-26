@@ -190,7 +190,9 @@ conventions write them.
   returns the name to write, its last segment. `use("pkg.Name", alias)` records
   `import pkg.Name as alias` and returns the alias. A name in a package Kotlin imports by default
   (`kotlin`, `kotlin.collections`, `kotlin.io`, `java.lang` and the rest of the language's default
-  imports), or in the file's own package, prints no line. An aliased import always prints.
+  imports), or in the file's own package, prints no line. A name with no dot is in the root
+  package: it prints a line unless the file is in the root package too. An aliased import always
+  prints.
 - **Order.** One group, in code-unit order of what follows `import `, with no blank lines. A name
   used twice is imported once.
 - One local name imported from two names is **`ERR_WRITER_IMPORT_CONFLICT`**.

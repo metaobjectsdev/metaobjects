@@ -92,7 +92,7 @@ internal class KotlinCodegenMatchesReferenceTest {
         // type (NOT a bare `uuid(...)` `Column<UUID>`: ADR-0037 keeps the escape hatch's logical
         // type `String`, matching the generated entity/controller — found fixing
         // AssetController.kt's pre-existing compile defect, see KotlinExposedTableGenerator's
-        // `uuidStringSupportBlock`). Verifies the generator emits the native families the
+        // `writeUuidStringSupport`). Verifies the generator emits the native families the
         // hand-written reference AssetTable carries for id/ownerId/payload/recordedAt (AssetTable
         // itself intentionally still uses native `uuid("externalId")` for its OWN purpose — the
         // SP-H roundtrip harness reads/normalizes a `java.util.UUID` directly and never passes

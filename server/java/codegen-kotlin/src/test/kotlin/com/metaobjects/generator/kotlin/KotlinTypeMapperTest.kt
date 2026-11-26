@@ -278,7 +278,7 @@ class KotlinTypeMapperTest {
         // concern to Exposed's own `UUIDColumnType`), so the column agrees with the generated
         // entity/controller's `String` property — unlike the old bare `uuid(...)`
         // (`Column<UUID>`), which never compiled once a controller was generated for such a
-        // field (see `KotlinExposedTableGenerator.uuidStringSupportBlock`'s doc).
+        // field (see `KotlinExposedTableGenerator.writeUuidStringSupport`'s doc).
         val f = StringField("userId")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "uuid"))
         assertEquals("uuidString(\"user_id\")", KotlinTypeMapper.exposedColumnSpec(f))

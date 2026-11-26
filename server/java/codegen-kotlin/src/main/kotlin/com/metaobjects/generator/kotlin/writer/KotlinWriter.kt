@@ -169,13 +169,13 @@ open class KotlinWriter @JvmOverloads constructor(options: WriterOptions = KOTLI
     /**
      * False for a name in a package Kotlin imports by default or in the file's own package. An
      * aliased import ([importTargets] holds `""`) always needs its line, since the alias is the
-     * only way the file can say the name.
+     * only way the file can say the name. A name with no dot is in the root package, which a file
+     * in a named package reaches only through an import.
      */
     protected open fun needsImport(qualifiedName: String): Boolean {
         if (qualifiedName.isEmpty()) return true
         val dot = qualifiedName.lastIndexOf('.')
-        if (dot < 0) return false
-        val pkg = qualifiedName.substring(0, dot)
+        val pkg = if (dot < 0) "" else qualifiedName.substring(0, dot)
         return pkg !in DEFAULT_IMPORTS && pkg != (packageName ?: "")
     }
 
