@@ -15,8 +15,10 @@
 #   2. Links the candidate (prerelease-link.sh link), installs clean, and reads the installed
 #      versions back. A declared range is not proof of the version that ran, so the run fails
 #      when the read-back does not contain the candidate.
-#   3. Regenerates, and lists every file that changed (each one must be explained by an item in
-#      the CHANGELOG upgrade list). Then regenerates AGAIN: the second run must write zero files,
+#   3. Lists every file the install changed (a lockfile, or generation the install ran, such as a
+#      `generate` execution bound to a phase the Java default reaches), then regenerates, and
+#      lists every file that changed (each one must be explained by an item in the CHANGELOG
+#      upgrade list, and so must every install-changed file that is not a lockfile). Then regenerates AGAIN: the second run must write zero files,
 #      checked by content and by modification time. Both checks see only files git reports:
 #      a gitignored path (ignored generated output, .gen-state snapshots) is not looked at, so an
 #      estate whose generated output is gitignored diffs a snapshot of it itself (estate-run.md).
@@ -55,7 +57,7 @@ while [ $# -gt 0 ]; do
     --db-cmd)       DB_CMDS+=("$2"); shift 2 ;;
     --keep-linked)  KEEP=1; shift ;;
     --no-link)      NOLINK=1; shift ;;
-    -h|--help)      sed -n '2,34p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '2,36p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -101,7 +103,9 @@ case "$PORT" in
     # A reactor build, not `dependency:resolve`: in a multi-module estate whose modules depend on
     # each other, resolve looks for the sibling modules in the repositories (where nothing has
     # installed them) and fails before anything builds. `test-compile` resolves them from the
-    # reactor and builds main and test code in module order, without installing anything.
+    # reactor and builds main and test code in module order, without installing anything. It also
+    # runs generate-sources, so a phase-bound `generate` execution regenerates during install:
+    # the report lists what the install changed on its own, before the first gen.
     # Generation bound to a lifecycle phase, or a loader class in a sibling module, also needs
     # --gen-cmd and --verify-cmd (estate-run.md, "Multi-module JVM estates").
     : "${INSTALL_CMD:=mvn -B -q -U test-compile}"
@@ -162,6 +166,7 @@ finish() {
       "$(date -u -d "@$STARTED" '+%Y-%m-%d %H:%M' 2>/dev/null || date -u '+%Y-%m-%d %H:%M')" \
       "$(( $(date +%s) - STARTED ))" "$(git -C "$PROJECT" rev-parse --short=12 HEAD)"
     printf '| Step | Result | Time |\n|---|---|---|\n'; cat "$ROWS"
+    [ -s "$WORK/installed.txt" ] && { printf '\n## Files changed by install (%s)\n\nA lockfile is the install'"'"'s own. Any other path is generation the install ran, and needs an item in the CHANGELOG upgrade list.\n\n```\n' "$(wc -l < "$WORK/installed.txt")"; cat "$WORK/installed.txt"; printf '```\n'; }
     [ -s "$WORK/changed.txt" ] && { printf '\n## Files changed by regeneration (%s)\n\nEach one needs an item in the CHANGELOG upgrade list.\n\n```\n' "$(wc -l < "$WORK/changed.txt")"; cat "$WORK/changed.txt"; printf '```\n'; }
     [ -s "$WORK/versions.txt" ] && { printf '\n## Installed versions (read back)\n\n```\n'; cat "$WORK/versions.txt"; printf '```\n'; }
     cat "$DETAIL"
@@ -181,7 +186,21 @@ else
   row "link $VERSION" "skipped (--no-link: the read-back below is the only proof)" 0
 fi
 
+# Each dirty path with a hash of its content, so a file changed again shows as a new line.
+dirtymap() {
+  git -C "$PROJECT" status --porcelain --untracked-files=all | while IFS= read -r l; do
+    f="${l:3}"; f="${f##* -> }"
+    printf '%s %s\n' "$l" "$( [ -f "$PROJECT/$f" ] && sha256sum < "$PROJECT/$f" | cut -c1-16 || echo gone)"
+  done
+}
+# what changed between two maps, as status lines without the hash
+changes() { comm -13 "$1" "$2" | sed 's/ [0-9a-f]\{16\}$//; s/ gone$//'; }
+
+dirtymap | sort > "$WORK/linked.txt"
 step "install (clean)" "$INSTALL_CMD" || finish
+dirtymap | sort > "$WORK/base.txt"
+changes "$WORK/linked.txt" "$WORK/base.txt" > "$WORK/installed.txt"
+row "files changed by install" "$(wc -l < "$WORK/installed.txt")" 0
 ( cd "$PROJECT" && bash -c "$VERSIONS_CMD" ) > "$WORK/versions.txt" 2>&1
 # Every line that names a MetaObjects package must carry exactly the candidate (not rc.10 for rc.1,
 # not a package left on the release), and at least one must.
@@ -195,17 +214,10 @@ fi
 
 # ── 2. regenerate; list what changed; regenerate again and expect nothing ─────────────
 # "Changed by regeneration" is what the first gen changed beyond what link and install already
-# did (the repinned manifests, the lockfile): each dirty path with a hash of its content.
-dirtymap() {
-  git -C "$PROJECT" status --porcelain --untracked-files=all | while IFS= read -r l; do
-    f="${l:3}"; f="${f##* -> }"
-    printf '%s %s\n' "$l" "$( [ -f "$PROJECT/$f" ] && sha256sum < "$PROJECT/$f" | cut -c1-16 || echo gone)"
-  done
-}
-dirtymap | sort > "$WORK/base.txt"
+# did; what the install changed (the lockfile, and any generation it ran) is listed above it.
 step "gen (first run)" "$GEN_CMD" || finish
 dirtymap | sort > "$WORK/after.txt"
-comm -13 "$WORK/base.txt" "$WORK/after.txt" | sed 's/ [0-9a-f]\{16\}$//; s/ gone$//' > "$WORK/changed.txt"
+changes "$WORK/base.txt" "$WORK/after.txt" > "$WORK/changed.txt"
 row "files changed by the first gen" "$(wc -l < "$WORK/changed.txt")" 0
 
 snapshot() { dirtymap | sha256sum; }

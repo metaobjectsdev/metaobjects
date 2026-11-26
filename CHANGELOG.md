@@ -48,7 +48,8 @@ the one `metamodelVersion` value, `1.3`.
 
 ### Upgrading from 1.2.0
 
-Each item below is described in full under Security, Added, Changed or Fixed; this list is where to start.
+Most items below are also described under Security, Added, Changed or Fixed; an item with no entry
+there is described in full here. This list is where to start.
 
 - **`validator.atLeastOne` takes no `@max`.** A model that carries `@max: 1` on an `atLeastOne`
   fails to load; a rule meaning "exactly one of these fields" is the new `validator.exactlyOne`.

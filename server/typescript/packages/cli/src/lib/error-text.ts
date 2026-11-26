@@ -24,6 +24,7 @@ export function describeError(err: unknown): string {
 export function describeErrorCause(err: unknown, verbose: boolean): string[] {
   const lines: string[] = [];
   const seen = new Set<unknown>([err]);
+  let hasStack = false;
   let cur: unknown = err instanceof Error ? err.cause : undefined;
   while (cur !== undefined && cur !== null && !seen.has(cur)) {
     seen.add(cur);
@@ -32,6 +33,7 @@ export function describeErrorCause(err: unknown, verbose: boolean): string[] {
       break;
     }
     const frames = stackFrames(cur);
+    if (frames.length > 0) hasStack = true;
     const at = !verbose && frames.length > 0 ? ` (${frames[0]})` : "";
     lines.push(`caused by: ${cur.name}: ${describeError(cur)}${at}`);
     if (verbose) lines.push(...frames.map((f) => `    ${f}`));
@@ -41,7 +43,7 @@ export function describeErrorCause(err: unknown, verbose: boolean): string[] {
     if (verbose && err instanceof Error) lines.push(...stackFrames(err).map((f) => `    ${f}`));
     return lines;
   }
-  if (!verbose) lines.push("run again with --verbose for the full stack");
+  if (!verbose && hasStack) lines.push("run again with --verbose for the full stack");
   return lines;
 }
 

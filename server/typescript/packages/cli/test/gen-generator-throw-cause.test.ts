@@ -114,4 +114,11 @@ describe("describeErrorCause", () => {
   test("a non-Error cause is printed as text", () => {
     expect(describeErrorCause(new Error("x", { cause: "socket closed" }), false)[0]).toBe("caused by: socket closed");
   });
+
+  test("the --verbose hint appears only when there is a stack to show", () => {
+    expect(describeErrorCause(new Error("x", { cause: "socket closed" }), false)).toEqual(["caused by: socket closed"]);
+    const stackless = new Error("inner");
+    stackless.stack = undefined;
+    expect(describeErrorCause(new Error("x", { cause: stackless }), false)).toEqual(["caused by: Error: inner"]);
+  });
 });

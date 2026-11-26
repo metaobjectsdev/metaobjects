@@ -39,15 +39,19 @@ are in the `case` block of `estate-run.sh`; `--install-cmd`, `--gen-cmd`, `--ver
 
 The Java default install is `mvn -B -q -U test-compile`: it builds every module of the reactor in
 order, so a module whose code or tests depend on a sibling module resolves it from the reactor
-instead of looking for it in a repository nobody installed it to. Two more things the defaults do
-not cover, which the estate passes itself:
+instead of looking for it in a repository nobody installed it to. It also runs `generate-sources`,
+so an estate that binds a `generate` execution to that phase regenerates during the install: the
+report lists those files under "Files changed by install", separately from the lockfile and before
+the first gen, and every one that is not a lockfile needs an item in the upgrade list like any other
+change. Two more things the defaults do not cover, which the estate passes itself:
 
 - **Generation bound to a lifecycle phase.** The default `--gen-cmd` (`mvn -B -q
   metaobjects:generate`) and `--verify-cmd` (`mvn -B -q metaobjects:verify`) call the goals on
   their own, from the reactor root. An estate that binds generation to a phase in its poms, or
   whose metadata loader class lives in a sibling module (the goal then fails with the loader
   "not found on the Project ClassLoader" until that module is compiled), passes the phase that
-  runs it instead: for example `--gen-cmd 'mvn -B -q generate-sources'`, or
+  runs it instead: for example `--gen-cmd 'mvn -B -q generate-sources'` (the install already ran
+  that phase once, so this gen and the second one must both find nothing left to write), or
   `--gen-cmd 'mvn -B -q test-compile'` when the loader must be compiled first, and the matching
   `--verify-cmd` (the `metaobjects:verify` execution as the estate binds it, such as
   `mvn -B -q verify -DskipTests`).
