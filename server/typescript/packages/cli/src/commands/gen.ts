@@ -35,7 +35,7 @@ import {
 } from "../lib/catalog-listing.js";
 import { emitStructured, narrate } from "../lib/format.js";
 import { composeCatalog } from "../lib/catalog.js";
-import { describeError } from "../lib/error-text.js";
+import { describeError, describeErrorCause } from "../lib/error-text.js";
 import { findRuntimeBoundaryCrossings, runtimeBoundaryWarnings } from "../lib/runtime-boundary-advisory.js";
 import { hasLegacyDocsBlock, legacyDocsConfigMessage, NO_CONFIG_MESSAGE } from "../lib/docs-removed.js";
 import { buildAgentSchemaInput } from "../lib/agent-schema.js";
@@ -363,6 +363,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     });
   } catch (err) {
     log.error(`gen failed: ${describeError(err)}`);
+    for (const line of describeErrorCause(err, flags.verbose)) log.error(line);
     return 1;
   }
 

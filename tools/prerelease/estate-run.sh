@@ -18,7 +18,8 @@
 #   3. Regenerates, and lists every file that changed (each one must be explained by an item in
 #      the CHANGELOG upgrade list). Then regenerates AGAIN: the second run must write zero files,
 #      checked by content and by modification time. Both checks see only files git reports:
-#      a gitignored path (ignored generated output, .gen-state snapshots) is not looked at.
+#      a gitignored path (ignored generated output, .gen-state snapshots) is not looked at, so an
+#      estate whose generated output is gitignored diffs a snapshot of it itself (estate-run.md).
 #   4. Runs the drift gate (verify --codegen), the build, the tests and any --db-cmd. A command
 #      you do not pass is reported as skipped, never as passed.
 #   5. Puts the estate back as it found it (unless --keep-linked), however the run ended, also
@@ -54,7 +55,7 @@ while [ $# -gt 0 ]; do
     --db-cmd)       DB_CMDS+=("$2"); shift 2 ;;
     --keep-linked)  KEEP=1; shift ;;
     --no-link)      NOLINK=1; shift ;;
-    -h|--help)      sed -n '2,33p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '2,34p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -97,7 +98,13 @@ case "$PORT" in
     : "${VERIFY_CMD:=dotnet meta verify --codegen}"
     : "${VERSIONS_CMD:=dotnet list package | grep -i metaobjects; dotnet tool list | grep -i meta}" ;;
   java)
-    : "${INSTALL_CMD:=mvn -B -q -U dependency:resolve}"
+    # A reactor build, not `dependency:resolve`: in a multi-module estate whose modules depend on
+    # each other, resolve looks for the sibling modules in the repositories (where nothing has
+    # installed them) and fails before anything builds. `test-compile` resolves them from the
+    # reactor and builds main and test code in module order, without installing anything.
+    # Generation bound to a lifecycle phase, or a loader class in a sibling module, also needs
+    # --gen-cmd and --verify-cmd (estate-run.md, "Multi-module JVM estates").
+    : "${INSTALL_CMD:=mvn -B -q -U test-compile}"
     : "${GEN_CMD:=mvn -B -q metaobjects:generate}"
     : "${VERIFY_CMD:=mvn -B -q metaobjects:verify}"
     : "${VERSIONS_CMD:=mvn -B dependency:list -DincludeGroupIds=com.metaobjects | grep 'com.metaobjects'}" ;;

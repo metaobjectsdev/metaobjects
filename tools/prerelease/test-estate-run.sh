@@ -14,6 +14,7 @@
 # E12 --no-link still restores the estate; E13 --keep-linked does not
 # E10 a --report path inside the estate is refused (exit 2)
 # E11 a link that fails partway leaves the estate on its starting commit
+# E14 the java install default is a reactor build (test-compile), not dependency:resolve
 # E7  a build command that fails is reported and the run exits 1; no command is "skipped", not "passed"
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -95,6 +96,14 @@ t "E12 --no-link still restores the estate" e12
 t "E13 --keep-linked leaves the regenerated tree in place" e13
 t "E10 a report path inside the estate is refused" e10
 t "E11 a link that fails partway still restores the estate" e11
+e14() { local d bin log; d="$(fresh "$IDEMPOTENT")"; bin="$(mktemp -d "$ROOT/bin.XXXXXX")"; log="$bin/mvn.log"
+  # A stub mvn that records its arguments, so the default the script picks is what is checked.
+  printf '#!/usr/bin/env bash\necho "$*" >> %q\n' "$log" > "$bin/mvn"; chmod +x "$bin/mvn"
+  PATH="$bin:$PATH" bash "$RUN" --project "$d" --port java --version 1.3.0-rc.1 --no-link --verify-cmd true \
+    --gen-cmd 'sh gen.sh' $VERS 'echo com.metaobjects:x:8.3.0-rc.1' >/dev/null 2>&1; [ $? = 0 ] || return 1
+  grep -qx -- '-B -q -U test-compile' "$log" && ! grep -q 'dependency:resolve' "$log"; }
+
+t "E14 the java install default builds the reactor" e14
 t "E7 a failing build is reported; a missing command is skipped, not passed" e7
 
 [ "$fails" = 0 ] && echo "all estate-run tests passed" || { echo "$fails failure(s)"; exit 1; }
