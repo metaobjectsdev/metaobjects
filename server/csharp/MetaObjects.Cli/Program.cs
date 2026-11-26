@@ -3,7 +3,7 @@
 // codegen) and `verify` (the FR-004 build-time prompt drift gate). It is NOT a bare
 // `meta` executable — that name belongs to the canonical Node `meta` CLI.
 //
-// Schema migrations are owned by the TypeScript `meta` CLI (ADR-0015): the C# CLI
+// Schema migrations run in EF Core Migrations or the Node `meta` reference helper (ADR-0015): the C# CLI
 // keeps codegen + verify only. There is no `migrate` / `--from-db` surface here.
 
 using MetaObjects.Cli;

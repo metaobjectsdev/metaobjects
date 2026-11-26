@@ -174,15 +174,16 @@ No hand-written Exposed wiring needed.
 | Code-vs-DB | Codegen (`KotlinEntityGenerator` + `KotlinExposedTableGenerator`) | Build time |
 | Generated-code-vs-metadata (codegen drift) | `meta:verify` goal (regenerate-to-temp + compare) | Build time / CI |
 | Code-vs-API-doc | Cross-port codegen from same metadata | Build time |
-| DB-vs-metadata, Migration-vs-metadata | TypeScript toolchain (`@metaobjectsdev/cli migrate`) — schema migrations and live-DB schema-drift verification are TS-only | Build time / CI |
+| DB-vs-metadata, Migration-vs-metadata | The reference migration helper (`@metaobjectsdev/cli migrate`, `meta verify --db`), one option; a native migration tool is equally good | Build time / CI |
 | Generated-edited | Hash manifest: an edited file is refused by name; `mvn metaobjects:verify` reports it | Build time |
 | Prompt-vs-payload | `KotlinRenderHelperGenerator`'s build-time drift gate + Java `Renderer.verify` | Build time + runtime |
 | Generated-vs-runtime | `MetadataStartupValidator.validate(loader)` from Spring `ApplicationReadyEvent` | App startup |
 
 ## Schema migrations
 
-Schema migrations (and live-DB schema-drift verification) are owned by the
-TypeScript toolchain (`@metaobjectsdev/cli migrate`). The JVM-side Maven plugin's
+Schema migrations (and live-DB schema-drift verification) run in your own tool or the
+reference migration helper (`@metaobjectsdev/cli migrate`, `meta verify --db`), one option;
+a native tool is equally good. The JVM-side Maven plugin's
 `meta:migrate` and the old live-DB-drift `meta:verify` goals were removed along with
 the Java diff-and-converge engine. The Maven plugin ships `meta:gen` / `meta:editor`
 plus a `meta:verify` goal that is **codegen drift only** (regenerate-to-temp +
