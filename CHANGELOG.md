@@ -1617,6 +1617,26 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   and no longer call `ruff`; the others convert one at a time, and `ruff_format` stays exported for
   owned generators that call it.
 
+- **A code writer for Kotlin generators: `KotlinWriter` in `codegen-kotlin`** (ADR-0063), on the
+  same `codegen-base` core the Java writer extends. It collects imports while the body is written
+  (`use("pkg.Name")`, `use("pkg.Name", alias)`), skips Kotlin's default imports and same-package
+  names, sorts them in one group, backticks keyword segments, writes KDoc, quotes strings with `$`
+  escaped, and breaks a call that does not fit 120 columns with a trailing comma; `block { }`,
+  `reopen` (`} else {`) and `indented { }` are the scoped forms. It runs the shared `core` cases
+  and ten new `kotlin` cases, and is on the engine surface an ejected Kotlin generator may
+  reference (`eject.engineSurface.kotlin.engine`). A layout ratchet (`KotlinLayoutRatchetTest`,
+  which reads generator source with the Kotlin compiler's lexer) fails on a string holding a line
+  break or starting with indentation, a repeated-space indent and a KotlinPoet import; every file
+  that still types its layout is on a shrink-only allowlist naming the change that converts it.
+  The fourteen small generators now write through it: names, filter allowlist, decimal and
+  duration wire, validation issues, unknown body keys, validator, extractor, output parser,
+  output prompt, render helper, stored proc, report export and requirement tests. **Their output
+  changes in layout only:** imports in sorted order, a list that fits written on one line, a
+  trailing comma on a broken list, a one-entry KDoc on one line, no blank line at the start of a
+  block, and a blank line after a file header. Regenerating shows those diffs and nothing else. Every public method an owned copy
+  ejected at an earlier version calls (each emitter's `write`, `BODY`, `body(wire)`,
+  `KotlinNaming.packageHeader`) is kept.
+
 - **Python publishes a shared model (FR-023).** A `shared-model` generator, wired in
   `metaobjects.config.yaml` like any other (`metaobjects gen --list` names its options), writes
   `<name>.metaobjects.json` and `metaobjects.pkg.json` for a consumer's `deps sync`: `name` and

@@ -1,0 +1,45 @@
+{
+  "description": "Imports print in code-unit order, one per line, with no blank line between packages. A name used twice is imported once, and an aliased import sorts by its qualified name.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "package",
+      "com.acme"
+    ],
+    [
+      "use",
+      "java.util.UUID"
+    ],
+    [
+      "use",
+      "com.acme.other.Zed"
+    ],
+    [
+      "useAs",
+      "org.jetbrains.exposed.sql.Table",
+      "ExposedTable"
+    ],
+    [
+      "use",
+      "java.time.Instant"
+    ],
+    [
+      "use",
+      "java.time.Instant"
+    ],
+    [
+      "line",
+      "class A"
+    ]
+  ],
+  "expected": [
+    "package com.acme",
+    "",
+    "import com.acme.other.Zed",
+    "import java.time.Instant",
+    "import java.util.UUID",
+    "import org.jetbrains.exposed.sql.Table as ExposedTable",
+    "",
+    "class A"
+  ]
+}

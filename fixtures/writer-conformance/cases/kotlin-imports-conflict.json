@@ -1,0 +1,15 @@
+{
+  "description": "One local name imported from two places is an error, not a silent shadow; an alias is how a generator says both.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "use",
+      "java.util.Date"
+    ],
+    [
+      "use",
+      "java.sql.Date"
+    ]
+  ],
+  "error": "ERR_WRITER_IMPORT_CONFLICT"
+}

@@ -159,6 +159,11 @@ your own `<groupId>`, `<artifactId>` and `<version>`:
 
 ## Configure
 
+Generators that have moved to the code writer lay their output out with `KotlinWriter`
+(ADR-0063; the dialect and its ops are in [spec/code-writer.md](../../spec/code-writer.md#kotlin-dialect-kotlinwriter)).
+The layout ratchet (`KotlinLayoutRatchetTest`) keeps the emitters still on KotlinPoet on a
+shrink-only allowlist.
+
 The 18 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |

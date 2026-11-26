@@ -1,0 +1,37 @@
+{
+  "description": "A name in a package Kotlin imports by default (kotlin, kotlin.collections, java.lang and the rest) or in the file's own package imports nothing, whichever order the package and the names were given in; a subpackage of a default package is imported.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "use",
+      "kotlin.collections.LinkedHashMap"
+    ],
+    [
+      "use",
+      "java.lang.IllegalStateException"
+    ],
+    [
+      "use",
+      "com.acme.Sibling"
+    ],
+    [
+      "use",
+      "kotlin.math.abs"
+    ],
+    [
+      "package",
+      "com.acme"
+    ],
+    [
+      "line",
+      "class A"
+    ]
+  ],
+  "expected": [
+    "package com.acme",
+    "",
+    "import kotlin.math.abs",
+    "",
+    "class A"
+  ]
+}

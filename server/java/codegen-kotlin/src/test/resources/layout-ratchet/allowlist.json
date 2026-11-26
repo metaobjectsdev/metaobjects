@@ -1,0 +1,21 @@
+{
+  "$comment": "The layout ratchet's allowlist for the Kotlin generators (ADR-0063). `unconverted`: generator source that still types its own layout or lays it out through KotlinPoet; each entry names what it emits and the writer PR that converts it, and is removed when that PR lands (the test fails while a converted file keeps its entry). `exempt`: source that writes text which is not generated code; each says why. Neither list may grow: KotlinLayoutRatchetTest compares it with the copy at the branch's merge base.",
+  "unconverted": {
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/Fr019SharedEnum.kt": "Lays its output out through KotlinPoet (a KotlinPoet ClassName for a shared enum, read by the entity generator). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinCrossFieldRules.kt": "Lays its output out through KotlinPoet (CodeBlock fragments for cross-field validation, spliced into the entity's init block). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinEntityGenerator.kt": "Lays its output out through KotlinPoet (FileSpec and TypeSpec for the entity data class, its builder and value objects). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinEnumEmitter.kt": "Lays its output out through KotlinPoet (FileSpec for the enum class). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinExposedTableGenerator.kt": "Builds the Exposed table object, its column types and the jsonb helpers with typed line breaks, and names KotlinPoet types. Converted to KotlinWriter in W-KT-2.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinExtractSchemaEmitter.kt": "Builds the extract schema with typed line breaks and indentation, and names KotlinPoet types. Converted to KotlinWriter in W-KT-2.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinNaming.kt": "packageHeader() returns a package line with typed line breaks, for the emitters still built as strings and for owned copies ejected at an earlier version. Removed when the last of those callers moves to KotlinWriter.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinPoetFileWriter.kt": "Lays its output out through KotlinPoet (the FileSpec-to-disk helper, retired when its last caller moves). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinRelationsGenerator.kt": "Builds the relation helpers with typed line breaks and indentation, and names KotlinPoet types. Converted to KotlinWriter in W-KT-2 with the Exposed table generator.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinRepositoryGenerator.kt": "Builds the repository base with typed line breaks. Converted to KotlinWriter in W-KT-2 with the Exposed table generator it reads and writes through.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinSpringConfigGenerator.kt": "Lays its output out through KotlinPoet (FileSpec for the Spring configuration class). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinSpringControllerGenerator.kt": "Builds the Spring controller with typed line breaks and indentation throughout. Converted to KotlinWriter in W-KT-3.",
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinTypeMapper.kt": "Lays its output out through KotlinPoet (TypeName values the entity and table generators share). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4."
+  },
+  "exempt": {
+    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/apidocs/KotlinApiDocsRenderer.kt": "Renders the api-docs Markdown pages. Documentation output is exempt from the writer conversion (ADR-0063; the docs and markdown emitters), because it is not code an adopter edits."
+  }
+}

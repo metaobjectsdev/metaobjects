@@ -1,20 +1,19 @@
 package acme.auth.validation
 
+import acme.auth.AuthLineTable
+import acme.auth.AuthTable
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.metadata.ktx.metaObjectOrNull
 import org.jetbrains.exposed.sql.Table
-import acme.auth.AuthLineTable
-import acme.auth.AuthTable
 
 /**
  * GENERATED — runtime drift gate. Call [validate] from a Spring `@PostConstruct` or
  * `ApplicationReadyEvent` listener to fail-fast when generated Tables drift from metadata.
  */
 object MetadataStartupValidator {
-
     private val tablesToValidate: List<Pair<String, Table>> = listOf(
         "acme::auth::Auth" to AuthTable,
-        "acme::auth::AuthLine" to AuthLineTable
+        "acme::auth::AuthLine" to AuthLineTable,
     )
 
     fun validate(loader: MetaDataLoader) {

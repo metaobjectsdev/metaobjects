@@ -1,16 +1,16 @@
 // GENERATED — DO NOT EDIT — response parser for template.prompt `acme::ai::Reply`
+
 package acme.ai.prompts
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.extract.MetaObjectExtractor
-import com.metaobjects.render.extract.Format
+import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.render.extract.ExtractOptions
 import com.metaobjects.render.extract.ExtractionResult
+import com.metaobjects.render.extract.Format
 
 /** Parser for LLM responses matching the `Reply` template.prompt. */
 object ReplyParser {
-
     // Fails on an unknown property: a reply carrying a field the response shape does not
     // declare is a contract break, not something to drop silently.
     private val mapper = jacksonObjectMapper().findAndRegisterModules()
@@ -23,9 +23,7 @@ object ReplyParser {
     fun parseReply(text: String): acme.ai.Greeting =
         mapper.readValue(text, acme.ai.Greeting::class.java)
 
-    /**
-     * Parse with explicit error handling (Result-style — does not throw).
-     */
+    /** Parse with explicit error handling (Result-style — does not throw). */
     fun safeParseReply(text: String): Result<acme.ai.Greeting> =
         runCatching { parseReply(text) }
 

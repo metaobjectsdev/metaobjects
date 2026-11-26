@@ -9,10 +9,7 @@ import org.jetbrains.exposed.sql.Table
  * `ApplicationReadyEvent` listener to fail-fast when generated Tables drift from metadata.
  */
 object MetadataStartupValidator {
-
-    private val tablesToValidate: List<Pair<String, Table>> = listOf(
-        "acme::demo::Author" to AuthorTable
-    )
+    private val tablesToValidate: List<Pair<String, Table>> = listOf("acme::demo::Author" to AuthorTable)
 
     fun validate(loader: MetaDataLoader) {
         val errors = mutableListOf<String>()

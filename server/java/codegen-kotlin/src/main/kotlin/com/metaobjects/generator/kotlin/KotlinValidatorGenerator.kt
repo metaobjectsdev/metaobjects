@@ -10,6 +10,7 @@ import com.metaobjects.generator.kotlin.ExposedImports
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
@@ -28,9 +29,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  *  - MetadataStartupValidator.kt — registry of (FQN, Table) pairs + a validate(loader) entry point
  *  - ExposedTableValidator.kt — substrate-specific helper that compares one MetaObject to one Table
  *
- * <p>Output is emitted as hand-rolled Kotlin source (rather than KotlinPoet) to keep
- * generated-code template-string escapes readable and to avoid wrestling with
- * `ParameterizedTypeName` quoting for `List<Pair<String, Table>>`.
+ * <p>Output is laid out by [KotlinWriter] (ADR-0063), not KotlinPoet.
  *
  * <p>Args:
  * <ul>
@@ -80,83 +79,70 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         outRoot: Path,
         exposedApi: ExposedApi = ExposedApi.V0,
     ) {
-        val registry = entries.joinToString(",\n        ") { (fqn, table, _) -> "\"$fqn\" to $table" }
-        // The Table objects live in their entity's own package; import any that
-        // are NOT in this validator's package or the bare reference won't resolve.
-        val tableImports = entries
-            .filter { (_, _, tablePkg) -> tablePkg.isNotEmpty() && tablePkg != pkg }
-            .map { (_, table, tablePkg) -> "$tablePkg.$table" }
-            .toSortedSet()
-
-        val source = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
+        val w = KotlinWriter().packageName(pkg)
+        w.use("com.metaobjects.loader.MetaDataLoader")
+        w.use("com.metaobjects.metadata.ktx.metaObjectOrNull")
+        w.use(ExposedImports.core(exposedApi, "Table"))
+        // The Table objects live in their entity's own package; the writer imports any that are
+        // NOT in this validator's package, or the bare reference would not resolve.
+        val registry = entries.map { (fqn, table, tablePkg) ->
+            val ref = if (tablePkg.isEmpty()) table else w.use("$tablePkg.$table")
+            listOf(KotlinWriter.str(fqn), " to ", ref)
+        }
+        w.doc(
+            "GENERATED — runtime drift gate. Call [validate] from a Spring `@PostConstruct` or",
+            "`ApplicationReadyEvent` listener to fail-fast when generated Tables drift from metadata.",
+        )
+        w.block("object MetadataStartupValidator {") {
+            w.line("private val tablesToValidate: List<Pair<String, Table>> = ", KotlinWriter.call("listOf", *registry.toTypedArray()))
+            w.blank()
+            w.block("fun validate(loader: MetaDataLoader) {") {
+                w.line("val errors = mutableListOf<String>()")
+                w.block("for ((fqn, table) in tablesToValidate) {") {
+                    w.line("val obj = loader.metaObjectOrNull(fqn)")
+                    w.block("if (obj == null) {") {
+                        w.line("errors.add(\"metadata missing \$fqn (generated table: \${table.tableName})\")")
+                        w.line("continue")
+                    }
+                    w.line("ExposedTableValidator.check(obj, table, errors)")
+                }
+                w.block("check(errors.isEmpty()) {") {
+                    w.line("\"MetadataStartupValidator: \${errors.size} drift(s):\\n  - \" +")
+                    w.indented { w.line("errors.joinToString(\"\\n  - \")") }
+                }
             }
-            append("import com.metaobjects.loader.MetaDataLoader\n")
-            append("import com.metaobjects.metadata.ktx.metaObjectOrNull\n")
-            append("import ${ExposedImports.core(exposedApi, "Table")}\n")
-            for (imp in tableImports) append("import $imp\n")
-            append("\n")
-            append("/**\n")
-            append(" * GENERATED — runtime drift gate. Call [validate] from a Spring `@PostConstruct` or\n")
-            append(" * `ApplicationReadyEvent` listener to fail-fast when generated Tables drift from metadata.\n")
-            append(" */\n")
-            append("object MetadataStartupValidator {\n\n")
-            append("    private val tablesToValidate: List<Pair<String, Table>> = listOf(\n        ")
-            append(registry)
-            append("\n    )\n\n")
-            append("    fun validate(loader: MetaDataLoader) {\n")
-            append("        val errors = mutableListOf<String>()\n")
-            append("        for ((fqn, table) in tablesToValidate) {\n")
-            append("            val obj = loader.metaObjectOrNull(fqn)\n")
-            append("            if (obj == null) {\n")
-            append("                errors.add(\"metadata missing \$fqn (generated table: \${table.tableName})\")\n")
-            append("                continue\n")
-            append("            }\n")
-            append("            ExposedTableValidator.check(obj, table, errors)\n")
-            append("        }\n")
-            append("        check(errors.isEmpty()) {\n")
-            append("            \"MetadataStartupValidator: \${errors.size} drift(s):\\n  - \" +\n")
-            append("                errors.joinToString(\"\\n  - \")\n")
-            append("        }\n")
-            append("    }\n")
-            append("}\n")
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("MetadataStartupValidator.kt")
-        GeneratedFileWriter.write(outFile, source)
+        GeneratedFileWriter.write(outFile, w.toString())
     }
 
     protected open fun emitHelper(pkg: String, outRoot: Path, exposedApi: ExposedApi = ExposedApi.V0) {
-        val source = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
+        val w = KotlinWriter().packageName(pkg)
+        w.use("com.metaobjects.`object`.MetaObject")
+        w.use("com.metaobjects.field.MetaField")
+        w.use(ExposedImports.core(exposedApi, "Table"))
+        w.doc(
+            "GENERATED — compares a [MetaObject]'s field set vs an Exposed [Table]'s column set",
+            "and records any discrepancies into the supplied `errors` list.",
+        )
+        w.block("object ExposedTableValidator {") {
+            w.block("fun check(obj: MetaObject, table: Table, errors: MutableList<String>) {") {
+                w.line("val expectedCols = obj.metaFields.map { it.name }.toSet()")
+                w.line("val actualCols = table.columns.map { it.name }.toSet()")
+                w.line("val missing = expectedCols - actualCols")
+                w.line("val extra = actualCols - expectedCols")
+                w.block("if (missing.isNotEmpty()) {") {
+                    w.line("errors.add(\"\${obj.name}: metadata declares fields not in generated table: \$missing\")")
+                }
+                w.block("if (extra.isNotEmpty()) {") {
+                    w.line("errors.add(\"\${obj.name}: generated table has columns not in metadata: \$extra\")")
+                }
             }
-            append("import com.metaobjects.`object`.MetaObject\n")
-            append("import com.metaobjects.field.MetaField\n")
-            append("import ${ExposedImports.core(exposedApi, "Table")}\n\n")
-            append("/**\n")
-            append(" * GENERATED — compares a [MetaObject]'s field set vs an Exposed [Table]'s column set\n")
-            append(" * and records any discrepancies into the supplied `errors` list.\n")
-            append(" */\n")
-            append("object ExposedTableValidator {\n\n")
-            append("    fun check(obj: MetaObject, table: Table, errors: MutableList<String>) {\n")
-            append("        val expectedCols = obj.metaFields.map { it.name }.toSet()\n")
-            append("        val actualCols = table.columns.map { it.name }.toSet()\n")
-            append("        val missing = expectedCols - actualCols\n")
-            append("        val extra = actualCols - expectedCols\n")
-            append("        if (missing.isNotEmpty()) {\n")
-            append("            errors.add(\"\${obj.name}: metadata declares fields not in generated table: \$missing\")\n")
-            append("        }\n")
-            append("        if (extra.isNotEmpty()) {\n")
-            append("            errors.add(\"\${obj.name}: generated table has columns not in metadata: \$extra\")\n")
-            append("        }\n")
-            append("    }\n")
-            append("}\n")
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("ExposedTableValidator.kt")
-        GeneratedFileWriter.write(outFile, source)
+        GeneratedFileWriter.write(outFile, w.toString())
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

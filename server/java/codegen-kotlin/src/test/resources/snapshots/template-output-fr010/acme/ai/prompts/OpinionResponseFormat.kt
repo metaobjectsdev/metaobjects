@@ -1,13 +1,14 @@
 // GENERATED — DO NOT EDIT — output-format prompt for template.output `acme::ai::Opinion`
+
 package acme.ai.prompts
 
+import com.metaobjects.render.extract.FieldKind
+import com.metaobjects.render.extract.Format
 import com.metaobjects.render.prompt.OutputFormatRenderer
 import com.metaobjects.render.prompt.OutputFormatSpec
 import com.metaobjects.render.prompt.PromptField
 import com.metaobjects.render.prompt.PromptOverrides
 import com.metaobjects.render.prompt.PromptStyle
-import com.metaobjects.render.extract.FieldKind
-import com.metaobjects.render.extract.Format
 
 /** Output-format prompt fragment for the `Opinion` template.output. */
 object OpinionResponseFormat {

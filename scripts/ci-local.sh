@@ -1010,7 +1010,7 @@ gate_conf_kotlin() {
   local k=com.metaobjects.generator.kotlin
   ( cd server/java \
       && mvn -pl codegen-kotlin -am test -q -Dsurefire.failIfNoSpecifiedTests=false \
-           -Dtest="$k.ObjectModelConformanceTest,$k.OutputPromptConformanceTest,$k.ValidationConformanceTest,$k.GeneratorRegistryConformanceTest,$k.RegistryManifestConformanceTest,$k.NoMagicPhysicalNamesTest,$k.CodegenCompileConformanceTest,$k.EjectContractTest" )
+           -Dtest="$k.ObjectModelConformanceTest,$k.OutputPromptConformanceTest,$k.ValidationConformanceTest,$k.GeneratorRegistryConformanceTest,$k.RegistryManifestConformanceTest,$k.NoMagicPhysicalNamesTest,$k.CodegenCompileConformanceTest,$k.EjectContractTest,$k.writer.KotlinWriterConformanceTest,$k.writer.layout.KotlinLayoutRatchetTest" )
 }
 
 # ── conformance.yml — full reactor + drift/mutation gates ─────────────────────

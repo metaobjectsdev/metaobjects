@@ -1,0 +1,36 @@
+{
+  "description": "reopen() closes the open block and opens the next on one line, as in `} else {`; a blank-line request before it is dropped.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "open",
+      "if (ready) {"
+    ],
+    [
+      "line",
+      "go()"
+    ],
+    [
+      "blank"
+    ],
+    [
+      "reopen",
+      "} else {"
+    ],
+    [
+      "line",
+      "wait()"
+    ],
+    [
+      "close",
+      "}"
+    ]
+  ],
+  "expected": [
+    "if (ready) {",
+    "    go()",
+    "} else {",
+    "    wait()",
+    "}"
+  ]
+}

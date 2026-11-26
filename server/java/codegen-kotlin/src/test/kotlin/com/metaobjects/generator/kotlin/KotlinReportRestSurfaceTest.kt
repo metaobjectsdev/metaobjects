@@ -286,16 +286,12 @@ class KotlinReportRestSurfaceTest {
             | * operator vocabulary for each field by its subtype.
             | */
             |object StoreTotalsFilterAllowlist {
-            |    val FIELDS: Set<String> = setOf(
-            |        "purchases",
-            |        "buyers",
-            |        "revenue",
-            |    )
+            |    val FIELDS: Set<String> = setOf("purchases", "buyers", "revenue")
             |
             |    val OPS_BY_FIELD: Map<String, Set<String>> = mapOf(
             |        "purchases" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
             |        "buyers" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
-            |        "revenue" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
+            |        "revenue" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
             |    )
             |}
             |""".trimMargin(),

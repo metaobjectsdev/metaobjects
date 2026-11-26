@@ -1,0 +1,44 @@
+{
+  "description": "A one-entry KDoc that fits is one line; more entries, or one that does not fit, make a block. An empty entry is a bare ` *` line. Kotlin comments nest, so a comment opener or terminator inside the text is neutralised.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "doc",
+      "The user."
+    ],
+    [
+      "line",
+      "a()"
+    ],
+    [
+      "doc",
+      "First line.",
+      "",
+      "@see other"
+    ],
+    [
+      "line",
+      "b()"
+    ],
+    [
+      "doc",
+      "ends */ here, opens /* there"
+    ],
+    [
+      "line",
+      "c()"
+    ]
+  ],
+  "expected": [
+    "/** The user. */",
+    "a()",
+    "/**",
+    " * First line.",
+    " *",
+    " * @see other",
+    " */",
+    "b()",
+    "/** ends *&#47; here, opens &#47;* there */",
+    "c()"
+  ]
+}

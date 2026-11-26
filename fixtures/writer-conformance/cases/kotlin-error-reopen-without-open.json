@@ -1,0 +1,11 @@
+{
+  "description": "reopen() with no block open is an unbalanced close.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "reopen",
+      "} else {"
+    ]
+  ],
+  "error": "ERR_WRITER_UNBALANCED_CLOSE"
+}

@@ -8,6 +8,7 @@ import com.metaobjects.generator.kotlin.FindInbound
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinOutputFormatSpecEmitter
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -106,33 +107,22 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         val specLiteral = KotlinOutputFormatSpecEmitter.specLiteral(payloadVo, template, rootName)
 
-        val src = buildString {
-            append("// GENERATED — DO NOT EDIT — output-format prompt for template.output `")
-            append(template.name)
-            append("`\n")
-            append(KotlinNaming.packageHeader(outPkg))
-            append("import com.metaobjects.render.prompt.OutputFormatRenderer\n")
-            append("import com.metaobjects.render.prompt.OutputFormatSpec\n")
-            append("import com.metaobjects.render.prompt.PromptField\n")
-            append("import com.metaobjects.render.prompt.PromptOverrides\n")
-            append("import com.metaobjects.render.prompt.PromptStyle\n")
-            append("import com.metaobjects.render.extract.FieldKind\n")
-            append("import com.metaobjects.render.extract.Format\n")
-            append("\n")
-            append("/** Output-format prompt fragment for the `")
-            append(templateShort)
-            append("` template.output. */\n")
-            append("object ")
-            append(promptClass)
-            append(" {\n")
-            append("    private val SPEC: OutputFormatSpec =\n")
-            append("        ")
-            append(specLiteral)
-            append("\n")
-            append("    fun renderFormat(): String = OutputFormatRenderer.render(SPEC, PromptOverrides.none())\n")
-            append("    fun renderFormat(overrides: PromptOverrides): String = OutputFormatRenderer.render(SPEC, overrides)\n")
-            append("}\n")
+        val w = KotlinWriter().packageName(outPkg)
+        w.header("// GENERATED — DO NOT EDIT — output-format prompt for template.output `${template.name}`")
+        for (name in listOf("OutputFormatRenderer", "OutputFormatSpec", "PromptField", "PromptOverrides", "PromptStyle")) {
+            w.use("com.metaobjects.render.prompt.$name")
         }
+        w.use("com.metaobjects.render.extract.FieldKind")
+        w.use("com.metaobjects.render.extract.Format")
+        w.doc("Output-format prompt fragment for the `$templateShort` template.output.")
+        w.block("object $promptClass {") {
+            // The spec is one expression the emitter builds whole; it stays on its own line.
+            w.line("private val SPEC: OutputFormatSpec =")
+            w.indented { w.line(specLiteral) }
+            w.line("fun renderFormat(): String = OutputFormatRenderer.render(SPEC, PromptOverrides.none())")
+            w.line("fun renderFormat(overrides: PromptOverrides): String = OutputFormatRenderer.render(SPEC, overrides)")
+        }
+        val src = w.toString()
 
         val outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve("$promptClass.kt")
         GeneratedFileWriter.write(outFile, src)

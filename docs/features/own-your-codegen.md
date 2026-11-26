@@ -1334,7 +1334,8 @@ runner types, the naming and type-mapping tables (`SpringNaming`, `SpringTypeMap
 `KotlinNaming`, `KotlinTypeMapper`), the questions a generator asks of the model
 (`FindInbound`, `TphPlan`, the M:N support, `RestSurfaceGate`), the code writer the Java
 generators lay their output out with (`CodeWriter`, `JavaWriter`, `WriterOptions`, and
-`SpringJavaWriter` for Spring source), and the Kotlin
+`SpringJavaWriter` for Spring source), the code writer the Kotlin generators lay their output
+out with (`KotlinWriter`, on the same `CodeWriter`), and the Kotlin
 `Fr019SharedEnum`. Anything that returns emitted text is handed over; a table or a model
 question is not. The Kotlin `Fr019SharedEnum` writes no output. It answers where a shared or
 `@provided` enum lives, and the type mapper and the generator utilities take its

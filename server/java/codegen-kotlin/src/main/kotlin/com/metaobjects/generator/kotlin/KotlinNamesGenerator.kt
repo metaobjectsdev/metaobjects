@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.generator.EmitsPhysicalNameConstants
 import com.metaobjects.generator.GeneratorException
@@ -231,49 +232,32 @@ open class KotlinNamesGenerator :
         val inherited = if (superRef == null) emptyList()
                         else resolved.filter { it.member !in declaredMembers }
 
-        val out = buildString {
-            if (pkg.isNotEmpty()) append("package $pkg\n\n")
-            append("/**\n")
-            append(" * GENERATED — per-object physical database names for $shortName.\n")
-            append(" */\n")
-            append("object $className {\n")
+        val skippedMembers = collidingFlattenedMembers(names)
+        val rows = names.fields.values.flatMap { f ->
+            (if (f.members == null) listOf(f.name to "${KotlinNaming.namesMember(f.name)}_COLUMN") else emptyList()) +
+                f.members.orEmpty().values
+                    .map { m -> "${f.name}.${m.name}" to KotlinNaming.flattenedColumnMember(f.name, m.name) }
+                    .filter { (_, constant) -> constant !in skippedMembers }
+        }.sortedBy { it.first }
+
+        val w = KotlinWriter().packageName(pkg)
+        w.doc("GENERATED — per-object physical database names for $shortName.")
+        w.block("object $className {") {
             var section: String? = null
             for (c in declared) {
-                if (section != null && section != c.section) append("\n")
+                if (section != null && section != c.section) w.blank()
                 section = c.section
-                append("    const val ${c.member}: String = \"${c.value}\"\n")
+                w.line("const val ${c.member}: String = ", KotlinWriter.str(c.value))
             }
-            // Inherited constants, re-exported by REFERENCE — the literal is spelled once,
-            // on the base. `const val` folds the reference at compile time, so a consumer
-            // reading `CouponAuthNames.ID_COLUMN` is unaffected by which object declared it.
-            // A TPH subtype's SOURCE members arrive here for the same reason its inherited
-            // columns do: it declares no source of its own, so the own set has none.
-            if (inherited.isNotEmpty()) append("\n")
-            for (c in inherited) {
-                append("    const val ${c.member}: String = $superRef.${c.member}\n")
-            }
-            // The map's values reference the constants rather than repeating the
-            // literals -- the artifact must not spell a physical name twice inside itself.
-            // It stays COMPLETE — every field, inherited included — because it is the
-            // lookup surface, and a miss on an inherited field is exactly the
-            // fallback-to-literal this artifact removes.
-            append("\n")
-            append("    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(\n")
-            val skippedMembers = collidingFlattenedMembers(names)
-            val rows = names.fields.values.flatMap { f ->
-                // A flattened field has no column of its own: only its members are keyed.
-                (if (f.members == null) listOf(f.name to "${KotlinNaming.namesMember(f.name)}_COLUMN") else emptyList()) +
-                    // A flattened member is keyed `<field>.<member>`, the path the naming corpus uses.
-                    f.members.orEmpty().values
-                        .map { m -> "${f.name}.${m.name}" to KotlinNaming.flattenedColumnMember(f.name, m.name) }
-                        .filter { (_, constant) -> constant !in skippedMembers }
-            }.sortedBy { it.first }
-            for ((key, constant) in rows) {
-                append("        \"$key\" to $constant,\n")
-            }
-            append("    )\n")
-            append("}\n")
+            w.blank()
+            for (c in inherited) w.line("const val ${c.member}: String = $superRef.${c.member}")
+            w.blank()
+            w.line(
+                "val COLUMNS_BY_FIELD: Map<String, String> = ",
+                KotlinWriter.call("mapOf", *rows.map { (key, constant) -> listOf(KotlinWriter.str(key), " to ", constant) }.toTypedArray()),
+            )
         }
+        val out = w.toString()
 
         GeneratedFileWriter.write(outRoot.resolve(pkg.replace('.', '/')).resolve("$className.kt"), out)
         return true
