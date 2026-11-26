@@ -86,7 +86,9 @@ migrations, not SQL):
 - **Explicitly out of scope:** EF Core Migrations, FluentMigrator (C#-coded), Alembic, Django
   (Python-coded) — emitting those means generating per-language migration *code* and they are
   ORM-coupled (EF↔EF Core, Alembic↔SQLAlchemy), which MetaObjects users need not adopt.
-  **EF Core Migrations is no longer out of scope; see Amendment 1.**
+  **EF Core Migrations is no longer out of scope; see Amendment 1. Alembic, and any other
+  native tool, is first-class as the adopter's own path (the helper does not emit its code); see
+  Amendment 2.**
 - MetaObjects does **not** reimplement an external runner's history / checksums / ordering — that is
   the runner's job (or the homegrown apply's journal for the zero-dep path).
 
@@ -263,7 +265,7 @@ operation's SQL. The case in point is an identity start: Npgsql writes `RESTART 
   ones `meta migrate` emits. A CHECK one path has and the other lacks is a defect on that path.
 - `meta verify --db` still reads any live database, whichever path built it. It is the drift
   gate for both.
-- Python, Java and Kotlin are unaffected: ADR-0015's single engine stays their only schema path.
+- Python, Java and Kotlin are unaffected: ADR-0015's single engine stays their only schema path. *(Superseded by Amendment 2: their native tools are equally first-class.)*
 - Removing the C# migrate engine (Decision 7) stands. The EF path is EF's own engine, not a
   MetaObjects one.
 
@@ -280,7 +282,7 @@ Migrations, Alembic, Flyway or Liquibase, Diesel or sqlx, Drizzle Kit, or the pr
 engine (`meta migrate`, `meta verify --db`) is the **reference migration helper**: one option, the one
 that is gated by the persistence-conformance migration scenarios, and never the required way. The
 contract an adopter can lean on is the **expected schema**: what the metadata says the database
-must look like, which every native tool is held to by `meta verify --db` against a live database.
+must look like, which `meta verify --db` checks a live database against on Postgres, SQLite and D1. A native tool on MySQL has the neutral schema document (`meta schema`) but no `--db` gate, because `meta verify --db` and `meta schema` do not cover MySQL.
 The engine's code stays in TypeScript (Decision 5), and no port grows a diff engine of its own
 (Decision 7 stands).
 

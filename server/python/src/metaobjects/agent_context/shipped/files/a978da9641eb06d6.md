@@ -52,8 +52,7 @@ hashes each `path` dependency against the lock and fails with `ERR_DEPENDENCY_UP
 run the Node `meta deps check` for those). A project that publishes a model wires the
 `SharedModelGenerator` in `codegen/Generators.cs`; `verify --codegen` drift-gates its output.
 
-Schema migration + live-DB drift run through the **Node `meta` CLI** regardless of
-server language — see the migration reference. `dotnet meta verify --db` is
+Schema migration is your own tool or the Node `meta migrate` reference helper; live-DB drift is the Node `meta verify --db` whichever tool built the schema — see the migration reference. `dotnet meta verify --db` is
 rejected (exit 2).
 
 ---
@@ -153,8 +152,8 @@ version across these packages is an intra-port skew finding.
   (the generated `AppDbContext` + generated entity classes) **is** the runtime persistence
   layer. Hand-written service classes over the generated `AppDbContext` are the expected
   pattern, not a defect.
-- **No C# migrate command.** Schema migration is Node-`meta`-owned for every port
-  (ADR-0015). `dotnet meta` has no migrate subcommand; `meta migrate` is correct.
+- **No C# migrate command.** Schema migration is your own tool or the Node `meta migrate`
+  reference helper (ADR-0015 Amendment 2). `dotnet meta` has no migrate subcommand; `meta migrate` is correct.
 - **Core filter-operator codegen ships in C# — do NOT treat it as deferred.** The `routes`
   generator (`<Entity>Routes.cs`, Minimal API) generates the `?filter[field][op]=value` grammar
   (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`) via the runtime `ListQueryParser` +

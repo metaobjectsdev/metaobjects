@@ -244,8 +244,7 @@ other's committed files as stale) and `-Dmeta.verify.mode=templates` (each `temp
 field tree via the render `Verify` engine, resolving refs through a filesystem provider rooted
 at `-Dmeta.verify.templateRoot`), and `-Dmeta.verify.mode=deps` (opt-in, never in the unset default set: the dependency drift check of `verify --deps`, resolving `path` dependencies only; see the Java port page). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
-migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
-Node-only by the ADR-0015 design — see below.) The **Rust `cargo meta`** port runs the codegen
+migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (The live-database check `--db` stays in the Node CLI by the ADR-0015 design, and runs against a schema built by any tool — see below.) The **Rust `cargo meta`** port runs the codegen
 and template gates: bare `cargo meta verify` renders the generated crates in memory and diffs
 them (a local run may answer from the stored skip key; `--full`, or a set `CI`, always renders),
 checks every `template.*` body under `prompts/` (or `--prompts <dir>`) against its payload value
@@ -922,7 +921,7 @@ for assistants that read that) are assembled by **one** tool: the
 Node `meta agent-docs` command. Per [ADR-0033](../../spec/decisions/ADR-0033-single-agent-context-assembler.md)
 the per-port native assemblers (Python/Java/C#) and their byte-identity conformance
 gates were removed — that content is effectively one static artifact, and every port
-already needs the Node `meta` CLI or its binary for schema ops (ADR-0015).
+needs no more than the Node `meta` CLI or its binary, and only for the reference migration helper or `verify --db` (ADR-0015 Amendment 2).
 
 ```bash
 npx meta agent-docs --server <lang>    # csharp | java | kotlin | python | rust | node

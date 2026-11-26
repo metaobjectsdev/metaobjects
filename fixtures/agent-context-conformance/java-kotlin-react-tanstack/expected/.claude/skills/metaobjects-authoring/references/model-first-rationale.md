@@ -7,8 +7,8 @@ The case behind the operating principle in `SKILL.md`: why declaring the model u
 - The consistency tax
 - One change, every layer
 
-**Why model-first wins even when hand-writing is cheaper this once — and it often
-is, this once:**
+**Why model-first usually wins, even when hand-writing is cheaper this once — and it often
+is, this once (the cost test in `SKILL.md` still decides a true one-off):**
 - **Hand-writing a layer the metadata could own creates a second source of truth for
   one fact.** A field's type, validation, column, route, and form then change in N
   places and must stay consistent forever — not drift *risk*, but two sources of

@@ -2,8 +2,8 @@
 
 The C# port targets .NET consumers (EF Core + ASP.NET). Codegen runs through the
 **`dotnet meta` .NET tool** — there is no Maven plugin and the Node `meta` binary
-is **schema-migrations only** on the C# side (ADR-0015): `meta migrate` /
-`meta verify --db` are Node-`meta`-owned; everything below is `dotnet meta`.
+is the reference **schema-migrations helper** on the C# side (ADR-0015; EF Core Migrations is equally first-class): `meta migrate` /
+`meta verify --db` run in the Node `meta` tool; everything below is `dotnet meta`.
 
 ## Contents
 - Install

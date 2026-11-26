@@ -2,7 +2,7 @@
 
 The Python port targets FastAPI consumers. Codegen runs through the **`metaobjects`
 console-script** (`pip install metaobjects`). As on every port, schema migrations
-are **Node-`meta`-owned** (ADR-0015): `meta migrate` / `meta verify --db` run
+run in your own tool or the Node reference helper (ADR-0015 Amendment 2): `meta migrate` / `meta verify --db` run
 through the Node `meta` tool — the Python CLI has **no `migrate` subcommand** and
 `metaobjects verify --db` is rejected. Everything below is `metaobjects`.
 

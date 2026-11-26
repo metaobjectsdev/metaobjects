@@ -53,8 +53,8 @@ run the Node `meta deps check` for those). A project that publishes a model wire
 `shared-model` generator; `verify --codegen` drift-gates its output.
 
 Kotlin generators run through the **same Maven plugin goal** as Java generators —
-both are SPI-discovered by the `metaobjects-maven-plugin`. Schema migration + live-DB
-drift run through the **Node `meta` CLI** regardless of server language — see the
+both are SPI-discovered by the `metaobjects-maven-plugin`. Schema migration is your own tool or the Node `meta migrate`
+reference helper; live-DB drift is the Node `meta verify --db` whichever tool built the schema — see the
 migration reference.
 
 The active generator list is declared in `pom.xml` under the plugin `<configuration>`
@@ -169,5 +169,5 @@ cross-port versioning — **do not flag it** (only intra-port skew matters).
   richer list surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard
   gating; ADR-0068) passes in TypeScript and C#, and is pending in Kotlin until the Kotlin port's 1.3.0
   REST-standard work lands — do NOT flag its absence in Kotlin until then.
-- **No JVM migrate goal.** Schema migration is Node-`meta`-owned for every port
-  (ADR-0015). The Maven plugin has no migrate goal; `meta migrate` is correct.
+- **No JVM migrate goal.** Schema migration is your own tool or the Node `meta migrate`
+  reference helper (ADR-0015 Amendment 2). The Maven plugin has no migrate goal; `meta migrate` is correct.

@@ -20,7 +20,7 @@ Two modules:
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
-> **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+> **The reference migration helper and the database check run in the Node `meta` tool.** The Maven plugin generates and verifies code. If you take the reference helper for migrations (`npx meta migrate`, `npx meta migrate apply-pending`) rather than your own tool, or check a live database against the model (`npx meta verify --db`), you need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
 
 ## Regeneration and hand edits
 
@@ -984,7 +984,7 @@ Persist it through your own column until the generator emits one.
 | Templates + render (FR-004) | Yes (wraps the Java engine; Mustache only — a Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, ADR-0061) |
 | Output parser codegen (FR-006) | Yes (`KotlinOutputParserGenerator` — Jackson + `Result<T>` dual API) |
 | Payload-VO codegen | Yes — the payload IS the value object's own data class, from `KotlinEntityGenerator` (ADR-0056); no separate payload generator |
-| Migrations | Via the TS toolchain (`@metaobjectsdev/cli migrate`) |
+| Migrations | Your own tool (Exposed migrations, Flyway) handed `meta schema`, or the Node reference helper (`@metaobjectsdev/cli migrate`) |
 | Drift verify | Template-drift: `Renderer.verify` (build-time); generated-table drift: `MetadataStartupValidator` (startup) |
 | Requirement gate + requirement tests | Yes (`mvn metaobjects:verify`, the Java goal; `KotlinRequirementTestsGenerator` emits JUnit Jupiter and is ejectable) |
 | Business-rules gate (ADR-0066, experimental) | Yes (`mvn metaobjects:verify`, the Java goal; see [business rules](../features/business-rules.md)) |

@@ -143,12 +143,12 @@ The refusals that predate it, and where each goes:
 
 | Refusal | Where it lives | Status |
 |---|---|---|
-| A transition or operation named like a derived CRUD verb (`ERR_TRANSITION_NAME_COLLISION`) | TypeScript loader, rules vocabulary | Unreleased in 1.3.0. Moves into the service generator's own error when that generator exists. |
-| `@errors` codes that collide with a reserved code | TypeScript loader, rules vocabulary | Unreleased in 1.3.0. Moves with the one above. |
+| A transition or operation named like a derived CRUD verb (`ERR_TRANSITION_NAME_COLLISION`) | Every port's loader (rules validation), pinned by the `error-rules-*` conformance fixtures | Unreleased in 1.3.0. Moves into the service generator's own error (the TypeScript `service`, `service-routes` and `service-routes-hono` generators exist in this release); the move touches five loaders and those fixtures. |
+| `@errors` codes that collide with a reserved code | Every port's loader (rules validation), same fixtures | Unreleased in 1.3.0. Moves with the one above. |
 | `ERR_FILTERABLE_UNSUPPORTED_SUBTYPE` | Loader validation passes | Released. Stays; moves to the REST generator when that code is next touched. Relaxing a refusal is never a break. |
 | `ERR_SORTABLE_UNSUPPORTED_SUBTYPE` | Loader validation passes | Released. Same as the filter refusal. |
 
-Six further refusals are unclear and stay as they are until someone touches them.
+Any other refusal that predates the rule stays as it is until someone touches it, and joins this table then.
 
 ### Releases
 

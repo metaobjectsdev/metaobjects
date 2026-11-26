@@ -48,8 +48,8 @@ dependency against `.metaobjects/deps.lock.json` and fails with `ERR_DEPENDENCY_
 run the Node `meta deps check` for those). A project that publishes a model wires the
 `shared-model` generator; `verify --codegen` drift-gates its output.
 
-Schema migration + live-DB drift run through the **Node `meta` CLI** regardless of
-server language — see the migration reference. `mvn metaobjects:verify -Dmeta.verify.mode=db`
+Schema migration is your own tool or the Node `meta migrate` reference helper; live-DB drift is the Node `meta verify --db`
+whichever tool built the schema — see the migration reference. `mvn metaobjects:verify -Dmeta.verify.mode=db`
 is rejected (exit 2).
 
 The generator list and the `<sourceDir>` are both declared in `pom.xml` under the
@@ -165,5 +165,5 @@ versioning — **do not flag it** (only intra-port skew matters).
   emits `<Entity>Repository.java` as a stub `interface`; the consumer hand-writes the
   implementation against OMDB (or any persistence layer). Hand-written repository
   implementations that match the generated interface exactly are expected.
-- **No Java migrate goal.** Schema migration is Node-`meta`-owned for every port
-  (ADR-0015). The Maven plugin has no migrate goal; `meta migrate` is correct.
+- **No Java migrate goal.** Schema migration is your own tool or the Node `meta migrate`
+  reference helper (ADR-0015 Amendment 2). The Maven plugin has no migrate goal; `meta migrate` is correct.

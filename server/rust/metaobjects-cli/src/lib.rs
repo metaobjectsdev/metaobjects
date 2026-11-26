@@ -100,8 +100,9 @@ opt-in transport (service-routes), which `init --transport` lists.
 ENTITY names limit `gen` to the crates that contain them plus the crates those depend on.
 Such a run never skips, never stores the skip key and never removes a file.
 
-Schema migrations and database checks are not part of this tool: they are the Node `meta`
-command's (`meta migrate`, `meta verify --db`) for every server language.
+Schema migrations and database checks are not part of this tool. The reference migration
+helper is the Node `meta` command (`meta migrate`, `meta verify --db`); a native migration
+tool is equally good.
 
 EXIT STATUS: 0 success; 1 the run failed; 2 usage error.
 ";
@@ -775,7 +776,7 @@ fn cmd_init(
         "next: declare your objects in metaobjects/ (JSON or YAML), then run `{TOOL} gen`.\n\
          Choose the generators `gen` runs by editing {GENERATOR_LIST_FILE}.\n\
          Commit .metaobjects/.gen-state/.hashes/ with the generated crates.\n\
-         Schema migrations are the Node `meta` command's (`meta migrate`), for every server language."
+         The reference migration helper is the Node `meta` command (`meta migrate`); a native migration tool is equally good."
     );
     Ok(0)
 }

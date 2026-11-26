@@ -202,9 +202,9 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   [react-image-upload-subpath](docs/features/migrations/react-image-upload-subpath.md).
 - **The empty `@metaobjectsdev/forge` package is removed.** It exported nothing and had no importer; the
   forge vocabulary is unchanged and ships in `@metaobjectsdev/sdk` as `forgeTypesProvider`.
-- **Two business-rules refusals are new at load.** Two operations or transitions whose permission names
-  come out equal, where at least one is derived, are `ERR_TRANSITION_NAME_COLLISION` (rule P3). In Python, a
-  `@union` or `@grain` projection with a malformed member or grain is now `ERR_BAD_ATTR_VALUE`, as in
+- **A business-rules refusal is new at load.** Two operations or transitions whose permission names
+  come out equal, where at least one is derived, are `ERR_TRANSITION_NAME_COLLISION` (rule P3).
+- **Python: a malformed `@union` or `@grain` projection member or grain is now `ERR_BAD_ATTR_VALUE`,** as in
   TypeScript and C#.
 - **Java and Kotlin: template and documentation output is in the hash manifest.** The `template` and
   `mustache` generators and the documentation pages are recorded under `.metaobjects/.gen-state/.hashes/`,
@@ -213,6 +213,30 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 - **Rust: the crates are numbered 1.3.0 and join the release path.** The workspace version is the shared
   line, and `cargo meta eject` names the exact crates.io release in the owned `codegen/Cargo.toml` instead of
   the path of the machine that built the tool. Re-eject an owned crate to pick that up.
+- **TypeScript and C#: `<Entity>Names` has no entry for a derived field with no column.** Code that reads
+  `<Entity>Names.<Derived>Field` / `<Derived>Column` (C#), `fields.<derived>` (TypeScript) or a
+  `ColumnsByField` entry for such a field stops compiling; use `nameof(...)` or the metamodel name as a
+  literal. A projection's derived field and a write-through entity's keep their entry.
+- **C#: a "-sis" entity name pluralizes to "-ses".** `Diagnosis` gives `Diagnoses` and
+  `FindDiagnosesByPatient`, not `Diagnosises`; code naming the old form stops compiling. Use the new
+  name, or set `"@collectionName": "Diagnosises"` on the entity to keep the old one. The REST segment is
+  unchanged.
+- **C#: each shared enum is its own file.** The next `dotnet meta gen` removes `Enums.g.cs` and writes
+  `<package>/<Enum>.g.cs`. A cast of an int-mapped shared enum to `int` now returns its `@intValueMap`
+  integer, not its position.
+- **C#: `<X>FilterAllowlist` is emitted in its entity's namespace,** so `GenConfig.PackageNamespaces`
+  separates the allowlists too. Update a `using` that named the old namespace.
+- **C#: a bare `?field=value` on a generated list route answers 400** (`filter.bare_field`) where it used
+  to answer every row; write `?filter[field]=value`. The generated list routes also read `?search=` and
+  nested `filter[or]` / `filter[and]` groups.
+- **Doc pages move under package directories on the flat default.** A TypeScript project's `docsFile()` and
+  `apiDocsFile()` pages, and a Java or Kotlin api-docs `layout` left at its default, move on the next
+  generate. Set `layout` to `flat` on the Java or Kotlin generator to keep the old paths.
+- **TypeScript and C#: the next migrate adds CHECKs to an existing TPH table.** A concrete subtype's enum,
+  validator and cross-field validator columns now carry their CHECKs on the discriminator base's table, so
+  `meta migrate` proposes them and `meta verify --db` reports a table that lacks them.
+- **`meta migrate` reads a Postgres `character(n)` column as itself.** A model that declared a plain
+  `field.string` over one sees a type change until it declares `@dbColumnType: character(n)`.
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Security
@@ -1877,6 +1901,16 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
 - **ADR-0015 Amendment 1: EF Core Migrations is a supported second C# path.** `meta migrate` stays
   the reference engine; the EF context is held to it by the shared CHECK corpus and the identity
   start rule.
+- **The rulings of 2026-11-25 are written down.** ADR-0015 Amendment 2: each language's native
+  migration tool is first-class, the Node engine is the reference helper, and the expected schema is the
+  contract (ADR-0033 and ADR-0065 are amended to match, and the Rust CLI's `--help` and `init` text and
+  the README, port pages and shipped skills say the same). The loader rule, "the loader refuses what is
+  invalid for the model; a limit of one generator is that generator's error", is in `GOVERNANCE.md`,
+  ADR-0037, the contributor rules and the agent instruction file, with the ledger of the four known
+  refusals. Generated-output change, so regenerate to pick it up: the always-on `.metaobjects/AGENTS.md`,
+  `agent/ui.md` and the authoring, audit and codegen skills now say "regenerated output" where they said
+  "disposable artifact", state the cost test for a one-off, and no longer imply an adopter runs the
+  conformance corpora.
 - **ADR-0044 Amendment 1 and ADR-0056 Amendment 2: a value object is never renamed.** The
   package-qualified collision name is gone in every port; one claim registry per run refuses a real
   clash with `ERR_NAME_COLLISION`.
