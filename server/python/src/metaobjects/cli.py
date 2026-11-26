@@ -3084,7 +3084,8 @@ def _verify_db(_args: argparse.Namespace) -> int:
     """
     print(
         "error: verify --db is not supported in the Python port; schema verify "
-        "is the Node `meta verify --db` (the reference migration helper, ADR-0015).",
+        "is the reference migration helper's (`meta verify --db`, with `meta migrate`; "
+        "a native tool is equally good, ADR-0015 Amendment 2).",
         file=sys.stderr,
     )
     return 2
