@@ -336,10 +336,11 @@ regenerating and the build exits 1 with `generated code is stale` and a `[conten
 per file; `mvn metaobjects:generate` (or `mvn compile`) and it is green again. The same goal also
 runs the requirement gate. Add it to your CI after `mvn compile`.
 
-Schema migrations are not a Java-port concern — author them with the TypeScript
-toolchain (`@metaobjectsdev/cli migrate`), then apply the resulting DDL to the
-database OMDB connects to. OMDB itself is pure data-access; the former runtime
-auto-create path was removed per ADR-0015.
+Schema migrations are not an OMDB concern — write them in your own tool (Flyway,
+Liquibase) handed the schema `meta schema` prints, or with the Node reference helper
+(`@metaobjectsdev/cli migrate`), then apply the resulting DDL to the database OMDB
+connects to (ADR-0015 Amendment 2). OMDB itself is pure data-access; the former
+runtime auto-create path was removed per ADR-0015.
 
 ## Use
 
