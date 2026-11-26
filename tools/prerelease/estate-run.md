@@ -41,8 +41,8 @@ The Java default install is `mvn -B -q -U test-compile`: it builds every module 
 order, so a module whose code or tests depend on a sibling module resolves it from the reactor
 instead of looking for it in a repository nobody installed it to. It also runs `generate-sources`,
 so an estate that binds a `generate` execution to that phase regenerates during the install: the
-report lists those files under "Files changed by install", separately from the lockfile and before
-the first gen, and every one that is not a lockfile needs an item in the upgrade list like any other
+report lists those files under "Files changed by install", beside the lockfile and separately from
+the first gen's list, and every one that is not a lockfile needs an item in the upgrade list like any other
 change. Two more things the defaults do not cover, which the estate passes itself:
 
 - **Generation bound to a lifecycle phase.** The default `--gen-cmd` (`mvn -B -q
