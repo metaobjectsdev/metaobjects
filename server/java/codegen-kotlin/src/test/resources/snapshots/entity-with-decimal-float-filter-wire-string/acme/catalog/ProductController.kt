@@ -1,19 +1,28 @@
 package acme.catalog
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.Validator
+import java.io.ByteArrayOutputStream
+import java.math.BigDecimal
+import java.nio.charset.StandardCharsets
+import java.sql.Timestamp
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import org.jetbrains.exposed.sql.Op
-import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.transactions.transaction
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.databind.ObjectMapper
-import jakarta.validation.Validator
+import org.jetbrains.exposed.sql.update
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -26,15 +35,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestMethod
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import jakarta.servlet.http.HttpServletRequest
-import java.io.ByteArrayOutputStream
-import java.nio.charset.StandardCharsets
-import java.sql.Timestamp
-import java.math.BigDecimal
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 /** GENERATED — sort allowlist for Product (cross-port API contract). */
 private val ProductSortAllowlist = setOf(
@@ -335,7 +335,6 @@ private fun rowToProduct(row: ResultRow): Product = Product(
 @RestController
 @RequestMapping("/api/products")
 class ProductController(private val objectMapper: ObjectMapper, private val validator: Validator) {
-
     @GetMapping
     fun list(
         @RequestParam(required = false) limit: Int?,
@@ -487,5 +486,4 @@ class ProductController(private val objectMapper: ObjectMapper, private val vali
         val status = if (kind == "foreign_key" || kind == "unique") HttpStatus.CONFLICT else HttpStatus.BAD_REQUEST
         return ResponseEntity.status(status).body(mapOf("error" to "constraint_violation", "constraint" to kind) as Any)
     }
-
 }

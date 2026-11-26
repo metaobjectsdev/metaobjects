@@ -8,7 +8,6 @@
     "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinNaming.kt": "packageHeader() returns a package line with typed line breaks. No reference generator calls it since W-KT-2; it stays public for owned copies ejected at an earlier version, which still call it.",
     "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinPoetFileWriter.kt": "Lays its output out through KotlinPoet (the FileSpec-to-disk helper, retired when its last caller moves). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
     "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinSpringConfigGenerator.kt": "Lays its output out through KotlinPoet (FileSpec for the Spring configuration class). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4.",
-    "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinSpringControllerGenerator.kt": "Builds the Spring controller with typed line breaks and indentation throughout. Converted to KotlinWriter in W-KT-3.",
     "codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinTypeMapper.kt": "Lays its output out through KotlinPoet (TypeName values the entity and table generators share). It moves to KotlinWriter, and KotlinPoet leaves the build, in W-KT-4."
   },
   "exempt": {

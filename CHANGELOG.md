@@ -1652,6 +1652,19 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   (`writeInstantTzSupport` and its siblings); an owned copy ejected at an earlier version carries
   its own and still compiles (`EjectedAtBaseGeneratorsCompatTest`).
 
+- **The Kotlin Spring controller writes through `KotlinWriter`** (ADR-0063): the writable
+  controller, the TPH base controller and the read-only (projection and report) controller, with
+  the filter pipeline, the M:N traversal routes, the sort surface and the credential redactor they
+  share. Its entry leaves the layout ratchet's allowlist. **Its output changes in layout only:**
+  imports in one sorted group, no blank line at the start or end of the controller class, and two
+  bodies the old text builder indented one level off now indented by their blocks (the Exposed 1.x
+  `WhereOp` loop, and a PATCH handler whose only automatic column is an `@autoSet` one).
+  Regenerating shows those diffs and nothing else. The `protected open` hooks an `open` subclass
+  overrides (`emitFilterPipeline`, `emitPerFieldDispatchArm`, `emitTypedCoercer`,
+  `emitM2mEndpoint`, `emitTphSubtypeM2mEndpoint`) now take a `KotlinWriter` where they took a
+  `StringBuilder`; an owned copy ejected at an earlier version carries its own and still compiles
+  (`EjectedAtBaseGeneratorsCompatTest`).
+
 - **Python publishes a shared model (FR-023).** A `shared-model` generator, wired in
   `metaobjects.config.yaml` like any other (`metaobjects gen --list` names its options), writes
   `<name>.metaobjects.json` and `metaobjects.pkg.json` for a consumer's `deps sync`: `name` and
