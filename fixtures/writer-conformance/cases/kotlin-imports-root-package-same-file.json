@@ -1,0 +1,17 @@
+{
+  "description": "A file in the root package does not import a root-package name (one with no dot): Kotlin sees it unqualified from another root-package file.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "use",
+      "RootTable"
+    ],
+    [
+      "line",
+      "val t = RootTable"
+    ]
+  ],
+  "expected": [
+    "val t = RootTable"
+  ]
+}

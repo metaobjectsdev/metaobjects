@@ -1647,7 +1647,7 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   file, a one-property extract mirror on one line, a KDoc too long for one line written as a block,
   and a blank line after the extract mirror's header comment. `KotlinWriter` now imports a
   root-package name (one with no dot) into a file in a named package, as the generators it
-  replaced did; a new `kotlin` writer case pins it. The support files' text builders
+  replaced did; two new `kotlin` writer cases pin it. The support files' text builders
   (`instantTzSupportBlock`, `inetUriSupportFileImports` and the rest) became writer functions
   (`writeInstantTzSupport` and its siblings); an owned copy ejected at an earlier version carries
   its own and still compiles (`EjectedAtBaseGeneratorsCompatTest`).
