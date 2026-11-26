@@ -2,8 +2,8 @@
 //
 // The gap this closes is narrow and real: the neutral model entity page renders NO
 // `view.*` or `layout.*` metadata at all, so an agent asked to change a form had nowhere
-// to learn what the form already is and would read the generated TSX — the disposable
-// artifact — as if it were the source.
+// to learn what the form already is and would read the generated TSX — the
+// regenerated output — as if it were the source.
 //
 // EVERY FIELD ROW COMES FROM `buildEntityUiDescriptor`, the same derivation
 // `renderEntityConstants` emits as the `<Entity>` const in `<Entity>.meta.ts`, which is
