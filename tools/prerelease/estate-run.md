@@ -53,10 +53,10 @@ not cover, which the estate passes itself:
   `mvn -B -q verify -DskipTests`).
 - **Generated output that git ignores.** The changed-files list and the second-run check see
   only files git reports, so output under `target/generated-sources` or another ignored path
-  is not looked at. Snapshot those trees before the first gen and after each gen (with
-  `--keep-linked`, so the tree survives the run) and diff the snapshots: the first diff is the
-  "files changed" list the upgrade list must explain, and the second must be empty, by content
-  and by modification time.
+  is not looked at. The script runs both gens itself, so snapshot those trees before the run
+  and after it (with `--keep-linked`, so the tree survives the run), then run your `--gen-cmd`
+  once more and snapshot again: the first diff is the "files changed" list the upgrade list
+  must explain, and the second must be empty, by content and by modification time.
 
 ## Every candidate, every estate (the base run)
 
