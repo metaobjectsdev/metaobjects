@@ -14,6 +14,7 @@ import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -23,12 +24,8 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.LONG
-import com.squareup.kotlinpoet.TypeName
 import java.io.OutputStream
 import java.io.PrintWriter
-import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import com.metaobjects.generator.util.GeneratedFileWriter
@@ -165,84 +162,79 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         }
         if (helpers.isEmpty() && m2mNavs.isEmpty() && reverseFks.isEmpty()) return
 
-        val source = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
+        val w = KotlinWriter().packageName(pkg)
+        w.use(ExposedImports.jdbc(api, "Query"))
+        if (api == ExposedApi.V1) {
+            // issue #390: `eq` is a SqlExpressionBuilder-scoped member under 0.x, brought
+            // into scope implicitly by `.where{}`'s `SqlExpressionBuilder.() -> Op<Boolean>`
+            // receiver — so 0.x only imports it explicitly when a call site (the m2mNavs
+            // join/where blocks below) needs it OUTSIDE a `.where{}`. `Query.where()` takes a
+            // receiver-LESS lambda under 1.x (`() -> Op<Boolean>`), so every call site below —
+            // the plain composition helpers' `.where{}`, the reverse-FK finders', AND the
+            // m2mNavs joins — needs the plain top-level import; unconditional here because
+            // this function only reaches this point when at least one of helpers/m2mNavs/
+            // reverseFks is non-empty (the early return above), and all three use `eq`.
+            w.use(ExposedImports.core(api, "eq"))
+            // `inList` (the batched reverse-FK finder) is the same 0.x-implicit/1.x-explicit
+            // story as `eq` — conditional because it is the ONLY site that uses it.
+            if (reverseFks.isNotEmpty()) w.use(ExposedImports.core(api, "inList"))
+        }
+        if (m2mNavs.isNotEmpty()) {
+            w.use(ExposedImports.core(api, "JoinType"))
+            // 0.x: see the V1 branch above for why this import is conditional on m2mNavs under
+            // 0.x but unconditional under 1.x.
+            if (api == ExposedApi.V0) w.use("org.jetbrains.exposed.sql.SqlExpressionBuilder.eq")
+            // `and` backs both the symmetric branch's directional ON clause (no neq
+            // exclusion — keeps the self endpoint) AND a non-symmetric nav whose TARGET is a
+            // TPH subtype (FW-3): the shared storage table's rows are ANDed with the
+            // discriminator so a sibling subtype's row can't come back. `or` is symmetric-only.
+            if (m2mNavs.any { it.nav.symmetric }) w.use(ExposedImports.core(api, "or"))
+            if (m2mNavs.any { it.nav.symmetric || it.nav.targetDiscriminator != null }) {
+                w.use(ExposedImports.core(api, "and"))
             }
-            append("import ${ExposedImports.jdbc(api, "Query")}\n")
-            if (api == ExposedApi.V1) {
-                // issue #390: `eq` is a SqlExpressionBuilder-scoped member under 0.x, brought
-                // into scope implicitly by `.where{}`'s `SqlExpressionBuilder.() -> Op<Boolean>`
-                // receiver — so 0.x only imports it explicitly when a call site (the m2mNavs
-                // join/where blocks below) needs it OUTSIDE a `.where{}`. `Query.where()` takes a
-                // receiver-LESS lambda under 1.x (`() -> Op<Boolean>`), so every call site below —
-                // the plain composition helpers' `.where{}`, the reverse-FK finders', AND the
-                // m2mNavs joins — needs the plain top-level import; unconditional here because
-                // this function only reaches this point when at least one of helpers/m2mNavs/
-                // reverseFks is non-empty (the early return above), and all three use `eq`.
-                append("import ${ExposedImports.core(api, "eq")}\n")
-                // `inList` (the batched reverse-FK finder) is the same 0.x-implicit/1.x-explicit
-                // story as `eq` — conditional because it is the ONLY site that uses it.
-                if (reverseFks.isNotEmpty()) append("import ${ExposedImports.core(api, "inList")}\n")
-            }
-            if (m2mNavs.isNotEmpty()) {
-                append("import ${ExposedImports.core(api, "JoinType")}\n")
-                if (api == ExposedApi.V0) {
-                    // 0.x — UNCHANGED (byte-identical). See the V1 branch above for why this
-                    // import is conditional on m2mNavs under 0.x but unconditional under 1.x.
-                    append("import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq\n")
-                }
-                // `and` backs both the symmetric branch's directional ON clause (no neq
-                // exclusion — keeps the self endpoint) AND a non-symmetric nav whose TARGET is a
-                // TPH subtype (FW-3): the shared storage table's rows are ANDed with the
-                // discriminator so a sibling subtype's row can't come back. `or` is symmetric-only.
-                if (m2mNavs.any { it.nav.symmetric }) {
-                    append("import ${ExposedImports.core(api, "or")}\n")
-                }
-                if (m2mNavs.any { it.nav.symmetric || it.nav.targetDiscriminator != null }) {
-                    append("import ${ExposedImports.core(api, "and")}\n")
-                }
-            }
-            append("import ${ExposedImports.jdbc(api, "selectAll")}\n")
-            // java.util.UUID appears in helper signatures when the owner's PK (or a
-            // reverse-FK value type) is uuid — the param types were already derived, but
-            // without this import the generated file had an unresolved reference. Emitted
-            // conditionally so uuid-free files stay byte-identical.
-            val typeImports = (listOf(pkRendered.import) + reverseFks.map { it.valueImport })
-                .filterNotNull().toSortedSet()
-            for (line in typeImports) append("import $line\n")
-            val crossPackageTables = KotlinM2mSupport.importLines(m2mNavs.map { it.nav }, pkg, junction = true, dataClass = false) +
-                helpers.filter { it.targetPackage != pkg }
-                    .map { if (it.targetPackage.isEmpty()) it.targetTable else "${it.targetPackage}.${it.targetTable}" }
-            for (line in crossPackageTables.toSortedSet()) append("import $line\n")
-            append("\n")
-            append("/** GENERATED — extension fns for `$ownerShort` to-many relationships. Do not hand-edit. */\n")
-            var first = true
-            for (h in helpers) {
-                if (!first) append("\n")
-                first = false
-                append("/** Query `$ownerShort.${h.relShortName}` (cardinality=many) on the ${h.targetTable.removeSuffix("Table")} side. */\n")
-                append("fun $ownerTable.${h.relShortName}Query($fkColName: $pkParamSimpleName): Query =\n")
-                append("    ${h.targetTable}.selectAll().where { ${h.targetTable}.$fkColName eq $fkColName }\n")
-            }
+        }
+        w.use(ExposedImports.jdbc(api, "selectAll"))
+        // java.util.UUID appears in helper signatures when the owner's PK (or a
+        // reverse-FK value type) is uuid — the param types were already derived, but
+        // without this import the generated file had an unresolved reference.
+        for (imp in listOf(pkRendered.import) + reverseFks.map { it.valueImport }) {
+            if (imp != null) w.use(imp)
+        }
+        val crossPackageTables = KotlinM2mSupport.importLines(m2mNavs.map { it.nav }, pkg, junction = true, dataClass = false) +
+            helpers.filter { it.targetPackage != pkg }
+                .map { if (it.targetPackage.isEmpty()) it.targetTable else "${it.targetPackage}.${it.targetTable}" }
+        for (imp in crossPackageTables) w.use(imp)
 
-            // FR-018 M:N junction-join query helpers. Each emits an Exposed Query that
-            // INNER-JOINs the target table to the junction on the derived target-side FK,
-            // returning the target rows whose junction row matches the source id. The
-            // junction FK columns are derived (KotlinM2mSupport → M2MFields), never restated.
-            //   * hetero / directed self-join: WHERE junction.<sourceField> = :id
-            //   * symmetric self-join:         WHERE junction.<sourceField> = :id
-            //                                     OR junction.<targetField> = :id (union-on-read)
-            // The join keys the target by its PRIMARY KEY against the junction's target-side
-            // FK; the source filter uses the junction's source-side FK. Related-row order is
-            // not contractual.
-            for (named in m2mNavs) {
-                val nav = named.nav
-                if (!first) append("\n")
-                first = false
-                val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
-                append("/** Query `$ownerShort.${nav.relationName}` (M:N via ${nav.junctionShortName})$symMarker — the related ${nav.targetShortName} rows. */\n")
-                append("fun $ownerTable.${named.queryFnName}(sourceId: $pkParamSimpleName): Query =\n")
+        w.doc("GENERATED — extension fns for `$ownerShort` to-many relationships. Do not hand-edit.")
+        var first = true
+        for (h in helpers) {
+            if (!first) w.blank()
+            first = false
+            w.doc("Query `$ownerShort.${h.relShortName}` (cardinality=many) on the ${h.targetTable.removeSuffix("Table")} side.")
+            w.line("fun $ownerTable.${h.relShortName}Query($fkColName: $pkParamSimpleName): Query =")
+            w.indented { w.line("${h.targetTable}.selectAll().where { ${h.targetTable}.$fkColName eq $fkColName }") }
+        }
+
+        // FR-018 M:N junction-join query helpers. Each emits an Exposed Query that
+        // INNER-JOINs the target table to the junction on the derived target-side FK,
+        // returning the target rows whose junction row matches the source id. The
+        // junction FK columns are derived (KotlinM2mSupport → M2MFields), never restated.
+        //   * hetero / directed self-join: WHERE junction.<sourceField> = :id
+        //   * symmetric self-join:         WHERE junction.<sourceField> = :id
+        //                                     OR junction.<targetField> = :id (union-on-read)
+        // The join keys the target by its PRIMARY KEY against the junction's target-side
+        // FK; the source filter uses the junction's source-side FK. Related-row order is
+        // not contractual.
+        for (named in m2mNavs) {
+            val nav = named.nav
+            if (!first) w.blank()
+            first = false
+            val symMarker = if (nav.symmetric) " (symmetric — union on read)" else ""
+            val junction = nav.junctionTableObj
+            val target = nav.targetTableObj
+            w.doc("Query `$ownerShort.${nav.relationName}` (M:N via ${nav.junctionShortName})$symMarker — the related ${nav.targetShortName} rows.")
+            w.line("fun $ownerTable.${named.queryFnName}(sourceId: $pkParamSimpleName): Query =")
+            w.indented {
                 if (nav.symmetric) {
                     // Symmetric storage is single-row; a friend appears via EITHER FK column.
                     // Union-on-read: for each junction row touching the source, the related id is
@@ -256,15 +248,13 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
                     // (Alice is her own friend). No `neq sourceId` exclusion (that would drop (a,a)),
                     // and the directional ON clause already constrains to junction rows touching the
                     // source, so no extra WHERE is needed.
-                    append("    ${nav.targetTableObj}.join(${nav.junctionTableObj}, JoinType.INNER) {\n")
-                    append("        ((${nav.junctionTableObj}.${nav.sourceField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.targetField} eq sourceId)) or\n")
-                    append("            ((${nav.junctionTableObj}.${nav.targetField} eq ${nav.targetTableObj}.${nav.targetPkField}) and (${nav.junctionTableObj}.${nav.sourceField} eq sourceId))\n")
-                    append("    }.selectAll()")
                     val symDisc = nav.targetDiscriminator
-                    if (symDisc != null) {
-                        append(".where { ${nav.targetTableObj}.${symDisc.column} eq ${symDisc.valueExpr} }\n")
-                    } else {
-                        append("\n")
+                    val tail = if (symDisc != null) ".where { $target.${symDisc.column} eq ${symDisc.valueExpr} }" else ""
+                    w.block("$target.join($junction, JoinType.INNER) {", "}.selectAll()$tail") {
+                        w.line("(($junction.${nav.sourceField} eq $target.${nav.targetPkField}) and ($junction.${nav.targetField} eq sourceId)) or")
+                        w.indented {
+                            w.line("(($junction.${nav.targetField} eq $target.${nav.targetPkField}) and ($junction.${nav.sourceField} eq sourceId))")
+                        }
                     }
                 } else {
                     // Hetero / directed self-join: join the target by its PK to the junction's
@@ -272,47 +262,48 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
                     // TPH-subtype target ANDs the discriminator into the SAME where — the shared
                     // storage table's join keeps every subtype's rows, so this is what narrows the
                     // result back to just the declared target's own rows.
-                    append("    ${nav.targetTableObj}.join(${nav.junctionTableObj}, JoinType.INNER) { ${nav.targetTableObj}.${nav.targetPkField} eq ${nav.junctionTableObj}.${nav.targetField} }\n")
-                    append("        .selectAll()\n")
-                    val disc = nav.targetDiscriminator
-                    if (disc != null) {
-                        append("        .where { (${nav.junctionTableObj}.${nav.sourceField} eq sourceId) and (${nav.targetTableObj}.${disc.column} eq ${disc.valueExpr}) }\n")
-                    } else {
-                        append("        .where { ${nav.junctionTableObj}.${nav.sourceField} eq sourceId }\n")
+                    w.line("$target.join($junction, JoinType.INNER) { $target.${nav.targetPkField} eq $junction.${nav.targetField} }")
+                    w.indented {
+                        w.line(".selectAll()")
+                        val disc = nav.targetDiscriminator
+                        if (disc != null) {
+                            w.line(".where { ($junction.${nav.sourceField} eq sourceId) and ($target.${disc.column} eq ${disc.valueExpr}) }")
+                        } else {
+                            w.line(".where { $junction.${nav.sourceField} eq sourceId }")
+                        }
                     }
                 }
             }
+        }
 
-            // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
-            // (each single-field identity.reference). The referenced entity T navigates to
-            // its referencing E rows by calling these with a T id. The fn name derives from
-            // the FK FIELD (PascalCased, trailing `Id` dropped), unique within E by
-            // construction — so same-pair FKs (GameSession → Scene ×3) yield DISTINCT finders
-            // (findByCurrentScene / findByLastOpeningNarrativeScene /
-            // findByTransitioningFromScene), never colliding, with no @reverseName vocabulary.
-            // NOT a lazy Exposed `referrersOn` reverse collection (N+1 + needs an open
-            // transaction): each is a plain single indexed query (WHERE fk = ?), with a
-            // batched variant (WHERE fk IN (…)) for anti-N+1 loading of many parents. The
-            // returned Query stays compositional (chain .orderBy/.limit before materialising).
-            for (fk in reverseFks) {
-                if (!first) append("\n")
-                first = false
-                val col = KotlinNaming.safeColumnProperty(fk.fkField, exposedApi())
-                val single = KotlinNaming.reverseFinderName(fk.fkField)
-                val batched = KotlinNaming.reverseFinderInName(fk.fkField)
-                append("/** Reverse nav: the $ownerShort rows whose `${fk.fkField}` FK points at the given ${fk.targetShortName} id (single indexed query). */\n")
-                append("fun $ownerTable.$single(${fk.fkField}: ${fk.valueType}): Query =\n")
-                append("    $ownerTable.selectAll().where { $ownerTable.$col eq ${fk.fkField} }\n")
-                append("\n")
-                append("/** Reverse nav (batched, anti-N+1): the $ownerShort rows whose `${fk.fkField}` FK is IN the given ${fk.targetShortName} ids. */\n")
-                append("fun $ownerTable.$batched(${fk.fkField}s: List<${fk.valueType}>): Query =\n")
-                append("    $ownerTable.selectAll().where { $ownerTable.$col inList ${fk.fkField}s }\n")
-            }
+        // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
+        // (each single-field identity.reference). The referenced entity T navigates to
+        // its referencing E rows by calling these with a T id. The fn name derives from
+        // the FK FIELD (PascalCased, trailing `Id` dropped), unique within E by
+        // construction — so same-pair FKs (GameSession → Scene ×3) yield DISTINCT finders
+        // (findByCurrentScene / findByLastOpeningNarrativeScene /
+        // findByTransitioningFromScene), never colliding, with no @reverseName vocabulary.
+        // NOT a lazy Exposed `referrersOn` reverse collection (N+1 + needs an open
+        // transaction): each is a plain single indexed query (WHERE fk = ?), with a
+        // batched variant (WHERE fk IN (…)) for anti-N+1 loading of many parents. The
+        // returned Query stays compositional (chain .orderBy/.limit before materialising).
+        for (fk in reverseFks) {
+            if (!first) w.blank()
+            first = false
+            val col = KotlinNaming.safeColumnProperty(fk.fkField, exposedApi())
+            val single = KotlinNaming.reverseFinderName(fk.fkField)
+            val batched = KotlinNaming.reverseFinderInName(fk.fkField)
+            w.doc("Reverse nav: the $ownerShort rows whose `${fk.fkField}` FK points at the given ${fk.targetShortName} id (single indexed query).")
+            w.line("fun $ownerTable.$single(${fk.fkField}: ${fk.valueType}): Query =")
+            w.indented { w.line("$ownerTable.selectAll().where { $ownerTable.$col eq ${fk.fkField} }") }
+            w.blank()
+            w.doc("Reverse nav (batched, anti-N+1): the $ownerShort rows whose `${fk.fkField}` FK is IN the given ${fk.targetShortName} ids.")
+            w.line("fun $ownerTable.$batched(${fk.fkField}s: List<${fk.valueType}>): Query =")
+            w.indented { w.line("$ownerTable.selectAll().where { $ownerTable.$col inList ${fk.fkField}s }") }
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(ownerShort + "Relations.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        GeneratedFileWriter.write(outFile, source)
+        GeneratedFileWriter.write(outFile, w.toString())
     }
 
     /**
@@ -359,9 +350,11 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * Render [type] for text emission. A [ClassName] prints its simple name and imports its
      * canonical name (nothing for the auto-imported `kotlin` / `java.lang` packages). Any other
      * shape (parameterized, nullable, ...) prints fully qualified, which is always valid.
+     * [KotlinTypeMapper] still describes a type as a KotlinPoet value, so it is read here by its
+     * qualified name; nothing in this file is laid out by KotlinPoet.
      */
-    protected fun renderType(type: TypeName): RenderedType {
-        if (type !is ClassName || type.isNullable) return RenderedType(type.toString(), null)
+    protected fun renderType(type: com.squareup.kotlinpoet.TypeName): RenderedType {
+        if (type !is com.squareup.kotlinpoet.ClassName || type.isNullable) return RenderedType(type.toString(), null)
         val autoImported = type.packageName == "kotlin" || type.packageName == "java.lang"
         return RenderedType(type.simpleNames.joinToString("."), if (autoImported) null else type.topLevelClassName().canonicalName)
     }
@@ -384,7 +377,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             val targetShort = child.targetEntity?.let { PackageMapping.splitFqn(it).second } ?: ""
             val rendered = entity.metaFields.firstOrNull { it.name == fkField }?.let { f ->
                 runCatching { renderType(KotlinTypeMapper.kotlinTypeName(f)) }.getOrNull()
-            } ?: renderType(LONG)
+            } ?: renderType(com.squareup.kotlinpoet.LONG)
             out.add(ReverseFk(fkField, targetShort, rendered.name, rendered.import))
         }
         return out
@@ -400,15 +393,15 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * the table generator: defensive defaults rather than throwing on
      * partially-formed metadata.
      */
-    protected open fun primaryKeyKotlinType(entity: MetaObject): TypeName {
+    protected open fun primaryKeyKotlinType(entity: MetaObject): com.squareup.kotlinpoet.TypeName {
         // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);
         // entity.children (own-only) would miss an inherited primary identity.
         val primary = entity.getIdentities(true)
             .filterIsInstance<MetaIdentity>()
-            .firstOrNull { it.isPrimary } ?: return LONG
-        val pkFieldName = KotlinGenUtil.keyFields(entity, primary).firstOrNull() ?: return LONG
-        val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return LONG
-        return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }.getOrDefault(LONG)
+            .firstOrNull { it.isPrimary } ?: return com.squareup.kotlinpoet.LONG
+        val pkFieldName = KotlinGenUtil.keyFields(entity, primary).firstOrNull() ?: return com.squareup.kotlinpoet.LONG
+        val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return com.squareup.kotlinpoet.LONG
+        return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }.getOrDefault(com.squareup.kotlinpoet.LONG)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

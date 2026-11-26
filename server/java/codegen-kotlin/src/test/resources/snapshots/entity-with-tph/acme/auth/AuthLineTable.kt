@@ -1,7 +1,7 @@
 package acme.auth
 
-import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.ReferenceOption
+import org.jetbrains.exposed.sql.Table
 
 /** GENERATED — do not hand-edit. Regenerated from metadata. */
 object AuthLineTable : Table("auth_lines") {

@@ -1,4 +1,5 @@
 // GENERATED — DO NOT EDIT — lenient extraction mirror of value object `acme::ai::OpinionOutputPayload`
+
 package acme.ai
 
 import com.metaobjects.render.extract.ExtractMap
@@ -12,8 +13,9 @@ data class OpinionOutputPayloadExtracted(
     val confidence: String? = null,
     val note: String? = null,
 ) {
-
-    /** The strict [OpinionOutputPayload]. Call only once the extract report shows no lost or malformed required field. */
+    /**
+     * The strict [OpinionOutputPayload]. Call only once the extract report shows no lost or malformed required field.
+     */
     fun toStrict(): OpinionOutputPayload = OpinionOutputPayload(
         text = text!!,
         confidence = acme.ai.OpinionOutputPayloadConfidence.valueOf(confidence!!),
@@ -21,7 +23,6 @@ data class OpinionOutputPayloadExtracted(
     )
 
     companion object {
-
         /** Map an assembled ValueObject (a Map) onto the typed mirror; null-tolerant. */
         @JvmStatic
         fun fromMap(d: Map<String, Any?>?): OpinionOutputPayloadExtracted? {

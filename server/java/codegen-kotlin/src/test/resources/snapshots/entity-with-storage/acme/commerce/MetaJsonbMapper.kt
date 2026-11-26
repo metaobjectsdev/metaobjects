@@ -17,4 +17,3 @@ internal val metaJsonbMapper: com.fasterxml.jackson.databind.ObjectMapper =
         .addModule(com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
         .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
         .build()
-

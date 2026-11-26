@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  * already inherits `@maxLength` — for:
  *
  *   - `@dbColumnType=uuid`            → `uuidString("col")`      (NOT `varchar(col, 36)`, NOT
- *     a native `uuid(...)` `Column<UUID>` — see `KotlinExposedTableGenerator.uuidStringSupportBlock`)
+ *     a native `uuid(...)` `Column<UUID>` — see `KotlinExposedTableGenerator.writeUuidStringSupport`)
  *   - `isArray:true` (string)         → `array<String>(...)`    (NOT `varchar`/`text`)
  *   - a default (instant/TZ-aware) `field.timestamp` → `instantWithTimeZone(...)` (NOT `datetime`)
  *   - a `field.enum` super            → the projection's OWN `<View>Status` enum

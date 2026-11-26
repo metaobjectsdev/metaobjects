@@ -6,8 +6,8 @@ import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.statements.UpdateStatement
-import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 
 /**
  * GENERATED — persistence repository base for Post. Do not hand-edit.
@@ -16,7 +16,6 @@ import org.jetbrains.exposed.sql.transactions.transaction
  * would create an ambiguous bean — wiring is the consumer's, per FR-035 §8.2).
  */
 open class PostRepositoryBase {
-
     /** Map an Exposed ResultRow to the Post data class. */
     open fun rowToPost(row: ResultRow): Post = Post(
         id = row[PostTable.id],

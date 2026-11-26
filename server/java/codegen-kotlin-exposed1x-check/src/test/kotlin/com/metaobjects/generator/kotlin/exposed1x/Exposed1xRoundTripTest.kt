@@ -18,8 +18,8 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
  * Issue #390 acceptance criterion: "the emitted custom column types round-trip through a real
  * JDBC read under 1.x." `Exposed1xCodegenCompileTest` proves the full fitness corpus COMPILES
  * against Exposed 1.3.x; this test proves the hand-rolled `Meta*ColumnType` support classes
- * ([KotlinExposedTableGenerator]'s `instantTzSupportBlock` / `inetUriSupportBlock` /
- * `uuidStringSupportBlock`) actually read back correctly against a real Postgres:
+ * ([KotlinExposedTableGenerator]'s `writeInstantTzSupport` / `writeInetUriSupport` /
+ * `writeUuidStringSupport`) actually read back correctly against a real Postgres:
  *
  *  - `MetaInstantWithTimeZoneColumnType` (a `field.timestamp`, default/non-`@localTime`),
  *  - `MetaUriColumnType` (`field.uri`),

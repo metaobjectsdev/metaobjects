@@ -1637,6 +1637,21 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   ejected at an earlier version calls (each emitter's `write`, `BODY`, `body(wire)`,
   `KotlinNaming.packageHeader`) is kept.
 
+- **The Kotlin Exposed tier writes through `KotlinWriter`** (ADR-0063): the Exposed table
+  generator (the `<Entity>Table` object and its seven per-package support files: instant with
+  time zone, inet and uri, duration, int-backed enum array, portable decimal and uuid, uuid string
+  and the jsonb mapper), the relation helpers, the repository base and the extract mirror. None of
+  them imports KotlinPoet any more; they read the type mapper's KotlinPoet types by qualified name
+  until W-KT-4 retires it. **Their output changes in layout only:** imports in one sorted group,
+  no blank line at the start of a class or companion body, no blank line at the end of a support
+  file, a one-property extract mirror on one line, a KDoc too long for one line written as a block,
+  and a blank line after the extract mirror's header comment. `KotlinWriter` now imports a
+  root-package name (one with no dot) into a file in a named package, as the generators it
+  replaced did; a new `kotlin` writer case pins it. The support files' text builders
+  (`instantTzSupportBlock`, `inetUriSupportFileImports` and the rest) became writer functions
+  (`writeInstantTzSupport` and its siblings); an owned copy ejected at an earlier version carries
+  its own and still compiles (`EjectedAtBaseGeneratorsCompatTest`).
+
 - **Python publishes a shared model (FR-023).** A `shared-model` generator, wired in
   `metaobjects.config.yaml` like any other (`metaobjects gen --list` names its options), writes
   `<name>.metaobjects.json` and `metaobjects.pkg.json` for a consumer's `deps sync`: `name` and
