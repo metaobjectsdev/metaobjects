@@ -60,8 +60,9 @@ five".
    off, an unlisted failure fails the lane.
 
 6. **Deliberate differences from the other five.**
-   - **No `migrate`.** Schema migrations are TypeScript-owned (ADR-0015), as in Java, C# and
-     Python. The Rust CLI is codegen, `verify` and `fmt`.
+   - **No `migrate`.** The reference migration helper is the Node `meta` tool (ADR-0015
+     Amendment 2), as for Java, C# and Python; a Rust project can equally use Diesel, sqlx or its
+     own tool. The Rust CLI is codegen, `verify` and `fmt`.
    - **Jinja is refused.** Template bodies render with the Mustache engine every port shares; a
      Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, as in Java, Kotlin and C#
      (ADR-0061).
@@ -154,8 +155,9 @@ so they are not re-derived.
    This corrects Decision 6, which listed `fmt`: the command today is `init`, `gen`, `verify
    --codegen` and `eject`. `fmt` and the template gate come with the phases that need them.
    *(The template gate has arrived — Amendment 6; there is still no `fmt`.)*
-   **No `migrate` and no `verify --db`, permanently** (ADR-0015): `init` and `--help` both say that
-   the schema is the Node `meta` tool's.
+   **No `migrate` and no `verify --db`, permanently** (ADR-0015 Amendment 2): `init` and `--help` both
+   say that the reference migration helper is the Node `meta` tool, and that a native tool is equally
+   good.
 5. **An owned generator is a crate the project builds.** Rust is compiled, so a generator cannot
    be loaded from its source at run time. `cargo meta eject <name>` writes `codegen/Cargo.toml`
    and `codegen/main.rs` (once, then the project's) and `codegen/generators/<name>.rs`; while that

@@ -56,6 +56,10 @@ means adding/updating a conformance fixture** so every port verifies it — see
   from a registered provider plus a `registry-conformance` fixture. If a generator can
   *derive* something from existing metadata, derive it — don't add an attribute. See
   [`spec/decisions/ADR-0023-strict-metadata-provenance.md`](spec/decisions/ADR-0023-strict-metadata-provenance.md).
+- **Apply the loader rule:** the loader refuses what is invalid for the model; a limit of one generator is that generator's error. A new loader refusal needs a model that
+  is ambiguous or contradictory on its own; a limit of one generator belongs in that generator.
+  See [GOVERNANCE.md](GOVERNANCE.md#the-loader-rule) for the rule and the ledger of the four known
+  cases.
 - **Preserve the cross-language wire format and vocabulary exactly** — see
   [CLAUDE.md](CLAUDE.md) → *Cross-language porting*.
 

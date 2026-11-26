@@ -10,512 +10,6 @@ here.**
 
 ## [Unreleased]
 
-- **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
-
-- **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
-  (`WARN_OVERLAY_IMPLICIT`), the node-name lint (`WARN_NAME_SURROUNDING_WHITESPACE`,
-  `WARN_NAME_INTERNAL_WHITESPACE`) and the deprecated-reference lint (`WARN_DEPRECATED_REFERENCE`)
-  now print on every `dotnet meta verify`, as they do in Node `meta verify`, before the field lint.
-  They are advisory, never change the exit code, and are muted by `--no-overlay-lint`,
-  `--no-name-lint` and `--no-deprecation-lint`, or by `META_NO_OVERLAY_LINT=1`,
-  `META_NO_NAME_LINT=1` and `META_NO_DEPRECATION_LINT=1`. C# runs the shared
-  `fixtures/model-lint-conformance/` corpus.
-
-- **codegen-ts: `service-routes-hono`, the service's Hono transport (ADR-0067 layer 5).**
-  `serviceRoutesHonoFile()` writes `<pkg path>/transport/hono.ts`, the same routes as the Fastify
-  transport, as `<pkg>ServiceHonoRoutes(app, { service, getActor })`, with the actor read by
-  `getActor(c)`. It imports the new `@metaobjectsdev/runtime-ts/service/hono` entry, and `meta eject
-  service-routes-hono` copies that source. A fixed path segment is added before a parameter wherever
-  two routes could match one request, so `GET <collection>/<query>` is not taken for
-  `GET <collection>/{id}`, as Fastify's router already decides.
-- **The service is held to more of the shared API tests.** Its lanes, on Fastify and on Hono, now
-  run the `list-query/`, `api-settings/`, `enum-default/`, `jsonb/` and `duration/` corpora beside the
-  root and `rules/` corpora, on every engine the routes lane runs, D1 included through
-  `interactiveTransactions: false`. The service compile gate compiles both transports.
-- **The service covers every object the flat routes serve.** Projections and served reports get
-  their reads, and their transports answer writes `405`. A report keeps its row cap, through the
-  new `serviceFile({ reportMaxRows })` option, and its `?format=` export. Write-through entities
-  read through their view and read a write back through it. A single-table hierarchy gets the
-  polymorphic base reads and per-subtype operations scoped to the discriminator. Each
-  many-to-many relationship gets a query and a `GET <path>/{id}/<relation>` route. The
-  `projection/`, `report/` (Postgres, MySQL, SQLite and D1), `write-through/`, `tph/`, `m2m/`,
-  `decimal/` and `secret-fields/` corpora now run on both service lanes. runtime-ts: the read-only
-  and many-to-many reads (`readOnlyList`, `readOnlyGet`, `m2mRelated`) are framework-neutral
-  functions, which the flat Fastify mounts and the service both call.
-- **codegen-ts: a `runGen` with no project no longer leaves its gen-state in the scratch root.**
-  The state of such a run is kept for that process's later runs only, and is removed when the
-  process exits normally (a process killed by a signal still leaves it). Before this fix, each such process left `meta-gen-state-<pid>` behind
-  permanently. The test harnesses that generate with no project had left hundreds of those
-  directories, about 3 GB, in a RAM-backed `$DEV_SCRATCH`.
-
-- **runtime-ts: the generated service keeps its rollback guarantee on a sync SQLite driver.** On
-  bun:sqlite and better-sqlite3, Drizzle's `transaction()` commits when its callback returns, so a
-  service write that awaited inside it committed at its first `await`: a hook's or a body's refusal
-  answered 409 over a row that stayed. The service now drives those drivers' transaction itself
-  (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`, one at a time per handle, a savepoint inside a caller's
-  transaction), and a read outside a transaction waits for the one in flight. The generated `Db`
-  type on SQLite accepts a sync driver again, as the flat queries module does. New
-  `withWriteTransaction(db, fn)` runs several operations atomically on any driver; on a sync
-  driver, pass its `tx` to each one inside it.
-- **codegen-ts: `serviceFile({ interactiveTransactions: false })` for a store that holds no
-  transaction across application code (Cloudflare D1; ADR-0067 §4).** The service opens no
-  transaction: each derived write is its one statement and a transition is its guarded update.
-  It has no hooks and no event hook, and a package that declares a command fails generation with
-  `ERR_STORE_NO_INTERACTIVE_TX`, naming the package, the command and the option. Queries are
-  generated. Run end to end on Miniflare's local D1.
-- **ADR-0066 §6 states that input validation precedes the permission point.** The policy is handed
-  the validated input, so an operation's `@inputRef` input is checked first; a caller the policy
-  would refuse can see a 400 with validation detail before the 403. An app that must answer
-  neither refuses that caller in its actor resolver or transport.
-- **codegen-ts: the service layer, part 2 — the rules run (ADR-0066 §6, ADR-0067 §4 and §7).** The
-  `service` generator now writes a command per transition that derives one (`POST
-  <collection>/{id}/<transition>`) and a shell per declared command and query, at its binding or
-  derived path, and enforces ADR-0066's checks in order, in one transaction: the row (404), the
-  permission point (403 `forbidden`), the state (409 `invalid_transition`), the hand-written body,
-  the guarded update (409 `invalid_transition` or `transition_condition_failed`) and the event hook.
-  The generic update answers a changed lifecycle field 409 `state_managed`. What an app writes is
-  passed to `create<Pkg>Service(deps)` through generated interfaces: `<Pkg>Policy`, `<Pkg>Bodies`
-  (a command returns the move to make or `"none"`, and `ctx.refuse` answers a declared error),
-  optional `<Pkg>Hooks` on the derived writes and `<Pkg>Events` told about every write. Any of
-  them may refuse, which rolls the write back. The actor is an app-defined type parameter, passed
-  as `opts.actor` and resolved by the Fastify transport's `getActor(request)`. Three settings now
-  act on the generated side: `rules.lifecycle.create` (`initial` fills an omitted state and refuses
-  another; `any` accepts any), `rules.lifecycle.commands` (which transitions get a command) and
-  `rules.permissions.names: require` (generation refuses a point with no `@permission`, naming the
-  derived one). A transport refuses two routes on one method and path. New shared API tests,
-  `fixtures/api-contract-conformance/rules/`, cover 403, the three 409 codes, a declared error, a
-  derived command, a declared command and query, a public operation and a hook's and the event
-  hook's refusal rolling back, with three settings variants; the TypeScript lane runs them in both
-  layouts, and the service compile gate builds the model in every dialect. `ServiceDeps`, the
-  service interface and the factory take the actor type `A` (default `unknown`), so existing calls
-  compile unchanged. `@metaobjectsdev/runtime-ts/service` gains the helpers they call
-  (`checkPermission`, `checkState`, `makeTransition`, `checkStateManaged`, `checkCreateState`,
-  `emitWrite`, `handlerContext`) and their types.
-- **The install-size budget rises to 51.7 MB, by ruling.** Installing `@metaobjectsdev/cli` now
-  measures 51.5 MB against a 51.0 MB budget. The growth since #622 (the service generator and the
-  1.3.0 codegen and runtime work) was measured late because hosted CI does not run `ts-slow`.
-  Declaration maps stay, so go-to-definition still reaches the shipped source.
-  `scripts/check-install-size.mjs` now accepts a raise only when the newest `history` entry in
-  `scripts/install-size-budget.json` records it with its reason and ruling. It also reads
-  `origin/main` when a checkout has no local `main`; before this, such a checkout skipped the
-  never-rises rule entirely.
-- **codegen-ts: the service layer, part 1 (ADR-0067 layers 4 and 5).** Two new generators, neither
-  scaffolded. `service` (the new `service` layer label, shared by every port's catalog) writes one
-  module per metadata package: a function per derived list, get, create, update and delete of each
-  concrete, table-backed, single-key entity, every write in one transaction (a savepoint inside a
-  caller's `opts.tx`) that loads the row under a row lock and then validates and stamps the input
-  with the declared write rules (ADR-0045), and `create<Pkg>Service(deps)`. `service-routes` writes
-  the thin Fastify transport over it, one plugin per package. A new api-contract lane runs the
-  shared corpus against the service behind its transport, in both layouts, and passes as the flat
-  routes do; a compile gate builds the tier in every dialect. `@metaobjectsdev/runtime-ts` gains
-  the `./service` and `./service/fastify` entries they import, and `meta eject` copies them.
-  Write-through, TPH, many-to-many, projections and reports stay on the flat generators for now:
-  [docs/features/business-rules.md](docs/features/business-rules.md#the-service-layer-typescript).
-- **runtime-ts: a list with no `limit` answers 50 rows (breaking).** A generated entity or
-  projection list in a project that sets no `api.pagination` returned every matching row when the
-  request carried no `limit`; it now answers the first 50, the default of every port. An explicit
-  `limit` is still served as asked (no maximum without the setting), and a project that sets
-  `api.pagination` is unchanged. The OpenAPI document states the default, the `meta verify`
-  advisory `unbounded-list-pages` is retired, and the shared `list-query/default-page-of-fifty`
-  scenario pins it over a 60-row seed. Check any client that reads a whole list without a `limit`:
-  [docs/features/migrations/default-list-page-of-fifty.md](docs/features/migrations/default-list-page-of-fifty.md).
-- **codegen-ts: the trace helper's call loop is written into the project, and
-  `@metaobjectsdev/ai-runtime` is no longer published.** The `trace-helper` generator now writes
-  `llm-call.ts` (the `LlmClient` seam and `runLlmCall`) beside the `<Entity>.trace.ts` modules,
-  and a `call<Entity>` imports it from there, so generated trace code depends only on
-  `runtime-ts`, `render` and `metadata`. `ai-runtime` is `private` and leaves the publish set,
-  which is 13 packages; 1.2.3 stays on npm. Regenerate and drop the dependency:
-  [docs/features/migrations/ai-runtime-unpublished.md](docs/features/migrations/ai-runtime-unpublished.md)
-  (ADR-0024 Amendment 2).
-- **codegen-ts: a trace helper whose response value object has a required field compiles.** It
-  cast the extracted record straight to the value object's interface, which `strict` TypeScript
-  refuses; it now casts through `unknown`, after checking that no required field was lost.
-- **react: `<ImageUpload>` moves to `@metaobjectsdev/react/image-upload`, and `react-easy-crop`
-  becomes an optional peer (breaking).** `ImageUpload` and `cropToBlob` leave the package root
-  for the new subpath, and the generated form imports them from there, so a project with no
-  `view.image` field no longer installs the crop library at all. A project with one adds
-  `react-easy-crop` (`>=6.2.3 <7.0.0`) to its dependencies. The adapter provider stays on the
-  root. Regenerate, and move any hand-written import:
-  [docs/features/migrations/react-image-upload-subpath.md](docs/features/migrations/react-image-upload-subpath.md).
-- **The empty `@metaobjectsdev/forge` package is removed.** It was private, exported nothing and
-  had no importer. The forge vocabulary (`decision`, `principle`, `convention`, `glossary`,
-  `failure` and the `@forge*` attributes) is unchanged: `@metaobjectsdev/sdk` ships it as
-  `forgeTypesProvider`, and `FORGE-METADATA.md` now says so. The "The TypeScript forge provider"
-  section of `docs/features/extending-with-providers.md` is removed; that doc no longer names it.
-- **cli: `meta schema` prints the expected schema, read-only.** `meta schema --dialect
-  postgres|sqlite|d1` prints the `CREATE` statements `meta migrate` would write for an empty
-  database, views included; `--as json` prints the neutral JSON document instead, the format
-  `meta migrate` commits as its snapshot, now described in `docs/features/schema-snapshot-format.md`.
-  It builds the schema the way `meta migrate` does (conventions, `migrate.scope`, the dependency
-  exclusion) and reads no database and no snapshot, so a native migration tool can start from it.
-  The dialect defaults to `migrate.dialect`, then to the `dialect` in `metaobjects.config.ts`.
-- **Java: a standalone `{{! comment }}` line leaves no blank line.** mustache.java kept the line break
-  after a standalone comment tag, so a Java render had one extra blank line where TypeScript, C# and
-  Python had none. `Renderer` now strips standalone comment lines before mustache.java parses them. A
-  template with such a line renders differently in Java, so a prompt body with one changes bytes (and
-  its prompt-cache prefix) on upgrade. The `render-standalone-*` fixtures pin the whitespace rules.
-- **Python: the entity model generator writes through the code writer (ADR-0063).** The model
-  modules (`<Name>.py` with `<Name>Create` and `<Name>Patch`), the shared `enums.py` and the
-  `_duration_wire.py` banner are built on a `PyWriter`, and `ruff` no longer runs over them, so the
-  bytes no longer depend on whether `ruff` is installed. Over 1,561 model modules generated from the
-  repository's fixtures, 1,146 are byte-identical, and the other 415 match once both versions are
-  put through the same `ruff` import sort and format. What moves: the standard-library and
-  third-party imports share one section (no blank line between `import datetime` and
-  `from pydantic import ...`, the writer's import order); a `Field(...)` too long for its line puts
-  one keyword per line; and a `field.duration` annotation too long for its line breaks inside
-  `Annotated[...]`. `PyWriter.gap()` asked for before the first body line now gives the two blank
-  lines PEP 8 sets after the imports and before a top-level class (a new `py-gap-after-imports`
-  writer-conformance case). For subclasses of `EntityModelGenerator` (not a stability contract,
-  ADR-0063 item 7): `_emit_field_lines`, `_emit_create_lines` and `_emit_patch_lines` return writer
-  pieces without indentation (`"name: int | None = None"`) instead of indented strings,
-  `_emit_cross_field_rules` returns a step that writes the method onto the writer (or `None`) instead
-  of lines, a new `_write_model` writes one class, and `render_entity_model` returns the finished
-  module rather than text for `ruff` to tidy.
-- **Python: `@union` and `@grain` projections are checked at load.** A union member whose fields
-  differ in name, subtype, array-ness, `@column` or enum shape, a member that is the projection
-  itself or declares its own `@union`, `@unionAll` without `@union`, a `@grain` that does not name a
-  base-entity `field.object` jsonb array with `@objectRef`, an aggregate in a `@grain` view, and a
-  malformed `@grainOrdinal` are now `ERR_BAD_ATTR_VALUE`, as in TypeScript and C#. Python passes the
-  `error-projection-union-shape` and `error-projection-grain-not-object-array` fixtures.
-- **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
-  when the project keeps a hash manifest. It now does the same on the path with no manifest (output
-  written outside the project, or a program that runs the generators with no state directory), which
-  reports the file `unchanged` instead of `written`. `dotnet meta eject --force` compares each copy
-  (the generator, its emitters and the helper runtime) before writing it and reports one that already
-  matches the reference as `[unchanged]`. The gen fingerprint is rewritten only when it changes.
-- **C#: the routes, expression-indexes, report-export, requirement-tests, shared-model and api-docs
-  generators are built from overridable pieces (ADR-0063 item 7).** The routes generator works out
-  what a file serves once (`PlanStandardRoutes`, `PlanTphRoutes`) and writes it from one
-  `protected virtual` method per piece: the file header, the list, item, create, update and delete
-  routes, the M:N traversals, the TPH polymorphic list and item routes, the sort dispatch and the
-  helper members. Its `Append*` helpers are renamed `Write*` and are `protected virtual`; its other
-  helpers and records are `protected`. The other generators follow the same rule, and `ApiDocsGenerator`
-  is no longer sealed. A subclass overrides the piece it wants and keeps the rest. Output is
-  byte-identical. These methods are not a stability contract.
-- **Java and Kotlin: template and documentation output is recorded in the hash manifest.** The
-  `template` and `mustache` generators, the api, HTML, JSON and PlantUML documentation pages and the
-  `META-INF/services` registration wrote through a byte compare only, so a hand edit to one of them
-  was overwritten without the refusal every other generated file gets. They now go through
-  `GeneratedFileWriter.writeUnmarked`: each file is recorded under `.metaobjects/.gen-state/.hashes/`,
-  unchanged bytes are not rewritten, and a hand edit is refused by name under `handEdits: keep`. An
-  existing file at one of these paths that the manifest has no record of is taken as generated
-  output on the first run (it can carry no `GENERATED` marker), so upgrading refuses nothing. The
-  orphan sweep and `metaobjects:verify` now see these files too: one a template stops emitting is
-  deleted when untouched, as other generated files are. The documentation generators also no longer
-  create an empty file before writing, so `metaobjects:verify`'s in-memory render leaves nothing on
-  disk.
-- **Java and Kotlin: a gate that every generator writes through `GeneratedFileWriter`.**
-  `GeneratorWritePathTest` runs every registered Java and Kotlin generator over the shared fitness
-  corpus and fails when a file is left on disk that the writer did not write, or when a second run
-  changes a file's bytes or modification time, so a new generator cannot skip the hash manifest or
-  the unchanged-bytes check.
-- **Java and Kotlin: `mvn metaobjects:eject -Dforce=true` no longer rewrites an identical copy.** An
-  owned generator, template, support or runtime file, or the `codegen/pom.xml`, that already holds
-  exactly the reference content is left alone and reported as identical, with or without `force`.
-  The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
-- **C#: a `contract-types` generator writes each entity's create and update records (ADR-0067 layer 1).**
-  Opt-in, beside `entity`: add `new ContractTypesGenerator()` to `codegen/Generators.cs`. For each
-  writable entity it writes `<Entity>Contracts.g.cs` with `<Entity>Create` and `<Entity>Update`,
-  `sealed record`s carrying the entity's validation attributes and wire converters. Neither carries
-  what the server owns: a generated key, an `@autoSet` stamp, a `readOnly` or derived field, a TPH
-  discriminator. A required member with no `@default` is a `required` member of the create record, so
-  a body that omits it does not bind. A `writeOnce` field is on the create record and off the update
-  record, since it is frozen after create. Every update member is optional; `<Entity>Update.From` binds a
-  body and records which keys it carried, so `Has` tells an omitted member (untouched) from an
-  explicit null (cleared), and validation refuses null on a required member. The lifecycle field
-  stays on both, so the service shell can check it and refuse a change with `409 state_managed`. The
-  validation and converter attributes moved out of `EntityGenerator` into `ContractMembers`, which
-  eject hands over with either generator; the entity's output is unchanged. The shared generator
-  manifest gains the `contract-types` entry (C# only for now).
-- **C#: a `rules-names` generator writes the business-rules names as constants (ADR-0067 layer 0).**
-  It is opt-in, like any generator: add `new RulesNamesGenerator()` to `codegen/Generators.cs`. For
-  each entity with a lifecycle it writes `<Entity>Rules.g.cs`, with each lifecycle's states, initial
-  and terminal states, transitions, and the permission each derived command asks for. For each
-  `api.operational` it writes `<Api>Operations.g.cs`, with each operation's name, permission and
-  `@errors` codes. It also writes `RuleErrorCodes.g.cs` once, with the shell's own codes. Permission
-  names are derived the way `verify` derives them, and `rules.lifecycle.commands` decides which
-  transitions get one. A model with no rules vocabulary gets no file. It is a layer generator, so the
-  flat generators' output is unchanged and the codegen-noop rules corpus still holds them. The shared
-  generator manifest gains the `rules-names` entry (C# only for now).
-- **C#: the codegen project sets every `GenConfig` option.** `dotnet meta init` now writes a
-  `Generators.Configure` method beside the generator list, and `codegen/Program.cs` passes it to
-  `CodegenCli.Run`. It receives the config a run builds from its flags and `.metaobjects/config.json`
-  and returns the one the generators see. That makes the options no flag or config key sets
-  reachable on the normal path: `ContextTypeName`, `PropertyNaming`, `ProvidedEnumNamespace`,
-  `PackageNamespaces`, `TypeOverrides`, `Convention`, `UnmappedStrategy` and the rest. `gen` and
-  `verify --codegen` both apply it. An existing codegen project keeps working unchanged; to use it,
-  add the method and pass `Generators.Configure` as the third argument in `Program.cs`.
-- **C#: an unknown top-level key in `.metaobjects/config.json` warns.** It was ignored without a word,
-  so a misspelt key (`scopes` for `scope`) did nothing. It is still ignored, and nothing fails,
-  because a newer MetaObjects may have written it, but each one is now named once on standard error
-  with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
-  `naming`, `wire` and the rest) is refused as before.
-- **sdk: the static agent files, built once for every port (ADR-0033 Amendment 1).** The
-  assembler now also runs at build time, once per stack a port's own command serves: each server
-  language alone and Java with Kotlin, each with no client, React, React with TanStack or
-  Angular. The result is committed at `agent-context-shipped/` (a manifest plus each distinct file
-  once, by content hash), for each port's package to embed and its `agent-docs` command to copy,
-  so a non-TypeScript project gets its agent files with no Node. `agent-context-shipped/README.md`
-  is the contract; `buildShippedAgentContext()` and `materializeShippedStack()` are exported, and
-  `shipped.test.ts` fails when the tree is stale or a stack differs from what `meta agent-docs`
-  writes. The ports' own commands land in their own rows; until then they still redirect.
-- **sdk, cli: Rust is an agent-context server language.** `--server rust` (alias `rs`) is
-  accepted, and a `Cargo.toml` at the project root is detected as Rust. A Rust project's
-  always-on file gives the `cargo meta gen` loop and the `cargo meta verify` step, and a `rust`
-  case joins `fixtures/agent-context-conformance`. Libraries list Rust among their ports, checked
-  against the copy the Rust crate embeds.
-- **codegen-ts: the rules names layer (ADR-0067 layer 0).** A new generator, `rules-names`
-  (`rulesNamesFile()`, ejectable), writes one `rules.names.ts` per metadata package that declares
-  a lifecycle or an operation: each lifecycle's states, initial and terminal states and
-  transitions, the commands derived from unclaimed transitions, the declared operations, every
-  permission the package asks about and the business errors its commands declare, as `as const`
-  values with literal-union types. The derivations move into `@metaobjectsdev/metadata`
-  (`derivedCommandsOf`, `operationPermission`, `commandPermission`, `claimedTransitions`, ...), and
-  `meta verify`'s rules gate now calls the same functions, so a constant and a verify message
-  cannot disagree. The loaded root carries the `rules` settings (`rulesSettings`). C# ships its own
-  `rules-names`; the other ports add theirs with their rules-layer work. No existing generator's output
-  moves (`fixtures/codegen-noop/rules`).
-- **codegen-ts: the contract types layer (ADR-0067 layer 1).** A new generator, `contract-types`
-  (`contractTypes()`, ejectable), writes the shapes a caller and a service exchange with no
-  persistence mapping: `<Entity>.contract.ts` (the read schema and type, the create and update
-  schemas, the typed create and patch), `<Projection>.contract.ts` (the read shape), the value
-  modules they reach, `<pkg path>/operations.contract.ts` (each declared operation's input, output
-  and errors) and `errors.contract.ts` (the wire codes, their statuses and the error bodies). Each
-  module imports `zod` only. The field schemas are the entity generator's own renderers, and an
-  entity's contract read type is held equal to the entity file's on every dialect. C# writes the create and
-  update records with its own `contract-types`. No existing generator's output moves.
-- **runtime-ts: the guarded update (ADR-0066 §6 step 5), and the shared scenario that holds every
-  store driver to it.** `ObjectManager.guardedUpdate(entity, id, { field, from, to, condition? })`
-  makes a lifecycle transition's write in one statement — `UPDATE … SET <state> = :to WHERE <key>
-  = :id AND <state> IN (:from) [AND <condition>]`, TPH-scoped — and answers the row, or `null`
-  when the guard matched nothing. The `@condition` (attr.expression's CHECK subset) compiles to
-  the driver contract, which gains three `WhereClause` kinds: `compare` (two operands, each a
-  column, a literal or a `coalesce`), `nullTest` over any operand, and `not`. A driver an adopter
-  wrote must handle them; the bundled Kysely, Drizzle and in-memory drivers do, the in-memory one
-  with SQL's three-valued logic. Guard symbols must be members of the state enum, and each symbol
-  and condition literal is stored in its column's form (an int-backed enum as its integer). The
-  persistence corpus gains `op: guardedUpdate` and `queries/guarded-update.yaml`; TypeScript runs
-  it on Postgres and MySQL, and C#, Java, Kotlin and Python defer it by name until each builds its
-  own.
-- **The REST standard's list handling is part of the cross-port contract.** `?search`,
-  `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
-  filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and
-  `constraint_violation` responses were TypeScript-only extensions. `docs/features/api-contract.md`
-  now states them as contract, with TypeScript's wire names unchanged. Two corpora hold the ports
-  to it:
-  - a new shared corpus, `fixtures/list-query-conformance/`: 95 parse cases, each a query string
-    in and either a filter tree in neutral values or the exact 400 body out, run with no server
-    and no database;
-  - a 20-scenario `list-query/` sub-corpus of `api-contract-conformance/`, over a 60-row seed, in
-    the generated lane.
-
-  TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
-  decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
-  scenario can now send a body that is not JSON with `rawBody`.
-- **openapi: the document describes `?search`, `filter[or]` and `filter[and]`.** A list whose row
-  has a text field the search matches takes a `search` parameter naming those fields, and a list
-  with any filter takes the two combinators as `deepObject` parameters whose description gives the
-  grammar and the nesting cap. Item `GET`, `PATCH`, `PUT` and `DELETE` now list the `400 invalid_id` answer the routes
-  already gave. A project that wires `openApiFile()` sees `openapi.json` change on the next
-  `meta gen`; the contract corpus goldens move with it. A new contract case, `list-query`, documents
-  the list-query model, and the list-query lane now holds every exchange to it as the other
-  generated lanes do; the check no longer exempts `search` and the combinators.
-- **Java: the Spring controller generator writes through the code writer (ADR-0063).**
-  `SpringControllerGenerator` writes through `SpringJavaWriter`, a `JavaWriter` that adds the two
-  layouts Spring source uses and a block does not: a continuation line (two indents deeper) and an
-  indented `case` body. Every member of the generated controller comes from its own protected
-  `write*` method, so an owned copy changes one handler by overriding one method; the `append*`
-  helpers that took a `StringBuilder` are gone. The shared validator members and the decimal and
-  duration import lists in `SpringGeneratorSupport` are written through the writer too
-  (`writeCrossFieldValidationMembers`; `decimalAnnotationImports` and `durationAnnotationImports`
-  now return qualified names). A generated controller changes in two layout details only, checked
-  on 1,512 controllers from every fixture model: its imports are sorted, and the blank line after
-  `public class ... {` is gone.
-
-  The DTO, value-object and shared-enum generators follow (`SpringDtoGenerator`,
-  `SpringValueObjectGenerator`, `Fr019SharedEnum`). A record, patch class, stamping helper and
-  enum declaration each come from a protected method, and the string-returning helpers they used
-  are replaced by writer ones: `SpringTypeMapper.enumDeclaration` by `writeEnumDeclaration`,
-  `SpringRecordBuilder.members` by `writeMembers` (with `applies` to ask first), and an owned DTO
-  generator customizes every file it writes by overriding `newWriter`. Their output changes in
-  layout only, checked on every fixture model in two wire and API configurations: sorted imports
-  with no blank between groups, no blank line after `public final class ...Patch {` or a doubled
-  one in a patch with no settable fields, no trailing indent on the blank lines of a nested enum,
-  and no leading blank line in a file with no package.
-- **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
-  `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
-  port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle
-  and Hono mounts and the `ObjectManager` Fastify mount all use it. The `ObjectManager` mount
-  (`@metaobjectsdev/runtime-ts/fastify`) takes two new options:
-  - `filterAllowlist`: it then serves `filter[...]`, `filter[or]` / `filter[and]` and `?search`
-    and refuses what the Drizzle mount refuses, with the same bodies;
-  - `pagination`: the `api.pagination` page size.
-
-  The names, repository and report-export generators follow (`SpringNamesGenerator`,
-  `SpringRepositoryGenerator`, `SpringReportExportGenerator`), each finder, constant block and
-  writer section from its own protected method; the one layout change in their output is that
-  the blank line after the class or interface opener is gone. So does the output-parser generator
-  (`SpringOutputParserGenerator`), whose `StringBuilder` seams (`emitMapperMethods`, `emitMapper`,
-  `appendMapperHelpers`) now take the writer, and whose parsers gain a blank line after the
-  leading `// GENERATED` comment besides sorted imports. The filter-allowlist, response-format and
-  render-helper generators follow: the allowlist output is unchanged, and the other two gain the
-  same blank after the leading comment, sorted imports and no blank after the class opener.
-  `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it. The LLM-trace
-  helper and the `requirement-tests` generator follow with the same layout changes, and the
-  witness-key collision error now lists its colliding pairs on one line, separated by `; `.
-  In `codegen-base`, the entity extractor (`ExtractorCodeGenerator`, whose `write*` seams now take
-  a `JavaWriter`, and whose `writeHeader` no longer takes the extractor name or writes the class
-  opener) and the generated `ObjectClassBindingProvider` move to the writer too, with sorted imports
-  and no blank after the class opener; the older object code writers take their indentation unit
-  from `WriterOptions` (`JAVA`, and the new two-space `DIRECT`) instead of a typed string. Every
-  Java generator now writes through the code writer, so the layout ratchet's `unconverted` list
-  is empty. `CodeWriter`, `JavaWriter`, `WriterOptions` and `SpringJavaWriter` join the Java
-  engine surface (`eject.engineSurface.java.engine`), so an ejected generator imports them from
-  the package rather than copying them.
-
-  With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
-  `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
-  `fieldNames()`.
-- **codegen-ts: the filter and sort allowlists are available as data.**
-  `filterAllowlistRules(entity)` and `sortAllowlistRules(entity)` return the rules that
-  `<Entity>FilterAllowlist` / `SortAllowlist` are printed from. The generated files are
-  byte-identical.
-
-- **Fixed: the filter nesting cap could not be reached.** `qs`'s default depth of 5 kept the sixth
-  bracket pair as part of the key, so `filter[or][0][or][0][or][0][a][eq]=1` read as a field named
-  `[0][a][eq]` and answered `invalid_filter_field` instead of `filter.nesting_too_deep`. Every
-  TypeScript mount now parses with `parseListQueryString`, whose depth is sized to the cap. As part
-  of the same fix, a combinator branch that names no field (`filter[or][0]=x`) is now
-  `400 invalid_filter_value` with `field: "or"`; before, it was an unknown field named `0`.
-- **Fixed: on SQLite, `like` through the `ObjectManager` was case-insensitive.** The Kysely and
-  Drizzle drivers sent SQLite's native LIKE, which folds ASCII case, against ADR-0049. They now
-  lower `like` to GLOB on SQLite, as the generated routes already did, and to a binary comparison
-  on MySQL.
-- **Fixed: `?search` on an entity with an int-backed enum answered 500 on Postgres.** The search
-  included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
-  column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
-  includes `like`.
-- **Reporting and requirements are vocabulary packs, out of core.** The reporting vocabulary
-  (`object.report`, `dimension.*`, `measure.*` including `measure.derived` and its `@expr`,
-  `segment.filter`, the entity's dimension, measure and segment children and `@segment` on
-  `origin.aggregate` and `origin.first`) is now registered by its own provider,
-  `metaobjects-reporting`. The requirements vocabulary (`requirement.functional`,
-  `requirement.architectural` and the root's `requirement.*` child) is registered by
-  `metaobjects-requirements`. Both are in the default bundle of every port, so a model that loads
-  today loads and generates the same. An embedder can leave either out, and a model that then uses
-  its types gets a loader error naming the unknown type or subtype (new fixtures
-  `error-packs-left-out-*-used`). The `verify` requirements gate reads the nodes the pack
-  registered: with the pack left out, a model with no requirements gets a silent ledger. The core
-  vocabulary pin loses these types and attributes, and the registry manifest changes in one row:
-  the root's `requirement` child rule now states `min: 0, max: null`, as `api` did when the rules
-  pack moved out. A subtype a pack declares with `extendsBase` may now fold a base another provider
-  registered (`object.report` folds `object.base`); those folded attributes stay owned by the base's
-  provider. GOVERNANCE.md now says an attribute promoted from a pack into core keeps its name and
-  meaning.
-- **A template that names a variable the payload lacks fails to render, in every render path.**
-  Mustache and Jinja raise `render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)` for a missing
-  variable or dotted path, where they used to render it empty. A variable that is present and null
-  still renders empty. The Rust `metaobjects-render` crate raises it too, so all six renderers
-  agree. Render fixtures may now carry `expected-error.txt` in place of `expected.txt`.
-- **Business rules: two operations or transitions whose permission names come out equal are
-  refused (rule P3).** A permission name is the declared `@permission`, or else the derived
-  `<package>.<path>`, compared exactly as the policy receives it, so `p::Order.open` and
-  `p.Order.open` are two names. When two permission points resolve to
-  the same name and at least one of the two names is derived, the loader reports
-  `ERR_TRANSITION_NAME_COLLISION` on the later one. Two equal declared names stay legal: that is a
-  shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared}` and
-  `rules-permission-name-package-separator-distinct`. Java now accepts dotted operation names
-  (`Order.open`), as TypeScript, C# and Python already did.
-- **Python: a primitive array persists on SQLite and MySQL.** The `ObjectManagerDb`'s SQLite and
-  MySQL dialects bound no list, so an `isArray` string, number, date, uuid or enum field could not be
-  written there. The column the TypeScript-owned schema gives it (`TEXT` on SQLite, `JSON` on MySQL)
-  now holds a JSON array, an int-backed enum's as its integers (`[5,0]`), and each element reads back
-  through the scalar decode. `roundtrip-int-enum-array` runs on both engines instead of being deferred.
-  A `field.date`, `field.time` or `field.timestamp` array was refused on write on every engine,
-  Postgres included (the list was parsed as one value); it is now parsed element by element.
-- **Python: an unrestricted `routes` is no longer refused for objects it writes no router for.**
-  `metaobjects gen` refused a config that limits `filter-allowlist` (or `entity`) to some packages
-  while `routes` is left unlimited, whenever another package held an abstract or sourceless object,
-  saying `routes` covered it. `routes` writes nothing for those objects, so only the objects it
-  routes count now. A routed object's model still imports the abstract base it `extends`, the value
-  objects its fields reference and its M:N targets, so limiting `entity` away from one of those is
-  still refused. So is the concrete subtype of a routed discriminator base, whose `Create` and
-  `Patch` models the base's router imports.
-- **Python: `metaobjects eject --force` no longer rewrites an identical copy.** It compares each file
-  with the reference before writing, and one that already matches is left alone and reported
-  `unchanged`.
-- **Python: a reverse finder over a flattened value-object member is named by its flat key.** A
-  reference whose `@fields` names a member such as `address.countryId` emitted a method name with a
-  dot in it, which is not Python. It is now `find_plans_by_address_country`, as TypeScript names it,
-  so the generated finder name changes for such a model on upgrade.
-- **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
-  error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
-  project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`
-  would scaffold `RESTART WITH n` and hand out ids live rows hold. The run now fails with
-  `ERR_DESIGN_TIME_REFERENCE_MISSING`, naming the project and the line to add, instead of warning. A
-  run that cannot tell (no snapshot on disk yet) and a project that declares no `@sequenceStart` still
-  get the warning.
-- **C#: the filter allowlist, names, callable, output-prompt, output-parser and extractor generators
-  write through a code writer (ADR-0063).** `MetaObjects.Codegen.Writer.CsWriter` carries the layout
-  (indent, braces, `using` lines, blank lines), and each of those generators is a class built from
-  overridable per-piece methods. The output is unchanged except in one place: a parser generated
-  for a reply declared `@responseFormat: xml` no longer has a blank line right after its opening
-  `{` (the writer drops a blank line after an opener, as it does in every port). A layout check
-  with an allowlist that only shrinks keeps new hand-typed layout out of the generator source.
-  The shared writer-conformance corpus gains six C# cases.
-- **C#: the last six generators write through the code writer (ADR-0063).** The routes generator, the
-  reverse-finder emitter, the expression-indexes, report-export and requirement-tests generators and the
-  render-helper generator no longer type line breaks or indentation, so the layout check's list of
-  unconverted generators is empty. Output is byte-identical on the 737 model fixtures in four layouts,
-  with these exceptions the writer owns: the shared `ReportExportWriter.g.cs` now ends with a newline
-  like every other generated file; a `// ` comment line for an empty statement is written as `//`; and
-  an empty requirement-tests witness interface has its braces on two lines. The routes generator's
-  `AppendOffsetLimit` and `AppendSaveChanges` helpers lose their `indent` argument, and its private
-  helpers take a `CsWriter`. The requirement-tests collision message indents its list by four spaces.
-- **C#: the DbContext generator writes through the code writer (ADR-0063).** `DbContextGenerator`
-  (the context, its `OnModelCreating` and `ConfigureModelNN` chunks, the enum, map and duration helpers
-  and the design-time services file) builds each file on a `CsWriter`. Output is byte-identical for the
-  737 model fixtures in all four layouts. **An owned or subclassed generator needs a small edit.** The
-  hooks `EmitUsings`, `EmitDbSetDeclarations` and `EmitOnModelCreatingBody` take a `CsWriter` in place of the
-  `StringBuilder`, and `EmitUsings` opens the class body with `w.Open("{")`. The hooks that return
-  text now document their lines as unindented; a line that still carries an indent is accepted, since the
-  writer removes the common margin. A `ContextUsings` line is a `using ...;` directive, printed once in the
-  order given. The layout check's allowlist loses the DbContext generator's entry.
-- **C#: the entity generator writes through the code writer (ADR-0063).** `EntityGenerator` (mapped
-  entities, TPH subtypes, abstract shapes, value objects, shared enums and the decimal, duration and
-  net-validation helper files) builds each file on a `CsWriter`. Output is unchanged for the 737 model
-  fixtures in all four layouts except three layout details the writer owns: a class with no members
-  has no blank line between its braces, a blank line before a closing `}` is dropped, and a `///`
-  doc line has no trailing space. **An owned or subclassed generator needs a small edit.** The hooks
-  `EmitClassHeader`, `EmitClassAttributes`, `EmitClassDeclarationLine`, `EmitPropertyAttributes`,
-  `EmitFileUsings` and `EmitClassBodyTrailer` take a `CsWriter` in place of the `StringBuilder`, and write
-  lines with `w.Line(...)` or `w.Using(...)`, with no typed indentation. The base class still adds
-  `IValidatableObject` to the declaration line an override wrote. The property emitters are renamed
-  `WriteScalarProperty`, `WriteEnumProperty`, `WriteObjectNavProperty`, `WriteMapProperty` and the
-  `WriteTphSubtype*Property` pair, and the validator-attribute writers `Write*ValidatorAttributes`.
-  `ValueObjectMemberAttributes` returns lines with no indent (it used to return four spaces of it).
-  `XmlDocBuilder.WriteTo(writer, node)` is the writer form of `AppendTo`. The public statics
-  `EntityGenerator.M2mNavProperty` and `ExtractDelegateEmitter.DelegatingMembers`, which returned a
-  string, are now `WriteM2mNavProperty(CsWriter, ...)` and `WriteDelegatingMembers(CsWriter, ...)`,
-  returning void. `NamesGenerator.Member` and `MemberGroups` are now protected. A flat-layout shared-enum
-  file that holds two or more namespaces no longer ends with an extra blank line. The layout check no
-  longer lists `EntityGenerator.cs` as unconverted.
-- **`migrate.foreignKeyTargets: "warn"` turns the refusal of a foreign key onto a non-unique target into
-  a report.** For a database whose unique index on the target is hand-made and not declared in the
-  metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See
-  [Migrations and drift](docs/features/migrations-and-drift.md).
-- **Rust (ADR-0065 Amendment 3).** A project now chooses its generators in `metaobjects.config.json`
-(`{ "generators": [...] }`, written by `cargo meta init`) and no longer needs to eject to drop one;
-`cargo meta gen --list` shows each as configured or not. `cargo meta eject` no longer writes the
-path of the machine the tool was built on into `codegen/Cargo.toml`: the owned crate names the exact
-crates.io release by default, and `--engine <directory | git-url[#rev]>` names a checkout or a git
-revision. The three crates lose `publish = false`, carry their packaging metadata, and the `rust` lane
-runs `cargo publish --dry-run` over all four crates. Nothing is published. The new `metaobjects-render`
-crate carries the Rust prompt render, the reply parser and the output-format fragment. `cargo meta eject --force` leaves a
-copy that already matches the shipped generator untouched. `cargo meta verify` now runs the business-rules
-gate (ADR-0066) too: the same five findings, severities and message text as the other ports, under the
-four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/rules-check-conformance/`.
-
 ## [1.3.0] — unreleased
 
 
@@ -676,6 +170,49 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   `meta verify --db` against a SQLite URL stop with the install command. Postgres, MySQL and D1
   projects install nothing new. With the ORM and the formatter gone as well, installing the CLI is
   about 51 MB.
+- **A list with no `limit` answers 50 rows (TypeScript and C#, breaking).** A generated list route in a
+  project that sets no `api.pagination` used to return every matching row. It now answers the first 50, as
+  every port's standard says. An explicit `limit` is still served as asked, and a project that sets
+  `api.pagination` is unchanged. In C# a `limit` or `offset` that is not a non-negative integer is now
+  `400 pagination.invalid_value`, and `limit=0` is a page of zero rows. Check any client that reads a whole
+  list without a `limit`:
+  [default-list-page-of-fifty](docs/features/migrations/default-list-page-of-fifty.md).
+- **C#: the route helpers are the `MetaObjects.AspNetCore` package.** `MetaObjects.Codegen` and the
+  `dotnet meta` tool no longer carry EF Core or ASP.NET Core, and the helpers (`FilterParser`,
+  `FilterPredicate`, `ValueObjectValidator` and the rest) moved to the new package. Add
+  `<PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" />` to the project that compiles the
+  generated routes; the next `dotnet meta gen` moves the `using` line. Generated list routes also speak the
+  REST standard (`?search`, `filter[or]`, `filter[and]`), answer `400 {"error": "invalid_json"}` for a body
+  that is not JSON and `400 {"error": "invalid_id"}` for a path id the key cannot hold, and an owned copy
+  that sets `routes` and not `filter-allowlist` re-ejects both together.
+- **C#: a missing design-time services line is a generation error.** A project that declares
+  `@sequenceStart`, whose `ModelSnapshot.cs` `dotnet meta gen` can see in another project, and whose
+  migrations project does not carry `[assembly: DesignTimeServicesReference]` now fails with
+  `ERR_DESIGN_TIME_REFERENCE_MISSING`, naming the project and the line to add. It was a warning, and the
+  next `dotnet ef migrations add` would have scaffolded `RESTART WITH n`.
+- **Python: `ObjectManager` is the abstract contract, and the class you constructed is
+  `ObjectManagerDb` (breaking, by hand).** Constructing `ObjectManager(root, driver)` raises a `TypeError`
+  that names the replacement; there is no alias. Find every site with `grep -rn "ObjectManager(" .`:
+  [python-object-manager-split](docs/features/migrations/python-object-manager-split.md).
+- **`@metaobjectsdev/ai-runtime` is no longer published.** The `trace-helper` generator writes its call loop
+  (`llm-call.ts`) into the project, so remove the dependency and regenerate:
+  [ai-runtime-unpublished](docs/features/migrations/ai-runtime-unpublished.md).
+- **react: `<ImageUpload>` is imported from `@metaobjectsdev/react/image-upload`, and `react-easy-crop` is
+  an optional peer.** Only a project that uses the component installs it:
+  [react-image-upload-subpath](docs/features/migrations/react-image-upload-subpath.md).
+- **The empty `@metaobjectsdev/forge` package is removed.** It exported nothing and had no importer; the
+  forge vocabulary is unchanged and ships in `@metaobjectsdev/sdk` as `forgeTypesProvider`.
+- **Two business-rules refusals are new at load.** Two operations or transitions whose permission names
+  come out equal, where at least one is derived, are `ERR_TRANSITION_NAME_COLLISION` (rule P3). In Python, a
+  `@union` or `@grain` projection with a malformed member or grain is now `ERR_BAD_ATTR_VALUE`, as in
+  TypeScript and C#.
+- **Java and Kotlin: template and documentation output is in the hash manifest.** The `template` and
+  `mustache` generators and the documentation pages are recorded under `.metaobjects/.gen-state/.hashes/`,
+  and a hand edit to one is refused by name under `handEdits: keep`. An existing file the manifest has no
+  record of is taken as generated on the first run, so upgrading refuses nothing. Commit the hashes.
+- **Rust: the crates are numbered 1.3.0 and join the release path.** The workspace version is the shared
+  line, and `cargo meta eject` names the exact crates.io release in the owned `codegen/Cargo.toml` instead of
+  the path of the machine that built the tool. Re-eject an owned crate to pick that up.
 - **`metamodelVersion` is `1.3`.** Upgrade every port together.
 
 ### Security
@@ -794,6 +331,460 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Added
 
+- **cli: `meta init --with-services` and the `unenforced-lifecycle` advisory (ADR-0067 §6, §8).**
+  `init` still writes an empty generator list; `--with-services` writes the recommended service list
+  instead (`entityFile()`, `rulesNamesFile()`, `contractTypes()`, `serviceFile()`,
+  `serviceRoutesFile()`, with `serviceFile({ interactiveTransactions: false })` on `--d1`) and names
+  the packages their output needs. `meta gen --list` names the same list under the catalog.
+  `meta verify` now advises, without changing the exit code, when a concrete entity with a source
+  declares a lifecycle and no listed service generator covers it: the flat routes do not enforce
+  it.
+- **codegen-ts: a generator declares what it provides in one place.** `provides` on a `Generator`
+  (`entityModule`, `queries`, `names`, `reportExport`, `routes` with its framework, `expose` and
+  `filter`, `uiTier`, `modelDocs`, `apiDocs`) replaces the nine single-purpose markers
+  (`emitsEntityModule`, `emitsQueries`, `emitsNames`, `emitsReportExport`, `emitsHonoRoutes`,
+  `mountsRoutes`, `emitsUiTier`, `emitsModelDocs`, `emitsApiDocs`). The runner, the docs
+  generators and the gates read it through one function, `providesOf`, so a generator of your own
+  under any name is seen as the stock one is. The old markers are deprecated and still read, so an
+  owned copy that sets them keeps working; a re-ejected copy declares `provides`.
+- **C#: the route helpers are their own package, `MetaObjects.AspNetCore`, and `MetaObjects.Codegen`
+  and the `dotnet meta` tool no longer carry EF Core.** `FilterParser`, `FilterParseResult`,
+  `FilterPredicate`, `EfCoreFilterDispatch`, `ValueObjectValidator`, `ConstraintErrors`,
+  `ValidationIssues`, `UnknownFieldCheck`, `Iso8601TimestampConverter`, `DecimalWire`,
+  `DurationWire`, `DecimalRangeEndpointFilter`, `ReportExportHttp` and `SerializerKeys` moved from
+  `MetaObjects.Codegen` (namespace `MetaObjects.Codegen.Runtime`) to the new `MetaObjects.AspNetCore`
+  package (namespace `MetaObjects.AspNetCore`), which depends on ASP.NET Core and EF Core and on no
+  MetaObjects package. `MetaObjects.Codegen` drops its EF Core and ASP.NET Core references: the tool
+  installs about 42% smaller (14 DLLs to 6), and the first restore of a `codegen/` project no longer
+  pulls EF Core's 11 packages. `ExtractObject` and `M2MResolver` stay in `MetaObjects.Codegen` under
+  `MetaObjects.Codegen.Runtime`. The packaged routes generator now writes `using MetaObjects.AspNetCore;`,
+  so the next `dotnet meta gen` moves that line in every generated routes file. `dotnet meta gen` and
+  `dotnet meta verify` warn when a generated file imports `MetaObjects.AspNetCore` and the project
+  that compiles it (the one `.csproj` in its directory or above, a project it references, or a
+  `Directory.Build.props`/`.targets` above them) does not reference the package, and when generated
+  output still imports the helpers from `MetaObjects.Codegen.Runtime`. Both warnings are advisory.
+  `dotnet meta eject routes` still copies the helpers into `codegen/runtime/` as `Codegen.Runtime`.
+  Generated-output change — regenerate to pick it up; three-way merge preserves hand edits.
+
+  Upgrading: add `<PackageReference Include="MetaObjects.AspNetCore" Version="1.3.0" />` to the
+  app that compiles the generated routes, run `dotnet meta gen`, and change any hand-written
+  `using MetaObjects.Codegen.Runtime;` that names one of the helpers (a host registering
+  `Iso8601TimestampConverter`, say) to `using MetaObjects.AspNetCore;`. A routes generator you
+  ejected before the helpers were handed over writes `using MetaObjects.Codegen.Runtime;`: set its
+  `HelperRuntimeNamespace` constant to `"MetaObjects.AspNetCore"`, or re-eject with
+  `dotnet meta eject routes --force`. An app that only uses the ejected helpers in `codegen/runtime/`
+  needs nothing.
+- **C#: the generated list routes speak the REST standard.** Every entity, projection, report and
+  single-table-hierarchy list route now reads its query through `ListQueryParser`: `?search=`
+  (case-insensitive, over the filterable text fields), `filter[or][i]` / `filter[and][i]` groups
+  five levels deep, and the named refusals `filter.bare_field` (a `?name=` outside `filter[...]`,
+  which used to answer every row), `filter.leading_wildcard_disallowed`, `filter.nesting_too_deep`
+  and `invalid_filter_value` for a value of the wrong format. A refusal's body carries the shared
+  details (`field`, `expected`, `allowed`), so an `invalid_sort` lists the sortable fields. A body
+  that is not JSON is now `400 {"error": "invalid_json"}` (it was the `validation` body), and a
+  path id the key cannot hold is `400 {"error": "invalid_id"}` on every item route (it was an
+  empty 400 from ASP.NET Core's binding). The sortable set is unchanged. The routes read the new
+  `RouteErrors` helper in `MetaObjects.AspNetCore`, and `dotnet meta eject routes` copies it with
+  the others. The filter allowlist now carries the parser's rule table (`Rules`, `Sort`,
+  `FieldNames`), typed with the helpers, so `routes` and `filter-allowlist` are ejected together:
+  naming either owns both, and `eject --undo` gives both back. The C# generated lane now runs the whole `list-query/` sub-corpus, closing the C#
+  routes' `KNOWN_GAPS.md` G2. Generated-output change — regenerate to pick it up; three-way merge
+  preserves hand edits.
+
+  Upgrading: a project that owns `routes` and not `filter-allowlist` runs
+  `dotnet meta eject filter-allowlist` (or `eject routes --force`), so both read the owned helpers.
+  A client that sent a bare `?field=value` and read every row back now gets a 400;
+  send `filter[field][eq]=value`. A client that matched the `validation` body of a malformed JSON
+  request should match `invalid_json`.
+  The flat-filter path (`FilterParser`, `FilterPredicate`, `FilterParseResult`,
+  `EfCoreFilterDispatch.ApplyFilter` and `Validate<T>(FilterParseResult)`) is now `[Obsolete]` and will be
+  removed in 2.0; a hand-written endpoint moves to `ListQueryParser.Parse`, `EfCoreFilterDispatch.Apply`
+  and `Validate<T>(ListQuery)`.
+- **The docs pages and the docs site share one row shape.** `fixtures/docs-page-conformance/`
+  now also pins, under `expected/rows/`, the rows each page is built from: the requirement
+  ledger rows and the model-only schema rows. The schema rows are a subset of `meta schema
+  --as json`, and the requirement rows are what the explorer graph already holds, so the site
+  reuses them instead of pinning a second shape. codegen-ts exports `schemaRows()` and
+  `schemaInputFromRows()`. No page changes a byte.
+- **Every top-level node gets an explorer page.** The site wrote pages only for objects and
+  templates, so a requirement claiming a node of another type, such as an application's
+  `capability.module`, failed the site's own link check. Every other top-level type now gets a
+  generic page (`explorer-node.html.mustache`, which `meta eject docs-site` copies): its
+  attributes, linked where they name a node, its members, the requirements claiming it, what
+  references it and what was generated from it. Package pages and search list these nodes too.
+- **The generator-authoring surface is named and promised.** Each port names the modules you write
+  your own generator against, in four roles: the generator interface, the model walk, the code
+  writer and the naming helpers. They are listed in a new `surface` block of
+  `fixtures/generator-registry-conformance/registry.json`. That surface is versioned with the port's
+  codegen package under the compatibility policy; the rest of the engine is internal. A generator
+  will declare what it provides in one place instead of flags named after packaged generators, and
+  reference templates that `meta eject` copies stay your own code, never surface. Decision record:
+  ADR-0034 Amendment 12, ADR-0035 Amendment 7, ADR-0065 Amendment 5. TypeScript pins the
+  surface's exported names in `codegen-ts/test/authoring-surface.snapshot.json`, and the engine
+  entry (`@metaobjectsdev/codegen-ts/engine`) now also exports `objectRefTarget`. The other ports'
+  snapshot tests follow.
+- **Independent packs: the `packs/` directory, its gates and its lane (ADR-0069).** A capability
+  that is not core vocabulary can now be built in `packs/<name>/` with its own version, changelog
+  and port list, outside the default bundle and outside `metamodelVersion`. The packs that
+  exist are listed in `packs/README.md`, and nothing published changes. `scripts/check-pack-boundary.ts` fails a change that makes core
+  depend on a pack, puts a pack in the bundle, or lets core's release tooling see `packs/`.
+  `scripts/check-pack-manifests.ts` holds each `pack.json` to its ports' native manifests.
+  `scripts/pack-vocabulary.ts` pins the rows a pack adds and fails one that changes the bundle's,
+  and `scripts/pack-conformance.ts` runs a pack's load fixtures through the new corpus-root entry
+  point `runCorpus` in `@metaobjectsdev/conformance`. A new `packs` lane in `ci-local.sh` blocks
+  for a pack's own change and reports, without failing, a pack that a core change breaks. The
+  root `build` and `typecheck` scripts now name core's workspace directories instead of
+  `--filter '*'`. The provider contract is now named as covered by core's package version
+  (`docs/compatibility-policy.md`).
+- **metadata: a provider outside core can register vocabulary from a definition file.**
+  `applyProviderDefinition` and its types (`ProviderDefinition`, `TypeDef`, `ChildDef`,
+  `ExtendDef`, `FactoryMap`, `ValidatorMap`) are exported from `@metaobjectsdev/metadata`, with
+  the validation hook's types (`NodeValidator`, `ValidationContext`, `SymbolTable`,
+  `LoaderCode`). `applyProviderDefinition` takes an optional fourth argument, a
+  `"<type>.<subType>"` → validator map, so a type registered from data can carry a check the data
+  cannot express. `referrerPackageFor` (ADR-0059 R3: the package a reference attribute resolves
+  in) is exported too, so a provider's own reference check resolves as the loader's does. The
+  bundled packs already registered this way; the independent packs under `packs/` (ADR-0069) now
+  can too. No vocabulary or `metamodelVersion` change.
+- **Reference sources: name a prompt's reply type that another run generates.** A `sources`
+  entry may carry `"reference": true` (Maven: `<loader><referenceSources>`). Its files load into
+  the same tree, so a prompt's `@responseRef` (and any other reference) resolves against them,
+  and no generator emits a type for a node declared only there. The prompt keeps its parser,
+  output-format fragment and extractor, naming the reply type the other run generates. Before
+  this, a reply type owned by another generator run could not be named at all (the load
+  refused the unresolved `@responseRef`), and merging its files into the prompt's tree generated
+  every reply type a second time. A `template.*` declared only in a reference source is refused
+  (`ERR_REFERENCE_SOURCE_TEMPLATE`). Every port, pinned by `fixtures/reference-source-conformance/`.
+- **Python: `metaobjects agent-docs` writes the shipped agent files itself, with no Node.** It used to
+  print a redirect to `npx meta agent-docs --server python` and exit 1. It now copies
+  `.metaobjects/AGENTS.md` and the `metaobjects-*` skills for the stack (`--server`, `--client`,
+  default `python`; `--out`; `--no-wire-root`) out of a copy of `agent-context-shipped/` that the
+  wheel carries, pins the guide links to the release tag (a prerelease keeps `main`), and matches
+  `npx meta agent-docs` byte for byte for the same stack, including the `-migrate` stack it picks
+  when `.metaobjects/config.json` sets `migrate.dialect`. A re-run writes nothing for an unchanged
+  file, parks fresh text at `<file>.new` beside a hand-edited one, and rewrites the sidecar manifest
+  only when it changed. `--skills-dir` and `--no-skills` remain Node-CLI flags. The `gates` lane
+  fails when the copy drifts (`scripts/sync-python-agent-context.sh` refreshes it).
+- **Python: the `requirements` and `agent-docs` generators.** `metaobjects gen` can now write
+  `requirements.md`, `requirements.toon`, `agent/requirements.md` and the model-only
+  `agent/schema.md` (`agent/ui.md` stays TypeScript-only). They render the shared Mustache
+  templates from the pinned data model, held to `fixtures/docs-page-conformance/`; the templates
+  are bundled in the package (`scripts/sync-doc-templates.sh` copies them, the doc-template drift
+  gate checks the copy) and a same-named template under the project's templates directory
+  overrides a page. Both are ejectable. The Python Mustache engine now treats a string-valued
+  section as the context (`{{#statement}}{{{.}}}{{/statement}}`), as the spec and the TypeScript
+  engine do.
+- **The Rust crates join the release path (ADR-0065 Amendment 3).** The workspace version moves to
+  the shared line (1.3.0), and `scripts/release.mjs` publishes the four crates to crates.io after
+  npm, behind the same confirm, in dependency order, when a file they ship changed since the last
+  `rust-v*` tag (or they never shipped, or `expected-registry.json` moved); `--crates=publish|skip`
+  overrides. Its preflight checks the crates.io token and that the version is free before anything
+  is bumped. `docs/RELEASING.md` names crates.io as the fifth registry. Nothing is published.
+- **Rust generators own their layout, take options and expose their parts (ADR-0063).** A
+  layout ratchet (`tests/layout_ratchet.rs`) parses every generator source with `syn` and fails
+  on a hand-typed line break or indentation run; its allowlist can only shrink, and it starts
+  empty but for six files whose strings are not generated code. Eight `rust` writer-conformance
+  cases pin the dialect (`use_list`, `doc`, `prose`, `doc_break`, `assign`), each a rustfmt fixed
+  point under the generated crates' `rustfmt.toml`. An entry in `metaobjects.config.json`'s
+  `generators` may now be `{"name": ..., "options": {...}}`: `Generator::configure` receives the
+  options, and the shipped generators take none and refuse any key with
+  `ERR_UNKNOWN_GENERATOR_OPTION`, also on a run `--generators` narrows. Each shipped generator
+  has a `*Parts` trait — eleven in all once the layer generators landed (`EntityParts`,
+  `ClientParts`, `CommandsParts`, `RenderHelperParts`, `OutputParserParts`, `OutputPromptParts`,
+  `RulesNamesParts`, `ContractTypesParts`, `RepositoryParts`, `ServiceParts`,
+  `ServiceRoutesParts`) — with one default method per output piece, so an owned
+  generator overrides one piece and keeps the rest. Generated output is byte-identical but for
+  one fix: `assign` now moves an array right-hand side to the next line when that is where
+  rustfmt puts it under those settings.
+- **Rust port: many-to-many relationships are traversed (FR-018).** A many-to-many relationship
+  of a keyed entity gets `<relation>_of` in its store module, the related rows read through the
+  junction in one statement (hetero, directed self-join and `@symmetric` self-join, which keeps a
+  row relating a record to itself). The junction's keys come from the same derivation the loader's
+  pairing rule runs, now a public function of the core crate (`derive_m2m_fields`). The persistence
+  runner runs all 56 scenarios on Postgres, `guarded-update` among them (`meta_store::transition`
+  takes a transition's `@condition` and ANDs it into the same statement), and its ledger is empty.
+- **Rust port's prompt tier: `render-helper`, `output-parser` and `output-prompt`.** Three
+  generators put the `metaobjects-render` crate (render, the strict JSON parse and the tolerant
+  `extract`, the output-format fragment) behind typed functions, held to the render,
+  template-output and extract corpora. They write a crate each beside the model crate:
+  `<package>_prompts` (a typed render function per prompt), `<package>_parsers` (`parse_<prompt>`
+  for a JSON reply, `extract_<prompt>` for any, and the extract schema) and `<package>_formats`
+  (the fragment and its descriptor), for every prompt with a `@responseRef` (ADR-0052). `eject`
+  copies all three, and `gen` checks each body against its payload before it writes a render function.
+  The generated crates depend on `metaobjects-render` at this release's major and minor.
+- **Rust port: reports and projections are read (FR-044, ADR-0028).** The core crate derives a
+  report's fields (`metaobjects::report_shape`, FR-044 Table B and C) byte for byte with
+  `report-shapes.json`. A served read (a concrete projection or report whose read source is a view)
+  gets a read-only struct in its model crate and a read-only module in its store crate: `list`,
+  `count`, and `get` for a projection with a key. A view's numbers are read through a cast to their
+  field's type, since the view's SQL picks the column type. The persistence runner now runs the 24
+  report and 3 projection scenarios, and its ledger holds only the three many-to-many ones. A
+  view-backed projection that an operation returns is now the model crate's type, not a copy in
+  the contract crate. Clients and commands for read models wait for a Rust transport that serves
+  them.
+- **Rust port's data access: the `repository` generator (ADR-0067 layer 3).** It writes a
+  `<package>_store` crate per package with a stored entity, on sqlx, for Postgres and SQLite: per
+  entity the table mapping and typed `list` (the nine filter operators, sort, paging), `count`,
+  `get`, `create`, `update` and `delete`, and per lifecycle the guarded update
+  `transition_<field>(id, from, to)`, one conditional `UPDATE` that answers `false` when another
+  writer moved the row first (ADR-0066 §6). The shared `meta_store` crate holds the statements and
+  the decode of each column into the model's own types. A single-table subtype writes its
+  discriminator and reads only its own rows. A Rust runner for the shared persistence corpus runs
+  it on a throwaway Postgres: every list, get, count, create, update, delete, roundtrip and
+  single-table scenario passes; the many-to-many, projection and report scenarios are on its
+  shrink-only ledger, because projections, reports, many-to-many traversal and flattened storage
+  are not stored yet.
+- **Rust port's rules layers 0 and 1: `rules-names` and `contract-types` (ADR-0067).** Two
+  generators read the business-rules vocabulary, and each writes nothing for a model without it.
+  `rules-names` writes a `<package>_rules` crate for a package with a lifecycle or a declared
+  operation: per entity, each lifecycle's state type (the model's own enum), its states, initial
+  and terminal states and its transitions, and the commands derived from unclaimed transitions;
+  then the package's operations (kind, permission, claimed transitions, business errors), every
+  permission asked about (declared or derived per ADR-0066) and every business error, each as a
+  closed enum, plus the five codes the enforcing shell answers with. `contract-types` writes a
+  `<package>_contract` crate for a package with a declared operation: each operation's input and
+  output types, its business-error enum and its error body (a fixed wire code or one of its own),
+  the read shape of a projection it returns, and a shared `meta_contract` crate with the wire
+  error codes, their statuses and the validation and constraint-violation bodies. An entity's
+  read, create and patch shapes stay in the model crate, which carries no persistence mapping.
+  Both are listed in the shared generator registry (Rust only for now) and `eject` copies them.
+- **Rust port: the `service` generator (ADR-0067 layer 4, ADR-0066 §6).** It writes a
+  `<package>_service` crate per package with a stored entity: `<Pkg>Service`, generic over the
+  database pool (Postgres or SQLite) and the actor type, with each derived list (page size 50 unless
+  `api.pagination` says otherwise, `withCount` for the total), get, many-to-many traversal, create,
+  update and delete, a command per transition that derives one, and a shell per declared command
+  and query. Every write runs in one sqlx transaction, or inside a caller's through its `_in` twin,
+  and runs ADR-0066's checks in order: the row (404), the permission point (403 `forbidden`), the
+  state (409 `invalid_transition`), the hand-written body, the guarded update (409
+  `invalid_transition` or `transition_condition_failed`) and the event hook. The generic update
+  answers a changed lifecycle field 409 `state_managed`, a create starts in the initial state, and
+  `@autoSet` timestamps are stamped by the service (ADR-0045 Amendment 1). What an app writes are
+  traits: `<Pkg>Policy`, `<Pkg>Bodies` (a command answers the move to make or none, and
+  `BodyError::Business` a declared error), `<Pkg>Hooks` (one `before` and one `after`, told of
+  the write by the `<Pkg>Before` and `<Pkg>After` enums) and `<Pkg>Events`, the last two with
+  defaults. The shared `meta_service` crate holds the error codes and statuses. A probe runs the
+  rules corpus's scenarios through the service on SQLite, with the settings variants checked in
+  the generated text; the HTTP transport, and the shared API tests over it, come next. The walks
+  the layer generators share moved into a new engine module, `metaobjects_codegen::layers`, so an
+  ejected `service` or `repository` calls the same walk the shipped one does.
+- **Rust port: the service is served over HTTP (`service-routes`, ADR-0067 layer 5, ADR-0065
+  Amendment 7).** A new opt-in generator writes a `<package>_http` crate per package and the shared
+  `meta_http` crate: `router(service, actor)` returns an axum `Router` over the generated service,
+  with the derived CRUD, traversal, transition-command and declared-operation routes, the
+  REST-standard list query (filters with `or`/`and` groups, search, `sort=<field>:asc|desc`, a
+  default page of 50, `withCount`) and the named 400s. `ActorSource` (or `ActorFn` over the
+  headers) is the app's authentication, handed to the service untouched. It runs only when
+  `metaobjects.config.json` lists it: `cargo meta init --transport` adds it, a plain `init` and a
+  project with no list leave it out, and `gen --list` marks it `[opt-in]`. A credential field (one
+  with a password view) is never returned. An entity with a read-only view beside its table is
+  written to the table and read back through the view, so its derived fields are in every answer
+  (the store's `Table` gains `read`). A field with no `@sortable` is now sortable when it is
+  filterable, as in TypeScript, so a generated client's sort allowlist can grow: regenerate.
+  The api-contract corpus runs over HTTP in Rust's generated lane (`core`, `write-through`,
+  `secret-fields`, `list-query`, `rules` and its settings variants, 77 scenarios; the rest
+  ledgered), the list-query corpus runs all 95 cases, and `examples/rust-service/` is a whole
+  tasks service built this way, checked by the `rust` lane.
+- **Rust: `cargo meta verify --templates`, the template drift gate.** It checks every `template.*`
+  body (and its partials) against the payload value object it renders over
+  (`ERR_VAR_NOT_ON_PAYLOAD`, `ERR_PARTIAL_UNRESOLVED`, `ERR_OUTPUT_TAG_MISSING`,
+  `ERR_REQUIRED_SLOT_UNUSED`, `ERR_TEMPLATE_SYNTAX`) and each prompt's reply, reading
+  `@payloadRef`, `@textRef`, `@requiredTags` and `@responseRef` through `extends`. Bodies live
+  under `prompts/` (`--prompts <dir>` to move it), and a bare `verify` runs the gate beside the
+  codegen and rules gates. The `metaobjects-render` crate gains `verify`, held to
+  `fixtures/verify-conformance/` (all 45 cases). A Jinja body is refused
+  (`ERR_TEMPLATE_ENGINE_UNSUPPORTED`): the Rust renderer runs Mustache only. The old refusal
+  of `--templates` is gone.
+- **docs, agent skills: how to model vocabulary of your own semantically.** A new page,
+  `docs/features/semantic-modelling.md`, states the rules a custom type, subtype or attribute is
+  held to: the type says what a thing is and what it relates to, the subtype says which kind
+  (it adds attributes and constraints, never a relationship), and products, versions, steps and
+  environment values belong to the generators and their layered configuration. It gives the
+  ordered test for where one fact goes, worked before and after examples, and the wrong turns
+  an AI assistant makes. The `metaobjects-authoring` skill carries the same guidance as
+  `references/semantic-modelling.md` and opens it whenever custom vocabulary is added or
+  changed; the always-on file's vocabulary rule gains one sentence. Run `meta agent-docs` to
+  take the new text in an existing project. `agent-context/evals/skill-triggers/` gains twelve
+  cases for that skill.
+- **C#: `dotnet meta verify` runs the three model authoring lints.** The overlay lint
+  (`WARN_OVERLAY_IMPLICIT`), the node-name lint (`WARN_NAME_SURROUNDING_WHITESPACE`,
+  `WARN_NAME_INTERNAL_WHITESPACE`) and the deprecated-reference lint (`WARN_DEPRECATED_REFERENCE`)
+  now print on every `dotnet meta verify`, as they do in Node `meta verify`, before the field lint.
+  They are advisory, never change the exit code, and are muted by `--no-overlay-lint`,
+  `--no-name-lint` and `--no-deprecation-lint`, or by `META_NO_OVERLAY_LINT=1`,
+  `META_NO_NAME_LINT=1` and `META_NO_DEPRECATION_LINT=1`. C# runs the shared
+  `fixtures/model-lint-conformance/` corpus.
+- **codegen-ts: `service-routes-hono`, the service's Hono transport (ADR-0067 layer 5).**
+  `serviceRoutesHonoFile()` writes `<pkg path>/transport/hono.ts`, the same routes as the Fastify
+  transport, as `<pkg>ServiceHonoRoutes(app, { service, getActor })`, with the actor read by
+  `getActor(c)`. It imports the new `@metaobjectsdev/runtime-ts/service/hono` entry, and `meta eject
+  service-routes-hono` copies that source. A fixed path segment is added before a parameter wherever
+  two routes could match one request, so `GET <collection>/<query>` is not taken for
+  `GET <collection>/{id}`, as Fastify's router already decides.
+- **The service is held to more of the shared API tests.** Its lanes, on Fastify and on Hono, now
+  run the `list-query/`, `api-settings/`, `enum-default/`, `jsonb/` and `duration/` corpora beside the
+  root and `rules/` corpora, on every engine the routes lane runs, D1 included through
+  `interactiveTransactions: false`. The service compile gate compiles both transports.
+- **The service covers every object the flat routes serve.** Projections and served reports get
+  their reads, and their transports answer writes `405`. A report keeps its row cap, through the
+  new `serviceFile({ reportMaxRows })` option, and its `?format=` export. Write-through entities
+  read through their view and read a write back through it. A single-table hierarchy gets the
+  polymorphic base reads and per-subtype operations scoped to the discriminator. Each
+  many-to-many relationship gets a query and a `GET <path>/{id}/<relation>` route. The
+  `projection/`, `report/` (Postgres, MySQL, SQLite and D1), `write-through/`, `tph/`, `m2m/`,
+  `decimal/` and `secret-fields/` corpora now run on both service lanes. runtime-ts: the read-only
+  and many-to-many reads (`readOnlyList`, `readOnlyGet`, `m2mRelated`) are framework-neutral
+  functions, which the flat Fastify mounts and the service both call.
+- **codegen-ts: `serviceFile({ interactiveTransactions: false })` for a store that holds no
+  transaction across application code (Cloudflare D1; ADR-0067 §4).** The service opens no
+  transaction: each derived write is its one statement and a transition is its guarded update.
+  It has no hooks and no event hook, and a package that declares a command fails generation with
+  `ERR_STORE_NO_INTERACTIVE_TX`, naming the package, the command and the option. Queries are
+  generated. Run end to end on Miniflare's local D1.
+- **codegen-ts: the service layer, part 2 — the rules run (ADR-0066 §6, ADR-0067 §4 and §7).** The
+  `service` generator now writes a command per transition that derives one (`POST
+  <collection>/{id}/<transition>`) and a shell per declared command and query, at its binding or
+  derived path, and enforces ADR-0066's checks in order, in one transaction: the row (404), the
+  permission point (403 `forbidden`), the state (409 `invalid_transition`), the hand-written body,
+  the guarded update (409 `invalid_transition` or `transition_condition_failed`) and the event hook.
+  The generic update answers a changed lifecycle field 409 `state_managed`. What an app writes is
+  passed to `create<Pkg>Service(deps)` through generated interfaces: `<Pkg>Policy`, `<Pkg>Bodies`
+  (a command returns the move to make or `"none"`, and `ctx.refuse` answers a declared error),
+  optional `<Pkg>Hooks` on the derived writes and `<Pkg>Events` told about every write. Any of
+  them may refuse, which rolls the write back. The actor is an app-defined type parameter, passed
+  as `opts.actor` and resolved by the Fastify transport's `getActor(request)`. Three settings now
+  act on the generated side: `rules.lifecycle.create` (`initial` fills an omitted state and refuses
+  another; `any` accepts any), `rules.lifecycle.commands` (which transitions get a command) and
+  `rules.permissions.names: require` (generation refuses a point with no `@permission`, naming the
+  derived one). A transport refuses two routes on one method and path. New shared API tests,
+  `fixtures/api-contract-conformance/rules/`, cover 403, the three 409 codes, a declared error, a
+  derived command, a declared command and query, a public operation and a hook's and the event
+  hook's refusal rolling back, with three settings variants; the TypeScript lane runs them in both
+  layouts, and the service compile gate builds the model in every dialect. `ServiceDeps`, the
+  service interface and the factory take the actor type `A` (default `unknown`), so existing calls
+  compile unchanged. `@metaobjectsdev/runtime-ts/service` gains the helpers they call
+  (`checkPermission`, `checkState`, `makeTransition`, `checkStateManaged`, `checkCreateState`,
+  `emitWrite`, `handlerContext`) and their types.
+- **codegen-ts: the service layer, part 1 (ADR-0067 layers 4 and 5).** Two new generators, neither
+  scaffolded. `service` (the new `service` layer label, shared by every port's catalog) writes one
+  module per metadata package: a function per derived list, get, create, update and delete of each
+  concrete, table-backed, single-key entity, every write in one transaction (a savepoint inside a
+  caller's `opts.tx`) that loads the row under a row lock and then validates and stamps the input
+  with the declared write rules (ADR-0045), and `create<Pkg>Service(deps)`. `service-routes` writes
+  the thin Fastify transport over it, one plugin per package. A new api-contract lane runs the
+  shared corpus against the service behind its transport, in both layouts, and passes as the flat
+  routes do; a compile gate builds the tier in every dialect. `@metaobjectsdev/runtime-ts` gains
+  the `./service` and `./service/fastify` entries they import, and `meta eject` copies them.
+  Write-through, TPH, many-to-many, projections and reports stay on the flat generators for now:
+  [docs/features/business-rules.md](docs/features/business-rules.md#the-service-layer-typescript).
+- **codegen-ts: the trace helper's call loop is written into the project, and
+  `@metaobjectsdev/ai-runtime` is no longer published.** The `trace-helper` generator now writes
+  `llm-call.ts` (the `LlmClient` seam and `runLlmCall`) beside the `<Entity>.trace.ts` modules,
+  and a `call<Entity>` imports it from there, so generated trace code depends only on
+  `runtime-ts`, `render` and `metadata`. `ai-runtime` is `private` and leaves the publish set,
+  which is 13 packages; 1.2.3 stays on npm. Regenerate and drop the dependency:
+  [docs/features/migrations/ai-runtime-unpublished.md](docs/features/migrations/ai-runtime-unpublished.md)
+  (ADR-0024 Amendment 2).
+- **cli: `meta schema` prints the expected schema, read-only.** `meta schema --dialect
+  postgres|sqlite|d1` prints the `CREATE` statements `meta migrate` would write for an empty
+  database, views included; `--as json` prints the neutral JSON document instead, the format
+  `meta migrate` commits as its snapshot, now described in `docs/features/schema-snapshot-format.md`.
+  It builds the schema the way `meta migrate` does (conventions, `migrate.scope`, the dependency
+  exclusion) and reads no database and no snapshot, so a native migration tool can start from it.
+  The dialect defaults to `migrate.dialect`, then to the `dialect` in `metaobjects.config.ts`.
+- **C#: a `contract-types` generator writes each entity's create and update records (ADR-0067 layer 1).**
+  Opt-in, beside `entity`: add `new ContractTypesGenerator()` to `codegen/Generators.cs`. For each
+  writable entity it writes `<Entity>Contracts.g.cs` with `<Entity>Create` and `<Entity>Update`,
+  `sealed record`s carrying the entity's validation attributes and wire converters. Neither carries
+  what the server owns: a generated key, an `@autoSet` stamp, a `readOnly` or derived field, a TPH
+  discriminator. A required member with no `@default` is a `required` member of the create record, so
+  a body that omits it does not bind. A `writeOnce` field is on the create record and off the update
+  record, since it is frozen after create. Every update member is optional; `<Entity>Update.From` binds a
+  body and records which keys it carried, so `Has` tells an omitted member (untouched) from an
+  explicit null (cleared), and validation refuses null on a required member. The lifecycle field
+  stays on both, so the service shell can check it and refuse a change with `409 state_managed`. The
+  validation and converter attributes moved out of `EntityGenerator` into `ContractMembers`, which
+  eject hands over with either generator; the entity's output is unchanged. The shared generator
+  manifest gains the `contract-types` entry (C# only for now).
+- **C#: a `rules-names` generator writes the business-rules names as constants (ADR-0067 layer 0).**
+  It is opt-in, like any generator: add `new RulesNamesGenerator()` to `codegen/Generators.cs`. For
+  each entity with a lifecycle it writes `<Entity>Rules.g.cs`, with each lifecycle's states, initial
+  and terminal states, transitions, and the permission each derived command asks for. For each
+  `api.operational` it writes `<Api>Operations.g.cs`, with each operation's name, permission and
+  `@errors` codes. It also writes `RuleErrorCodes.g.cs` once, with the shell's own codes. Permission
+  names are derived the way `verify` derives them, and `rules.lifecycle.commands` decides which
+  transitions get one. A model with no rules vocabulary gets no file. It is a layer generator, so the
+  flat generators' output is unchanged and the codegen-noop rules corpus still holds them. The shared
+  generator manifest gains the `rules-names` entry (C# only for now).
+- **sdk: the static agent files, built once for every port (ADR-0033 Amendment 1).** The
+  assembler now also runs at build time, once per stack a port's own command serves: each server
+  language alone and Java with Kotlin, each with no client, React, React with TanStack or
+  Angular. The result is committed at `agent-context-shipped/` (a manifest plus each distinct file
+  once, by content hash), for each port's package to embed and its `agent-docs` command to copy,
+  so a non-TypeScript project gets its agent files with no Node. `agent-context-shipped/README.md`
+  is the contract; `buildShippedAgentContext()` and `materializeShippedStack()` are exported, and
+  `shipped.test.ts` fails when the tree is stale or a stack differs from what `meta agent-docs`
+  writes. The ports' own commands land in their own rows; until then they still redirect.
+- **sdk, cli: Rust is an agent-context server language.** `--server rust` (alias `rs`) is
+  accepted, and a `Cargo.toml` at the project root is detected as Rust. A Rust project's
+  always-on file gives the `cargo meta gen` loop and the `cargo meta verify` step, and a `rust`
+  case joins `fixtures/agent-context-conformance`. Libraries list Rust among their ports, checked
+  against the copy the Rust crate embeds.
+- **codegen-ts: the rules names layer (ADR-0067 layer 0).** A new generator, `rules-names`
+  (`rulesNamesFile()`, ejectable), writes one `rules.names.ts` per metadata package that declares
+  a lifecycle or an operation: each lifecycle's states, initial and terminal states and
+  transitions, the commands derived from unclaimed transitions, the declared operations, every
+  permission the package asks about and the business errors its commands declare, as `as const`
+  values with literal-union types. The derivations move into `@metaobjectsdev/metadata`
+  (`derivedCommandsOf`, `operationPermission`, `commandPermission`, `claimedTransitions`, ...), and
+  `meta verify`'s rules gate now calls the same functions, so a constant and a verify message
+  cannot disagree. The loaded root carries the `rules` settings (`rulesSettings`). C# ships its own
+  `rules-names`; the other ports add theirs with their rules-layer work. No existing generator's output
+  moves (`fixtures/codegen-noop/rules`).
+- **codegen-ts: the contract types layer (ADR-0067 layer 1).** A new generator, `contract-types`
+  (`contractTypes()`, ejectable), writes the shapes a caller and a service exchange with no
+  persistence mapping: `<Entity>.contract.ts` (the read schema and type, the create and update
+  schemas, the typed create and patch), `<Projection>.contract.ts` (the read shape), the value
+  modules they reach, `<pkg path>/operations.contract.ts` (each declared operation's input, output
+  and errors) and `errors.contract.ts` (the wire codes, their statuses and the error bodies). Each
+  module imports `zod` only. The field schemas are the entity generator's own renderers, and an
+  entity's contract read type is held equal to the entity file's on every dialect. C# writes the create and
+  update records with its own `contract-types`. No existing generator's output moves.
+- **runtime-ts: the guarded update (ADR-0066 §6 step 5), and the shared scenario that holds every
+  store driver to it.** `ObjectManager.guardedUpdate(entity, id, { field, from, to, condition? })`
+  makes a lifecycle transition's write in one statement — `UPDATE … SET <state> = :to WHERE <key>
+  = :id AND <state> IN (:from) [AND <condition>]`, TPH-scoped — and answers the row, or `null`
+  when the guard matched nothing. The `@condition` (attr.expression's CHECK subset) compiles to
+  the driver contract, which gains three `WhereClause` kinds: `compare` (two operands, each a
+  column, a literal or a `coalesce`), `nullTest` over any operand, and `not`. A driver an adopter
+  wrote must handle them; the bundled Kysely, Drizzle and in-memory drivers do, the in-memory one
+  with SQL's three-valued logic. Guard symbols must be members of the state enum, and each symbol
+  and condition literal is stored in its column's form (an int-backed enum as its integer). The
+  persistence corpus gains `op: guardedUpdate` and `queries/guarded-update.yaml`; TypeScript runs
+  it on Postgres and MySQL, and C#, Java, Kotlin and Python defer it by name until each builds its
+  own.
+- **openapi: the document describes `?search`, `filter[or]` and `filter[and]`.** A list whose row
+  has a text field the search matches takes a `search` parameter naming those fields, and a list
+  with any filter takes the two combinators as `deepObject` parameters whose description gives the
+  grammar and the nesting cap. Item `GET`, `PATCH`, `PUT` and `DELETE` now list the `400 invalid_id` answer the routes
+  already gave. A project that wires `openApiFile()` sees `openapi.json` change on the next
+  `meta gen`; the contract corpus goldens move with it. A new contract case, `list-query`, documents
+  the list-query model, and the list-query lane now holds every exchange to it as the other
+  generated lanes do; the check no longer exempts `search` and the combinators.
+- **codegen-ts: the filter and sort allowlists are available as data.**
+  `filterAllowlistRules(entity)` and `sortAllowlistRules(entity)` return the rules that
+  `<Entity>FilterAllowlist` / `SortAllowlist` are printed from. The generated files are
+  byte-identical.
+- **Rust (ADR-0065 Amendment 3).** A project now chooses its generators in `metaobjects.config.json`
+(`{ "generators": [...] }`, written by `cargo meta init`) and no longer needs to eject to drop one;
+`cargo meta gen --list` shows each as configured or not. `cargo meta eject` no longer writes the
+path of the machine the tool was built on into `codegen/Cargo.toml`: the owned crate names the exact
+crates.io release by default, and `--engine <directory | git-url[#rev]>` names a checkout or a git
+revision. The three crates lose `publish = false`, carry their packaging metadata, and the `rust` lane
+runs `cargo publish --dry-run` over all four crates. Nothing is published. The new `metaobjects-render`
+crate carries the Rust prompt render, the reply parser and the output-format fragment. `cargo meta eject --force` leaves a
+copy that already matches the shipped generator untouched. `cargo meta verify` now runs the business-rules
+gate (ADR-0066) too: the same five findings, severities and message text as the other ports, under the
+four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/rules-check-conformance/`.
 - **Java and Kotlin: `mvn metaobjects:init`.** The Maven plugin now has the scaffold goal the other
   ports have. It writes `.metaobjects/config.json` (the new-project settings every port's init
   writes) and an empty, loadable `metaobjects/meta.app.json`, each only when missing, and prints the
@@ -1918,6 +1909,306 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Changed
 
+- **The agent pages sort in code-unit order.** `agent/requirements.md` (its node index and
+  statements) and `agent/schema.md` (its tables and views) sorted names with `localeCompare`,
+  whose collation differs between machines and could not be matched exactly by another port.
+  They now sort by code unit, the order the docs-page corpus pins in every port, and Python's
+  pages drop the collation emulation they carried to match. A model whose names differ only in
+  case or punctuation may see those rows reorder once. Python's `agent/schema.md` now also
+  carries the `meta migrate` wording only for a project that set `migrate.dialect`, as the
+  TypeScript page does. Generated-output change — regenerate to pick it up; three-way merge
+  preserves hand edits.
+- **The seven agent skills are rewritten for current models.** Each `SKILL.md` that `meta init`
+  installs now opens with an Essentials block, the rules that must survive when a long session
+  is compacted, gives the reason for each rule it keeps, and drops step lists the model does not
+  need. The descriptions of `metaobjects-audit`, `metaobjects-runtime-ui` and
+  `metaobjects-verify` now open with the use case. A blind A/B on 23 fixed tasks scored the
+  rewrite level with or ahead of the old text on every task
+  (`docs/superpowers/specs/2026-11-22-agent-skills-fable5-refactor-evaluation.md`); the harness is
+  `agent-context/evals/skill-ab/`. Run `meta agent-docs` to take the new text in an existing
+  project. Two reference files no longer say `apiPrefix` reaches the client's fetch URLs: the
+  client takes its prefix from `baseUrl` on the fetcher provider. `@metaobjectsdev/sdk` no longer
+  ships `agent-context/evals/`, the skills' test harness, in its npm package.
+- **Local CI starts a lane only when the machine has the memory for it.** `scripts/ci-local.sh`
+  holds a waiting lane until `MemAvailable` covers `MO_CI_LANE_MIN_FREE_MB` (default 8192) for
+  it and for each lane started in the last 30 seconds. The first lane always starts, and `0`
+  turns the check off. On a busy machine the parallel lanes had driven memory down to
+  earlyoom's limit, and its SIGTERMs read as a crashed C# test host, SIGTERMed bun workers and
+  a killed `rustc`, not as a memory problem. The SQLite and D1 report api-contract file now
+  generates and boots one server per suite and reseeds in one batch, so it runs in about 46
+  seconds instead of about 10 minutes, which no longer outlasts a 10-minute command cap.
+- **C#: a list with no `limit` answers 50 rows (breaking).** A generated entity, TPH or projection
+  list route in a project that sets no `api.pagination` returned every matching row when the
+  request carried no `limit`; it now answers the first 50 (`ApiSettings.DefaultPageLimit`), as every
+  port does. An explicit `limit` is still served as asked (no maximum without the setting), and a
+  project that sets `api.pagination` is unchanged. Without the setting a `limit` or `offset` that is
+  not a non-negative integer is now `400 pagination.invalid_value` instead of being ignored, and
+  `limit=0` is a page of zero rows. The `dotnet meta verify --codegen` advisory `unbounded-list-pages`
+  is retired. Generated-output change — regenerate to pick it up; three-way merge preserves hand
+  edits. Check any client that reads a whole list without a `limit`:
+  [docs/features/migrations/default-list-page-of-fifty.md](docs/features/migrations/default-list-page-of-fifty.md).
+- **`meta migrate` is the reference migration helper, one option, in the docs and the agent
+  files.** Each port page now leads with its native migration path (EF Core Migrations, Flyway or
+  Liquibase, Exposed, Alembic, sqlx), handed the schema `meta schema` prints. The always-on
+  `.metaobjects/AGENTS.md` carries the `meta migrate` steps, the `verify --db` step and the
+  `.metaobjects/migrations/` commit line only when the project chose a migrate dialect
+  (`migrate.dialect` in `.metaobjects/config.json`, which `meta init --dialect` writes); `meta init`
+  prints its migrate step on the same condition. The generated `agent/schema.md` says to change the
+  schema with `meta migrate` on the same condition, and otherwise with the project's own migration
+  tool. The shared page data gains `hasMigrate`, and the shipped agent tree (manifest schema `2`)
+  ships every stack with and without the steps, the second with a `-migrate` id suffix.
+- **ADR-0066 §6 states that input validation precedes the permission point.** The policy is handed
+  the validated input, so an operation's `@inputRef` input is checked first; a caller the policy
+  would refuse can see a 400 with validation detail before the 403. An app that must answer
+  neither refuses that caller in its actor resolver or transport.
+- **The install-size budget rises to 51.7 MB, by ruling.** Installing `@metaobjectsdev/cli` now
+  measures 51.5 MB against a 51.0 MB budget. The growth since #622 (the service generator and the
+  1.3.0 codegen and runtime work) was measured late because hosted CI does not run `ts-slow`.
+  Declaration maps stay, so go-to-definition still reaches the shipped source.
+  `scripts/check-install-size.mjs` now accepts a raise only when the newest `history` entry in
+  `scripts/install-size-budget.json` records it with its reason and ruling. It also reads
+  `origin/main` when a checkout has no local `main`; before this, such a checkout skipped the
+  never-rises rule entirely.
+- **runtime-ts: a list with no `limit` answers 50 rows (breaking).** A generated entity or
+  projection list in a project that sets no `api.pagination` returned every matching row when the
+  request carried no `limit`; it now answers the first 50, the default of every port. An explicit
+  `limit` is still served as asked (no maximum without the setting), and a project that sets
+  `api.pagination` is unchanged. The OpenAPI document states the default, the `meta verify`
+  advisory `unbounded-list-pages` is retired, and the shared `list-query/default-page-of-fifty`
+  scenario pins it over a 60-row seed. Check any client that reads a whole list without a `limit`:
+  [docs/features/migrations/default-list-page-of-fifty.md](docs/features/migrations/default-list-page-of-fifty.md).
+- **react: `<ImageUpload>` moves to `@metaobjectsdev/react/image-upload`, and `react-easy-crop`
+  becomes an optional peer (breaking).** `ImageUpload` and `cropToBlob` leave the package root
+  for the new subpath, and the generated form imports them from there, so a project with no
+  `view.image` field no longer installs the crop library at all. A project with one adds
+  `react-easy-crop` (`>=6.2.3 <7.0.0`) to its dependencies. The adapter provider stays on the
+  root. Regenerate, and move any hand-written import:
+  [docs/features/migrations/react-image-upload-subpath.md](docs/features/migrations/react-image-upload-subpath.md).
+- **The empty `@metaobjectsdev/forge` package is removed.** It was private, exported nothing and
+  had no importer. The forge vocabulary (`decision`, `principle`, `convention`, `glossary`,
+  `failure` and the `@forge*` attributes) is unchanged: `@metaobjectsdev/sdk` ships it as
+  `forgeTypesProvider`, and `FORGE-METADATA.md` now says so. The "The TypeScript forge provider"
+  section of `docs/features/extending-with-providers.md` is removed; that doc no longer names it.
+- **Python: the entity model generator writes through the code writer (ADR-0063).** The model
+  modules (`<Name>.py` with `<Name>Create` and `<Name>Patch`), the shared `enums.py` and the
+  `_duration_wire.py` banner are built on a `PyWriter`, and `ruff` no longer runs over them, so the
+  bytes no longer depend on whether `ruff` is installed. Over 1,561 model modules generated from the
+  repository's fixtures, 1,146 are byte-identical, and the other 415 match once both versions are
+  put through the same `ruff` import sort and format. What moves: the standard-library and
+  third-party imports share one section (no blank line between `import datetime` and
+  `from pydantic import ...`, the writer's import order); a `Field(...)` too long for its line puts
+  one keyword per line; and a `field.duration` annotation too long for its line breaks inside
+  `Annotated[...]`. `PyWriter.gap()` asked for before the first body line now gives the two blank
+  lines PEP 8 sets after the imports and before a top-level class (a new `py-gap-after-imports`
+  writer-conformance case). For subclasses of `EntityModelGenerator` (not a stability contract,
+  ADR-0063 item 7): `_emit_field_lines`, `_emit_create_lines` and `_emit_patch_lines` return writer
+  pieces without indentation (`"name: int | None = None"`) instead of indented strings,
+  `_emit_cross_field_rules` returns a step that writes the method onto the writer (or `None`) instead
+  of lines, a new `_write_model` writes one class, and `render_entity_model` returns the finished
+  module rather than text for `ruff` to tidy.
+- **C#: an unchanged file is never rewritten.** `dotnet meta gen` already left identical output alone
+  when the project keeps a hash manifest. It now does the same on the path with no manifest (output
+  written outside the project, or a program that runs the generators with no state directory), which
+  reports the file `unchanged` instead of `written`. `dotnet meta eject --force` compares each copy
+  (the generator, its emitters and the helper runtime) before writing it and reports one that already
+  matches the reference as `[unchanged]`. The gen fingerprint is rewritten only when it changes.
+- **C#: the routes, expression-indexes, report-export, requirement-tests, shared-model and api-docs
+  generators are built from overridable pieces (ADR-0063 item 7).** The routes generator works out
+  what a file serves once (`PlanStandardRoutes`, `PlanTphRoutes`) and writes it from one
+  `protected virtual` method per piece: the file header, the list, item, create, update and delete
+  routes, the M:N traversals, the TPH polymorphic list and item routes, the sort dispatch and the
+  helper members. Its `Append*` helpers are renamed `Write*` and are `protected virtual`; its other
+  helpers and records are `protected`. The other generators follow the same rule, and `ApiDocsGenerator`
+  is no longer sealed. A subclass overrides the piece it wants and keeps the rest. Output is
+  byte-identical. These methods are not a stability contract.
+- **Java and Kotlin: template and documentation output is recorded in the hash manifest.** The
+  `template` and `mustache` generators, the api, HTML, JSON and PlantUML documentation pages and the
+  `META-INF/services` registration wrote through a byte compare only, so a hand edit to one of them
+  was overwritten without the refusal every other generated file gets. They now go through
+  `GeneratedFileWriter.writeUnmarked`: each file is recorded under `.metaobjects/.gen-state/.hashes/`,
+  unchanged bytes are not rewritten, and a hand edit is refused by name under `handEdits: keep`. An
+  existing file at one of these paths that the manifest has no record of is taken as generated
+  output on the first run (it can carry no `GENERATED` marker), so upgrading refuses nothing. The
+  orphan sweep and `metaobjects:verify` now see these files too: one a template stops emitting is
+  deleted when untouched, as other generated files are. The documentation generators also no longer
+  create an empty file before writing, so `metaobjects:verify`'s in-memory render leaves nothing on
+  disk.
+- **Java and Kotlin: a gate that every generator writes through `GeneratedFileWriter`.**
+  `GeneratorWritePathTest` runs every registered Java and Kotlin generator over the shared fitness
+  corpus and fails when a file is left on disk that the writer did not write, or when a second run
+  changes a file's bytes or modification time, so a new generator cannot skip the hash manifest or
+  the unchanged-bytes check.
+- **C#: the codegen project sets every `GenConfig` option.** `dotnet meta init` now writes a
+  `Generators.Configure` method beside the generator list, and `codegen/Program.cs` passes it to
+  `CodegenCli.Run`. It receives the config a run builds from its flags and `.metaobjects/config.json`
+  and returns the one the generators see. That makes the options no flag or config key sets
+  reachable on the normal path: `ContextTypeName`, `PropertyNaming`, `ProvidedEnumNamespace`,
+  `PackageNamespaces`, `TypeOverrides`, `Convention`, `UnmappedStrategy` and the rest. `gen` and
+  `verify --codegen` both apply it. An existing codegen project keeps working unchanged; to use it,
+  add the method and pass `Generators.Configure` as the third argument in `Program.cs`.
+- **C#: an unknown top-level key in `.metaobjects/config.json` warns.** It was ignored without a word,
+  so a misspelt key (`scopes` for `scope`) did nothing. It is still ignored, and nothing fails,
+  because a newer MetaObjects may have written it, but each one is now named once on standard error
+  with the known keys, in the words TypeScript uses. A key inside a block C# owns (`csharp`,
+  `naming`, `wire` and the rest) is refused as before.
+- **The REST standard's list handling is part of the cross-port contract.** `?search`,
+  `filter[or]` / `filter[and]`, the nesting cap, the bare-field and leading-`%` refusals, the
+  filter-value format check, and the `invalid_json`, `invalid_id`, `pagination.invalid_value` and
+  `constraint_violation` responses were TypeScript-only extensions. `docs/features/api-contract.md`
+  now states them as contract, with TypeScript's wire names unchanged. Two corpora hold the ports
+  to it:
+  - a new shared corpus, `fixtures/list-query-conformance/`: 95 parse cases, each a query string
+    in and either a filter tree in neutral values or the exact 400 body out, run with no server
+    and no database;
+  - a 20-scenario `list-query/` sub-corpus of `api-contract-conformance/`, over a 60-row seed, in
+    the generated lane.
+
+  TypeScript passes both. The other ports take them on in their 1.3.0 REST-standard work. The
+  decision is [ADR-0068](spec/decisions/ADR-0068-list-query-cross-port-contract.md). A
+  scenario can now send a body that is not JSON with `rawBody`.
+- **Java: the Spring controller generator writes through the code writer (ADR-0063).**
+  `SpringControllerGenerator` writes through `SpringJavaWriter`, a `JavaWriter` that adds the two
+  layouts Spring source uses and a block does not: a continuation line (two indents deeper) and an
+  indented `case` body. Every member of the generated controller comes from its own protected
+  `write*` method, so an owned copy changes one handler by overriding one method; the `append*`
+  helpers that took a `StringBuilder` are gone. The shared validator members and the decimal and
+  duration import lists in `SpringGeneratorSupport` are written through the writer too
+  (`writeCrossFieldValidationMembers`; `decimalAnnotationImports` and `durationAnnotationImports`
+  now return qualified names). A generated controller changes in two layout details only, checked
+  on 1,512 controllers from every fixture model: its imports are sorted, and the blank line after
+  `public class ... {` is gone.
+
+  The DTO, value-object and shared-enum generators follow (`SpringDtoGenerator`,
+  `SpringValueObjectGenerator`, `Fr019SharedEnum`). A record, patch class, stamping helper and
+  enum declaration each come from a protected method, and the string-returning helpers they used
+  are replaced by writer ones: `SpringTypeMapper.enumDeclaration` by `writeEnumDeclaration`,
+  `SpringRecordBuilder.members` by `writeMembers` (with `applies` to ask first), and an owned DTO
+  generator customizes every file it writes by overriding `newWriter`. Their output changes in
+  layout only, checked on every fixture model in two wire and API configurations: sorted imports
+  with no blank between groups, no blank line after `public final class ...Patch {` or a doubled
+  one in a patch with no settable fields, no trailing indent on the blank lines of a nested enum,
+  and no leading blank line in a file with no package.
+- **runtime-ts: one list-query parse for every mount.** `parseListQuery` (exported from
+  `@metaobjectsdev/runtime-ts`; it does not depend on Drizzle) reads a list request into a
+  port-neutral `ListQuery`, and each mount compiles that for its own query library. The Drizzle
+  and Hono mounts and the `ObjectManager` Fastify mount all use it. The `ObjectManager` mount
+  (`@metaobjectsdev/runtime-ts/fastify`) takes two new options:
+  - `filterAllowlist`: it then serves `filter[...]`, `filter[or]` / `filter[and]` and `?search`
+    and refuses what the Drizzle mount refuses, with the same bodies;
+  - `pagination`: the `api.pagination` page size.
+
+  The names, repository and report-export generators follow (`SpringNamesGenerator`,
+  `SpringRepositoryGenerator`, `SpringReportExportGenerator`), each finder, constant block and
+  writer section from its own protected method; the one layout change in their output is that
+  the blank line after the class or interface opener is gone. So does the output-parser generator
+  (`SpringOutputParserGenerator`), whose `StringBuilder` seams (`emitMapperMethods`, `emitMapper`,
+  `appendMapperHelpers`) now take the writer, and whose parsers gain a blank line after the
+  leading `// GENERATED` comment besides sorted imports. The filter-allowlist, response-format and
+  render-helper generators follow: the allowlist output is unchanged, and the other two gain the
+  same blank after the leading comment, sorted imports and no blank after the class opener.
+  `SpringNaming.packageHeader` is removed; the writer's `packageName` replaces it. The LLM-trace
+  helper and the `requirement-tests` generator follow with the same layout changes, and the
+  witness-key collision error now lists its colliding pairs on one line, separated by `; `.
+  In `codegen-base`, the entity extractor (`ExtractorCodeGenerator`, whose `write*` seams now take
+  a `JavaWriter`, and whose `writeHeader` no longer takes the extractor name or writes the class
+  opener) and the generated `ObjectClassBindingProvider` move to the writer too, with sorted imports
+  and no blank after the class opener; the older object code writers take their indentation unit
+  from `WriterOptions` (`JAVA`, and the new two-space `DIRECT`) instead of a typed string. Every
+  Java generator now writes through the code writer, so the layout ratchet's `unconverted` list
+  is empty. `CodeWriter`, `JavaWriter`, `WriterOptions` and `SpringJavaWriter` join the Java
+  engine surface (`eject.engineSurface.java.engine`), so an ejected generator imports them from
+  the package rather than copying them.
+
+  With no sort, the `ObjectManager` mount now orders by the primary key. The `ObjectManager`
+  `Filter` gains `$or` and a case-insensitive `$ilike`, and the class gains `keyFields()` and
+  `fieldNames()`.
+- **Reporting and requirements are vocabulary packs, out of core.** The reporting vocabulary
+  (`object.report`, `dimension.*`, `measure.*` including `measure.derived` and its `@expr`,
+  `segment.filter`, the entity's dimension, measure and segment children and `@segment` on
+  `origin.aggregate` and `origin.first`) is now registered by its own provider,
+  `metaobjects-reporting`. The requirements vocabulary (`requirement.functional`,
+  `requirement.architectural` and the root's `requirement.*` child) is registered by
+  `metaobjects-requirements`. Both are in the default bundle of every port, so a model that loads
+  today loads and generates the same. An embedder can leave either out, and a model that then uses
+  its types gets a loader error naming the unknown type or subtype (new fixtures
+  `error-packs-left-out-*-used`). The `verify` requirements gate reads the nodes the pack
+  registered: with the pack left out, a model with no requirements gets a silent ledger. The core
+  vocabulary pin loses these types and attributes, and the registry manifest changes in one row:
+  the root's `requirement` child rule now states `min: 0, max: null`, as `api` did when the rules
+  pack moved out. A subtype a pack declares with `extendsBase` may now fold a base another provider
+  registered (`object.report` folds `object.base`); those folded attributes stay owned by the base's
+  provider. GOVERNANCE.md now says an attribute promoted from a pack into core keeps its name and
+  meaning.
+- **A template that names a variable the payload lacks fails to render, in every render path.**
+  Mustache and Jinja raise `render verify failed: ERR_VAR_NOT_ON_PAYLOAD (<name>)` for a missing
+  variable or dotted path, where they used to render it empty. A variable that is present and null
+  still renders empty. The Rust `metaobjects-render` crate raises it too, so all six renderers
+  agree. Render fixtures may now carry `expected-error.txt` in place of `expected.txt`.
+- **Business rules: two operations or transitions whose permission names come out equal are
+  refused (rule P3).** A permission name is the declared `@permission`, or else the derived
+  `<package>.<path>`, compared exactly as the policy receives it, so `p::Order.open` and
+  `p.Order.open` are two names. When two permission points resolve to
+  the same name and at least one of the two names is derived, the loader reports
+  `ERR_TRANSITION_NAME_COLLISION` on the later one. Two equal declared names stay legal: that is a
+  shared permission. New fixtures `error-rules-permission-name-op-{dotted,declared}` and
+  `rules-permission-name-package-separator-distinct`. Java now accepts dotted operation names
+  (`Order.open`), as TypeScript, C# and Python already did.
+- **C#: a `@sequenceStart` whose migrations project lacks the design-time services line is a generation
+  error.** When `dotnet meta gen` can see the context's `ModelSnapshot.cs` in another project and that
+  project does not carry `[assembly: DesignTimeServicesReference]`, the next `dotnet ef migrations add`
+  would scaffold `RESTART WITH n` and hand out ids live rows hold. The run now fails with
+  `ERR_DESIGN_TIME_REFERENCE_MISSING`, naming the project and the line to add, instead of warning. A
+  run that cannot tell (no snapshot on disk yet) and a project that declares no `@sequenceStart` still
+  get the warning.
+- **C#: the filter allowlist, names, callable, output-prompt, output-parser and extractor generators
+  write through a code writer (ADR-0063).** `MetaObjects.Codegen.Writer.CsWriter` carries the layout
+  (indent, braces, `using` lines, blank lines), and each of those generators is a class built from
+  overridable per-piece methods. The output is unchanged except in one place: a parser generated
+  for a reply declared `@responseFormat: xml` no longer has a blank line right after its opening
+  `{` (the writer drops a blank line after an opener, as it does in every port). A layout check
+  with an allowlist that only shrinks keeps new hand-typed layout out of the generator source.
+  The shared writer-conformance corpus gains six C# cases.
+- **C#: the last six generators write through the code writer (ADR-0063).** The routes generator, the
+  reverse-finder emitter, the expression-indexes, report-export and requirement-tests generators and the
+  render-helper generator no longer type line breaks or indentation, so the layout check's list of
+  unconverted generators is empty. Output is byte-identical on the 737 model fixtures in four layouts,
+  with these exceptions the writer owns: the shared `ReportExportWriter.g.cs` now ends with a newline
+  like every other generated file; a `// ` comment line for an empty statement is written as `//`; and
+  an empty requirement-tests witness interface has its braces on two lines. The routes generator's
+  `AppendOffsetLimit` and `AppendSaveChanges` helpers lose their `indent` argument, and its private
+  helpers take a `CsWriter`. The requirement-tests collision message indents its list by four spaces.
+- **C#: the DbContext generator writes through the code writer (ADR-0063).** `DbContextGenerator`
+  (the context, its `OnModelCreating` and `ConfigureModelNN` chunks, the enum, map and duration helpers
+  and the design-time services file) builds each file on a `CsWriter`. Output is byte-identical for the
+  737 model fixtures in all four layouts. **An owned or subclassed generator needs a small edit.** The
+  hooks `EmitUsings`, `EmitDbSetDeclarations` and `EmitOnModelCreatingBody` take a `CsWriter` in place of the
+  `StringBuilder`, and `EmitUsings` opens the class body with `w.Open("{")`. The hooks that return
+  text now document their lines as unindented; a line that still carries an indent is accepted, since the
+  writer removes the common margin. A `ContextUsings` line is a `using ...;` directive, printed once in the
+  order given. The layout check's allowlist loses the DbContext generator's entry.
+- **C#: the entity generator writes through the code writer (ADR-0063).** `EntityGenerator` (mapped
+  entities, TPH subtypes, abstract shapes, value objects, shared enums and the decimal, duration and
+  net-validation helper files) builds each file on a `CsWriter`. Output is unchanged for the 737 model
+  fixtures in all four layouts except three layout details the writer owns: a class with no members
+  has no blank line between its braces, a blank line before a closing `}` is dropped, and a `///`
+  doc line has no trailing space. **An owned or subclassed generator needs a small edit.** The hooks
+  `EmitClassHeader`, `EmitClassAttributes`, `EmitClassDeclarationLine`, `EmitPropertyAttributes`,
+  `EmitFileUsings` and `EmitClassBodyTrailer` take a `CsWriter` in place of the `StringBuilder`, and write
+  lines with `w.Line(...)` or `w.Using(...)`, with no typed indentation. The base class still adds
+  `IValidatableObject` to the declaration line an override wrote. The property emitters are renamed
+  `WriteScalarProperty`, `WriteEnumProperty`, `WriteObjectNavProperty`, `WriteMapProperty` and the
+  `WriteTphSubtype*Property` pair, and the validator-attribute writers `Write*ValidatorAttributes`.
+  `ValueObjectMemberAttributes` returns lines with no indent (it used to return four spaces of it).
+  `XmlDocBuilder.WriteTo(writer, node)` is the writer form of `AppendTo`. The public statics
+  `EntityGenerator.M2mNavProperty` and `ExtractDelegateEmitter.DelegatingMembers`, which returned a
+  string, are now `WriteM2mNavProperty(CsWriter, ...)` and `WriteDelegatingMembers(CsWriter, ...)`,
+  returning void. `NamesGenerator.Member` and `MemberGroups` are now protected. A flat-layout shared-enum
+  file that holds two or more namespaces no longer ends with an extra blank line. The layout check no
+  longer lists `EntityGenerator.cs` as unconverted.
+- **`migrate.foreignKeyTargets: "warn"` turns the refusal of a foreign key onto a non-unique target into
+  a report.** For a database whose unique index on the target is hand-made and not declared in the
+  metadata. The default, `"refuse"`, is the 1.3.0 behavior; the refusal's hint now names the setting. See
+  [Migrations and drift](docs/features/migrations-and-drift.md).
 - **Business rules and view expressions are packs, not core vocabulary.** The 1.3.0 vocabulary that
   never shipped in a release moves out of the one provider a project cannot leave out
   (`metaobjects-core-types`) into two providers of its own, in every port that carries it
@@ -2514,6 +2805,109 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
 
 ### Fixed
 
+- **codegen-ts-angular: the generated form binds its controls.** Each control in
+  `<Entity>.form.component.ts` read `[formControlName]=""email""`, a binding whose quoted
+  expression was cut short by the attribute's own quotes, so Angular bound no control. It now
+  writes `formControlName="email"`. The form also imports `Validators` only when a control uses
+  it, and the `__ensureValidatorsImport__` line that kept the import alive is gone. The TanStack
+  and Angular templates now write through the code writer (ADR-0063). Their output is otherwise
+  the same code, with imports merged per module and sorted.
+- **codegen-ts: an entity named after a reserved word gets a queries module that parses.** An
+  entity called `Case` (or `Default`, `Class`, …) wrote `const [case] = await db.select()…` in
+  its `<Entity>.queries.ts`, which is a syntax error; the row variable now takes the `Row` suffix
+  (`caseRow`) that a collection-name clash already took.
+- **The model explorer builds on a project with its own top-level vocabulary.** Two top-level
+  nodes of different types sharing a package and a name (an entity `Lead` and a page `Lead`)
+  made `buildExplorer` throw `two nodes share the id`. The object now keeps the plain
+  `<package>::<name>` id and each other node adds its type, `acme::crm::Lead[page.list]`, as a
+  nested sibling already did; a model with no such collision gets the same ids as before. A
+  requirement whose id took a qualifier still takes its ledger row.
+- **`meta gen` and `cargo meta gen`: the skip key now covers a linked generator package.** In
+  TypeScript, the ADR-0064 skip key ignored every `@metaobjectsdev/*` package the config imported,
+  on the assumption that the CLI aliases it onto its own engine copy. Only the packages the CLI
+  actually aliases are left out now. Any other `@metaobjectsdev/*` package, such as an independent
+  pack, is hashed like any third-party generator package: a linked or source checkout by the content
+  of its files, an installed one by its version. In Rust, a crate the owned `codegen/` crate depends
+  on by `path`, in a build table or a `[patch]`, is now an input too, followed through that crate's
+  own path dependencies and the workspace it inherits from; the `metaobjects` and
+  `metaobjects-codegen` engine crates are still covered by the engine's own source hash. Both ports
+  bump their fingerprint format, so the first `gen` after upgrading renders once. Before this
+  change, editing such a package's generator code while the model, the config and the lockfile
+  stayed the same left the key unchanged, and `gen` skipped over stale output.
+- **The template check reads `@responseRef`.** `verify`'s template gate now reports
+  `ERR_RESPONSE_UNRESOLVED` (error) for a reply type with no readable field, and
+  `ERR_RESPONSE_TAG_UNDECLARED` (warning) for an xml prompt's `@requiredTags` tag that names
+  neither the reply type nor a field in it. TypeScript, Java (and so Kotlin), C#, Python and
+  Rust, pinned by `fixtures/response-verify-conformance/`.
+- **The deprecated-reference finding ends its sentence before naming the replacement.** It read `…Team: the league no longer tracks teams Replaced by acme::app::Club.`; it now reads `…tracks teams. Replaced by acme::app::Club.` A reason that already ends in `.`, `!` or `?` is left as written.
+- **codegen-ts: a `runGen` with no project no longer leaves its gen-state in the scratch root.**
+  The state of such a run is kept for that process's later runs only, and is removed when the
+  process exits normally (a process killed by a signal still leaves it). Before this fix, each such process left `meta-gen-state-<pid>` behind
+  permanently. The test harnesses that generate with no project had left hundreds of those
+  directories, about 3 GB, in a RAM-backed `$DEV_SCRATCH`.
+- **runtime-ts: the generated service keeps its rollback guarantee on a sync SQLite driver.** On
+  bun:sqlite and better-sqlite3, Drizzle's `transaction()` commits when its callback returns, so a
+  service write that awaited inside it committed at its first `await`: a hook's or a body's refusal
+  answered 409 over a row that stayed. The service now drives those drivers' transaction itself
+  (`BEGIN IMMEDIATE`, `COMMIT`, `ROLLBACK`, one at a time per handle, a savepoint inside a caller's
+  transaction), and a read outside a transaction waits for the one in flight. The generated `Db`
+  type on SQLite accepts a sync driver again, as the flat queries module does. New
+  `withWriteTransaction(db, fn)` runs several operations atomically on any driver; on a sync
+  driver, pass its `tx` to each one inside it.
+- **codegen-ts: a trace helper whose response value object has a required field compiles.** It
+  cast the extracted record straight to the value object's interface, which `strict` TypeScript
+  refuses; it now casts through `unknown`, after checking that no required field was lost.
+- **Java: a standalone `{{! comment }}` line leaves no blank line.** mustache.java kept the line break
+  after a standalone comment tag, so a Java render had one extra blank line where TypeScript, C# and
+  Python had none. `Renderer` now strips standalone comment lines before mustache.java parses them. A
+  template with such a line renders differently in Java, so a prompt body with one changes bytes (and
+  its prompt-cache prefix) on upgrade. The `render-standalone-*` fixtures pin the whitespace rules.
+- **Python: `@union` and `@grain` projections are checked at load.** A union member whose fields
+  differ in name, subtype, array-ness, `@column` or enum shape, a member that is the projection
+  itself or declares its own `@union`, `@unionAll` without `@union`, a `@grain` that does not name a
+  base-entity `field.object` jsonb array with `@objectRef`, an aggregate in a `@grain` view, and a
+  malformed `@grainOrdinal` are now `ERR_BAD_ATTR_VALUE`, as in TypeScript and C#. Python passes the
+  `error-projection-union-shape` and `error-projection-grain-not-object-array` fixtures.
+- **Java and Kotlin: `mvn metaobjects:eject -Dforce=true` no longer rewrites an identical copy.** An
+  owned generator, template, support or runtime file, or the `codegen/pom.xml`, that already holds
+  exactly the reference content is left alone and reported as identical, with or without `force`.
+  The codegen fingerprint, `metaobjects:fmt` and `metaobjects:init` also compare before they write.
+- **Fixed: the filter nesting cap could not be reached.** `qs`'s default depth of 5 kept the sixth
+  bracket pair as part of the key, so `filter[or][0][or][0][or][0][a][eq]=1` read as a field named
+  `[0][a][eq]` and answered `invalid_filter_field` instead of `filter.nesting_too_deep`. Every
+  TypeScript mount now parses with `parseListQueryString`, whose depth is sized to the cap. As part
+  of the same fix, a combinator branch that names no field (`filter[or][0]=x`) is now
+  `400 invalid_filter_value` with `field: "or"`; before, it was an unknown field named `0`.
+- **Fixed: on SQLite, `like` through the `ObjectManager` was case-insensitive.** The Kysely and
+  Drizzle drivers sent SQLite's native LIKE, which folds ASCII case, against ADR-0049. They now
+  lower `like` to GLOB on SQLite, as the generated routes already did, and to a binary comparison
+  on MySQL.
+- **Fixed: `?search` on an entity with an int-backed enum answered 500 on Postgres.** The search
+  included every filterable text field, and an int-backed (`@intValueMap`) enum is an integer
+  column, so Postgres refused the ILIKE. Search now covers only fields whose operator band
+  includes `like`.
+- **Python: a primitive array persists on SQLite and MySQL.** The `ObjectManagerDb`'s SQLite and
+  MySQL dialects bound no list, so an `isArray` string, number, date, uuid or enum field could not be
+  written there. The column the TypeScript-owned schema gives it (`TEXT` on SQLite, `JSON` on MySQL)
+  now holds a JSON array, an int-backed enum's as its integers (`[5,0]`), and each element reads back
+  through the scalar decode. `roundtrip-int-enum-array` runs on both engines instead of being deferred.
+  A `field.date`, `field.time` or `field.timestamp` array was refused on write on every engine,
+  Postgres included (the list was parsed as one value); it is now parsed element by element.
+- **Python: an unrestricted `routes` is no longer refused for objects it writes no router for.**
+  `metaobjects gen` refused a config that limits `filter-allowlist` (or `entity`) to some packages
+  while `routes` is left unlimited, whenever another package held an abstract or sourceless object,
+  saying `routes` covered it. `routes` writes nothing for those objects, so only the objects it
+  routes count now. A routed object's model still imports the abstract base it `extends`, the value
+  objects its fields reference and its M:N targets, so limiting `entity` away from one of those is
+  still refused. So is the concrete subtype of a routed discriminator base, whose `Create` and
+  `Patch` models the base's router imports.
+- **Python: `metaobjects eject --force` no longer rewrites an identical copy.** It compares each file
+  with the reference before writing, and one that already matches is left alone and reported
+  `unchanged`.
+- **Python: a reverse finder over a flattened value-object member is named by its flat key.** A
+  reference whose `@fields` names a member such as `address.countryId` emitted a method name with a
+  dot in it, which is not Python. It is now `find_plans_by_address_country`, as TypeScript names it,
+  so the generated finder name changes for such a model on upgrade.
 - **Python: an `origin.computed` `@expr` and a validator `@condition` accept every expression
   function and the `cast` node.** The Python loader knew only `coalesce`, so a projection that used
   `lower`, `greatest`, `splitPart`, `concat`, `nullif`, `length` or `{ cast, as }` was refused with

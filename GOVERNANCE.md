@@ -130,6 +130,26 @@ the rulings this rests on, changing the kinds, the one-way dependency or the nam
 model-format and compatibility change, and so needs a core maintainer. Building a pack inside
 those rules does not.
 
+### The loader rule
+
+**The loader refuses what is invalid for the model; a limit of one generator is that generator's error.** The loader refuses a model only when the model itself is ambiguous or
+contradictory: two declared names that resolve equal, two bindings on one method and path, a
+reference to something that does not exist. A clash with a name only a reference generator derives,
+or a subtype one generator cannot emit, is that generator's error, raised when it runs. A model
+that loads must stay usable by every other generator and by an adopter's own. Relaxing a loader
+refusal is never a break. Adding one is a model-format change and needs a core maintainer.
+The rule is a step of [ADR-0037](spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md).
+The refusals that predate it, and where each goes:
+
+| Refusal | Where it lives | Status |
+|---|---|---|
+| A transition or operation named like a derived CRUD verb (`ERR_TRANSITION_NAME_COLLISION`) | TypeScript loader, rules vocabulary | Unreleased in 1.3.0. Moves into the service generator's own error when that generator exists. |
+| `@errors` codes that collide with a reserved code | TypeScript loader, rules vocabulary | Unreleased in 1.3.0. Moves with the one above. |
+| `ERR_FILTERABLE_UNSUPPORTED_SUBTYPE` | Loader validation passes | Released. Stays; moves to the REST generator when that code is next touched. Relaxing a refusal is never a break. |
+| `ERR_SORTABLE_UNSUPPORTED_SUBTYPE` | Loader validation passes | Released. Same as the filter refusal. |
+
+Six further refusals are unclear and stay as they are until someone touches them.
+
 ### Releases
 
 The core maintainers decide when a release happens, what version it carries, and what goes in

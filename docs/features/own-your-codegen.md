@@ -1,12 +1,12 @@
 # Own your codegen
 
-MetaObjects treats generated code as a **disposable artifact** and the metamodel as
-the **durable spine**. You own the generated code in your repo — it runs without any
+MetaObjects treats generated code as **regenerated output** and the metamodel as
+the **durable spine**. The reference generators help a team get started and are never the required way. What they generate is real code: run it, extend it, or replace the generator. You own the generated code in your repo — it runs without any
 MetaObjects runtime dependency, and if `@metaobjectsdev/*` (or the Maven/PyPI/NuGet
 packages) disappeared, you keep working code.
 
 **Generators are supported helpers, not core guarantees** ([ADR-0034 Amendments 3 and 11](../../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-11-2026-11-19--the-core-is-contracts-and-conformance-kits-and-generated-code-is-real-code)).
-What MetaObjects guarantees is the core: the contracts and the conformance kits — the metamodel
+What MetaObjects guarantees is the core: the contracts, and the conformance corpora this repository runs every port against (they are not a kit you run in your project) — the metamodel
 and loader, the store-neutral contracts, `meta verify`, prompt render and the reply parser.
 Store-specific code and every generator that writes application code into your repo are
 helpers: they compile and pass their reference fixtures, and what they generate is real code.

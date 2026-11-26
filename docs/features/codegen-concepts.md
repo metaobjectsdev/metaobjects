@@ -1,6 +1,6 @@
 # Codegen concepts
 
-The durable design ideas behind MetaObjects codegen. Generators are disposable;
+The durable design ideas behind MetaObjects codegen. Generated code is regenerated output;
 the metamodel is the spine. The generators MetaObjects ships are reference helpers you
 copy and own, not guarantees — see [Own your codegen](own-your-codegen.md). This guide is the *why* — the tradeoffs and techniques
 you reach for when "it works" needs to become "it works at scale, and the next
@@ -98,7 +98,7 @@ did render.
 
 ## 5. Preserving hand edits — one shipped strategy, and two you would build
 
-Generated code is disposable, but people *do* edit it. **MetaObjects ships exactly one
+Generated code is regenerated, but people *do* edit it. **MetaObjects ships exactly one
 of the three strategies below. The other two are patterns you can build with your own
 generators — no shipped generator on any port emits a base/extension or a partial
 pair, and no write path is write-if-absent.** Treat 2 and 3 as design options for
@@ -150,7 +150,7 @@ base/extension split pleasant if you author one:
   **gitignore it**. It's regenerated on every build, never reviewed, never committed.
 
 This cleanly separates *owned + edited* (committed, stable, in review) from
-*regenerated + disposable* (gitignored, invisible). You get full regeneration of the
+*regenerated* (gitignored, invisible). You get full regeneration of the
 mechanical half with zero merge noise, and a small hand-owned half that's the only
 thing in git and the only thing anyone reads.
 

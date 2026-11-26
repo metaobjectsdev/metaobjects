@@ -125,7 +125,7 @@ The full hunt for each axis of Phase 1b (Partial / Deep path). Each axis runs in
   (Node `meta` only) for DB drift. Flag a gate that is WIRED BUT INCOMPLETE for the
   artifacts present, and recommend the specific missing coverage.
 - [ ] **F2. Over-generation — unnecessary generated files (codegen WASTE).**
-  Generated code is disposable, but that is NOT license to generate what nothing
+  Generated code is regenerated output, but that is NOT license to generate what nothing
   consumes. Every generated file is a merge/review/maintenance surface and inflates
   the leverage ratio falsely. Hunt OVER-generation (the inverse of A/B's
   under-generation):

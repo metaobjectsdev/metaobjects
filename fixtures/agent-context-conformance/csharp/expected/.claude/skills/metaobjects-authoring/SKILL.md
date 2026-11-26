@@ -87,8 +87,10 @@ When you are about to hand-write something data-shaped, find the model for it:
    algorithms, external integrations, bespoke interactions. CRUD, validation, finders,
    relationships and derived or aggregate data are not in that group.
 
-If the metadata could describe it, declaring it is the right call even when a one-off
-hand-write would be faster today (`references/model-first-rationale.md`).
+If the metadata could describe it, declare it when the cost test favours it: the shape
+is smaller declared than hand-written, it will have more than one instance, or declaring it
+buys drift protection a hand-write cannot. A one-off with none of these can stay hand-written
+(`references/model-first-rationale.md`).
 
 ## Adopting onto an existing codebase: metadata follows the code
 

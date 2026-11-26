@@ -267,6 +267,31 @@ operation's SQL. The case in point is an identity start: Npgsql writes `RESTART 
 - Removing the C# migrate engine (Decision 7) stands. The EF path is EF's own engine, not a
   MetaObjects one.
 
+## Amendment 2 (2026-11-25): each language's native migration tool is first-class; the Node engine is the reference helper
+
+**Context.** Decision 5 and the Realization status record the engine as Node-only, and a good deal
+of prose since then reads "Node owns the schema". That was an accurate description of where the
+code lives. It was then read as a requirement, and an adopter on Alembic, Flyway, Liquibase, EF Core
+Migrations or Diesel was told, in effect, to install a second toolchain to have a schema. Amendment 1
+already withdrew that for C#.
+
+**Decision.** Each language's native migration tool is a first-class way to own the schema: EF Core
+Migrations, Alembic, Flyway or Liquibase, Diesel or sqlx, Drizzle Kit, or the project's own. The Node
+engine (`meta migrate`, `meta verify --db`) is the **reference migration helper**: one option, the one
+that is gated by the persistence-conformance migration scenarios, and never the required way. The
+contract an adopter can lean on is the **expected schema**: what the metadata says the database
+must look like, which every native tool is held to by `meta verify --db` against a live database.
+The engine's code stays in TypeScript (Decision 5), and no port grows a diff engine of its own
+(Decision 7 stands).
+
+**Consequences.**
+- Docs say "the reference migration helper, one option", and each port page leads with that port's
+  native path.
+- The migrate commands, the `Schema` section of the agent docs and the `meta init` migrate step appear
+  only for a project that chose a migrate dialect.
+- Where an ADR or page says the schema is "Node-only" or "TypeScript-owned", it describes where the
+  reference helper runs, not a limit on the adopter. ADR-0033 and ADR-0065 are amended to say so.
+
 ## Conformance note
 
 Migrate behavior is gated by the **persistence-conformance** corpus. Post-consolidation, the

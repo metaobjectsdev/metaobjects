@@ -21,9 +21,10 @@ Two earlier decisions jointly removed the justification for that duplication:
    `{{codegenCommand}}`) in the two always-on files. Each assembler was therefore
    doing "copy a static tree + interpolate two strings."
 
-2. **ADR-0015 (2026-05-30).** Schema migrations are Node-only on every port (npm
-   primary; an optional pre-compiled binary serves Node-free shops). Every adopter
-   already needs the `meta` CLI or its binary. The "scaffold without Node" goal that
+2. **ADR-0015 (2026-05-30).** The reference migration helper (`meta migrate`) runs on
+   Node (npm primary; an optional pre-compiled binary serves Node-free shops), and each language's
+   native migration tool is equally first-class (Amendment 2 of ADR-0015). An adopter who runs the
+   helper needs the `meta` CLI or its binary. The "scaffold without Node" goal that
    justified native assemblers was already traded away for migrations — two days before
    the agent-context design was written — and was never reconciled.
 

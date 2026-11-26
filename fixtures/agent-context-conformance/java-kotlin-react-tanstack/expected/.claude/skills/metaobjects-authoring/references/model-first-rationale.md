@@ -1,6 +1,6 @@
 # Why model-first wins
 
-The case behind the operating principle in `SKILL.md`: why declaring the model beats hand-writing a layer, even when the hand-written version is cheaper this once.
+The case behind the operating principle in `SKILL.md`: why declaring the model usually beats hand-writing a layer, even when the hand-written version is cheaper this once. The cost test in `SKILL.md` still decides a one-off.
 
 ## Contents
 - Second source of truth

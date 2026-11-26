@@ -84,7 +84,7 @@ work*. A release can move one without the other, and most releases move neither.
   module the eject contract allows, but only the authoring surface above is promised; the
   other modules may change in any release.
 - **Generator internals and the reference templates themselves.** Generated code is
-  yours and disposable — its internals are not a public API. See
+  yours and regenerated — its internals are not a public API. See
   [own-your-codegen](features/own-your-codegen.md).
 - **Runtime-library helper internals.** Idiomatic per port; best-effort, not promised.
 - **Anything explicitly marked experimental or reserved** and not yet in the registry

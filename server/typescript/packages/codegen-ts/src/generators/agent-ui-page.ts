@@ -226,7 +226,7 @@ export function renderAgentUiPage(root: MetaRoot, apiPrefix = ""): string {
   out.push("");
   out.push(
     "What the generated forms and grids already are. Read it before changing a form, a " +
-      "grid or a filter — the generated `.tsx` is the disposable artifact, this is what " +
+      "grid or a filter — the generated `.tsx` is regenerated output, this is what " +
       "produced it.",
   );
   out.push("");

@@ -790,7 +790,7 @@ needs a `prompts/` (else `templates/`) directory, or `--templates <root>`, and e
 | Python | `metaobjects verify` | Codegen: `metaobjects.config.yaml`. Templates: `metaobjects.config.yaml` or `--prompts <dir>`. | `metaobjects verify --codegen`, `metaobjects verify --templates` |
 | Rust | `cargo meta verify` | Codegen: `.metaobjects/config.json` and the project's generator list (`metaobjects.config.json`; every generator runs when it is absent). Templates: a `prompts/` (else `--prompts <dir>`) directory under the project root. | `cargo meta verify --codegen`, `cargo meta verify --templates` |
 
-Schema drift is a separate, opt-in check and Node-only (ADR-0015): `meta verify --db <url>`
+Schema drift is a separate, opt-in check run by the Node CLI, whichever migration tool built the database (ADR-0015 Amendment 2): `meta verify --db <url>`
 introspects the live database and reports database-versus-metadata drift. The other five
 ports reject `--db` (C#, Python, Rust and the Maven goal exit 2 or fail with a pointer to the
 TypeScript CLI); the live-DB-schema `metaobjects:verify` goal was removed along with the
