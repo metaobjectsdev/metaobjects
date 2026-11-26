@@ -7,6 +7,9 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
+import com.metaobjects.generator.writer.CodeWriter
+import com.metaobjects.generator.writer.Group
 
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.GeneratorException
@@ -132,85 +135,73 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         // Payload field tree — reused by the build-time gate AND baked into the emitted
         // RenderRequest.verify so the runtime check matches the gate.
         val fields = derivePayloadFieldTree(loader, payloadVo, LinkedHashSet())
-        val fieldTreeLiteral = fieldTreeLiteral(fields)
+        val fieldTree = fieldTreeLiteral(fields)
 
         val isEmail = TemplateConstants.KIND_EMAIL.equals(kindOf(template), ignoreCase = true)
 
-        val body = StringBuilder()
-        if (isEmail) {
-            val subjectRef = attr(template, TemplateConstants.ATTR_SUBJECT_REF)
-                ?: throw GeneratorException(
-                    "template.output \"${template.name}\" (email) missing @subjectRef")
-            val htmlBodyRef = attr(template, TemplateConstants.ATTR_HTML_BODY_REF)
-                ?: throw GeneratorException(
-                    "template.output \"${template.name}\" (email) missing @htmlBodyRef")
-            val textBodyRef = attr(template, TemplateConstants.ATTR_TEXT_BODY_REF)
+        val w = KotlinWriter().packageName(outPkg)
+        w.header("// GENERATED — DO NOT EDIT — render helper for template.${template.subType} `${template.name}`")
+        w.doc(
+            "Typed render helper for the `$templateShort` template.${template.subType}. Wraps the JVM render() engine; the payload field tree is",
+            "baked into the RenderRequest so render()'s runtime drift check matches the",
+            "build-time gate enforced when this file was generated.",
+        )
+        w.block("object $helperClass {") {
+            if (isEmail) {
+                val subjectRef = attr(template, TemplateConstants.ATTR_SUBJECT_REF)
+                    ?: throw GeneratorException(
+                        "template.output \"${template.name}\" (email) missing @subjectRef")
+                val htmlBodyRef = attr(template, TemplateConstants.ATTR_HTML_BODY_REF)
+                    ?: throw GeneratorException(
+                        "template.output \"${template.name}\" (email) missing @htmlBodyRef")
+                val textBodyRef = attr(template, TemplateConstants.ATTR_TEXT_BODY_REF)
 
-            // BUILD-TIME drift gate — every email part-ref is resolved + verified.
-            gateRef(template.name, subjectRef, provider, fields)
-            gateRef(template.name, htmlBodyRef, provider, fields)
-            if (textBodyRef != null) gateRef(template.name, textBodyRef, provider, fields)
+                // BUILD-TIME drift gate — every email part-ref is resolved + verified.
+                gateRef(template.name, subjectRef, provider, fields)
+                gateRef(template.name, htmlBodyRef, provider, fields)
+                if (textBodyRef != null) gateRef(template.name, textBodyRef, provider, fields)
 
-            body.append("    fun render(payload: ").append(payloadClass)
-                .append(", provider: com.metaobjects.render.Provider): com.metaobjects.render.EmailDocument {\n")
-            body.append("        val r = com.metaobjects.render.Renderer()\n")
-            body.append("        return com.metaobjects.render.EmailDocument(\n")
-            body.append("            r.render(com.metaobjects.render.RenderRequest(\n")
-                .append("                null, ").append(quote(subjectRef))
-                .append(", payload, provider, \"text\",\n")
-                .append("                ").append(fieldTreeLiteral).append(", null)),\n")
-            body.append("            r.render(com.metaobjects.render.RenderRequest(\n")
-                .append("                null, ").append(quote(htmlBodyRef))
-                .append(", payload, provider, \"html\",\n")
-                .append("                ").append(fieldTreeLiteral).append(", null)),\n")
-            if (textBodyRef != null) {
-                body.append("            r.render(com.metaobjects.render.RenderRequest(\n")
-                    .append("                null, ").append(quote(textBodyRef))
-                    .append(", payload, provider, \"text\",\n")
-                    .append("                ").append(fieldTreeLiteral).append(", null)))\n")
+                // One `r.render(RenderRequest(...))` per part; an absent text part is `null`.
+                fun part(ref: String, format: String): Group = CodeWriter.list(
+                    "r.render($RENDER.RenderRequest(",
+                    listOf("null", quote(ref), "payload", "provider", quote(format), fieldTree, "null"),
+                    "))",
+                )
+                w.block("fun render(payload: $payloadClass, provider: $RENDER.Provider): $RENDER.EmailDocument {") {
+                    w.line("val r = $RENDER.Renderer()")
+                    w.line(
+                        "return ",
+                        KotlinWriter.call(
+                            "$RENDER.EmailDocument",
+                            part(subjectRef, "text"),
+                            part(htmlBodyRef, "html"),
+                            if (textBodyRef != null) part(textBodyRef, "text") else "null",
+                        ),
+                    )
+                }
             } else {
-                body.append("            null)\n")
+                val textRef = attr(template, TemplateConstants.ATTR_TEXT_REF)
+                    ?: throw GeneratorException(
+                        "template.${template.subType} \"${template.name}\" missing @textRef")
+                val format = template.format
+                val maxChars = template.maxChars
+
+                // BUILD-TIME drift gate.
+                gateRef(template.name, textRef, provider, fields)
+
+                w.line("fun render(payload: $payloadClass, provider: $RENDER.Provider): String =")
+                w.indented {
+                    w.line(
+                        CodeWriter.list(
+                            "$RENDER.Renderer().render($RENDER.RenderRequest(",
+                            listOf("null", quote(textRef), "payload", "provider", quote(format), fieldTree, maxChars?.toString() ?: "null"),
+                            "))",
+                        ),
+                    )
+                }
             }
-            body.append("    }\n")
-        } else {
-            val textRef = attr(template, TemplateConstants.ATTR_TEXT_REF)
-                ?: throw GeneratorException(
-                    "template.${template.subType} \"${template.name}\" missing @textRef")
-            val format = template.format
-            val maxChars = template.maxChars
-
-            // BUILD-TIME drift gate.
-            gateRef(template.name, textRef, provider, fields)
-
-            body.append("    fun render(payload: ").append(payloadClass)
-                .append(", provider: com.metaobjects.render.Provider): String =\n")
-            body.append("        com.metaobjects.render.Renderer().render(com.metaobjects.render.RenderRequest(\n")
-            body.append("            null, ").append(quote(textRef)).append(", payload, provider, ")
-                .append(quote(format)).append(",\n")
-            body.append("            ").append(fieldTreeLiteral).append(", ")
-                .append(maxChars?.toString() ?: "null").append("))\n")
         }
-
-        val src = buildString {
-            append("// GENERATED — DO NOT EDIT — render helper for template.")
-            append(template.subType)
-            append(" `")
-            append(template.name)
-            append("`\n")
-            append(KotlinNaming.packageHeader(outPkg))
-            append("/** Typed render helper for the `")
-            append(templateShort)
-            append("` template.")
-            append(template.subType)
-            append(". Wraps the JVM render() engine; the payload field tree is\n")
-            append(" *  baked into the RenderRequest so render()'s runtime drift check matches the\n")
-            append(" *  build-time gate enforced when this file was generated. */\n")
-            append("object ")
-            append(helperClass)
-            append(" {\n")
-            append(body)
-            append("}\n")
-        }
+        val src = w.toString()
 
         val outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve("$helperClass.kt")
         GeneratedFileWriter.write(outFile, src)
@@ -293,22 +284,19 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `java.util.List.of()`. `java.util.List.of` matches what `RenderRequest.verify`
      * (a `List<PayloadField>`) expects and mirrors the Java render-helper's literal.
      */
-    private fun fieldTreeLiteral(fields: List<PayloadField>): String {
-        if (fields.isEmpty()) return "java.util.List.of<com.metaobjects.render.PayloadField>()"
-        val sb = StringBuilder("java.util.List.of(")
-        for ((i, f) in fields.withIndex()) {
-            if (i > 0) sb.append(", ")
-            if (f.fields() != null) {
-                sb.append("com.metaobjects.render.PayloadField.`object`(")
-                  .append(quote(f.name())).append(", ")
-                  .append(fieldTreeLiteral(f.fields())).append(if (f.isArray()) ", true)" else ")")
-            } else {
-                sb.append("com.metaobjects.render.PayloadField.scalar(")
-                  .append(quote(f.name())).append(if (f.isArray()) ", true)" else ")")
-            }
-        }
-        sb.append(")")
-        return sb.toString()
+    private fun fieldTreeLiteral(fields: List<PayloadField>): Any {
+        if (fields.isEmpty()) return "java.util.List.of<$RENDER.PayloadField>()"
+        return KotlinWriter.call(
+            "java.util.List.of",
+            *fields.map { f ->
+                val array = if (f.isArray()) listOf("true") else emptyList()
+                if (f.fields() != null) {
+                    KotlinWriter.call("$RENDER.PayloadField.`object`", quote(f.name()), fieldTreeLiteral(f.fields()), *array.toTypedArray())
+                } else {
+                    KotlinWriter.call("$RENDER.PayloadField.scalar", quote(f.name()), *array.toTypedArray())
+                }
+            }.toTypedArray(),
+        )
     }
 
     // -------------------------------------------------------------------------
@@ -334,26 +322,8 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
             template.getMetaAttr(attr).valueAsString
         else null
 
-    /** Kotlin string-literal quoting with the common escapes. */
-    private fun quote(s: String?): String {
-        if (s == null) return "null"
-        val sb = StringBuilder(s.length + 2)
-        sb.append('"')
-        for (c in s) {
-            when (c) {
-                '\\' -> sb.append("\\\\")
-                '"' -> sb.append("\\\"")
-                '$' -> sb.append("\\$")
-                '\n' -> sb.append("\\n")
-                '\r' -> sb.append("\\r")
-                '\t' -> sb.append("\\t")
-                else -> sb.append(c)
-            }
-        }
-        sb.append('"')
-        return sb.toString()
-    }
-
+    /** A Kotlin string literal for [s], or `null`. */
+    private fun quote(s: String?): String = if (s == null) "null" else KotlinWriter.str(s)
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }
@@ -369,6 +339,9 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         "${KotlinNaming.renderHelperName(PackageMapping.splitFqn(md.name).second)}.kt"
 
     companion object {
+        /** The render engine's package, which the helper names fully qualified. */
+        private const val RENDER: String = "com.metaobjects.render"
+
         /** Arg key for the on-disk template dir used by the build-time drift gate. */
         const val ARG_TEMPLATE_ROOT: String = "templateRoot"
     }

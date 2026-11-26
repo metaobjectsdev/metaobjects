@@ -1,0 +1,25 @@
+{
+  "description": "A hard keyword used as a package or import segment is written in backticks, so the line parses.",
+  "dialect": "kotlin",
+  "ops": [
+    [
+      "package",
+      "com.acme.object"
+    ],
+    [
+      "use",
+      "com.metaobjects.object.MetaObject"
+    ],
+    [
+      "line",
+      "class A"
+    ]
+  ],
+  "expected": [
+    "package com.acme.`object`",
+    "",
+    "import com.metaobjects.`object`.MetaObject",
+    "",
+    "class A"
+  ]
+}

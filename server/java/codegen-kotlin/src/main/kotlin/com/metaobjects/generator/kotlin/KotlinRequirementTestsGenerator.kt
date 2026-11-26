@@ -4,8 +4,10 @@ import com.metaobjects.generator.FileEmittingGenerator
 import com.metaobjects.generator.FileEmittingGenerator.EmittedFile
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.ProjectClassLoaderAware
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 import com.metaobjects.generator.requirement.RequirementTestArgs
 import com.metaobjects.generator.requirement.RequirementTestRenderer
+import com.metaobjects.generator.writer.CodeWriter
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.requirement.MetaRequirement
 import com.metaobjects.requirement.RequirementTestFilter
@@ -225,11 +227,8 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         if (pairs.isEmpty()) return
         val sb = StringBuilder(ERR_WITNESS_KEY_COLLISION)
             .append(": two requirement tests map to one witness key, so one witness could not serve both. ")
-            .append("Rename one so the names differ in more than punctuation:")
-        for (pair in pairs) {
-            sb.append("\n  '").append(pair[0]).append("' and '").append(pair[1])
-                .append("' (witness key ").append(keyById[pair[0]]).append(')')
-        }
+            .append("Rename one so the names differ in more than punctuation: ")
+            .append(pairs.joinToString("; ") { pair -> "'${pair[0]}' and '${pair[1]}' (witness key ${keyById[pair[0]]})" })
         throw GeneratorException(sb.toString())
     }
 
@@ -248,26 +247,25 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
     // ------------------------------------------------------------------
 
     private fun witnessInterface(testPackage: String, name: String, witnessClass: String, tests: List<Planned>): String {
-        val sb = StringBuilder(GENERATED_HEADER)
-            .append("// Witnesses are project-owned: implement this interface in ").append(commentText(witnessClass))
-            .append(" and override the members it has witnesses for.\n")
-            .append("package ").append(sourceName(testPackage)).append("\n\n")
-            .append("interface ").append(name).append(" {\n")
-        for (p in tests) {
-            val id = p.identity
-            if (id.skip() != null) continue // a skipped test claims nothing works yet: no member
-            sb.append('\n').append(indent(testComments(p.args))).append('\n')
-                .append("    fun ").append(id.witnessKey()).append("() {\n")
-                .append("        throw AssertionError(\"")
-                .append(
-                    stringLiteral(
-                        "unimplemented requirement: ${id.id()} - write $witnessClass.${id.witnessKey()}() " +
-                            "so that it fails when: ${p.args.counterexample()}",
-                    ),
-                )
-                .append("\")\n    }\n")
+        val w = KotlinWriter().packageName(testPackage)
+        w.header(
+            GENERATED_HEADER,
+            "// Witnesses are project-owned: implement this interface in ${commentText(witnessClass)} and override the members it has witnesses for.",
+        )
+        w.block("interface $name {") {
+            for (p in tests) {
+                val id = p.identity
+                if (id.skip() != null) continue // a skipped test claims nothing works yet: no member
+                w.blank()
+                testComments(p.args).forEach { w.line(it) }
+                w.block("fun ${id.witnessKey()}() {") {
+                    val message = "unimplemented requirement: ${id.id()} - write $witnessClass.${id.witnessKey()}() " +
+                        "so that it fails when: ${p.args.counterexample()}"
+                    w.line("throw AssertionError(", KotlinWriter.str(message), ")")
+                }
+            }
         }
-        return sb.append("}\n").toString()
+        return w.toString()
     }
 
     private fun testClass(
@@ -278,41 +276,45 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         tests: List<Planned>,
         renderer: RequirementTestRenderer?,
     ): String {
+        // A renderer names its imports as free text (an alias, a wildcard), so they print as given.
         val imports = TreeSet<String>()
         imports += "org.junit.jupiter.api.Test"
-        val body = StringBuilder()
-        for (p in tests) {
-            val rendered = renderer?.render(p.args)
-            val source: String
-            if (rendered != null) {
-                imports += rendered.imports()
-                source = rendered.source()
-            } else {
-                source = defaultTest(p)
-                if (p.identity.skip() != null) imports += "org.junit.jupiter.api.Disabled"
+        val w = object : KotlinWriter() {
+            override fun writeImports(w: CodeWriter) {
+                for (i in imports) w.line("import ", i)
             }
-            body.append('\n').append(indent(source.trimEnd())).append('\n')
         }
-        val sb = StringBuilder(GENERATED_HEADER)
-            .append("// The witnesses are project-owned, in ").append(commentText(witnessClass)).append(".\n")
-            .append("package ").append(sourceName(testPackage)).append("\n\n")
-        for (i in imports) sb.append("import ").append(i).append('\n')
-        return sb.append("\nclass ").append(name).append(" {\n\n")
-            .append("    private val witnesses: ").append(witnesses).append(" = ").append(sourceName(witnessClass)).append("()\n")
-            .append(body).append("}\n").toString()
+        w.packageName(testPackage)
+        w.header(GENERATED_HEADER, "// The witnesses are project-owned, in ${commentText(witnessClass)}.")
+        w.block("class $name {") {
+            w.line("private val witnesses: $witnesses = ", KotlinWriter.escapeName(witnessClass), "()")
+            for (p in tests) {
+                w.blank()
+                val rendered = renderer?.render(p.args)
+                if (rendered != null) {
+                    imports += rendered.imports()
+                    w.text(rendered.source().trimEnd())
+                } else {
+                    if (p.identity.skip() != null) imports += "org.junit.jupiter.api.Disabled"
+                    writeDefaultTest(w, p)
+                }
+            }
+        }
+        return w.toString()
     }
 
     /** The default rendering of one test: its comments, then a `@Test` calling the witness. */
-    private fun defaultTest(p: Planned): String {
+    private fun writeDefaultTest(w: KotlinWriter, p: Planned) {
         val id = p.identity
-        val sb = StringBuilder(testComments(p.args)).append("\n@Test\n")
+        testComments(p.args).forEach { w.line(it) }
+        w.line("@Test")
         if (id.skip() == null) {
-            sb.append("fun ").append(id.witnessKey()).append("() {\n    witnesses.").append(id.witnessKey()).append("()\n}")
+            w.block("fun ${id.witnessKey()}() {") { w.line("witnesses.${id.witnessKey()}()") }
         } else {
-            sb.append("@Disabled(\"").append(stringLiteral(skipReason(id.skip()))).append("\")\n")
-                .append("fun ").append(id.witnessKey()).append("() {\n}")
+            w.line("@Disabled(", KotlinWriter.str(skipReason(id.skip())), ")")
+            w.line("fun ${id.witnessKey()}() {")
+            w.line("}")
         }
-        return sb.toString()
     }
 
     private fun skipReason(skip: String): String = when (skip) {
@@ -321,15 +323,15 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         else -> "$skip - skipped"
     }
 
-    /** The comment block above a test: id, statement, counterexample, status, claims, digest. */
-    private fun testComments(a: RequirementTestArgs): String {
+    /** The comment lines above a test: id, statement, counterexample, status, claims, digest. */
+    private fun testComments(a: RequirementTestArgs): List<String> {
         val id = a.identity()
         val claims = a.targets().joinToString(", ") { "${it.ref()}  (${it.concern()})" }
-        return commentLines(id.id()) + "\n" +
-            commentLines(a.statement()) + "\n" +
-            commentLines("Counterexample: " + a.counterexample()) + "\n" +
-            commentLines("Status: " + (id.status() ?: "(none)")) + "\n" +
-            commentLines("Claims: " + claims.ifEmpty { "(none)" }) + "\n" +
+        return commentLines(id.id()) +
+            commentLines(a.statement()) +
+            commentLines("Counterexample: " + a.counterexample()) +
+            commentLines("Status: " + (id.status() ?: "(none)")) +
+            commentLines("Claims: " + claims.ifEmpty { "(none)" }) +
             commentLines("Digest: " + id.digest())
     }
 
@@ -338,52 +340,13 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
     // ------------------------------------------------------------------
 
     /**
-     * A dotted name as it is written in Kotlin source: a segment that is a hard keyword (`in`,
-     * `is` and `as` are real country-code prefixes in a reversed domain) is wrapped in
-     * backticks, since `package in.co.acme` does not parse. The file's directory and every
-     * comment and message keep the plain name.
-     */
-    private fun sourceName(dotted: String): String =
-        dotted.split('.').joinToString(".") { if (it in HARD_KEYWORDS) "`$it`" else it }
-
-    private fun indent(block: String): String {
-        val sb = StringBuilder()
-        for (line in block.split("\n")) {
-            if (sb.isNotEmpty()) sb.append('\n')
-            if (line.isNotEmpty()) sb.append("    ").append(line)
-        }
-        return sb.toString()
-    }
-
-    /**
      * One `//` marker per line. A carriage return ends a Kotlin line as a line feed does, so
      * both split; the comment terminator is broken as `* /` by contract.
      */
-    private fun commentLines(text: String): String =
-        text.split(Regex("\r\n|\r|\n")).joinToString("\n") { "// " + commentText(it) }
+    private fun commentLines(text: String): List<String> =
+        text.split(LINE_BREAK).map { "// " + commentText(it) }
 
     private fun commentText(line: String): String = line.replace("*/", "* /")
-
-    /**
-     * The text of a double-quoted string literal. Every control character is escaped, so no
-     * value can end the literal, and so is `$`, which would otherwise start a string template.
-     */
-    private fun stringLiteral(s: String): String {
-        val sb = StringBuilder()
-        for (c in s) {
-            when {
-                c == '\\' -> sb.append("\\\\")
-                c == '"' -> sb.append("\\\"")
-                c == '$' -> sb.append("\\$")
-                c == '\n' -> sb.append("\\n")
-                c == '\r' -> sb.append("\\r")
-                c == '\t' -> sb.append("\\t")
-                c.code < 0x20 || c.code == 0x7f -> sb.append("\\u%04x".format(c.code))
-                else -> sb.append(c)
-            }
-        }
-        return sb.toString()
-    }
 
     companion object {
         private val LOG = LoggerFactory.getLogger(KotlinRequirementTestsGenerator::class.java)
@@ -404,16 +367,12 @@ open class KotlinRequirementTestsGenerator : FileEmittingGenerator(), ProjectCla
         private const val SKIP_PLANNED = "planned - not built yet"
         private const val SKIP_RETIRED = "retired - the capability was deliberately removed; assert it stays removed"
 
-        /** Kotlin's hard keywords: the ones that cannot be an identifier without backticks. */
-        private val HARD_KEYWORDS = setOf(
-            "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
-            "interface", "is", "null", "object", "package", "return", "super", "this", "throw",
-            "true", "try", "typealias", "typeof", "val", "var", "when", "while",
-        )
-
         private val KOTLIN_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*")
 
         private const val GENERATED_HEADER =
-            "// GENERATED by metaobjects (requirement-tests). DO NOT EDIT: this file is rewritten whole.\n"
+            "// GENERATED by metaobjects (requirement-tests). DO NOT EDIT: this file is rewritten whole."
+
+        /** A carriage return ends a Kotlin line as a line feed does, so both split a comment. */
+        private val LINE_BREAK = Regex("\r\n|\r|\n")
     }
 }

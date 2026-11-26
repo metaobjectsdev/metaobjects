@@ -1,8 +1,6 @@
 package acme.demo
 
-/**
- * GENERATED — per-object physical database names for Author.
- */
+/** GENERATED — per-object physical database names for Author. */
 object AuthorNames {
     const val TYPE: String = "object"
     const val SUB_TYPE: String = "entity"
@@ -22,8 +20,5 @@ object AuthorNames {
     const val IDENTITY_PRIMARY_SUB_TYPE: String = "primary"
     const val IDENTITY_PRIMARY_NAME: String = "primary"
 
-    val COLUMNS_BY_FIELD: Map<String, String> = mapOf(
-        "callPurpose" to CALL_PURPOSE_COLUMN,
-        "id" to ID_COLUMN,
-    )
+    val COLUMNS_BY_FIELD: Map<String, String> = mapOf("callPurpose" to CALL_PURPOSE_COLUMN, "id" to ID_COLUMN)
 }

@@ -9,7 +9,6 @@ import org.jetbrains.exposed.sql.Table
  * and records any discrepancies into the supplied `errors` list.
  */
 object ExposedTableValidator {
-
     fun check(obj: MetaObject, table: Table, errors: MutableList<String>) {
         val expectedCols = obj.metaFields.map { it.name }.toSet()
         val actualCols = table.columns.map { it.name }.toSet()

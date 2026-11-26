@@ -6,11 +6,7 @@ package acme.blog
  * operator vocabulary for each field by its subtype.
  */
 object AuthorFilterAllowlist {
-    val FIELDS: Set<String> = setOf(
-        "name",
-    )
+    val FIELDS: Set<String> = setOf("name")
 
-    val OPS_BY_FIELD: Map<String, Set<String>> = mapOf(
-        "name" to setOf("eq", "ne", "in", "like", "isNull")
-    )
+    val OPS_BY_FIELD: Map<String, Set<String>> = mapOf("name" to setOf("eq", "ne", "in", "like", "isNull"))
 }

@@ -572,12 +572,16 @@
           "com.metaobjects.generator.kotlin.KotlinTphPlan",
           "com.metaobjects.generator.kotlin.KotlinTypeMapper",
           "com.metaobjects.generator.kotlin.PackageMapping",
+          "com.metaobjects.generator.kotlin.writer.KotlinWriter",
           "com.metaobjects.generator.requirement.RenderedTest",
           "com.metaobjects.generator.requirement.RequirementTestArgs",
           "com.metaobjects.generator.requirement.RequirementTestRenderer",
           "com.metaobjects.generator.util.GeneratedFileWriter",
           "com.metaobjects.generator.util.GeneratorUtil",
-          "com.metaobjects.generator.util.RestSurfaceGate"
+          "com.metaobjects.generator.util.RestSurfaceGate",
+          "com.metaobjects.generator.writer.CodeWriter",
+          "com.metaobjects.generator.writer.Group",
+          "com.metaobjects.generator.writer.WriterOptions"
         ]
       },
       "python": {

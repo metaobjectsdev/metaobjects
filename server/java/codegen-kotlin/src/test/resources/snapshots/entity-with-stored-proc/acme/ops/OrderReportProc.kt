@@ -10,14 +10,9 @@ object OrderReportProc {
     /** Call the procedure and map result rows into [OrderReport]. */
     fun call(orderId: Long): List<OrderReport> = transaction {
         val results = mutableListOf<OrderReport>()
-        exec("SELECT * FROM ${PROC_NAME}(?)", listOf(
-            org.jetbrains.exposed.sql.LongColumnType() to orderId
-        )) { rs ->
+        exec("SELECT * FROM ${PROC_NAME}(?)", listOf(org.jetbrains.exposed.sql.LongColumnType() to orderId)) { rs ->
             while (rs.next()) {
-                results.add(OrderReport(
-                    status = rs.getString("status"),
-                    totalCents = rs.getLong("total_cents")
-                ))
+                results.add(OrderReport(status = rs.getString("status"), totalCents = rs.getLong("total_cents")))
             }
         }
         results

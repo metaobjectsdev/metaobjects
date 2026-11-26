@@ -22,11 +22,11 @@ smarter.
 
 ### Options
 
-| Option | Meaning | TypeScript default | Java default |
-|---|---|---|---|
-| `indent` | One level of indentation | two spaces | four spaces |
-| `width` | The last column a line may reach before its last list breaks | 120 | 120 |
-| `trailingComma` | Whether a broken list puts a comma after its last item too | true | false |
+| Option | Meaning | TypeScript default | Java default | Kotlin default |
+|---|---|---|---|---|
+| `indent` | One level of indentation | two spaces | four spaces | four spaces |
+| `width` | The last column a line may reach before its last list breaks | 120 | 120 | 120 |
+| `trailingComma` | Whether a broken list puts a comma after its last item too | true | false | true |
 
 A dialect sets the defaults for its language. A `core` case always states all three, so it
 means the same thing in every port.
@@ -176,6 +176,36 @@ writes the head, indents, and on leaving the `try` dedents and writes `}`.
   `List` or array of parts, which are concatenated. Anything else (a number, `null`, another
   object) is **`ERR_WRITER_UNKNOWN_PIECE`**: the writer never guesses how to print it.
 
+## Kotlin dialect (`KotlinWriter`)
+
+Case `dialect` is `kotlin`. `KotlinWriter` is in `codegen-kotlin`
+(`com.metaobjects.generator.kotlin.writer`) and extends the same core `CodeWriter` the Java writer
+does. The defaults are four-space indent, width 120 and a trailing comma, as Kotlin's coding
+conventions write them.
+
+- **The package line** is set with `packageName(name)` and prints after the `header(...)` lines
+  and before the imports, with one blank line between each section. An empty package prints no
+  line.
+- **Imports are collected while the body is written.** `use("pkg.Name")` records an import and
+  returns the name to write, its last segment. `use("pkg.Name", alias)` records
+  `import pkg.Name as alias` and returns the alias. A name in a package Kotlin imports by default
+  (`kotlin`, `kotlin.collections`, `kotlin.io`, `java.lang` and the rest of the language's default
+  imports), or in the file's own package, prints no line. An aliased import always prints.
+- **Order.** One group, in code-unit order of what follows `import `, with no blank lines. A name
+  used twice is imported once.
+- One local name imported from two names is **`ERR_WRITER_IMPORT_CONFLICT`**.
+- **Names.** A segment that is a hard keyword (`object`, `in`, `is`, ...) is written in backticks,
+  in the package line, in an import and in the name `use` returns.
+- **`doc(lines...)`** writes `/** text */` when there is one entry and it fits. Otherwise it
+  writes a block of ` * ` lines, with a bare ` *` line for an empty entry. Kotlin comments nest, so
+  both `*/` and `/*` inside the text are neutralised (`*&#47;`, `&#47;*`).
+- **Scoped forms.** `block(head) { ... }` writes the head, indents, runs the lambda, dedents and
+  writes `}`. `reopen(parts)` closes the open block and opens the next on one line (`} else {`);
+  with no block open it is `ERR_WRITER_UNBALANCED_CLOSE`. `indented { ... }` writes its lines one
+  level in and opens no block: the continuation of an expression body.
+- Helpers: `str` (a quoted string literal, with `$` escaped so it is never a template) and `call`
+  (`fn(a, b)`, a list that breaks one item per line with a trailing comma).
+
 ## Python dialect (`PyWriter`)
 
 Defaults: four-space indent, 88 columns, a trailing comma on a broken list.
@@ -264,7 +294,7 @@ A writer and the generators built on it are meant to be extended in place
   subclass can override one step and keep the rest. In TypeScript the core's steps include
   `piece` (what a part becomes), `breakAt` (where a line that does not fit breaks) and `fits`.
   `TsWriter` adds `writeHeader`, `writeImports`, `writeImport` and `orderModules`. `JavaWriter`
-  adds `writeHeader`, `writePackage`, `writeImports` and `needsImport`.
+  and `KotlinWriter` add `writeHeader`, `writePackage`, `writeImports` and `needsImport`.
 - A reference generator is a class whose output comes from one overridable method per
   meaningful piece: the file header, the imports, and each section or member. An adopter
   overrides the method for the piece it wants changed, and passes its subclass where the
@@ -297,7 +327,8 @@ Each case in `fixtures/writer-conformance/cases/` is one JSON file:
   `useDefault`, `useNamespace` and `useSideEffect` (name, then module; `useSideEffect` takes
   only the module), `header` and `doc` (lines). The Python ops are `use` (name, module), `useAs` (name, module,
   alias), `useModule` (module, optional alias), `useFuture` (optional name), `header` and `doc`
-  (lines), `dedent` and `gap`. The Rust ops are `use` (path, then names), `doc` and `prose`
+  (lines), `dedent` and `gap`. The Kotlin ops are `package` (name), `use` (name), `useAs` (name,
+  alias), `header` and `doc` (lines), and `reopen` (parts). The Rust ops are `use` (path, then names), `doc` and `prose`
   (text), `docBreak` and `assign` (head, then parts).
 - A part is a string, a list (`{"list": {"open", "items", "close", "pad"?}}`, where items are
   parts) or an array of parts, which are concatenated.

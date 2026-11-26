@@ -6,13 +6,10 @@ package acme.catalog
  * operator vocabulary for each field by its subtype.
  */
 object ProductFilterAllowlist {
-    val FIELDS: Set<String> = setOf(
-        "price",
-        "rating",
-    )
+    val FIELDS: Set<String> = setOf("price", "rating")
 
     val OPS_BY_FIELD: Map<String, Set<String>> = mapOf(
         "price" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
-        "rating" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
+        "rating" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
     )
 }

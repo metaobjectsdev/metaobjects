@@ -11,6 +11,8 @@ import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
+import com.metaobjects.generator.writer.CodeWriter
 
 import com.metaobjects.field.BooleanField
 import com.metaobjects.field.CurrencyField
@@ -246,34 +248,38 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         procNameExpr: String,
         procNameDoc: String,
         exposedApi: ExposedApi = ExposedApi.V0,
-    ): String = buildString {
-        if (pkg.isNotEmpty()) {
-            append("package $pkg\n\n")
-        }
+    ): String {
+        val w = KotlinWriter().packageName(pkg)
         // issue #390: `Transaction` is abstract under 1.x — the JDBC implementation (and the
         // receiver `transaction { }` actually hands the hand-write example below) is
         // `JdbcTransaction`. This import (and the KDoc's receiver type) is the only thing that
         // changes; the stub is otherwise a worked EXAMPLE in a comment, never compiled.
         val transactionReceiver = if (exposedApi == ExposedApi.V1) "JdbcTransaction" else "Transaction"
-        append("import ${ExposedImports.jdbc(exposedApi, transactionReceiver)}\n\n")
-        append("/**\n")
-        append(" * GENERATED — stub for $procNameDoc.\n")
-        append(" *\n")
-        append(" * The $shortName entity carries no field declarations, so the call signature\n")
-        append(" * and row-mapping body are consumer-specific. Fill in the wrapper with your\n")
-        append(" * procedure's parameter set:\n")
-        append(" *\n")
-        append(" * fun $transactionReceiver.call$shortName(/* params */): List<$shortName> {\n")
-        append(" *     val results = mutableListOf<$shortName>()\n")
-        append(" *     exec(\"SELECT * FROM ${'$'}{${objectName}.PROC_NAME}(?)\") { rs ->\n")
-        append(" *         while (rs.next()) results.add($shortName(/* map fields */))\n")
-        append(" *     }\n")
-        append(" *     return results\n")
-        append(" * }\n")
-        append(" */\n")
-        append("object $objectName {\n")
-        append("    const val PROC_NAME = $procNameExpr\n")
-        append("}\n")
+        w.use(ExposedImports.jdbc(exposedApi, transactionReceiver))
+        // The KDoc carries a worked example; its indentation is the example's own.
+        w.text(
+            """
+            /**
+             * GENERATED — stub for $procNameDoc.
+             *
+             * The $shortName entity carries no field declarations, so the call signature
+             * and row-mapping body are consumer-specific. Fill in the wrapper with your
+             * procedure's parameter set:
+             *
+             * fun $transactionReceiver.call$shortName(/* params */): List<$shortName> {
+             *     val results = mutableListOf<$shortName>()
+             *     exec("SELECT * FROM ${'$'}{$objectName.PROC_NAME}(?)") { rs ->
+             *         while (rs.next()) results.add($shortName(/* map fields */))
+             *     }
+             *     return results
+             * }
+             */
+            """
+        )
+        w.block("object $objectName {") {
+            w.line("const val PROC_NAME = $procNameExpr")
+        }
+        return w.toString()
     }
 
     /**
@@ -291,62 +297,56 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         params: List<MetaField<*>>,
         resultFields: List<MetaField<*>>,
         exposedApi: ExposedApi = ExposedApi.V0,
-    ): String = buildString {
-        if (pkg.isNotEmpty()) {
-            append("package $pkg\n\n")
-        }
+    ): String {
+        val w = KotlinWriter().packageName(pkg)
         // issue #390: `Transaction` is unused in the emitted body below (only the top-level
         // `transaction { }` function is called) — kept as-is for V0 byte-identity; under V1 it
         // becomes `JdbcTransaction`, the concrete type `transaction { }` actually hands the
         // block (`Transaction` itself is abstract in 1.x).
         val transactionType = if (exposedApi == ExposedApi.V1) "JdbcTransaction" else "Transaction"
-        append("import ${ExposedImports.jdbc(exposedApi, transactionType)}\n")
-        append("import ${ExposedImports.transactions(exposedApi, "transaction")}\n\n")
+        w.use(ExposedImports.jdbc(exposedApi, transactionType))
+        w.use(ExposedImports.transactions(exposedApi, "transaction"))
 
-        append("/** GENERATED — wrapper for $procNameDoc. */\n")
-        append("object $objectName {\n")
-        append("    const val PROC_NAME = $procNameExpr\n\n")
-        append("    /** Call the procedure and map result rows into [$shortName]. */\n")
-
-        // Function signature.
-        val paramSig = params.joinToString(", ") { f -> "${f.name}: ${kotlinParamTypeFqn(f)}" }
-        append("    fun call($paramSig): List<$shortName> = transaction {\n")
-        append("        val results = mutableListOf<$shortName>()\n")
-
-        // SQL + placeholder list — empty parens when no params.
-        val placeholders = params.joinToString(", ") { "?" }
-        append("        exec(\"SELECT * FROM \${PROC_NAME}($placeholders)\"")
-        if (params.isEmpty()) {
-            // No-arg path: omit the bindings list entirely; Exposed's `exec(stmt, body)` is fine.
-            append(") { rs ->\n")
-        } else {
-            val bindings = params.joinToString(",\n") { p ->
-                "            ${exposedColumnTypeCtor(p, exposedApi)} to ${p.name}"
+        w.doc("GENERATED — wrapper for $procNameDoc.")
+        w.block("object $objectName {") {
+            w.line("const val PROC_NAME = $procNameExpr")
+            w.blank()
+            w.doc("Call the procedure and map result rows into [$shortName].")
+            val paramSig = params.joinToString(", ") { f -> "${f.name}: ${kotlinParamTypeFqn(f)}" }
+            w.block("fun call($paramSig): List<$shortName> = transaction {") {
+                w.line("val results = mutableListOf<$shortName>()")
+                // SQL + placeholder list — empty parens when no params.
+                val placeholders = params.joinToString(", ") { "?" }
+                val sql = "\"SELECT * FROM \${PROC_NAME}($placeholders)\""
+                // No-arg path: omit the bindings list entirely; Exposed's `exec(stmt, body)` is fine.
+                val exec: Any = if (params.isEmpty()) "exec($sql)"
+                else CodeWriter.list(
+                    "exec($sql, listOf(",
+                    params.map { p -> "${exposedColumnTypeCtor(p, exposedApi)} to ${p.name}" },
+                    "))",
+                )
+                w.block(listOf(exec, " { rs ->")) {
+                    w.block("while (rs.next()) {") {
+                        if (resultFields.isEmpty()) {
+                            // Edge case: every field is a @param. Emit a no-arg ctor invocation;
+                            // if the data class requires arguments this will fail to compile and the
+                            // author can adjust their metadata. Per spec, we still produce a typed call.
+                            w.line("results.add($shortName())")
+                        } else {
+                            w.line(
+                                CodeWriter.list(
+                                    "results.add($shortName(",
+                                    resultFields.map { rf -> "${rf.name} = ${rsGetterCall(rf, columnExpr(shortName, rf))}" },
+                                    "))",
+                                ),
+                            )
+                        }
+                    }
+                }
+                w.line("results")
             }
-            append(", listOf(\n")
-            append(bindings)
-            append("\n        )) { rs ->\n")
         }
-
-        append("            while (rs.next()) {\n")
-        if (resultFields.isEmpty()) {
-            // Edge case: every field is a @param. Emit a no-arg ctor invocation;
-            // if the data class requires arguments this will fail to compile and the
-            // author can adjust their metadata. Per spec, we still produce a typed call.
-            append("                results.add($shortName())\n")
-        } else {
-            val rowMapping = resultFields.joinToString(",\n") { rf ->
-                "                    ${rf.name} = ${rsGetterCall(rf, columnExpr(shortName, rf))}"
-            }
-            append("                results.add($shortName(\n")
-            append(rowMapping)
-            append("\n                ))\n")
-        }
-        append("            }\n")
-        append("        }\n")
-        append("        results\n")
-        append("    }\n")
-        append("}\n")
+        return w.toString()
     }
 
     /**

@@ -7,6 +7,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.generator.kotlin.FindInbound
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -76,65 +77,42 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         val strict = KotlinNaming.strictRef(responseVo)
         val mirror = KotlinNaming.mirrorRef(responseVo)
 
-        val src = buildString {
-            append("// GENERATED — DO NOT EDIT — extractor for template.prompt `")
-            append(template.name)
-            append("`\n")
-            append(KotlinNaming.packageHeader(outPkg))
-            append("import com.metaobjects.loader.MetaDataLoader\n")
-            append("import com.metaobjects.render.extract.ExtractException\n")
-            append("import com.metaobjects.render.extract.ExtractOptions\n")
-            append("import com.metaobjects.render.extract.ExtractionResult\n")
-            append("\n")
-            append("/**\n")
-            append(" * The `extract` tier for the `")
-            append(templateShort)
-            append("` template.prompt — turns dirty LLM text into a fully-typed\n")
-            append(" * [")
-            append(strict)
-            append("] graph (nested objects + arrays-of-objects populated) in one call.\n")
-            append(" */\n")
-            append("object ")
-            append(extractorClass)
-            append(" {\n")
-            append("\n")
-            append("    /**\n")
-            append("     * Extract a fully-typed [")
-            append(strict)
-            append("] from dirty [text], resolving the response shape's MetaObject\n")
-            append("     * from [loader]. Runs the tolerant extract, then converts the mirror to the strict value object.\n")
-            append("     *\n")
-            append("     * @throws ExtractException iff a `@required` field was lost, or present but unusable\n")
-            append("     *   (MALFORMED — an undeclared enum member, text where a number belongs): the strict opt-in gate.\n")
-            append("     */\n")
-            append("    @JvmOverloads\n")
-            append("    fun extract(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ")
-            append(strict)
-            append(" {\n")
-            append("        val r = ")
-            append(parserClass)
-            append(".extractLenient(loader, text, opts)\n")
-            append("        if (r.report.hasLostRequired() || r.report.hasMalformedRequired()) {\n")
-            append("            throw ExtractException(r.report.lostRequired(), r.report.malformedRequired())\n")
-            append("        }\n")
-            append("        return r.data!!.toStrict()\n")
-            append("    }\n")
-            append("\n")
-            append("    /**\n")
-            append("     * Re-exposes the nested-capable tolerant extract; never throws. Inspect `report` for\n")
-            append("     * lost/malformed/defaulted fields. Returns the all-nullable [")
-            append(mirror)
-            append("] mirror (not the strict value object).\n")
-            append("     */\n")
-            append("    @JvmOverloads\n")
-            append("    fun extractLenient(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ExtractionResult<")
-            append(mirror)
-            append("> =\n")
-            append("        ")
-            append(parserClass)
-            append(".extractLenient(loader, text, opts)\n")
-            append("}\n")
+        val w = KotlinWriter().packageName(outPkg)
+        w.header("// GENERATED — DO NOT EDIT — extractor for template.prompt `${template.name}`")
+        w.use("com.metaobjects.loader.MetaDataLoader")
+        w.use("com.metaobjects.render.extract.ExtractException")
+        w.use("com.metaobjects.render.extract.ExtractOptions")
+        w.use("com.metaobjects.render.extract.ExtractionResult")
+        w.doc(
+            "The `extract` tier for the `$templateShort` template.prompt — turns dirty LLM text into a fully-typed",
+            "[$strict] graph (nested objects + arrays-of-objects populated) in one call.",
+        )
+        w.block("object $extractorClass {") {
+            w.doc(
+                "Extract a fully-typed [$strict] from dirty [text], resolving the response shape's MetaObject",
+                "from [loader]. Runs the tolerant extract, then converts the mirror to the strict value object.",
+                "",
+                "@throws ExtractException iff a `@required` field was lost, or present but unusable (MALFORMED — an",
+                "undeclared enum member, text where a number belongs): the strict opt-in gate.",
+            )
+            w.line("@JvmOverloads")
+            w.block("fun extract(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): $strict {") {
+                w.line("val r = $parserClass.extractLenient(loader, text, opts)")
+                w.block("if (r.report.hasLostRequired() || r.report.hasMalformedRequired()) {") {
+                    w.line("throw ExtractException(r.report.lostRequired(), r.report.malformedRequired())")
+                }
+                w.line("return r.data!!.toStrict()")
+            }
+            w.blank()
+            w.doc(
+                "Re-exposes the nested-capable tolerant extract; never throws. Inspect `report` for",
+                "lost/malformed/defaulted fields. Returns the all-nullable [$mirror] mirror (not the strict value object).",
+            )
+            w.line("@JvmOverloads")
+            w.line("fun extractLenient(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ExtractionResult<$mirror> =")
+            w.indented { w.line("$parserClass.extractLenient(loader, text, opts)") }
         }
+        val src = w.toString()
 
         val outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve("$extractorClass.kt")
         GeneratedFileWriter.write(outFile, src)

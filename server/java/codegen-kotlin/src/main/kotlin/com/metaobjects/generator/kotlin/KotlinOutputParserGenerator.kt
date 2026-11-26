@@ -9,6 +9,7 @@ import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinExtractSchemaEmitter
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
@@ -58,9 +59,7 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  * brings Jackson; add the Kotlin module if it is absent). The lenient tier needs the MetaObjects
  * runtime (`metaobjects-render`, `metaobjects-om`).
  *
- * <p>Substrate justification (hand-rolled string builder rather than KotlinPoet): the parser file
- * is short, straight-line Kotlin, so the hand-rolled emit is clearer than the equivalent KotlinPoet
- * dance. Same trade-off as [KotlinSpringControllerGenerator] / [KotlinExposedTableGenerator].
+ * <p>The file is laid out by [com.metaobjects.generator.kotlin.writer.KotlinWriter] (ADR-0063).
  *
  * <p>Args:
  * <ul>
@@ -132,87 +131,54 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
 
         KotlinExtractSchemaEmitter.emitMirrorFiles(responseVo, outRoot, emittedMirrors, providedEnums)
 
-        val src = buildString {
-            append("// GENERATED — DO NOT EDIT — response parser for template.prompt `")
-            append(template.name)
-            append("`\n")
-            append(KotlinNaming.packageHeader(outPkg))
-            if (emitStrict) append("import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper\n")
-            append("import com.metaobjects.loader.MetaDataLoader\n")
-            append("import com.metaobjects.`object`.extract.MetaObjectExtractor\n")
-            append("import com.metaobjects.render.extract.Format\n")
-            append("import com.metaobjects.render.extract.ExtractOptions\n")
-            append("import com.metaobjects.render.extract.ExtractionResult\n")
-            append("\n")
-            append("/** Parser for LLM responses matching the `")
-            append(templateShort)
-            append("` template.prompt. */\n")
-            append("object ")
-            append(parserClass)
-            append(" {\n")
-            append("\n")
+        val w = KotlinWriter().packageName(outPkg)
+        w.header("// GENERATED — DO NOT EDIT — response parser for template.prompt `${template.name}`")
+        if (emitStrict) w.use("com.fasterxml.jackson.module.kotlin.jacksonObjectMapper")
+        w.use("com.metaobjects.loader.MetaDataLoader")
+        w.use("com.metaobjects.`object`.extract.MetaObjectExtractor")
+        w.use("com.metaobjects.render.extract.Format")
+        w.use("com.metaobjects.render.extract.ExtractOptions")
+        w.use("com.metaobjects.render.extract.ExtractionResult")
+        w.doc("Parser for LLM responses matching the `$templateShort` template.prompt.")
+        w.block("object $parserClass {") {
             if (emitStrict) {
-                append("    // Fails on an unknown property: a reply carrying a field the response shape does not\n")
-                append("    // declare is a contract break, not something to drop silently.\n")
-                append("    private val mapper = jacksonObjectMapper().findAndRegisterModules()\n")
-                append("\n")
-                append("    /**\n")
-                append("     * Parse an LLM response into a typed [")
-                append(responseClass)
-                append("].\n")
-                append("     *\n")
-                append("     * @throws com.fasterxml.jackson.core.JsonProcessingException when the input is not valid JSON for the response shape.\n")
-                append("     */\n")
-                append("    fun ")
-                append(parseFn)
-                append("(text: String): ")
-                append(responseClass)
-                append(" =\n")
-                append("        mapper.readValue(text, ")
-                append(responseClass)
-                append("::class.java)\n")
-                append("\n")
-                append("    /**\n")
-                append("     * Parse with explicit error handling (Result-style — does not throw).\n")
-                append("     */\n")
-                append("    fun ")
-                append(safeParseFn)
-                append("(text: String): Result<")
-                append(responseClass)
-                append("> =\n")
-                append("        runCatching { ")
-                append(parseFn)
-                append("(text) }\n")
-                append("\n")
+                w.line("// Fails on an unknown property: a reply carrying a field the response shape does not")
+                w.line("// declare is a contract break, not something to drop silently.")
+                w.line("private val mapper = jacksonObjectMapper().findAndRegisterModules()")
+                w.blank()
+                w.doc(
+                    "Parse an LLM response into a typed [$responseClass].",
+                    "",
+                    "@throws com.fasterxml.jackson.core.JsonProcessingException when the input is not valid JSON for the response shape.",
+                )
+                w.line("fun $parseFn(text: String): $responseClass =")
+                w.indented { w.line("mapper.readValue(text, $responseClass::class.java)") }
+                w.blank()
+                w.doc("Parse with explicit error handling (Result-style — does not throw).")
+                w.line("fun $safeParseFn(text: String): Result<$responseClass> =")
+                w.indented { w.line("runCatching { $parseFn(text) }") }
+                w.blank()
             }
-            append("    /** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */\n")
-            append("    const val PAYLOAD_FQN: String = \"")
-            append(KotlinExtractSchemaEmitter.kotlinStringLiteral(responseVo.name))
-            append("\"\n")
-            append("\n")
-            append("    /**\n")
-            append("     * Tolerant best-effort extraction delegating to the runtime MetaObjectExtractor;\n")
-            append("     * never throws. Fully populates nested-object and array-of-object components by\n")
-            append("     * reading the live metadata directly. Resolves this payload's\n")
-            append("     * MetaObject by [PAYLOAD_FQN] from [loader].\n")
-            append("     */\n")
-            append("    fun extractLenient(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ExtractionResult<")
-            append(mirrorClass)
-            append("> {\n")
-            append("        val mo = loader.getMetaObjectByName(PAYLOAD_FQN)\n")
-            append("        val raw = MetaObjectExtractor.extract(mo, text, ")
-            append(formatEnum)
-            append(", opts)\n")
-            append("        // The assembled graph is a ValueObject (a Map<String, Any?>) with nested\n")
-            append("        // ValueObjects / List<ValueObject> — map it onto the typed mirror graph.\n")
-            append("        @Suppress(\"UNCHECKED_CAST\")\n")
-            append("        val d = raw.data as? Map<String, Any?>\n")
-            append("        return ExtractionResult(")
-            append(mirrorClass)
-            append(".fromMap(d), raw.report)\n")
-            append("    }\n")
-            append("}\n")
+            w.doc("Payload FQN this parser extracts — resolved against the supplied loader at runtime.")
+            w.line("const val PAYLOAD_FQN: String = ", KotlinWriter.str(responseVo.name))
+            w.blank()
+            w.doc(
+                "Tolerant best-effort extraction delegating to the runtime MetaObjectExtractor;",
+                "never throws. Fully populates nested-object and array-of-object components by",
+                "reading the live metadata directly. Resolves this payload's",
+                "MetaObject by [PAYLOAD_FQN] from [loader].",
+            )
+            w.block("fun extractLenient(loader: MetaDataLoader, text: String, opts: ExtractOptions = ExtractOptions.defaults()): ExtractionResult<$mirrorClass> {") {
+                w.line("val mo = loader.getMetaObjectByName(PAYLOAD_FQN)")
+                w.line("val raw = MetaObjectExtractor.extract(mo, text, $formatEnum, opts)")
+                w.line("// The assembled graph is a ValueObject (a Map<String, Any?>) with nested")
+                w.line("// ValueObjects / List<ValueObject> — map it onto the typed mirror graph.")
+                w.line("@Suppress(", KotlinWriter.str("UNCHECKED_CAST"), ")")
+                w.line("val d = raw.data as? Map<String, Any?>")
+                w.line("return ExtractionResult($mirrorClass.fromMap(d), raw.report)")
+            }
         }
+        val src = w.toString()
 
         val outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve("$parserClass.kt")
         GeneratedFileWriter.write(outFile, src)

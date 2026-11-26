@@ -6,14 +6,7 @@ package acme.auth
  * operator vocabulary for each field by its subtype.
  */
 object AuthFilterAllowlist {
-    val FIELDS: Set<String> = setOf(
-        "id",
-        "type",
-        "reference",
-        "quantity",
-        "couponAmount",
-        "permitNumber",
-    )
+    val FIELDS: Set<String> = setOf("id", "type", "reference", "quantity", "couponAmount", "permitNumber")
 
     val OPS_BY_FIELD: Map<String, Set<String>> = mapOf(
         "id" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
@@ -21,6 +14,6 @@ object AuthFilterAllowlist {
         "reference" to setOf("eq", "ne", "in", "like", "isNull"),
         "quantity" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
         "couponAmount" to setOf("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"),
-        "permitNumber" to setOf("eq", "ne", "in", "like", "isNull")
+        "permitNumber" to setOf("eq", "ne", "in", "like", "isNull"),
     )
 }

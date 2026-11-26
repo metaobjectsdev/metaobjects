@@ -8,6 +8,7 @@ import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.MapField
@@ -116,58 +117,38 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
             computeFilterableOps(entity)
         }
 
-        val src = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
-            }
-            append("/**\n")
-            append(" * GENERATED — per-entity FR-009 filter allowlist for $shortName.\n")
-            append(" * FIELDS lists the filterable field names; OPS_BY_FIELD constrains the\n")
-            append(" * operator vocabulary for each field by its subtype.\n")
-            append(" */\n")
-            append("object $className {\n")
-
-            // FIELDS — emit emptySet() / setOf() per Kotlin style. The empty case must use
-            // `emptySet<String>()` so the property has an inferable type even when no fields
-            // are filterable (the controller's generated parser binds against this).
-            append("    val FIELDS: Set<String> = ")
-            if (opsByField.isEmpty()) {
-                append("emptySet()\n\n")
-            } else {
-                append("setOf(\n")
-                for (f in opsByField.keys) {
-                    append("        \"$f\",\n")
-                }
-                append("    )\n\n")
-            }
-
-            // OPS_BY_FIELD — `Map<String, Set<String>>`. Empty map uses `emptyMap()` for
-            // the same type-inferability reason; populated case uses mapOf("name" to setOf(...)).
-            append("    val OPS_BY_FIELD: Map<String, Set<String>> = ")
-            if (opsByField.isEmpty()) {
-                append("emptyMap()\n")
-            } else {
-                append("mapOf(\n")
-                val entries = opsByField.entries.toList()
-                for ((i, e) in entries.withIndex()) {
-                    append("        \"${e.key}\" to setOf(")
-                    var firstOp = true
-                    for (op in e.value) {
-                        if (!firstOp) append(", ")
-                        firstOp = false
-                        append("\"$op\"")
-                    }
-                    append(")")
-                    if (i < entries.size - 1) append(",")
-                    append("\n")
-                }
-                append("    )\n")
-            }
-            append("}\n")
-        }
-
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$className.kt")
-        GeneratedFileWriter.write(outFile, src)
+        GeneratedFileWriter.write(outFile, render(pkg, shortName, className, opsByField))
+    }
+
+    /** The allowlist file: the package line, its KDoc and the `object` holding the two constants. */
+    protected open fun render(pkg: String, shortName: String, className: String, opsByField: Map<String, Set<String>>): String {
+        val w = KotlinWriter().packageName(pkg)
+        w.doc(
+            "GENERATED — per-entity FR-009 filter allowlist for $shortName.",
+            "FIELDS lists the filterable field names; OPS_BY_FIELD constrains the",
+            "operator vocabulary for each field by its subtype.",
+        )
+        w.block("object $className {") {
+            // The empty cases use `emptySet()` / `emptyMap()` so each property has an inferable type even
+            // when no fields are filterable (the controller's generated parser binds against this).
+            w.line(
+                "val FIELDS: Set<String> = ",
+                if (opsByField.isEmpty()) "emptySet()" else KotlinWriter.call("setOf", *opsByField.keys.map { KotlinWriter.str(it) }.toTypedArray()),
+            )
+            w.blank()
+            w.line(
+                "val OPS_BY_FIELD: Map<String, Set<String>> = ",
+                if (opsByField.isEmpty()) "emptyMap()"
+                else KotlinWriter.call(
+                    "mapOf",
+                    *opsByField.map { (field, ops) ->
+                        listOf(KotlinWriter.str(field), " to ", KotlinWriter.call("setOf", *ops.map { KotlinWriter.str(it) }.toTypedArray()))
+                    }.toTypedArray(),
+                ),
+            )
+        }
+        return w.toString()
     }
 
     private companion object {
