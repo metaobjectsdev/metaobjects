@@ -1,8 +1,16 @@
 package acme.report
 
+import jakarta.servlet.http.HttpServletRequest
+import java.io.ByteArrayOutputStream
+import java.nio.charset.StandardCharsets
+import java.sql.Timestamp
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import org.jetbrains.exposed.sql.Op
-import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
@@ -14,14 +22,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import jakarta.servlet.http.HttpServletRequest
-import java.io.ByteArrayOutputStream
-import java.nio.charset.StandardCharsets
-import java.sql.Timestamp
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 /** GENERATED — sort allowlist for SalesReport (cross-port API contract). */
 private val SalesReportSortAllowlist = setOf(
@@ -285,7 +285,6 @@ private fun rowToSalesReport(row: ResultRow): SalesReport = SalesReport(
 @RestController
 @RequestMapping("/api/sales_reports")
 class SalesReportController {
-
     @GetMapping
     fun list(
         @RequestParam(required = false) limit: Int?,
