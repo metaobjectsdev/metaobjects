@@ -118,7 +118,7 @@ describe("describeErrorCause", () => {
   test("the --verbose hint appears only when there is a stack to show", () => {
     expect(describeErrorCause(new Error("x", { cause: "socket closed" }), false)).toEqual(["caused by: socket closed"]);
     const stackless = new Error("inner");
-    stackless.stack = undefined;
+    (stackless as { stack?: string | undefined }).stack = undefined;
     expect(describeErrorCause(new Error("x", { cause: stackless }), false)).toEqual(["caused by: Error: inner"]);
   });
 });
