@@ -12,8 +12,13 @@ describe("parseGenArgs", () => {
       noAntipatterns: false,
       strict: false,
       force: false,
+      verbose: false,
       limit: DEFAULT_ADVISORY_LIMIT,
     });
+  });
+
+  test("--verbose", () => {
+    expect(parseGenArgs(["--verbose"]).verbose).toBe(true);
   });
 
   test("--force", () => {

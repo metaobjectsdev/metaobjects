@@ -234,6 +234,9 @@ FLAGS:
                         the last successful run's, and whose generated files all still
                         match what that run left, renders nothing and writes nothing
                         (ADR-0064; the metadata is still loaded, since the key is made of it).
+  --verbose             When a generator or template throws, print the full stack of the
+                        error it threw. Without it gen prints the message, a "caused by:"
+                        line and the frame it was thrown at.
   --format <toon|json|text>   Output format (global flag; default toon off-TTY)
   <entity> [<entity>]   Positional filter on entity names
   --help, -h            Print this help

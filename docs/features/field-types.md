@@ -492,7 +492,7 @@ object AuthorTable : Table("authors") {
     val name       = varchar("name", 200)
     val bio        = varchar("bio", 2000).nullable()
     val priceCents = long("price_cents")
-    val status     = enumerationByName("status", 64, AuthorStatus::class)
+    val status     = enumerationByName("status", 32, AuthorStatus::class)  // sized enum; with no length: customEnumeration("status", "TEXT", ...)
     val createdAt  = timestampWithTimeZone("created_at")
     override val primaryKey = PrimaryKey(id)
 }

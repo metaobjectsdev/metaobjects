@@ -25,7 +25,7 @@ Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emit
 | `field.timestamp` | `java.time.Instant` | `timestampWithTimeZone(name)` |
 | `field.currency` | `Long` (minor units — wire format invariant) | `long(name)` |
 | `field.uuid` | `java.util.UUID` | `uuid(name)` |
-| `field.enum` | typed Kotlin `enum class` (separate `<Entity><Field>.kt` file with `@Serializable`) | `enumerationByName(name, 64, <Entity><Field>::class)` |
+| `field.enum` | typed Kotlin `enum class` (separate `<Entity><Field>.kt` file with `@Serializable`) | `enumerationByName(name, n, <Entity><Field>::class)` with a length (`@maxLength` or `enums.maxLength`), else `customEnumeration(name, "TEXT", ...)`; `@intValueMap` gives `customEnumeration(name, "INTEGER", ...)` |
 | `field.object` (`@storage="flattened"`) | reference to the generated VO data class | per-sub-field columns: `<parent>_<sub>` |
 | `field.object` (`@storage="jsonb"` or default) | reference to the generated VO data class | single `jsonb(name, { metaJsonbMapper.writeValueAsString(it) }, { metaJsonbMapper.readValue(it, VO::class.java) })` — backed by a generated per-package `MetaJsonbMapper.kt` Jackson `ObjectMapper` (array-of-VO uses a `TypeReference<List<VO>>`); consumers add `jackson-databind` + `jackson-module-kotlin` + `jackson-datatype-jsr310` (no `kotlin("plugin.serialization")` compiler plugin) |
 

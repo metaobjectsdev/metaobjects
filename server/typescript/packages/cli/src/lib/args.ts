@@ -153,6 +153,11 @@ export interface GenFlags {
    * only warns.
    */
   strict: boolean;
+  /**
+   * `--verbose`: when a generator or template throws, print the stack of the error it threw
+   * (and of each error on its `cause` chain), not only the `caused by:` line and the frame.
+   */
+  verbose: boolean;
 }
 
 /** The flag table `parseGenArgs` parses. Exported so the help text can be gated against it. */
@@ -166,6 +171,7 @@ export const GEN_OPTIONS = {
   "generators": { type: "string" },
   "strict": { type: "boolean", default: false },
   "force": { type: "boolean", default: false },
+  "verbose": { type: "boolean", default: false },
 } as const;
 
 export function parseGenArgs(argv: string[]): GenFlags {
@@ -195,6 +201,7 @@ export function parseGenArgs(argv: string[]): GenFlags {
     noAntipatterns: !!values["no-antipatterns"],
     strict: !!values.strict,
     force: !!values.force,
+    verbose: !!values.verbose,
     // Throws on a bad value; the command layer reports it and exits 2, exactly as
     // it does for --baseline above.
     limit: parseAdvisoryLimit(values.limit as string | undefined),

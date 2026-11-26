@@ -5,6 +5,7 @@
 
 import { relative as posixRelative } from "node:path/posix";
 import { PACKAGE_SEPARATOR, type MetaData } from "@metaobjectsdev/metadata";
+import { CodegenError } from "./errors.js";
 import { imp, Import } from "./poet.js";
 import { withExt, withExtIfRelative, type ExtStyle, type RenderContext } from "./render-context.js";
 
@@ -78,7 +79,33 @@ export function valueObjectModuleSpecifier(
   extStyle: ExtStyle,
 ): string {
   if (vo === undefined) return crossEntitySpecifier(layout, fromPkg, fromPkg, voName, extStyle);
+  // The pre-1.3 shape was `(voName, ctx.packageOf, fromPkg, layout, extStyle)`. An owned template
+  // copied from 1.2 still passes it, and both shapes take five arguments, so nothing refuses the
+  // call before it runs: without this check the first symptom is a bare
+  // "node.resolutionKey is not a function" from deep inside the module walk.
+  if (!isNode(vo)) {
+    throw new CodegenError(
+      `valueObjectModuleSpecifier: the first argument must be the value object's node, got ${describeArg(vo)}. ` +
+        "Since 1.3.0 the signature is valueObjectModuleSpecifier(vo, voName, fromPkg, layout, extStyle); " +
+        "a template written for 1.2 that calls valueObjectModuleSpecifier(name, ctx.packageOf, fromPkg, layout, extStyle) " +
+        "passes ctx.resolveValueObject(field) first and the name second, or is refreshed with `meta eject <generator>`.",
+    );
+  }
   return crossEntitySpecifier(layout, fromPkg, nodePackage(vo), vo.name, extStyle);
+}
+
+/** True when `value` can be read as a metadata node here: it has a callable `resolutionKey`. */
+function isNode(value: unknown): value is MetaData {
+  return typeof value === "object" && value !== null &&
+    typeof (value as { resolutionKey?: unknown }).resolutionKey === "function";
+}
+
+/** A short description of a wrong argument for the error above: a string is quoted, anything
+ *  else is named by its type. */
+function describeArg(value: unknown): string {
+  if (typeof value === "string") return `the string "${value}"`;
+  if (value === null) return "null";
+  return `${typeof value === "object" ? "an object" : `a ${typeof value}`} with no resolutionKey()`;
 }
 
 /**

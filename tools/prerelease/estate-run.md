@@ -22,7 +22,8 @@ It refuses an estate whose git tree is not clean, links the candidate, installs 
 the installed versions back** (a declared range is not proof of the version that ran: the run
 fails when the candidate is not in the read-back), regenerates and lists every changed file,
 regenerates **again** and requires that the second run writes zero files (by content and by
-modification time; the check sees only files git reports, so a gitignored path is not checked), then runs the drift gate, your build, your tests and your database commands.
+modification time; the check sees only files git reports, so a gitignored path is not checked: see
+"Multi-module JVM estates" below), then runs the drift gate, your build, your tests and your database commands.
 A command you do not pass is reported `skipped`, never `passed`. However the run ended, including a
 `link` that failed partway, it puts the estate back on the commit it started on: it unlinks, then runs
 `git reset --hard` and `git clean -fd`. That deletes every untracked file in the estate, the regenerated
@@ -33,6 +34,33 @@ lists the flags. The default install, generation, verify and version-read comman
 are in the `case` block of `estate-run.sh`; `--install-cmd`, `--gen-cmd`, `--verify-cmd` and
 `--versions-cmd` override them. Rust has no estate path: a Rust consumer pins the commit
 (`docs/features/prerelease.md`, "Rust").
+
+### Multi-module JVM estates
+
+The Java default install is `mvn -B -q -U test-compile`: it builds every module of the reactor in
+order, so a module whose code or tests depend on a sibling module resolves it from the reactor
+instead of looking for it in a repository nobody installed it to. It also runs `generate-sources`,
+so an estate that binds a `generate` execution to that phase regenerates during the install: the
+report lists those files under "Files changed by install", beside the lockfile and separately from
+the first gen's list, and every one that is not a lockfile needs an item in the upgrade list like any other
+change. Two more things the defaults do not cover, which the estate passes itself:
+
+- **Generation bound to a lifecycle phase.** The default `--gen-cmd` (`mvn -B -q
+  metaobjects:generate`) and `--verify-cmd` (`mvn -B -q metaobjects:verify`) call the goals on
+  their own, from the reactor root. An estate that binds generation to a phase in its poms, or
+  whose metadata loader class lives in a sibling module (the goal then fails with the loader
+  "not found on the Project ClassLoader" until that module is compiled), passes the phase that
+  runs it instead: for example `--gen-cmd 'mvn -B -q generate-sources'` (the install already ran
+  that phase once, so this gen and the second one must both find nothing left to write), or
+  `--gen-cmd 'mvn -B -q test-compile'` when the loader must be compiled first, and the matching
+  `--verify-cmd` (the `metaobjects:verify` execution as the estate binds it, such as
+  `mvn -B -q verify -DskipTests`).
+- **Generated output that git ignores.** The changed-files list and the second-run check see
+  only files git reports, so output under `target/generated-sources` or another ignored path
+  is not looked at. The script runs both gens itself, so snapshot those trees before the run
+  and after it (with `--keep-linked`, so the tree survives the run), then run your `--gen-cmd`
+  once more and snapshot again: the first diff is the "files changed" list the upgrade list
+  must explain, and the second must be empty, by content and by modification time.
 
 ## Every candidate, every estate (the base run)
 

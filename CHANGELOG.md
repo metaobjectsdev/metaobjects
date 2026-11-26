@@ -48,7 +48,8 @@ the one `metamodelVersion` value, `1.3`.
 
 ### Upgrading from 1.2.0
 
-Each item below is described in full under Security, Added, Changed or Fixed; this list is where to start.
+Most items below are also described under Security, Added, Changed or Fixed; an item with no entry
+there is described in full here. This list is where to start.
 
 - **`validator.atLeastOne` takes no `@max`.** A model that carries `@max: 1` on an `atLeastOne`
   fails to load; a rule meaning "exactly one of these fields" is the new `validator.exactlyOne`.
@@ -138,6 +139,52 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   `asOneline`, `Import.fromMaybeString`, `saveFiles`, `conditionalOutput` or its `toString` import
   options no longer loads.** The printer is now vendored without them; `code`, `imp`, `joinCode`,
   `Import` and the `Code` type still resolve from a bare `ts-poet` import.
+- **TypeScript: `valueObjectModuleSpecifier` takes the value object's node first.** An owned
+  template copied from 1.2 calls `valueObjectModuleSpecifier(name, ctx.packageOf, fromPkg,
+  ctx.outputLayout, ctx.extStyle)`; the 1.3 signature is `valueObjectModuleSpecifier(vo, voName,
+  fromPkg, layout, extStyle)`, keyed by the node so two same-named value objects in two packages
+  are two modules. Both take five arguments, so nothing refuses the old call before it runs; it now
+  fails with a `CodegenError` that names the new signature (it used to be a bare
+  `node.resolutionKey is not a function`). Pass the node the field references first and the name
+  second, or re-eject the generator (`meta eject <generator>`) and re-apply your changes:
+
+  ```ts
+  // 1.2
+  valueObjectModuleSpecifier(name, ctx.packageOf, entityPkg, ctx.outputLayout, ctx.extStyle)
+  // 1.3
+  valueObjectModuleSpecifier(ctx.resolveValueObject(field), name, entityPkg, ctx.outputLayout, ctx.extStyle)
+  ```
+
+  When a generator or template throws, `meta gen` now prints the error it threw (`caused by:`) and
+  the frame it was thrown at, where it printed only the wrapped message; `meta gen --verbose`
+  prints that error's whole stack.
+- **Java and Kotlin: two string-returning `codegen-spring` helpers are removed, so an owned JVM
+  generator that calls them no longer compiles.** `SpringRecordBuilder.members(String recordName,
+  List<String[]> components)` is `writeMembers(CodeWriter w, String recordName, List<String[]>
+  components)` (it returns whether it wrote anything; `applies(recordName, components)` asks
+  first), and `SpringTypeMapper.enumDeclaration(String typeName, List<String> values,
+  Map<String, Integer> intValueMap)` is `writeEnumDeclaration(CodeWriter w, String typeName,
+  List<String> values, Map<String, Integer> intValueMap, Map<String, String> stringValueMap)`,
+  which also writes a `@stringValueMap` enum's stored strings. Both write into a
+  `com.metaobjects.generator.writer.JavaWriter` (a `CodeWriter`) at its current indent. A generator
+  that still assembles its file as a string can write into a fresh writer and take its text:
+
+  ```java
+  // 1.2
+  String builder = SpringRecordBuilder.members(recordName, components);
+  String decl = SpringTypeMapper.enumDeclaration(typeName, values, SpringTypeMapper.intValueMap(ef));
+  // 1.3
+  JavaWriter bw = new JavaWriter();
+  SpringRecordBuilder.writeMembers(bw, recordName, components);
+  String builder = bw.toString();
+  JavaWriter ew = new JavaWriter();
+  SpringTypeMapper.writeEnumDeclaration(ew, typeName, values,
+      SpringTypeMapper.intValueMap(ef), SpringTypeMapper.stringValueMap(ef));
+  String decl = ew.toString();
+  ```
+
+  A fresh writer starts at column 0, where `members` indented its lines by four spaces; to keep the
+  old layout, write into the writer the class body is written with, inside the body's block.
 - **`docsSiteFile()` builds the model explorer by default.** The site under `site/` changes, with
   object pages under `model/`. Pass `docsSiteFile({ site: "classic" })` to keep the earlier site.
 - **C#: an int-backed enum throws on write for a value its `@intValueMap` does not describe**, as
@@ -217,6 +264,41 @@ Each item below is described in full under Security, Added, Changed or Fixed; th
   `<Entity>Names.<Derived>Field` / `<Derived>Column` (C#), `fields.<derived>` (TypeScript) or a
   `ColumnsByField` entry for such a field stops compiling; use `nameof(...)` or the metamodel name as a
   literal. A projection's derived field and a write-through entity's keep their entry.
+- **Kotlin: a string-stored enum with no length is a `TEXT` column in the Exposed table.** An enum
+  field with no `@maxLength` (and no `"enums": { "maxLength": n }` in `.metaobjects/config.json`)
+  was `enumerationByName(NAME, 64, X::class)`, a `VARCHAR(64)`; it is now
+  `customEnumeration(NAME, "TEXT", { v -> X.valueOf(v as String) }, { e -> e.name })`, the
+  unbounded text column `meta migrate` has always created for it on Postgres and SQLite, and what
+  the Drizzle and EF Core bindings declare there. Reading and writing an existing `VARCHAR(64)`
+  column is unchanged: Exposed uses the declared type only for the DDL it writes, so only a project whose Exposed `SchemaUtils` creates
+  or alters its tables sees `TEXT` there. To keep a sized column, declare `@maxLength` on the field
+  or `enums.maxLength` for the project; the Exposed column is then `enumerationByName(NAME, n, X::class)`
+  and `meta migrate` proposes `VARCHAR(n)`.
+- **Kotlin: a partial index carries its predicate.** An index with `@where` was emitted without
+  it (a unique one as `uniqueIndex(NAME, cols)`, a lookup as `index(NAME, false, cols)`), so a
+  database Exposed created had a full index, and a full unique index refuses rows the partial one
+  allows. A unique one is now `index(NAME, true, cols, filterCondition = { ... })` and a lookup
+  `index(NAME, false, cols, filterCondition = { ... })`, the predicate as `meta migrate` creates
+  it; a non-default `@using` is emitted as `indexType` the same way. Nothing changes in a database
+  `meta migrate` or another tool manages; a project whose Exposed `SchemaUtils` builds the schema gets the partial
+  index.
+- **Kotlin: a literal `@default` is a constructor default on the generated data classes.** An
+  entity's or projection's field with a literal `@default` (enum member, Boolean, String, Int, Long,
+  Double), its own or inherited through `extends`, gets it as the parameter default
+  (`success: Boolean = true`), where the parameter had none (under Fixed, "An enum's `@default` is
+  what an untouched record stores"). A create body that omits a required defaulted field is now bound with the default
+  instead of answering 400, and an omitted nullable one starts at the default instead of NULL.
+  Every call that passed the argument compiles and behaves as before; a call that leaves it out
+  now compiles and gets the default.
+- **Kotlin: a request body that cannot be read answers with an `issues` list.** The generated
+  `MetaDecimalWire.kt` (one per generated package) maps the failure into the
+  validation envelope every other 400 uses: `{"error": "validation", "issues": [{"code", "path",
+  "message"}], "field"}`, where it answered `{"error": "validation", "field"}`. `code` is
+  `invalid_type`, `invalid_format` (a malformed date, time, uuid or uri), `invalid_value` (an
+  unknown enum member) or `too_big` (a decimal past its precision); `path` lists every property
+  Jackson was binding, empty when the body as a whole is unreadable. `error` and `field` are
+  unchanged, so a client that reads them keeps working; check any client that treats the body as
+  exactly those two keys, and read `issues` to show the specific failure.
 - **C#: a "-sis" entity name pluralizes to "-ses".** `Diagnosis` gives `Diagnoses` and
   `FindDiagnosesByPatient`, not `Diagnosises`; code naming the old form stops compiling. Use the new
   name, or set `"@collectionName": "Diagnosises"` on the entity to keep the old one. The REST segment is
@@ -1412,7 +1494,8 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
 - **A string-stored enum's column length: `@maxLength` on `field.enum`, and `enums.maxLength`.**
   `@maxLength` on a `field.enum` makes its column `VARCHAR(n)`, and `"enums": { "maxLength": n }`
   in `.metaobjects/config.json` gives every enum without one a default; with neither, the column
-  stays unbounded text, as before. The ports that size a column resolve the length through one
+  stays unbounded text, as before (except in Kotlin, whose Exposed table declared `VARCHAR(64)`
+  and now declares `TEXT`: see "Upgrading from 1.2.0"). The ports that size a column resolve the length through one
   core function (`resolveEnumMaxLength` in TypeScript, `EnumLength.ResolveMaxLength` in C#,
   `EnumLength.resolveMaxLength` on the JVM), and `meta migrate`, the Drizzle, Prisma, EF Core and
   Exposed bindings use it. Python emits no column types, so it accepts the `enums` block and

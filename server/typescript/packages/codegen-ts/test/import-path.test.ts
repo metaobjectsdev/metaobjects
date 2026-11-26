@@ -12,6 +12,7 @@ import {
   barrelModuleSpecifier,
   valueObjectModuleSpecifier,
 } from "../src/import-path.js";
+import { CodegenError } from "../src/errors.js";
 
 const model = (over: Partial<ResolvedTarget> = {}): ResolvedTarget => ({
   name: "default", outDir: "db/gen", importBase: "@acme/db/generated",
@@ -192,5 +193,24 @@ describe("valueObjectModuleSpecifier", () => {
 
   it("unresolved VO falls back to fromPkg (same-dir)", () => {
     expect(valueObjectModuleSpecifier(undefined, "Ghost", "acme::ai", "package", "none")).toBe("./Ghost");
+  });
+
+  it("refuses the pre-1.3 call shape (a name first) with a named error, not a bare TypeError", () => {
+    // An owned template copied from 1.2 calls (name, ctx.packageOf, fromPkg, layout, extStyle).
+    // Both shapes take five arguments, so the call has to be refused here, by name.
+    const packageOf = (name: string): string | undefined => (name === "Triple" ? "acme::common" : undefined);
+    const oldShape = valueObjectModuleSpecifier as unknown as (...args: unknown[]) => string;
+    const call = (): string => oldShape("Triple", packageOf, "acme::ai", "package", "none");
+    expect(call).toThrow(CodegenError);
+    expect(call).toThrow(/first argument must be the value object's node, got the string "Triple"/);
+    expect(call).toThrow(/valueObjectModuleSpecifier\(vo, voName, fromPkg, layout, extStyle\)/);
+    expect(call).toThrow(/ctx\.resolveValueObject\(field\)/);
+    expect(call).not.toThrow(/resolutionKey is not a function/);
+  });
+
+  it("refuses any first argument that is not a node", () => {
+    const loose = valueObjectModuleSpecifier as unknown as (...args: unknown[]) => string;
+    expect(() => loose(null, "Triple", "acme::ai", "flat", "none")).toThrow(/got null/);
+    expect(() => loose({ name: "Triple" }, "Triple", "acme::ai", "flat", "none")).toThrow(/got an object with no resolutionKey\(\)/);
   });
 });
