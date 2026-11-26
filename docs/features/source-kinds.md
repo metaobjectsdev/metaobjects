@@ -147,8 +147,8 @@ model).
 
 **The view's SQL is generated — never hand-write it.** The `CREATE VIEW` body is
 derived from the projection's `origin.*` children (passthrough columns, aggregates,
-collections) and emitted by the Node `meta migrate` (schema migrations are Node-owned
-for every port — ADR-0015). Hand-authoring the view SQL for a shape the origins can
+collections) and emitted by the Node `meta migrate` (the Node migrate engine is the
+reference helper for every port, a native tool equally good — ADR-0015 Amendment 2). Hand-authoring the view SQL for a shape the origins can
 express is a second source of truth that drifts silently — and because an unmodeled DB
 view is *unmanaged*, `meta verify --db` can't even see it. Reach for a hand-written
 view **only** when a construct origins can't express (recursive CTE, window function,

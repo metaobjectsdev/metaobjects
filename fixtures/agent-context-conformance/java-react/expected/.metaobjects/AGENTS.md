@@ -6,7 +6,7 @@
 > root `AGENTS.md` or `CLAUDE.md`, not here: this file is regenerated.
 
 The metadata (`metaobjects/` unless `.metaobjects/config.json` says otherwise) is the source of
-truth. Code, schema and migrations are generated from it and are disposable.
+truth. Code, schema and migrations are generated from it and are regenerated output.
 
 ## Start here: the whole loop, in order
 

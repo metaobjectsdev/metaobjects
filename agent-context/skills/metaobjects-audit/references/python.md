@@ -53,8 +53,7 @@ With no `metaobjects.config.yaml`, `gen` exits 2 and generates nothing. A target
 `generators` takes stable generator names: `entity`, `routes`, `filter-allowlist`,
 `names`, `output-parser`, `extractor`, `output-prompt`, `render-helper`, `trace-helper`,
 `template`. (There is no `payload` generator since ADR-0056: a template's payload and
-response types are the value objects' own `entity` models.) Schema migration + live-DB drift run through the **Node `meta` CLI**
-regardless of server language — see the migration reference.
+response types are the value objects' own `entity` models.) Schema migration is your own tool or the Node `meta migrate` reference helper; live-DB drift is the Node `meta verify --db` whichever tool built the schema — see the migration reference.
 
 ---
 
@@ -167,5 +166,5 @@ another) matters.
 - **Partial relationship + flattened-object codegen.** Relationship navigation,
   non-`table` source kinds, and `field.object @storage: flattened` codegen are
   partially implemented in the Python port. Do NOT flag these gaps as adopter defects.
-- **No Python migrate subcommand.** Schema migration is Node-`meta`-owned for every
-  port (ADR-0015). `metaobjects` has no migrate subcommand; `meta migrate` is correct.
+- **No Python migrate subcommand.** Schema migration is your own tool or the Node `meta migrate`
+  reference helper (ADR-0015 Amendment 2). `metaobjects` has no migrate subcommand; `meta migrate` is correct.

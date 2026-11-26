@@ -11,7 +11,7 @@ ordered test, see
 [ADR-0037](../../spec/decisions/ADR-0037-metamodel-vocabulary-expansion-decision-framework.md).
 This guide is the decision *around* those.
 
-> **Why decide with a procedure, not a guess?** Generated code is disposable — the
+> **Why decide with a procedure, not a guess?** Generated code is regenerated output — the
 > metamodel is the durable spine. A field you mis-shape today is a field you migrate
 > across every port later. Vocabulary is close to forever; spend a few minutes on it.
 

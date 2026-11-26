@@ -3,7 +3,7 @@
 The Python port of the [MetaObjects](https://metaobjects.dev) cross-language metadata
 standard: declare your typed entity model once, then generate idiomatic, drift-checked
 code across TypeScript, Java, C#, Python, and Kotlin. The metamodel is the durable spine;
-generated code is the disposable artifact.
+generated code is regenerated output. The reference generators help a team get started and are never the required way. What they generate is real code: run it, extend it, or replace the generator.
 
 Behavior is verified byte-for-byte against the same shared conformance corpora as every
 other language port.

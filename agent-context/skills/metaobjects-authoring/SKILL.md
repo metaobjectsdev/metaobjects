@@ -13,7 +13,9 @@ emits code in each language from it, and the drift gates check everything agains
 - **Declare it; do not hand-write it.** Persistence, data access, validation, APIs and UI
   scaffolding are derived from metadata. When you reach for a hand-written query, route,
   validator, relationship or aggregate, that is usually metadata nobody has declared yet:
-  look for the construct first (`meta types <term>`).
+  look for the construct first (`meta types <term>`). Declare it when the cost test favours
+  it: smaller declared than hand-written, more than one instance, or drift protection a
+  hand-write cannot give. A one-off with none of these can stay hand-written.
 - **Adoption reverses the direction.** When working code or a populated schema already
   exists, it is the specification and the metadata reproduces it: its names, types and
   nullability. Read `references/adopting-existing-code.md` before modeling anything.
@@ -77,18 +79,21 @@ When you are about to hand-write something data-shaped, find the model for it:
    search by behavior; there are subtypes, origins, identities and attributes you may not
    know exist. `--detail` shows one construct's valid `@attrs`; `--format json` gives every
    match with each attr's `allowedValues`, so you read the accepted values, not guess them.
-3. **Declare it, generate, and consume the generated query, type or route.** Do not
-   reimplement it alongside.
+3. **Declare it, generate, and consume the generated query, type or route.** Once declared,
+   do not reimplement it alongside.
 4. **If the model is right and the generated output is wrong, change your generator.**
    Naming, file layout, imports, framework and signatures are generator concerns. The
    generators are in your repo and yours to edit; a rule against changing MetaObjects itself
    does not reach them (`metaobjects-codegen`, "When generated output does not fit").
 5. **Hand-write only what no construct can express**, wired to the generated types: business
    algorithms, external integrations, bespoke interactions. CRUD, validation, finders,
-   relationships and derived or aggregate data are not in that group.
+   relationships and derived or aggregate data are not in that group, unless the cost test
+   below says a one-off can stay hand-written.
 
-If the metadata could describe it, declaring it is the right call even when a one-off
-hand-write would be faster today (`references/model-first-rationale.md`).
+If the metadata could describe it, declare it when the cost test favours it: the shape
+is smaller declared than hand-written, it will have more than one instance, or declaring it
+buys drift protection a hand-write cannot. A one-off with none of these can stay hand-written
+(`references/model-first-rationale.md`).
 
 ## Adopting onto an existing codebase: metadata follows the code
 

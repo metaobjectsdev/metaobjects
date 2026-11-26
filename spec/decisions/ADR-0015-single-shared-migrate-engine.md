@@ -86,7 +86,9 @@ migrations, not SQL):
 - **Explicitly out of scope:** EF Core Migrations, FluentMigrator (C#-coded), Alembic, Django
   (Python-coded) — emitting those means generating per-language migration *code* and they are
   ORM-coupled (EF↔EF Core, Alembic↔SQLAlchemy), which MetaObjects users need not adopt.
-  **EF Core Migrations is no longer out of scope; see Amendment 1.**
+  **EF Core Migrations is no longer out of scope; see Amendment 1. Alembic, and any other
+  native tool, is first-class as the adopter's own path (the helper does not emit its code); see
+  Amendment 2.**
 - MetaObjects does **not** reimplement an external runner's history / checksums / ordering — that is
   the runner's job (or the homegrown apply's journal for the zero-dep path).
 
@@ -263,9 +265,34 @@ operation's SQL. The case in point is an identity start: Npgsql writes `RESTART 
   ones `meta migrate` emits. A CHECK one path has and the other lacks is a defect on that path.
 - `meta verify --db` still reads any live database, whichever path built it. It is the drift
   gate for both.
-- Python, Java and Kotlin are unaffected: ADR-0015's single engine stays their only schema path.
+- Python, Java and Kotlin are unaffected: ADR-0015's single engine stays their only schema path. *(Superseded by Amendment 2: their native tools are equally first-class.)*
 - Removing the C# migrate engine (Decision 7) stands. The EF path is EF's own engine, not a
   MetaObjects one.
+
+## Amendment 2 (2026-11-25): each language's native migration tool is first-class; the Node engine is the reference helper
+
+**Context.** Decision 5 and the Realization status record the engine as Node-only, and a good deal
+of prose since then reads "Node owns the schema". That was an accurate description of where the
+code lives. It was then read as a requirement, and an adopter on Alembic, Flyway, Liquibase, EF Core
+Migrations or Diesel was told, in effect, to install a second toolchain to have a schema. Amendment 1
+already withdrew that for C#.
+
+**Decision.** Each language's native migration tool is a first-class way to own the schema: EF Core
+Migrations, Alembic, Flyway or Liquibase, Diesel or sqlx, Drizzle Kit, or the project's own. The Node
+engine (`meta migrate`, `meta verify --db`) is the **reference migration helper**: one option, the one
+that is gated by the persistence-conformance migration scenarios, and never the required way. The
+contract an adopter can lean on is the **expected schema**: what the metadata says the database
+must look like, which `meta verify --db` checks a live database against on Postgres, SQLite and D1. A native tool on MySQL has the neutral schema document (`meta schema`) but no `--db` gate, because `meta verify --db` and `meta schema` do not cover MySQL.
+The engine's code stays in TypeScript (Decision 5), and no port grows a diff engine of its own
+(Decision 7 stands).
+
+**Consequences.**
+- Docs say "the reference migration helper, one option", and each port page leads with that port's
+  native path.
+- The migrate commands, the `Schema` section of the agent docs and the `meta init` migrate step appear
+  only for a project that chose a migrate dialect.
+- Where an ADR or page says the schema is "Node-only" or "TypeScript-owned", it describes where the
+  reference helper runs, not a limit on the adopter. ADR-0033 and ADR-0065 are amended to say so.
 
 ## Conformance note
 

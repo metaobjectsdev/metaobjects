@@ -13,8 +13,8 @@ cargo meta eject     # copy a generator into the project to own it
 The package is `metaobjects-cli` because the crates.io name `cargo-meta` belongs to another
 crate; the binary it installs is `cargo-meta`, so the command is still `cargo meta`.
 
-`metaobjects.config.json` lists the generators a project runs. Schema migrations are the Node
-`meta` command's, for every server language.
+`metaobjects.config.json` lists the generators a project runs. The reference migration
+helper is the Node `meta` command (`meta migrate`); a native migration tool is equally good.
 
 - Documentation: <https://metaobjects.dev>
 - Source and the Rust port's page: <https://github.com/metaobjectsdev/metaobjects> (`docs/ports/rust.md`)

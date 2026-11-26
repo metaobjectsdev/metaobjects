@@ -14,7 +14,7 @@
     <ToolCommandName>dotnet-meta</ToolCommandName>
     <PackageId>MetaObjects.Cli</PackageId>
     <Title>MetaObjects CLI (dotnet meta)</Title>
-    <Description>The MetaObjects .NET command-line tool, installed as `dotnet meta`. Runs C# code generation (`gen`), codegen-drift verification (`verify`), and agent-context docs (`agent-docs`) from typed metadata. Schema migrations are owned by the Node `meta` CLI (ADR-0015).</Description>
+    <Description>The MetaObjects .NET command-line tool, installed as `dotnet meta`. Runs C# code generation (`gen`), codegen-drift verification (`verify`), and agent-context docs (`agent-docs`) from typed metadata. Schema migrations run in EF Core Migrations or the Node `meta` reference helper (ADR-0015).</Description>
     <PackageTags>metaobjects;dotnet-tool;codegen;cli;metadata</PackageTags>
   </PropertyGroup>
   <ItemGroup>

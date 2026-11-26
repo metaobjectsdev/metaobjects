@@ -24,7 +24,7 @@ writes Flyway-named files). The Java diff-and-converge migration engine and its 
 runtime auto-create path — OMDB is pure data-access (CRUD/query/codec/transactions).
 Prompt / template drift is still checked via the `metaobjects-render` `Verify` API.
 
-> **Schema migrations and database checks run in the Node `meta` tool.** The Maven plugin generates and verifies code, but writing and applying migrations (`npx meta migrate`, `npx meta migrate apply-pending`) and checking a live database against the model (`npx meta verify --db`) need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
+> **The reference migration helper and the database check run in the Node `meta` tool.** The Maven plugin generates and verifies code. If you take the reference helper for migrations (`npx meta migrate`, `npx meta migrate apply-pending`) rather than your own tool, or check a live database against the model (`npx meta verify --db`), you need Node: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` to point it at your metadata. Node is needed where migrations are written or applied, not in your running service. What else behaves differently in this port is listed in [What differs by language](../features/language-differences.md).
 
 **Start a project.** `mvn metaobjects:init` writes `.metaobjects/config.json` (a page size of 50 on
 every generated list route, `api.unknownFields: reject`, `verify.handEdits: fail`,
@@ -336,10 +336,11 @@ regenerating and the build exits 1 with `generated code is stale` and a `[conten
 per file; `mvn metaobjects:generate` (or `mvn compile`) and it is green again. The same goal also
 runs the requirement gate. Add it to your CI after `mvn compile`.
 
-Schema migrations are not a Java-port concern — author them with the TypeScript
-toolchain (`@metaobjectsdev/cli migrate`), then apply the resulting DDL to the
-database OMDB connects to. OMDB itself is pure data-access; the former runtime
-auto-create path was removed per ADR-0015.
+Schema migrations are not an OMDB concern — write them in your own tool (Flyway,
+Liquibase) handed the schema `meta schema` prints, or with the Node reference helper
+(`@metaobjectsdev/cli migrate`), then apply the resulting DDL to the database OMDB
+connects to (ADR-0015 Amendment 2). OMDB itself is pure data-access; the former
+runtime auto-create path was removed per ADR-0015.
 
 ## Use
 
@@ -1068,7 +1069,7 @@ array is not covered: a native array column is mapped only for `field.string`, `
 | Templates + render (FR-004) | Yes (`metaobjects-render`; Mustache only — a Jinja body is refused with `ERR_TEMPLATE_ENGINE_UNSUPPORTED`, ADR-0061) |
 | Payload-VO codegen | Yes — the payload IS the value object's own `record`, from `SpringValueObjectGenerator` (ADR-0056); no separate payload generator |
 | Output parser codegen (FR-006) | Yes — `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) — see usage below |
-| Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |
+| Migrations | Your own tool (Flyway, Liquibase) handed `meta schema`, or the Node reference helper (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015, Amendment 2) |
 | Drift verify | `Verify.check` / `Verify.checkOutputPrompt` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
 | Requirement gate + requirement tests | Yes (`mvn metaobjects:verify`, on every run; `JUnitRequirementTestsGenerator` emits JUnit Jupiter and is ejectable) |
 | Business-rules gate (ADR-0066, experimental) | Yes (`mvn metaobjects:verify`, on every run; see [business rules](../features/business-rules.md)) |
@@ -1134,7 +1135,7 @@ Per-corpus pass counts move every release — see
 [`docs/CONFORMANCE.md`](../CONFORMANCE.md) for the current, authoritative
 per-port numbers (metamodel, YAML, render, verify, persistence, API
 contract). Java is green across all six active corpora today (Java doesn't
-run the persistence corpus's migration scenarios — those are TS-only,
+run the persistence corpus's migration scenarios — those exercise the Node reference helper only,
 ADR-0015).
 
 ## See also

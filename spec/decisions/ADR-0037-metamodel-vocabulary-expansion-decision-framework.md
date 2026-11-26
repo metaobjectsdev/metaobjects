@@ -39,6 +39,15 @@ If X can be computed from the existing subtype + attributes (`isArray`, `@maxLen
   - **Validation constraint** that narrows the value without changing its type/structure → a validation/format attr. `@stringFormat` (email/hostname), `@maxLength`. The thing being validated stays a plain `<base>`; there is no behavior to own (or it would be 2a).
   - **Configuration value** (sizing, locale, precision) → a typed attr. `@precision`/`@scale`, `@currency`/`@locale`. Open/format-validated configs (ISO 4217, BCP 47) carry no `allowedValues`.
 
+### 3. Who refuses a bad use of it? The loader rule (added 2026-11-25)
+
+Once X exists, decide where an invalid use of it is refused. **The loader refuses what is invalid for the model; a limit of one generator is that generator's error.**
+Ask: is the model itself ambiguous or contradictory, whichever generator reads it? Then the loader
+refuses it, with a fixture in every port. Does only one generator fail on it (a name its routes
+derive, a subtype its filter cannot express)? Then that generator reports it when it runs, and the
+model still loads for everyone else. The ledger of the refusals that predate this step is in
+[GOVERNANCE.md](../../GOVERNANCE.md#the-loader-rule).
+
 ## The format-vs-subtype rule (a worked instance of step 2 — because we got it wrong, twice)
 
 The set of "string formats" the JSON-world lumps together (uuid, url, email, hostname, ipv4, ipv6) **does not survive the behavioral test — it splits.** Run each through 2a ("own native type or behavior?"):

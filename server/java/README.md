@@ -13,7 +13,7 @@ guarantee. The generators are reference helpers: copy one into your build with
 `mvn metaobjects:eject` and own it ([Own your codegen → Java and Kotlin](../../docs/features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject)).
 
 - **Codegen** *(reference generators)* — Spring REST + DTO + repository-interface emit (you supply the impl) (`codegen-spring`) and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`), both ejectable; PlantUML diagrams (`codegen-plantuml`), ejectable; and the deprecated Mustache template engine (`codegen-mustache`), which is not ejectable and will not be. Output is hand-edit-preserving via three-way merge.
-- **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`); the `metaobjects:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
+- **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations run in your own tool or the reference migration helper (`meta migrate`, `meta verify --db`), one option; a native tool is equally good; the `metaobjects:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
 - **Drift detection** — Template-drift: `Renderer.verify` checks `{{...}}` references against the payload VO at build time. The live-DB-schema mode of `metaobjects:verify` was removed; the goal now covers codegen drift (`mode=codegen`, the default) and template/prompt drift (`mode=templates`).
 - **Prompt construction** — `metaobjects-render` (Mustache + payload-VO + verify), FR-006 `template.output` parser-on-receipt codegen, render output byte-identical with the other four ports against the shared render-conformance corpus.
 
@@ -71,7 +71,7 @@ Spring REST stack (repository interface is consumer-implemented):
 </dependency>
 ```
 
-Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:editor` (schema migrations and live-DB schema-drift verification are managed by the TypeScript toolchain — `@metaobjectsdev/cli migrate`; prompt/template drift is checked via the `metaobjects-render` `Verify` API):
+Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:editor` (schema migrations and live-DB schema-drift verification are the reference migration helper's (`@metaobjectsdev/cli migrate`, `meta verify --db`), one option, and a native tool is equally good; prompt/template drift is checked via the `metaobjects-render` `Verify` API):
 
 ```xml
 <plugin>

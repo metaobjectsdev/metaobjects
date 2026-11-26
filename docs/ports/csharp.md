@@ -1282,7 +1282,7 @@ generated code), and no `migrate` surface (EF Core Migrations, or the Node `meta
 | Output parser codegen (FR-006) | Yes (`OutputParserGenerator` — `Parse`/`TryParse` BCL pattern) |
 | Payload-VO codegen | Yes — the payload IS the value object's own POCO from `EntityGenerator` (ADR-0056); no separate payload generator |
 | Declarative template-codegen | Yes — a `TemplateSpecGenerator` entry in `codegen/Generators.cs` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with Python) |
-| Migrations | Owned by the Node `meta` CLI (ADR-0015) — no C# migrate surface |
+| Migrations | EF Core Migrations is the native path; the Node `meta migrate` is the reference helper, one option (ADR-0015 Amendments 1 and 2) — no C# migrate surface |
 | Drift verify | `dotnet meta verify` (template drift, FR-004; `--codegen` regenerates the list in `codegen/Generators.cs` and diffs it) |
 | API reference docs | Yes — the `ApiDocsGenerator` entry in `codegen/Generators.cs` (`OutDir`, `ApiSubDir`, `ProjectName`, `ModelBaseUrl`); `dotnet meta docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#c)) |
 | Requirement gate + requirement tests | Yes (`dotnet meta verify`, on every run; `requirement-tests` emits xUnit and is ejectable) |

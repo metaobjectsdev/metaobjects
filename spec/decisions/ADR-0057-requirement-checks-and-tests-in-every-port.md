@@ -148,7 +148,8 @@ them is open.
   committed expectations. That cost is the price of clause 3 and is accepted.
 - **The analogy with ADR-0015 no longer applies to requirements.** ADR-0015 itself is
   unchanged: schema migrations stay owned by the TypeScript toolchain, for the reason that ADR
-  gives.
+  gives. (Superseded in part by ADR-0015 Amendment 2: each language's native migration tool is
+  first-class; the Node engine is the reference helper.)
 - **The seven authoring-lint advisories stay TypeScript-only in this slice**, by the owner's
   ruling. They never fail a build. Porting them is a follow-up slice. Until then the split is
   narrower, not gone: the gate is in every port, its advisory lint is in one.

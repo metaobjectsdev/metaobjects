@@ -1083,7 +1083,7 @@ definitions, and import lines are stable.
 | Payload-VO codegen | Yes — the `entity` generator's model for each value object IS the payload type (ADR-0056); no separate payload generator |
 | Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the `@responseRef` value object's model) |
 | Declarative template-codegen | Yes — a target's `templateSpec` in `metaobjects.config.yaml` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
-| Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
+| Migrations | Your own tool (Alembic, say) handed `meta schema`, or the Node reference helper (ADR-0015, Amendment 2) — no Python `migrate` command; the canonical `schema.postgres.sql` is the expected schema |
 | Drift verify | Yes — template / payload drift (`metaobjects verify`); `verify --codegen` regenerates the config's list and diffs each target's `outDir` |
 | API reference docs | Yes — `api-docs` in a target's `generators`, options in the top-level `apiDocs` block (`apiSubDir`, `projectName`, `modelBaseUrl`); `metaobjects docs` was removed in 1.1.0 ([migration](../features/migrations/docs-are-generators.md#python)) |
 | Requirements and agent pages | Yes — `requirements` (`requirements.md`, `requirements.toon`) and `agent-docs` (`agent/requirements.md` and the model-only `agent/schema.md`: no SQL types, defaults, indexes or checks; `agent/ui.md` is TypeScript-only) in a target's `generators`, rendered from the shared templates bundled in the package; a same-named file under the project's templates directory overrides a page; both ejectable |

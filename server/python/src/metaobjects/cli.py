@@ -48,8 +48,8 @@ Two subcommands:
       note that the explicit subverbs exist.
 
 Named ``metaobjects``, NOT ``meta``: ``meta`` is the Node schema CLI. This CLI
-intentionally has NO ``migrate`` subcommand — schema is owned by the Node
-toolchain (ADR-0015). The ``--codegen`` mode shares the exact same generation
+intentionally has NO ``migrate`` subcommand — schema migrations run in your own tool or the Node
+reference helper (ADR-0015 Amendment 2). The ``--codegen`` mode shares the exact same generation
 code path as ``gen`` (verify = gen-to-temp + diff), so drift can never be a
 generator-wiring divergence between the two commands.
 """
@@ -3080,11 +3080,12 @@ def _verify_templates(args: argparse.Namespace) -> int:
 def _verify_db(_args: argparse.Namespace) -> int:
     """``verify --db`` — REJECTED in the Python port (ADR-0021 D2).
 
-    Schema drift is owned by the migrate engine (ADR-0015), not this codegen CLI.
+    Schema drift is checked by the Node reference helper (ADR-0015), not this codegen CLI.
     """
     print(
         "error: verify --db is not supported in the Python port; schema verify "
-        "is the migrate engine (the Node `meta` CLI, ADR-0015).",
+        "is the reference migration helper's (`meta verify --db`, with `meta migrate`; "
+        "a native tool is equally good, ADR-0015 Amendment 2).",
         file=sys.stderr,
     )
     return 2
@@ -3566,8 +3567,9 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="metaobjects",
         description=(
             "MetaObjects Python codegen CLI. Generate idiomatic Python from "
-            "metadata and verify it has not drifted. Schema migrations are "
-            "owned by the Node `meta` CLI (ADR-0015) — there is no `migrate` "
+            "metadata and verify it has not drifted. The reference "
+            "migration helper is the Node `meta` CLI (`meta migrate`, one option; a "
+            "native tool is equally good, ADR-0015) — there is no `migrate` "
             "subcommand here."
         ),
         epilog="--version, -v, -V  print the version and exit",

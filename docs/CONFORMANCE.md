@@ -96,7 +96,7 @@ treats listed fixtures as passing, but a future port-level reconciliation pass w
 
 Since [ADR-0034 Amendments 3 and 11](../spec/decisions/ADR-0034-codegen-scaffold-and-own.md#amendment-11-2026-11-19--the-core-is-contracts-and-conformance-kits-and-generated-code-is-real-code),
 the corpora above do two different jobs. Only the first is a promise to adopters: the core is
-the contracts and the conformance kits that hold every port to them.
+the contracts and the conformance corpora this repository runs against every port. An adopter reads them; they are not a tool an adopter runs.
 
 - **Core — the contract.** `conformance/`, `yaml-conformance/`, `registry-conformance/`,
   `validation-conformance/`, `provider-composition-conformance/`,

@@ -55,14 +55,15 @@ gated by `meta verify --codegen`, which is what keeps output from drifting. See
 [write your own generator](docs/recipes/write-your-own-generator.md).
 
 Java, Kotlin, C# and Python start the same way from their own package: see
-[`docs/ports/`](docs/ports/). **Their schema migrations and database checks still run in the
-Node `meta` tool** (`npx meta migrate`, `npx meta verify --db`), so those teams need Node where
-migrations are written or applied. Where the ports behave differently (list defaults, error
+[`docs/ports/`](docs/ports/). **Their schema migrations run in the language's own tool**
+(Flyway, Liquibase, Alembic, EF Core Migrations), handed the schema `meta schema` prints; the Node
+`meta migrate` is the reference helper, one option. Only an adopter who takes the helper, or
+checks a live database with `meta verify --db`, needs Node. Where the ports behave differently (list defaults, error
 bodies, field names, data access) is listed in
 [What differs by language](docs/features/language-differences.md).
 
-The metamodel is the **durable spine**; generated code is the **disposable
-artifact**. Substrate is local-first: typed metadata lives in your repo as YAML or
+The metamodel is the **durable spine**; generated code is **regenerated
+output**. The reference generators help a team get started and are never the required way. What they generate is real code: run it, extend it, or replace the generator. Substrate is local-first: typed metadata lives in your repo as YAML or
 JSON you own. The entity/model tier of the output is dependency-free, and the optional
 client, prompt-render, and runtime tiers are ordinary Apache-2.0 packages you could
 vendor or fork. If the package ecosystem disappears tomorrow, you keep working code.
@@ -222,7 +223,7 @@ MetaObjects has two layers, and only the first is a promise
 
 | | Core — guaranteed | Helpers — yours |
 |---|---|---|
-| **What** | The contracts and the conformance kits: the metamodel, loader, canonical format and registry; the store-neutral contracts (the expected schema, and the guarded update, which a persistence-conformance scenario holds every store driver to, ADR-0066 §6); the drift gates (`meta verify`); prompt render and the reply parser | Store-specific code (SQL writers, introspectors, drivers such as the `ObjectManager` drivers and the `meta migrate` writer, mappings) and every generator that writes code into your repo — the ones you write for the outputs you need, and the routes, controllers, ORM wiring, DTOs, forms, grids and hooks MetaObjects ships |
+| **What** | The contracts, and the conformance corpora this repository runs every port against: the metamodel, loader, canonical format and registry; the store-neutral contracts (the expected schema, and the guarded update, which a persistence-conformance scenario holds every store driver to, ADR-0066 §6); the drift gates (`meta verify`); prompt render and the reply parser | Store-specific code (SQL writers, introspectors, drivers such as the `ObjectManager` drivers and the `meta migrate` writer, mappings) and every generator that writes code into your repo — the ones you write for the outputs you need, and the routes, controllers, ORM wiring, DTOs, forms, grids and hooks MetaObjects ships |
 | **Promise** | Conformance-gated, the same behaviour in every port that ships it, covered by the [compatibility policy](docs/compatibility-policy.md) | Supported helpers that compile and pass their reference fixtures, with the same capabilities in every port unless a ruling says otherwise. The code they generate is real code: run it as shipped, extend it through hooks, or copy it with `meta eject` and own it |
 | **A defect is** | A MetaObjects bug, fixed in a release | A bug in the reference, fixed there; your copy is yours |
 
@@ -352,9 +353,10 @@ metaobjects/
 | C# | `dotnet tool install --global MetaObjects.Cli` → [`docs/ports/csharp.md`](docs/ports/csharp.md) |
 | Python | `pip install metaobjects` → [`docs/ports/python.md`](docs/ports/python.md) |
 
-Every language also needs the Node `meta` CLI for the schema: `npm i -D @metaobjectsdev/cli`,
-then `npx meta init --config-only` in a Maven-, .NET- or pip-rooted project, and
-`npx meta migrate` / `npx meta verify --db` from there. The per-language differences are in
+A team that takes the reference migration helper or the live-database check needs the Node
+`meta` CLI for it: `npm i -D @metaobjectsdev/cli`, then `npx meta init --config-only` in a
+Maven-, .NET- or pip-rooted project, and `npx meta migrate` / `npx meta verify --db` from
+there. Teams on their own migration tool need no Node. The per-language differences are in
 [What differs by language](docs/features/language-differences.md).
 
 ## Cross-language conformance

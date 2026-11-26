@@ -21,11 +21,14 @@ Two earlier decisions jointly removed the justification for that duplication:
    `{{codegenCommand}}`) in the two always-on files. Each assembler was therefore
    doing "copy a static tree + interpolate two strings."
 
-2. **ADR-0015 (2026-05-30).** Schema migrations are Node-only on every port (npm
-   primary; an optional pre-compiled binary serves Node-free shops). Every adopter
-   already needs the `meta` CLI or its binary. The "scaffold without Node" goal that
-   justified native assemblers was already traded away for migrations — two days before
-   the agent-context design was written — and was never reconciled.
+2. **ADR-0015 (2026-05-30).** The reference migration helper (`meta migrate`) runs on
+   Node (npm primary; an optional pre-compiled binary serves Node-free shops), and each language's
+   native migration tool is equally first-class (Amendment 2 of ADR-0015). An adopter who runs the
+   helper needs the `meta` CLI or its binary. *(Amendment 2 of ADR-0015 makes that premise
+   narrower than this ADR first read it: a Node-free adopter is legitimate. The decision here
+   no longer rests on it; it stands on Amendment 1, the shipped tree.)* The "scaffold without
+   Node" goal that justified native assemblers was traded away for the helper path — two days
+   before the agent-context design was written — and was never reconciled.
 
 Net consequence: four codebases and four byte-exact test suites maintaining what is
 effectively one static artifact. Every agent-context content change required fixes and
@@ -62,9 +65,11 @@ per-port byte-identity gates are removed.
 
 ## Reconciliation with ADR-0015
 
-ADR-0015 established that every adopter already needs Node (or the binary) for schema
-migrations. A separate native scaffolder per port therefore bought nothing: the toolchain
-dependency already existed. This ADR applies the same reasoning to agent-context
+ADR-0015 established that an adopter who takes the reference helper needs Node (or the
+binary) for schema migrations; ADR-0015 Amendment 2 makes a native migration tool equally
+first-class, so this holds for helper adopters only, and the decision rests on ADR-0033
+Amendment 1 (the shipped tree). A separate native scaffolder per port therefore bought
+little: the toolchain dependency already existed for them. This ADR applies the same reasoning to agent-context
 scaffolding — one CLI, one place to maintain.
 
 ## What was deleted
@@ -102,8 +107,8 @@ CI, the same command is available via the pre-compiled `meta` binary (see ADR-00
   is eliminated.
 - **Discoverability preserved.** Each non-Node CLI's `agent-docs` command prints the
   correct redirect rather than silently failing or omitting the command from help output.
-- **No new toolchain requirement.** Every adopter already needs Node (or the binary) for
-  migrations per ADR-0015. This ADR adds no new dependency.
+- **No new toolchain requirement.** A helper adopter already needs Node (or the binary)
+  for migrations per ADR-0015 (a native-tool adopter needs none: Amendment 2). This ADR adds no new dependency.
 - **Staleness detection unaffected.** The live staleness-read path (used by gen/verify
   nudge) is retained in every port.
 

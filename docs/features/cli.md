@@ -29,7 +29,7 @@ command surface splits in two:
 | **Agent-context scaffold** (`agent-docs`) | **Node `meta`** | `npx meta agent-docs --server <lang>` | **any backend** — single assembler (ADR-0033); the Python CLI writes the same files itself (`metaobjects agent-docs`, no Node); the C# and Java/Kotlin CLIs still redirect here |
 | **Expected schema** (`schema`) | **Node `meta`** | `meta schema [--dialect <d>] [--as ddl\|json]` | **any backend** — read-only: prints the schema the metadata expects as DDL or as the neutral document ([schema-snapshot-format.md](schema-snapshot-format.md)); reads no database; writes nothing unless `--out` names a file |
 | **Schema migrate** | **Node `meta`** | `meta migrate` | **any backend** — the reference migration helper, one option beside each language's own tool (ADR-0015) |
-| **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
+| **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, run by the Node CLI whichever tool built the schema (ADR-0015 Amendment 2) |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
 | **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; part of the bare-`verify` default |
 | **Vocabulary upgrade** (`upgrade`) | **Node `meta`** | `meta upgrade [--to <version>] [--apply]` | **any backend** — rewrites RETIRED metadata vocabulary (`@violation` → `@counterexample`, `@readOnly` → `@mutability`, dropping `@verifiedBy`) and resolves ATTRIBUTE CONTRADICTIONS (`@fields` beside `@expr` on an index key). Node-only because it edits the metadata documents themselves, which every port shares; a non-TS project runs `npx meta upgrade` against its own `metaobjects/`. **Canonical JSON and YAML alike.** Previews by default. Retirements needing a human decision are refused and the run exits non-zero, so CI cannot record a partial migration as finished |
@@ -244,8 +244,7 @@ other's committed files as stale) and `-Dmeta.verify.mode=templates` (each `temp
 field tree via the render `Verify` engine, resolving refs through a filesystem provider rooted
 at `-Dmeta.verify.templateRoot`), and `-Dmeta.verify.mode=deps` (opt-in, never in the unset default set: the dependency drift check of `verify --deps`, resolving `path` dependencies only; see the Java port page). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the
-migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
-Node-only by the ADR-0015 design — see below.) The **Rust `cargo meta`** port runs the codegen
+migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (The live-database check `--db` stays in the Node CLI by the ADR-0015 design, and runs against a schema built by any tool — see below.) The **Rust `cargo meta`** port runs the codegen
 and template gates: bare `cargo meta verify` renders the generated crates in memory and diffs
 them (a local run may answer from the stored skip key; `--full`, or a set `CI`, always renders),
 checks every `template.*` body under `prompts/` (or `--prompts <dir>`) against its payload value
@@ -922,7 +921,7 @@ for assistants that read that) are assembled by **one** tool: the
 Node `meta agent-docs` command. Per [ADR-0033](../../spec/decisions/ADR-0033-single-agent-context-assembler.md)
 the per-port native assemblers (Python/Java/C#) and their byte-identity conformance
 gates were removed — that content is effectively one static artifact, and every port
-already needs the Node `meta` CLI or its binary for schema ops (ADR-0015).
+needs no more than the Node `meta` CLI or its binary, and only for the reference migration helper or `verify --db` (ADR-0015 Amendment 2).
 
 ```bash
 npx meta agent-docs --server <lang>    # csharp | java | kotlin | python | rust | node
