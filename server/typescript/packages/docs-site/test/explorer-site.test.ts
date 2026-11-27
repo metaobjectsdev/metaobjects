@@ -37,6 +37,7 @@ const shopView = await corpusView("shop");
 function buildShop(view: DocsView = shopView): { out: string; pages: string[]; files: string[]; page: (p: string) => string } {
   const out = scratch();
   const r = generateExplorerSite({
+    output: "static",
     view,
     outDir: out,
     title: "Shop",
@@ -49,7 +50,7 @@ async function buildFitness(): Promise<{ page: (p: string) => string; files: str
   const root = (await new MetaDataLoader().load([new FileSource(join(FITNESS, "meta.fitness.json"))])).root;
   const view = buildDocsView({ root });
   const out = scratch();
-  const r = generateExplorerSite({ view, outDir: out, title: "Fitness", texts: readPromptTexts(view, [join(FITNESS, "prompts"), FITNESS]) });
+  const r = generateExplorerSite({ output: "static", view, outDir: out, title: "Fitness", texts: readPromptTexts(view, [join(FITNESS, "prompts"), FITNESS]) });
   return { files: r.files, page: (p) => readFileSync(join(out, p), "utf8") };
 }
 
@@ -127,7 +128,7 @@ describe("explorer site over explorer-conformance/shop", () => {
       });
     const auditPage = (view: DocsView): string => {
       const out = scratch();
-      generateExplorerSite({ view, outDir: out, title: "Shop" });
+      generateExplorerSite({ output: "static", view, outDir: out, title: "Shop" });
       return readFileSync(join(out, "model/acme/shop/AuditEntry.html"), "utf8");
     };
     expect(auditPage(await reworded("acme::shop::AuditEntry", "an entity is unclaimed"))).toContain("chip v-unclaimed");
@@ -173,9 +174,18 @@ describe("explorer site over explorer-conformance/shop", () => {
     }
   });
 
-  test("the graph library loads only on the pages that draw a graph", () => {
-    expect(shop.page("map.html")).toContain("cytoscape@3.30.2/dist/cytoscape.min.js");
+  test("the graph library loads only on the pages that draw a graph, from the copy the site ships", () => {
+    expect(shop.page("map.html")).toContain('<script src="assets/cytoscape.min.js"></script>');
+    expect(shop.page("model/acme/shop/Order.html")).toContain('<script src="../../../assets/cytoscape.min.js"></script>');
+    expect(shop.files).toContain("assets/cytoscape.min.js");
     expect(shop.page("gaps.html")).not.toContain("cytoscape");
+  });
+
+  test("an assetBase loads the graph library from that mirror and ships no copy", () => {
+    const out = scratch();
+    const r = generateExplorerSite({ output: "static", view: shopView, outDir: out, title: "Shop", assetBase: "https://mirror.example/npm/" });
+    expect(readFileSync(join(out, "map.html"), "utf8")).toContain('<script src="https://mirror.example/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>');
+    expect(r.files).not.toContain("assets/cytoscape.min.js");
   });
 });
 
@@ -207,7 +217,7 @@ describe("explorer site over application-owned vocabulary (explorer-conformance/
   const view = await corpusView("crm");
   const build = (): { pages: string[]; page: (p: string) => string } => {
     const out = scratch();
-    const r = generateExplorerSite({ view, outDir: out, title: "Acme" });
+    const r = generateExplorerSite({ output: "static", view, outDir: out, title: "Acme" });
     return { pages: r.pages, page: (p) => readFileSync(join(out, p), "utf8") };
   };
 
@@ -236,7 +246,7 @@ describe("explorer site over application-owned vocabulary (explorer-conformance/
 
   test("the map draws only edges whose two ends it draws", () => {
     const out = scratch();
-    generateExplorerSite({ view, outDir: out, title: "Acme" });
+    generateExplorerSite({ output: "static", view, outDir: out, title: "Acme" });
     const js = readFileSync(join(out, "assets/explorer-data.js"), "utf8");
     const data = JSON.parse(js.slice(js.indexOf("=") + 1).trim().replace(/;$/, "")) as { nodes: { id: string }[]; edges: { s: string; t: string; k: string; v?: string }[] };
     const drawn = new Set(data.nodes.map((n) => n.id));
@@ -267,7 +277,7 @@ describe("explorer site page paths", () => {
 
   test("an object named index does not take its package's index page", async () => {
     const out = scratch();
-    const r = generateExplorerSite({ view: await inlineView(model("acme", [entity("index"), entity("Order")])), outDir: out, title: "T" });
+    const r = generateExplorerSite({ output: "static", view: await inlineView(model("acme", [entity("index"), entity("Order")])), outDir: out, title: "T" });
     expect(r.pages).toContain("model/acme/index.html");
     expect(r.pages).toContain("model/acme/index.node.html");
     expect(readFileSync(join(out, "model/acme/index.html"), "utf8")).toContain("Order");
@@ -275,7 +285,7 @@ describe("explorer site page paths", () => {
 
   test("a model with no package gets pages under a directory no package name can take", async () => {
     const out = scratch();
-    const r = generateExplorerSite({ view: await inlineView(model(undefined, [entity("Order")])), outDir: out, title: "T" });
+    const r = generateExplorerSite({ output: "static", view: await inlineView(model(undefined, [entity("Order")])), outDir: out, title: "T" });
     expect(r.pages).toContain("model/-root/Order.html");
   });
 

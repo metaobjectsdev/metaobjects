@@ -20,8 +20,6 @@ import {
   TYPE_REQUIREMENT,
   TYPE_SOURCE,
   TYPE_TEMPLATE,
-} from "@metaobjectsdev/metadata/constants";
-import {
   REQUIREMENT_SUBTYPE_ARCHITECTURAL,
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
   REQUIREMENT_STATUSES,
@@ -29,12 +27,14 @@ import {
   REQUIREMENT_STATUS_PARTIAL,
   REQUIREMENT_STATUS_PLANNED,
   REQUIREMENT_STATUS_RETIRED,
-  type DocsView,
-  type DocsViewMember,
-  type DocsViewNode,
-  type DocsViewRequirement,
-  type DocsViewRoute,
-  type DocsViewSlice,
+} from "@metaobjectsdev/metadata/constants";
+import type {
+  DocsView,
+  DocsViewMember,
+  DocsViewNode,
+  DocsViewRequirement,
+  DocsViewRoute,
+  DocsViewSlice,
 } from "@metaobjectsdev/metadata";
 
 /** The four declared statuses, in the order every bar and legend draws them: live first, since

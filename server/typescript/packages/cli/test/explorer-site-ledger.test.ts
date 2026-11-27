@@ -29,7 +29,7 @@ async function site(files: Record<string, string>): Promise<{ page: (p: string) 
   if (verify === undefined) throw new Error("the model declares requirements");
   const view = buildDocsView({ root, verify });
   const out = join(dir, "site");
-  generateExplorerSite({ view, outDir: out, title: "Ledger" });
+  generateExplorerSite({ output: "static", view, outDir: out, title: "Ledger" });
   return { page: (p) => readFileSync(join(out, p), "utf8"), undecided: verify.requirementCounts.undecided };
 }
 

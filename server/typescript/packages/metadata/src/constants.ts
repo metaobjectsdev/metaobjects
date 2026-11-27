@@ -46,6 +46,7 @@ export * from "./core/index/index-constants.js";
 export * from "./core/object/object-constants.js";
 export * from "./core/query/query-constants.js";
 export * from "./core/relationship/relationship-constants.js";
+export * from "./core/requirement/requirement-constants.js";
 export * from "./core/transition/transition-constants.js";
 export * from "./core/reporting/reporting-constants.js";
 export * from "./core/validator/validator-constants.js";

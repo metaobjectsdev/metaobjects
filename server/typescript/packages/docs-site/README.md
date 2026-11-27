@@ -4,7 +4,9 @@ HTML documentation-site generator for metaobjects models. It builds two sites:
 
 - **The model explorer** (the default): what the software does, the model map with slices
   and colour-by, a page per object, prompt and requirement, the traceability matrix, the
-  trace, the API index and the gaps, all drawn from one `explorer.json`. See
+  trace, the API index and the gaps, all drawn from one `explorer.json`. By default it is one
+  browser app that runs from `file://` and follows the model while it is open; `output:
+  "static"` writes a page per screen. See
   [`docs/features/explorer-site.md`](../../../../docs/features/explorer-site.md).
 - **The classic site** (`site: "classic"`): package nav, Cmd+K search, per-object / package /
   prompt / output pages, and kind-aware ER diagrams that encode object kind by shape and
@@ -30,17 +32,19 @@ export default defineConfig({
 
 `meta gen` writes the site to `site/` under the target (`./docs/generated/site/`), beside
 whatever other documentation the config lists. Options: `site` (`"explorer"`, the
-default, or `"classic"`), `subDir` (default `site`),
+default, or `"classic"`), `output` (the explorer only: `"app"`, the default, or `"static"`),
+`subDir` (default `site`),
 `prompts` (an extra directory of prompt `.mustache` sources), `title`, `stamp` (footer
 text; default none, so the pages depend on the model alone and `meta verify --codegen`
 can check them), `assetBase` (see below) and `target`.
 
 ## Offline use: `assetBase`
 
-The explorer loads one third-party file, Cytoscape.js, from
-`${assetBase}/cytoscape@3.30.2/dist/cytoscape.min.js`, and only on the pages that draw a graph
-(the map, the object mini-maps, the trace). Without it every page still renders and the graphs
-show a notice. The rest of this section is about the classic site.
+The explorer needs no network access: it ships its one third-party file, Cytoscape.js
+3.30.2 (MIT), as `assets/cytoscape.min.js`. A static explorer given an `assetBase` loads it
+from `${assetBase}/cytoscape@3.30.2/dist/cytoscape.min.js` instead and ships no copy. Without
+it every page still renders and the graphs show a notice. The rest of this section is about
+the classic site.
 
 The classic page chrome loads five third-party files from jsDelivr (`https://cdn.jsdelivr.net/npm`):
 daisyUI's two stylesheets, Tailwind's browser build, Mermaid and svg-pan-zoom. A site opened
@@ -117,7 +121,9 @@ meta gen
 ```
 
 `docsSiteFile()` reads `codegen/docs-site/` and uses your owned copies; any
-file you didn't override falls back to the bundled default. The engine
+file you didn't override falls back to the bundled default. The explorer app carries your
+owned templates in `explorer-model.js` and draws with them, and writes your owned CSS and JS
+in place of its own. The engine
 (`@metaobjectsdev/docs-site`) stays a versioned dependency — you own only the theme.
 
 When calling `generateSite` or `generateExplorerSite` directly, pass `templatesDir` / `assetsDir` to point at your
