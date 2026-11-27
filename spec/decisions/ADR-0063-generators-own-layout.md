@@ -158,6 +158,13 @@ dialect section. The layout ratchet (`LayoutRatchetTest`, `codegen-base`, with i
 `codegen-base/src/test/resources/layout-ratchet/allowlist.json`) holds an empty `unconverted`
 section: no Java generator source types layout by hand.
 
+## Amendment (2026-11-26, Kotlin): the Kotlin writer
+
+In 1.3.0 every Kotlin generator writes through `KotlinWriter` (`codegen-kotlin`). KotlinPoet is
+removed from `codegen-kotlin`. The Kotlin layout ratchet (`KotlinLayoutRatchetTest`) keeps its
+`unconverted` section empty, so no generator types layout by hand and KotlinPoet cannot return. The
+docs renderer stays exempt. The port's details are in [`docs/ports/kotlin.md`](../../docs/ports/kotlin.md).
+
 ## Amendment (2026-11-21, C#): the C# writer
 
 The C# port has its writer, `CsWriter` (`server/csharp/MetaObjects.Codegen/Writer/CsWriter.cs`), and
