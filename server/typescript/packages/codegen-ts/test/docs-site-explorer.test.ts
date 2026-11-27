@@ -44,7 +44,7 @@ const explorerOf = (): DocsView =>
 describe("docsSiteFile() builds the model explorer", () => {
   test("declared first, it still sees what the code generators wrote, and the routes they mount", async () => {
     await runGen({
-      config: config([docsSiteFile(), entityFile(), routesFile()]),
+      config: config([docsSiteFile({ output: "static" }), entityFile(), routesFile()]),
       metadata: root,
       projectRoot: tmp,
       sourceRoots: [sources],
@@ -60,11 +60,19 @@ describe("docsSiteFile() builds the model explorer", () => {
   });
 
   test("without a routes generator in the run, the site says no routes were recorded, not that none are mounted", async () => {
-    await runGen({ config: config([entityFile(), docsSiteFile()]), metadata: root, projectRoot: tmp, sourceRoots: [sources] });
+    await runGen({ config: config([entityFile(), docsSiteFile({ output: "static" })]), metadata: root, projectRoot: tmp, sourceRoots: [sources] });
     const ex = explorerOf();
     expect(ex.sources.routes).toBe(false);
     expect(ex.nodes.every((n) => n.routes.length === 0)).toBe(true);
     expect(readFileSync(join(tmp, "docs", "site", "api.html"), "utf8")).toContain("recorded no routes");
+  });
+
+  test("by default it writes the browser app and its data, and no page", async () => {
+    await runGen({ config: config([entityFile(), docsSiteFile()]), metadata: root, projectRoot: tmp, sourceRoots: [sources] });
+    const site = join(tmp, "docs", "site");
+    expect(readFileSync(join(site, "index.html"), "utf8")).toContain('<script src="assets/explorer-app.js"></script>');
+    for (const f of ["assets/explorer-app.js", "assets/cytoscape.min.js", "explorer-model.js", "explorer-stamp.js", "explorer.json"]) expect(existsSync(join(site, f))).toBe(true);
+    expect(existsSync(join(site, "api.html"))).toBe(false);
   });
 
   test("a requirement ledger that throws leaves the ledger out with a warning, and the site still builds", async () => {

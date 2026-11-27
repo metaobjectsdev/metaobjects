@@ -1,11 +1,24 @@
 // The model explorer's scripts: search, the theme toggle, and the three graphs (the model map,
-// an object page's one-hop mini-map, the trace). They read window.MO_EXPLORER, which
-// assets/explorer-data.js sets from explorer.json; nothing here derives a model fact.
+// an object page's one-hop mini-map, the trace). They read window.MO_EXPLORER, which the
+// explorer app computes from the docs view (or, on a static export, assets/explorer-data.js
+// sets); nothing here derives a model fact.
 // `meta eject docs-site` copies this file to codegen/docs-site/assets/.
+//
+// On a static page this runs once, as it loads. In the explorer app (window.MO_APP is set) it
+// runs again for every page the app draws, and the app supplies four things a page would
+// otherwise take from its own URL: link targets, the query string, writing the query string
+// back, and document listeners the app drops when the reader leaves the page.
 (function () {
   "use strict";
+  function run() {
+  var APP = window.MO_APP || null;
   var D = window.MO_EXPLORER || { nodes: [], edges: [], slices: {}, features: [], reqs: [], generated: {}, search: [] };
   var ROOT = document.body.getAttribute("data-root") || "";
+  var query = function () { return APP ? APP.search() : location.search; };
+  var setQuery = function (search) { if (APP) APP.replaceQuery(search); else history.replaceState(null, "", search ? location.pathname + search : location.pathname); };
+  var listen = function (type, f) { if (APP) APP.listen(type, f); else document.addEventListener(type, f); };
+  // A graph the app draws is destroyed when the reader leaves its page.
+  var graph = function (opts) { var c = cytoscape(opts); if (APP) APP.onLeave(function () { if (!c.destroyed()) c.destroy(); }); return c; };
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var css = function (v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); };
@@ -16,7 +29,7 @@
   D.nodes.forEach(function (n) { byId[n.id] = n; });
   var reqById = {};
   D.reqs.forEach(function (r) { reqById[r.id] = r; });
-  var href = function (rel) { return ROOT + rel; };
+  var href = function (rel) { return APP ? APP.href(rel) : ROOT + rel; };
   var redraw = [];
 
   // ── Theme ───────────────────────────────────────────────────────────────
@@ -36,7 +49,8 @@
   // full-text index answers instead.
   var q = $("#q"), res = $("#results"), pagefind = null, pagefindTried = false, sel = -1;
   function loadPagefind() {
-    if (pagefindTried || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
+    // The app draws its own pages; a Pagefind index (of a static export) would link out of it.
+    if (APP || pagefindTried || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
     pagefindTried = true;
     // Pagefind takes its base URL from where pagefind.js loads, so loading it from ROOT makes every
     // result URL carry the path the site is served under (a sub-path included).
@@ -82,15 +96,15 @@
         location.href = links[Math.max(0, sel)].href;
       } else if (e.key === "Escape") { res.style.display = "none"; q.blur(); }
     });
-    document.addEventListener("click", function (e) { if (!$("#search").contains(e.target)) res.style.display = "none"; });
-    document.addEventListener("keydown", function (e) {
+    listen("click", function (e) { if (!$("#search").contains(e.target)) res.style.display = "none"; });
+    listen("keydown", function (e) {
       if (e.key === "/" && document.activeElement !== q && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); q.focus(); }
     });
   }
 
   if (typeof window.cytoscape !== "function") {
     document.querySelectorAll(".graph").forEach(function (g) {
-      g.innerHTML = '<div class="note" style="margin:12px">The graph library did not load (it comes from the site\'s <code>assetBase</code>). Every node still has its own page.</div>';
+      g.innerHTML = '<div class="note" style="margin:12px">The graph library did not load. Every node still has its own page.</div>';
     });
     return;
   }
@@ -148,7 +162,7 @@
   var cyEl = $("#cy");
   if (cyEl) {
     var cy = null;
-    var params = new URLSearchParams(location.search);
+    var params = new URLSearchParams(query());
     var sliceSel = $("#slice"), colourSel = $("#colour");
     if (params.get("slice") && sliceSel.querySelector('option[value="' + CSS.escape(params.get("slice")) + '"]')) sliceSel.value = params.get("slice");
     if (params.get("colour") && colourSel.querySelector('option[value="' + CSS.escape(params.get("colour")) + '"]')) colourSel.value = params.get("colour");
@@ -184,7 +198,7 @@
       if (pan) cy.nodes().forEach(function (n) { pan.pos[n.id()] = n.position(); });
       if (cy) cy.destroy();
       var keep = pan && els.every(function (el) { return el.data.source || pan.pos[el.data.id]; });
-      cy = cytoscape({
+      cy = graph({
         container: cyEl, elements: els, wheelSensitivity: 0.3, maxZoom: 1.5, style: baseStyle(),
         layout: keep ? { name: "preset", positions: function (n) { return pan.pos[n.id()]; }, fit: true, padding: 20 } : COSE,
       });
@@ -193,10 +207,10 @@
       var sliceReq = slice.indexOf("requirement:") === 0 ? reqById[slice.slice("requirement:".length)] : null;
       if (sliceReq) $("#panel").innerHTML = slicePanel(sliceReq, D.slices[slice] || []);
       if (focus && byId[focus] && cy.getElementById(focus).length) { cy.getElementById(focus).select(); showPanel(focus); focus = null; }
-      var u = new URL(location.href);
-      if (slice) u.searchParams.set("slice", slice); else u.searchParams.delete("slice");
-      u.searchParams.set("colour", mode);
-      history.replaceState(null, "", u.search ? u.pathname + u.search : u.pathname);
+      var qs = new URLSearchParams(query());
+      if (slice) qs.set("slice", slice); else qs.delete("slice");
+      qs.set("colour", mode);
+      setQuery("?" + qs.toString());
     };
     ["#slice", "#colour", "#hideOut", "#showValues", "#showExt"].forEach(function (s) { $(s).onchange = function () { build(false); }; });
     $("#relayout").onclick = function () { if (cy) cy.layout(Object.assign({}, COSE, { randomize: true })).run(); };
@@ -241,7 +255,7 @@
         return { data: { id: id, label: n.name, col: fill(n, D.hasClaims ? "status" : "kind"), me: id === me ? 1 : 0, ring: n.unclaimed, shape: shape(n) } };
       }).concat(es.map(function (e, i) { return { data: { id: "m" + i, source: e.s, target: e.t, label: e.v || e.k } }; }));
       mini.innerHTML = "";
-      var c = cytoscape({
+      var c = graph({
         container: mini, elements: els, maxZoom: 1.3,
         style: [
           { selector: "node", style: { "background-color": "data(col)", label: "data(label)", shape: "data(shape)", "font-size": 10, color: css("--ink"), "text-valign": "bottom", "text-margin-y": 2, width: 18, height: 18, "border-width": 1, "border-color": css("--line") } },
@@ -260,7 +274,7 @@
   // ── S8: the trace ───────────────────────────────────────────────────────
   var tr = $("#cytrace"), tstart = $("#tstart");
   if (tr && tstart) {
-    var p2 = new URLSearchParams(location.search).get("start");
+    var p2 = new URLSearchParams(query()).get("start");
     if (p2 && reqById[p2]) tstart.value = p2;
     var drawTrace = function () {
       var r0 = reqById[tstart.value];
@@ -293,7 +307,7 @@
       var pos = {};
       cols.forEach(function (c, ci) { c.forEach(function (id, i) { pos[id] = { x: ci * 260, y: (i - c.length / 2) * 26 }; }); });
       tr.innerHTML = "";
-      var c = cytoscape({
+      var c = graph({
         container: tr, elements: els, wheelSensitivity: 0.3, maxZoom: 1.6,
         style: [
           { selector: "node", style: { "background-color": "data(col)", label: "data(label)", shape: "data(shape)", "font-size": 11, color: css("--ink"), "text-halign": "right", "text-valign": "center", "text-margin-x": 6, width: 12, height: 12 } },
@@ -306,10 +320,13 @@
       c.on("tap", "node", function (ev) { var go = ev.target.data("go"); if (go) location.href = href(go); });
     };
     tstart.onchange = function () {
-      var u = new URL(location.href); u.searchParams.set("start", tstart.value); history.replaceState(null, "", u.pathname + u.search);
+      var qs = new URLSearchParams(query()); qs.set("start", tstart.value); setQuery("?" + qs.toString());
       drawTrace();
     };
     redraw.push(drawTrace);
     drawTrace();
   }
+  }
+  window.MO_THEME = run;
+  if (!window.MO_APP) run();
 })();

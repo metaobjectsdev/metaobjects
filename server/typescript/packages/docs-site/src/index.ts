@@ -5,5 +5,21 @@ export type { MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 export { findDanglingLinks } from "./link-check.js";
 // The explorer reads the docs view, which `@metaobjectsdev/metadata` builds from the loaded model
 // (`buildDocsView`, `docs/features/docs-view.md`).
-export { generateExplorerSite, readPromptTexts, EXPLORER_TEMPLATE_NAMES, EXPLORER_ASSET_NAMES, CYTOSCAPE_PATH } from "./explorer/site.js";
-export type { ExplorerSiteOptions, ExplorerSiteResult } from "./explorer/site.js";
+export {
+  generateExplorerSite,
+  readPromptTexts,
+  explorerModelScript,
+  stampScript,
+  EXPLORER_TEMPLATE_NAMES,
+  EXPLORER_ASSET_NAMES,
+  EXPLORER_APP_FILES,
+  EXPLORER_OUTPUT_APP,
+  EXPLORER_OUTPUT_STATIC,
+  EXPLORER_MODEL_FILE,
+  EXPLORER_STAMP_FILE,
+  EXPLORER_VIEW_FILE,
+  CYTOSCAPE_PATH,
+} from "./explorer/site.js";
+export type { ExplorerSiteOptions, ExplorerSiteResult, ExplorerOutput, ExplorerModelInput } from "./explorer/site.js";
+export { createExplorer, CYTOSCAPE_ASSET } from "./explorer/core.js";
+export type { ExplorerCore, ExplorerCoreOptions } from "./explorer/core.js";

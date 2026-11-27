@@ -55,7 +55,7 @@ export default defineConfig({
   outDir: "out",
   dialect: "sqlite",
   targets: { docs: { outDir: "docs-out" } },
-  generators: [docsSiteFile()],
+  generators: [docsSiteFile({ output: "static" })],
   PROVIDERS
 });
 `;
@@ -109,8 +109,8 @@ describe("meta gen with docsSiteFile()", () => {
     expect(await readFile(page, "utf8")).toContain("geopoint");
   });
 
-  test("docsSiteFile({ assetBase }) points the explorer's graph library at that base instead of jsDelivr", async () => {
-    const cfg = config("").replace("docsSiteFile()", `docsSiteFile({ assetBase: "/vendor/npm" })`);
+  test("docsSiteFile({ output: \"static\", assetBase }) points the explorer's graph library at that base instead of its own copy", async () => {
+    const cfg = config("").replace(`docsSiteFile({ output: "static" })`, `docsSiteFile({ output: "static", assetBase: "/vendor/npm" })`);
     const root = await project(META, cfg);
     expect(await run(["gen", "--cwd", root])).toBe(0);
     const html = await readFile(join(root, "docs-out", "site", "map.html"), "utf8");
@@ -119,7 +119,7 @@ describe("meta gen with docsSiteFile()", () => {
   });
 
   test("docsSiteFile({ site: \"classic\", assetBase }) points the classic chrome at that base", async () => {
-    const cfg = config("").replace("docsSiteFile()", `docsSiteFile({ site: "classic", assetBase: "/vendor/npm" })`);
+    const cfg = config("").replace(`docsSiteFile({ output: "static" })`, `docsSiteFile({ site: "classic", assetBase: "/vendor/npm" })`);
     const root = await project(META, cfg);
     expect(await run(["gen", "--cwd", root])).toBe(0);
     const html = await readFile(join(root, "docs-out", "site", "index.html"), "utf8");

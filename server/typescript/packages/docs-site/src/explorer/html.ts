@@ -8,7 +8,7 @@
 //   - a ROLL-UP of the statuses below is a separate stacked bar, and never repaints the chip.
 // Nothing here colours a test result: the build does not read one.
 
-import { REQUIREMENT_ATTR_DISPOSITION } from "@metaobjectsdev/metadata";
+import { REQUIREMENT_ATTR_DISPOSITION } from "@metaobjectsdev/metadata/constants";
 import { STATUSES, STATUS_GLYPH, type ReqEntry, type Rollup } from "./view-index.js";
 
 export function esc(s: unknown): string {

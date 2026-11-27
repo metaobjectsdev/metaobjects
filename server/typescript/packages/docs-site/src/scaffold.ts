@@ -42,6 +42,18 @@ export const EXPLORER_TEMPLATE_NAMES: readonly string[] = [
 /** The explorer's themeable assets (basenames under assets/). */
 export const EXPLORER_ASSET_NAMES: readonly string[] = ["explorer.css", "explorer.js"];
 
+/** The explorer app's files, relative to the site and to the app directory: the canonical copy
+ *  is `explorer-app/` at the repository root, and every port ships the same bytes
+ *  (`scripts/sync-explorer-app.sh`). The theme pair is the packaged copy of `assets/`; an owned
+ *  copy replaces it in the site the generator writes. */
+export const EXPLORER_APP_FILES: readonly string[] = [
+  "index.html",
+  "assets/explorer-app.js",
+  "assets/explorer.css",
+  "assets/explorer.js",
+  "assets/cytoscape.min.js",
+];
+
 /** Every template `meta eject docs-site` copies: both sites' themes, so either can be owned. */
 export const SITE_TEMPLATE_NAMES: readonly string[] = [...CLASSIC_TEMPLATE_NAMES, ...EXPLORER_TEMPLATE_NAMES];
 

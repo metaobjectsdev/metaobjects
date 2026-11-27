@@ -15,7 +15,9 @@
 //             `explorer.json`, which this generator builds from the effective model, the
 //             requirement ledger the caller computed (`ctx.requirementLedger`), the files this
 //             run wrote (`ctx.runOutput`) and the routes the run mounts. It runs after every
-//             other generator, so the files it lists are this run's.
+//             other generator, so the files it lists are this run's. By default it writes one
+//             browser app that draws the pages from that document (`output: "app"`), and
+//             `output: "static"` writes every page as HTML instead.
 //   classic   the site before the explorer: a page per package and per object with ER
 //             diagrams. It loads the model with its own loader, from whole source DIRECTORIES
 //             (one page group each), so it reads the collection's source roots off the context.
@@ -23,7 +25,7 @@
 import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { generateExplorerSite, generateSite, readPromptTexts } from "@metaobjectsdev/docs-site";
+import { generateExplorerSite, generateSite, readPromptTexts, type ExplorerOutput } from "@metaobjectsdev/docs-site";
 import type { EmittedFile, GenContext, Generator, GeneratorFactory } from "../generator.js";
 import { DOCS_TARGET_NAME } from "../docs-run.js";
 import { runDocsView } from "../docs-view-run.js";
@@ -47,6 +49,10 @@ export interface DocsSiteFileOpts {
   /** Which site: `explorer` (default), the model explorer, or `classic`, the per-package site
    *  with ER diagrams that shipped before it. */
   site?: DocsSiteKind;
+  /** The explorer only: `app` (default) writes one browser app that draws every page from the
+   *  docs view, runs from `file://` and follows a regenerated model while it is open; `static`
+   *  writes a page per screen, for publishing without scripts or indexing for search. */
+  output?: ExplorerOutput;
   /** A directory holding prompt `.mustache` sources outside `metaobjects/` and `templates/`,
    *  relative to the project, so the site can show prompt TEXT. */
   prompts?: string;
@@ -58,11 +64,11 @@ export interface DocsSiteFileOpts {
    *  depend on the model alone and `meta verify --codegen` can hold them to it. A date here
    *  makes every day's run differ from the last. */
   stamp?: string;
-  /** Where the pages load their third-party CSS and JS from: the explorer loads Cytoscape for
-   *  its graphs, the classic site daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom.
-   *  Default `https://cdn.jsdelivr.net/npm`, which needs network access to draw them; set it to
-   *  your own mirror, or to a path you serve the files from. Give an absolute URL or a
-   *  root-relative path. See `@metaobjectsdev/docs-site` for the files. */
+  /** Where the pages load their third-party CSS and JS from. The classic site loads daisyUI,
+   *  Tailwind's browser build, Mermaid and svg-pan-zoom, default `https://cdn.jsdelivr.net/npm`.
+   *  The explorer ships its graph library (Cytoscape) with the site and ignores this, except
+   *  that a static explorer (`output: "static"`) given one loads Cytoscape from it and ships no
+   *  copy. Give an absolute URL or a root-relative path. See `@metaobjectsdev/docs-site`. */
   assetBase?: string;
   /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
@@ -173,6 +179,7 @@ async function explorerSite(ctx: GenContext, project: string, prefix: string, op
     title: opts?.title ?? (basename(project) || "Metadata"),
     stamp: opts?.stamp ?? "",
     texts,
+    ...(opts?.output !== undefined && { output: opts.output }),
     ...(opts?.assetBase !== undefined ? { assetBase: opts.assetBase } : {}),
     ...owned,
   }).files);
