@@ -23,11 +23,10 @@
 import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { buildDocsView } from "@metaobjectsdev/metadata";
 import { generateExplorerSite, generateSite, readPromptTexts } from "@metaobjectsdev/docs-site";
 import type { EmittedFile, GenContext, Generator, GeneratorFactory } from "../generator.js";
 import { DOCS_TARGET_NAME } from "../docs-run.js";
-import { buildApiModelForRun } from "./api-model.js";
+import { runDocsView } from "../docs-view-run.js";
 import { makeScratchDir, removeTree } from "../scratch-dir.js";
 
 /** The site lands here, under the target. */
@@ -155,54 +154,10 @@ async function buildInScratch(prefix: string, build: (outDir: string) => string[
   }
 }
 
-/** A route the run mounts, keyed by its node's resolution key: the docs view's `routes` input. */
-interface RunRoute {
-  node: string;
-  method: string;
-  path: string;
-}
-
-/** The routes the run mounts, as the api reference states them (`METHOD /path` per symbol). */
-function runRoutes(ctx: GenContext): RunRoute[] {
-  const routes: RunRoute[] = [];
-  for (const unit of buildApiModelForRun(ctx).units) {
-    const node = unit.package !== undefined && unit.package !== "" ? `${unit.package}::${unit.node}` : unit.node;
-    for (const sym of unit.symbols) {
-      if (sym.kind !== "rest") continue;
-      const space = sym.name.indexOf(" ");
-      if (space < 0) continue;
-      routes.push({ node, method: sym.name.slice(0, space), path: sym.name.slice(space + 1) });
-    }
-  }
-  return routes;
-}
-
 async function explorerSite(ctx: GenContext, project: string, prefix: string, opts: DocsSiteFileOpts | undefined): Promise<EmittedFile[]> {
-  // The manifest's shape (path → generatedBy, sourceNode), from the files this run wrote: a
-  // fresh clone builds the same site as the machine that last generated.
-  const manifest: Record<string, { generatedBy: string; sourceNode?: string }> = {};
-  for (const f of ctx.runOutput?.() ?? []) {
-    manifest[f.path] = { generatedBy: f.generatedBy, ...(f.sourceNode !== undefined && { sourceNode: f.sourceNode }) };
-  }
-  // The ledger is the requirement gate's; a gate that throws leaves the section out (as a
-  // missing verify input does) rather than failing the whole run in the docs step.
-  let ledger: unknown;
-  try {
-    ledger = ctx.requirementLedger?.();
-  } catch (err) {
-    ctx.warn(`docs-site: the requirement ledger could not be built, so the site shows none: ${err instanceof Error ? err.message : String(err)}`);
-  }
-  // No route at all means this run recorded none (no routes generator, or REST off), which the
-  // site says as such; an empty list would claim the run mounted nothing.
-  const routes = runRoutes(ctx);
   // The docs view is built from the model this run already loaded: ids, pages, inheritance and
   // references are the loader's, never re-derived from a serialized copy.
-  const view = buildDocsView({
-    root: ctx.loadedRoot,
-    ...(ledger !== undefined && { verify: ledger }),
-    manifest,
-    ...(routes.length > 0 && { routes }),
-  });
+  const view = runDocsView(ctx, "docs-site");
   const texts = readPromptTexts(view, promptSourceDirs(ctx, project, opts, ctx.sourceRoots ?? []));
   const owned = ownedSiteDirs(project);
   if (owned.templatesDir !== undefined && !existsSync(join(owned.templatesDir, EXPLORER_MARKER_TEMPLATE))) {

@@ -6,6 +6,7 @@
     "GeneratorFactory",
     "GeneratorProvides",
     "GeneratorRoutes",
+    "RunOutputCheck",
     "RunOutputFile",
     "oncePerRun",
     "perEntity",

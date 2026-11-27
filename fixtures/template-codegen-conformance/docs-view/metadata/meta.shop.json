@@ -1,0 +1,82 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            { "field.long": { "name": "id", "@description": "The row's stable id." } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "extends": "BaseEntity",
+          "@description": "Someone who buys from the shop.",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.string": { "name": "email", "@required": true, "@maxLength": 200 } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "extends": "BaseEntity",
+          "@description": "A placed order & its <total>.",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long": { "name": "customerId" } },
+            { "field.string": { "name": "reference", "@maxLength": 20 } },
+            { "identity.reference": { "name": "customerRef", "@fields": ["customerId"], "@references": "Customer" } },
+            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer" } }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "Shop",
+          "@level": 1,
+          "@status": "live",
+          "@statement": "A customer can buy from the shop.",
+          "@counterexample": "A customer who cannot buy.",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "Recorded",
+                "@level": 4,
+                "@status": "live",
+                "@statement": "An order is recorded when it is placed.",
+                "@counterexample": "A placed order has no row.",
+                "@implementedBy": ["Order", "Order.reference"]
+              }
+            },
+            {
+              "requirement.functional": {
+                "name": "Refunded",
+                "@level": 4,
+                "@status": "planned",
+                "@statement": "A customer can be refunded.",
+                "@counterexample": "A refund nobody can make.",
+                "@implementedBy": ["Refund"]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "Addressable",
+          "@status": "live",
+          "@statement": "Every stored row has a stable id.",
+          "@counterexample": "A row nobody can point at.",
+          "@implementedBy": ["BaseEntity"]
+        }
+      }
+    ]
+  }
+}

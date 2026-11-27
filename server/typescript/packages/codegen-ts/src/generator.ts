@@ -181,6 +181,15 @@ export interface GenContext {
   warn: (msg: string) => void;
 }
 
+/** What `Generator.checkRunOutput` is given. Paths are absolute, as the runner writes them. */
+export interface RunOutputCheck {
+  /** The files this generator emitted, in its order. */
+  own: readonly { fullPath: string; content: string }[];
+  /** A file's text: this run's output when it emitted the path, else the file on disk, else
+   *  `undefined`. A run narrowed with `--generators` reads the rest of the site from disk. */
+  read: (fullPath: string) => string | undefined;
+}
+
 /** One file of the run, as `GenContext.runOutput` lists it. */
 export interface RunOutputFile {
   /** Project-relative path, `/`-separated. */
@@ -293,6 +302,14 @@ export interface Generator {
    *  (`ctx.runOutput`). The runner runs every marked generator after every unmarked one,
    *  in declared order, so the list it reads is complete. */
   readsRunOutput?: boolean;
+  /**
+   * A check over the run's output, called once after EVERY selected generator has run and
+   * before anything is written, so it sees the files the generators after this one emit too.
+   * It returns one message per problem; any message fails the run, naming this generator, and
+   * nothing is written. The template generator's `linkCheck` is one: every relative link in its
+   * pages must land on a file and an anchor this run (or the disk) holds.
+   */
+  checkRunOutput?: (run: RunOutputCheck) => readonly string[];
   /** §A6 — marks the generator that emits the <Entity>Names artifact. The runner
    *  aggregates this across the suite into ResolvedGenConfig.includeNames, which the
    *  entity generator reads to decide whether it may reference those constants.

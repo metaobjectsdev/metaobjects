@@ -15,8 +15,14 @@ writes the same bytes for the same model, and the shared corpus
 TypeScript builds it today. `buildDocsView` and `serializeDocsView` are exported from
 `@metaobjectsdev/metadata`, and `docsSiteFile()` writes the result as the site's
 `explorer.json` (see [explorer-site.md](explorer-site.md)). The other ports build it as their
-own step of the same plan. The explorer pages still render their HTML in TypeScript; moving that
-into templates is a later step.
+own step of the same plan. The explorer pages still render their HTML in TypeScript.
+
+A page of your own is a template over the view: the TypeScript `template` generator renders it
+with the `perNode` and `perRequirement` scopes (and `data: "docsView"` on `perModel` and
+`perPackage`), writes each page at its `path` with `{path}` in the output pattern, and hands
+every page a `root` so `{{root}}{{path}}` links from anywhere. It can copy a directory of
+assets beside the pages and check that every link lands. See
+[codegen-concepts.md](codegen-concepts.md#templates-over-the-docs-view-typescript).
 
 ## What it is built from
 

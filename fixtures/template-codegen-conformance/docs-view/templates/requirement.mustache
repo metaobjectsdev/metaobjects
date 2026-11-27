@@ -1,0 +1,19 @@
+{{> head}}
+{{#requirement}}
+<p class="crumbs">{{#breadcrumbs}}{{> link}} / {{/breadcrumbs}}</p>
+<h1>{{label}}</h1>
+<p class="kind">{{subType}}, {{status}}, depth {{depth}}</p>
+<blockquote>{{statement}}</blockquote>
+<h2>Implemented by</h2>
+<ul>
+{{#implementedBy}}
+<li>{{ref}}: {{#target}}{{> link}}{{/target}}</li>
+{{/implementedBy}}
+</ul>
+<h2>Below</h2>
+<ul>
+{{#children}}
+<li>{{> link}}</li>
+{{/children}}
+</ul>
+{{/requirement}}

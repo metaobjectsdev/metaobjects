@@ -907,6 +907,8 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   };
 
   const wholeKeys = new Set(safeEntities.map((e) => e.resolutionKey()));
+  // The generators with a `checkRunOutput`, and the files each emitted: checked after the loop.
+  const checked: { generator: Generator; own: { fullPath: string; content: string }[] }[] = [];
   for (const generator of selected) {
     const selfTarget = targetOf(generator);
     // Resolve the WRITE-time location against projectRoot when outDir is
@@ -1048,6 +1050,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       throw new Error(`[${generator.name}] ${msg}`, { cause: err });
     }
 
+    if (generator.checkRunOutput !== undefined) {
+      checked.push({ generator, own: files.map((f) => ({ fullPath: join(writeOutDir, f.path), content: f.content })) });
+    }
     for (const file of files) {
       // A file rendered from one object the entity filter did not name is not this run's
       // to write: `perEntity` already skips those, and this holds a generator that renders
@@ -1094,6 +1099,29 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         `model does not declare has nothing to emit. It is reported because a run that ` +
         `emitted nothing and a run that did the work otherwise look identical.`,
     );
+  }
+
+  // 4b. Output checks (`Generator.checkRunOutput`): after every generator, so a check sees what
+  // the generators after its own emitted; before the write, so a failed check writes nothing.
+  if (checked.length > 0) {
+    const byPath = new Map(emitted.map((f) => [f.fullPath, f.content]));
+    const swept = projectRoot !== undefined && opts.generatorNames === undefined && baseline !== "adopt" && !entityNarrowed
+      ? new Set(listGeneratedPaths(genStateDir).map((p) => resolve(projectRoot, p)))
+      : new Set<string>();
+    const read = (fullPath: string): string | undefined => {
+      const mine = byPath.get(fullPath);
+      if (mine !== undefined) return mine;
+      if (swept.has(resolve(fullPath))) return undefined;
+      try {
+        return readFileSync(fullPath, "utf8");
+      } catch {
+        return undefined;
+      }
+    };
+    for (const { generator, own } of checked) {
+      const problems = generator.checkRunOutput!({ own, read });
+      if (problems.length > 0) throw new Error(`[${generator.name}] ${problems.join("; ")}`);
+    }
   }
 
   // 5. Write phase.

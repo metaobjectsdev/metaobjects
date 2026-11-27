@@ -206,7 +206,7 @@ export default defineConfig({
     templateGenerator({
       name: "entity-service",              // kebab-case; surfaces in diagnostics
       template: "service/entity-service",  // → templates/service/entity-service.mustache
-      scope: "perEntity",                  // "perEntity" | "perPackage" | "perModel"
+      scope: "perEntity",                  // "perEntity" | "perPackage" | "perModel" | "perNode" | "perRequirement"
       outputPattern: "{package}/{Name}Service.ts",
       // format: "text",                   // optional escaper; defaults to "text"
       // target: "api",                    // optional named output target
@@ -219,8 +219,10 @@ Templates resolve through the project's `templates/` directory first, then the f
 defaults — so `template: "service/entity-service"` reads
 `<projectRoot>/templates/service/entity-service.mustache`. The `outputPattern`
 placeholders are `{name}`, `{Name}` and `{package}` (whose `::` segments become nested
-directories); an unknown placeholder throws. Abstract objects are excluded from every
-scope.
+directories), and `{path}` for the docs-view scopes `perNode` and `perRequirement`
+([templates over the docs view](../features/codegen-concepts.md#templates-over-the-docs-view-typescript));
+an unknown placeholder throws. Abstract objects are excluded from every
+scope that reads the per-entity dictionary; the docs-view scopes include them.
 
 `scope` and `walk` are mutually exclusive — supply exactly one. Take a `scope` when one
 of the three walks fits; supply your own `walk` when it does not.

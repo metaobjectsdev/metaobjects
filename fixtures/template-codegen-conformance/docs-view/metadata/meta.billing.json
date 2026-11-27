@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            { "source.rdb": { "@table": "invoices" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "orderId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "relationship.association": { "name": "order", "@cardinality": "one", "@objectRef": "acme::shop::Order" } }
+          ]
+        }
+      }
+    ]
+  }
+}

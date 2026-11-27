@@ -1,0 +1,12 @@
+{{> head}}
+{{#package}}
+<h1>{{name}}</h1>
+{{#groups}}
+<h2>{{type}}.{{subType}} ({{count}})</h2>
+<ul>
+{{#nodes}}
+<li>{{> link}}</li>
+{{/nodes}}
+</ul>
+{{/groups}}
+{{/package}}

@@ -1,0 +1,33 @@
+{{> head}}
+{{#node}}
+<h1>{{name}}</h1>
+<p class="kind">{{type}}.{{subType}}{{#abstract}} (abstract){{/abstract}}</p>
+{{#description}}<p>{{description}}</p>{{/description}}
+{{#extends}}<p>Extends {{> link}}</p>{{/extends}}
+{{#memberGroups}}
+<h2>{{type}} ({{count}})</h2>
+<table>
+{{#members}}
+<tr id="{{anchor}}"><td>{{name}}</td><td>{{subType}}</td><td>{{#declaredOn}}from {{> link}}{{/declaredOn}}</td></tr>
+{{/members}}
+</table>
+{{/memberGroups}}
+<h2>References</h2>
+<ul>
+{{#refs}}
+<li>{{attr}}{{#via}} on {{> link}}{{/via}}: {{#target}}{{> link}}{{/target}}</li>
+{{/refs}}
+</ul>
+<h2>Referenced by</h2>
+<ul>
+{{#referencedBy}}
+<li>{{#from}}{{> link}}{{/from}} ({{attr}})</li>
+{{/referencedBy}}
+</ul>
+<h2>Claimed by</h2>
+<ul>
+{{#claims}}
+<li>{{#requirement}}{{> link}}{{/requirement}} {{status}}{{#member}}, on {{member}}{{/member}}</li>
+{{/claims}}
+</ul>
+{{/node}}

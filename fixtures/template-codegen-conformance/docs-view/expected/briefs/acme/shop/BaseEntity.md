@@ -1,0 +1,3 @@
+# BaseEntity
+
+Site root: `../../../`
