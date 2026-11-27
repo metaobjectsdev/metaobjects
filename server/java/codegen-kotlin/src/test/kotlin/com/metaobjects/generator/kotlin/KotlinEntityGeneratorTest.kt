@@ -331,15 +331,15 @@ class KotlinEntityGeneratorTest {
 
             val src = Files.readString(outDir.resolve("acme/demo/Author.kt"))
 
-            assertTrue("public class Builder" in src, "expected a nested Builder in:\n$src")
+            assertTrue("class Builder" in src, "expected a nested Builder in:\n$src")
             // @JvmStatic so Java writes Author.builder(), not Author.Companion.builder().
             assertTrue("@JvmStatic" in src, "expected @JvmStatic on builder() in:\n$src")
-            assertTrue("public fun builder(): Builder" in src, "expected a builder() factory in:\n$src")
+            assertTrue("fun builder(): Builder" in src, "expected a builder() factory in:\n$src")
             // One fluent setter per property, returning Builder so calls chain.
             for (prop in listOf("id", "name", "bio")) {
-                assertTrue("public fun $prop(" in src, "expected a fluent `$prop(...)` setter in:\n$src")
+                assertTrue("fun $prop(" in src, "expected a fluent `$prop(...)` setter in:\n$src")
             }
-            assertTrue("public fun build(): Author" in src, "expected build() in:\n$src")
+            assertTrue("fun build(): Author" in src, "expected build() in:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -363,9 +363,9 @@ class KotlinEntityGeneratorTest {
             gen.execute(loadString("test", voFixture))
 
             val src = Files.readString(outDir.resolve("acme/demo/Money.kt"))
-            assertTrue("public class Builder" in src, "expected a Builder on the value object in:\n$src")
-            assertTrue("public fun build(): Money" in src, "expected build(): Money in:\n$src")
-            assertTrue("public fun currency(" in src, "expected a fluent currency(...) setter in:\n$src")
+            assertTrue("class Builder" in src, "expected a Builder on the value object in:\n$src")
+            assertTrue("fun build(): Money" in src, "expected build(): Money in:\n$src")
+            assertTrue("fun currency(" in src, "expected a fluent currency(...) setter in:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -392,7 +392,7 @@ class KotlinEntityGeneratorTest {
 
             val src = Files.readString(outDir.resolve("acme/demo/Ticket.kt"))
             // the property itself is non-null...
-            assertTrue("public val code: String," in src || "public val code: String\n" in src,
+            assertTrue("val code: String," in src || "val code: String\n" in src,
                 "expected a NON-null `code` property in:\n$src")
             // ...its builder backing field is nullable, and build() re-asserts it
             assertTrue("private var code: String? = null" in src,

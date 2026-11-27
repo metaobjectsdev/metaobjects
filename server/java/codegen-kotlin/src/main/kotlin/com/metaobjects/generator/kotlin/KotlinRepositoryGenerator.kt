@@ -407,13 +407,13 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
     private fun primaryKeyParamType(entity: MetaObject, pkFieldName: String): String {
         val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return "Long"
         return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }
-            .map { tn -> (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString() }
+            .map { tn -> (tn as? com.metaobjects.generator.kotlin.writer.KotlinClassName)?.simpleName ?: tn.toString() }
             .getOrDefault("Long")
     }
 
     private fun columnElementType(field: com.metaobjects.field.MetaField<*>): String =
         KotlinTypeMapper.kotlinTypeName(field).let { tn ->
-            (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
+            (tn as? com.metaobjects.generator.kotlin.writer.KotlinClassName)?.simpleName ?: tn.toString()
         }
 
     /**
@@ -426,7 +426,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
      */
     private fun nowExpr(field: com.metaobjects.field.MetaField<*>): String {
         val tn = KotlinTypeMapper.kotlinTypeName(field)
-        val fqn = (tn as? com.squareup.kotlinpoet.ClassName)?.canonicalName ?: tn.toString()
+        val fqn = (tn as? com.metaobjects.generator.kotlin.writer.KotlinClassName)?.canonicalName ?: tn.toString()
         return "$fqn.now()"
     }
 

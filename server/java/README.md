@@ -12,7 +12,7 @@ Only the loader and registry, runtime metadata access and the drift gates are a 
 guarantee. The generators are reference helpers: copy one into your build with
 `mvn metaobjects:eject` and own it ([Own your codegen → Java and Kotlin](../../docs/features/own-your-codegen.md#java-and-kotlin-mvn-metaobjectseject)).
 
-- **Codegen** *(reference generators)* — Spring REST + DTO + repository-interface emit (you supply the impl) (`codegen-spring`) and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`), both ejectable; PlantUML diagrams (`codegen-plantuml`), ejectable; and the deprecated Mustache template engine (`codegen-mustache`), which is not ejectable and will not be. Output is hand-edit-preserving via three-way merge.
+- **Codegen** *(reference generators)* — Spring REST + DTO + repository-interface emit (you supply the impl) (`codegen-spring`) and a Kotlin emit pipeline laid out by `KotlinWriter` (`codegen-kotlin`), both ejectable; PlantUML diagrams (`codegen-plantuml`), ejectable; and the deprecated Mustache template engine (`codegen-mustache`), which is not ejectable and will not be. Output is hand-edit-preserving via three-way merge.
 - **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations run in your own tool or the reference migration helper (`meta migrate`, `meta verify --db`), one option; a native tool is equally good; the `metaobjects:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
 - **Drift detection** — Template-drift: `Renderer.verify` checks `{{...}}` references against the payload VO at build time. The live-DB-schema mode of `metaobjects:verify` was removed; the goal now covers codegen drift (`mode=codegen`, the default) and template/prompt drift (`mode=templates`).
 - **Prompt construction** — `metaobjects-render` (Mustache + payload-VO + verify), FR-006 `template.output` parser-on-receipt codegen, render output byte-identical with the other four ports against the shared render-conformance corpus.
@@ -34,7 +34,7 @@ All published to Maven Central under `com.metaobjects:*` (`8.2.0` for the 1.2.0 
 | `metaobjects-codegen-base` | Codegen engine — generator API, source paths, file emit |
 | `metaobjects-codegen-mustache` | Mustache template emit |
 | `metaobjects-codegen-spring` | Spring REST + DTO + repository interfaces + filter allowlists + payload records + output parsers |
-| `metaobjects-codegen-kotlin` | KotlinPoet entity / Exposed table / Spring controller / payload / validator / stored-proc emit |
+| `metaobjects-codegen-kotlin` | Kotlin entity / Exposed table / Spring controller / payload / validator / stored-proc emit |
 | `metaobjects-codegen-plantuml` | PlantUML diagram emit |
 | `metaobjects-render` | Mustache render + payload-VO + `verify` (FR-004 / FR-006) |
 | `metaobjects-om` | ObjectManager — runtime metadata-driven CRUD |
@@ -95,7 +95,7 @@ property names (a `classpath:` location or a file path); outside Spring, `MetaDa
 and `fromDirectory` read the file above the metadata. A database whose columns are named like the
 fields sets `"naming": { "columns": "literal" }` ([physical-naming.md](../../docs/features/migrations/physical-naming.md)).
 
-Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipeline:
+Kotlin entry point — adds the Kotlin facade and the Kotlin codegen pipeline:
 
 ```xml
 <dependency>

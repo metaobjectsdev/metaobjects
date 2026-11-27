@@ -3,7 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.generator.GeneratorException
-import com.squareup.kotlinpoet.ClassName
+import com.metaobjects.generator.kotlin.writer.KotlinClassName
 
 /**
  * FR-019 — shared + externally-provided enum resolution (Kotlin port of the TS reference
@@ -126,17 +126,17 @@ object Fr019SharedEnum {
     }
 
     /**
-     * The [ClassName] of the `@provided` shared enum [decl] — `<ns>.<Name>`, with `ns` resolved
+     * The [KotlinClassName] of the `@provided` shared enum [decl] — `<ns>.<Name>`, with `ns` resolved
      * from the package map (keyed by the enum's declaring metadata package) then the single
      * fallback. Throws a codegen-time [GeneratorException] naming the enum, its package and the
      * two args when neither resolves, so no generator can emit a reference to a class nothing
      * writes. Under [ProvidedEnumConfig.DECLARATION_PACKAGE] the answer is the class in the
      * declaration's own package instead, and nothing throws.
      */
-    internal fun providedClassName(decl: EnumField, config: ProvidedEnumConfig): ClassName {
+    internal fun providedClassName(decl: EnumField, config: ProvidedEnumConfig): KotlinClassName {
         val (declPackage, shortRaw) = PackageMapping.splitFqn(decl.name)
         val simple = shortRaw.replaceFirstChar { it.uppercase() }
-        if (config.providedInDeclarationPackage) return ClassName(declPackage, simple)
+        if (config.providedInDeclarationPackage) return KotlinClassName(declPackage, simple)
         val metaPackage = metaPackageOf(decl.name)
         val ns = config.packageNamespaces[metaPackage]?.takeIf { it.isNotBlank() } ?: config.fallbackNamespace
         if (ns.isNullOrBlank()) {
@@ -147,7 +147,7 @@ object Fr019SharedEnum {
                 "$ARG_PROVIDED_ENUM_NAMESPACE fallback, so the generated code can reference \"$simple\"."
             )
         }
-        return ClassName(ns, simple)
+        return KotlinClassName(ns, simple)
     }
 
     /**
@@ -159,7 +159,7 @@ object Fr019SharedEnum {
         "KotlinTypeMapper.enumTypeName(field, entity, provided) answers the configured class of a " +
             "@provided enum itself; call it instead of checking for one first.",
     )
-    fun providedClassName(field: MetaField<*>, config: ProvidedEnumConfig): ClassName? {
+    fun providedClassName(field: MetaField<*>, config: ProvidedEnumConfig): KotlinClassName? {
         val decl = resolveSharedEnumDecl(field) ?: return null
         return if (isProvided(decl)) providedClassName(decl, config) else null
     }

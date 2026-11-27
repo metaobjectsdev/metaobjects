@@ -3,8 +3,8 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.field.MetaField
 import com.metaobjects.metadata.ktx.loadString
 import com.metaobjects.`object`.MetaObject
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.TypeName
+import com.metaobjects.generator.kotlin.writer.KotlinClassName
+import com.metaobjects.generator.kotlin.writer.KotlinTypeName
 import com.metaobjects.loader.MetaDataLoader
 import java.nio.file.Files
 import kotlin.test.Test
@@ -41,8 +41,8 @@ class KotlinGeneratorOpenForExtensionTest {
             field: MetaField<*>,
             owner: MetaObject,
             loader: MetaDataLoader,
-        ): TypeName {
-            if (field.name == "name") return ClassName("acme.custom", "Slug")
+        ): KotlinTypeName {
+            if (field.name == "name") return KotlinClassName("acme.custom", "Slug")
             return super.resolvePropertyType(field, owner, loader)
         }
     }

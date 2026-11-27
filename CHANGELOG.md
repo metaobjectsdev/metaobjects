@@ -290,6 +290,19 @@ there is described in full here. This list is where to start.
   instead of answering 400, and an omitted nullable one starts at the default instead of NULL.
   Every call that passed the argument compiles and behaves as before; a call that leaves it out
   now compiles and gets the default.
+- **Kotlin: KotlinPoet is no longer a dependency of `codegen-kotlin`, so an owned `entity`,
+  `exposed-table`, `routes`, `relations`, `repository`, `spring-config` or `api-docs` generator
+  ejected before 1.3.0 no longer compiles.** Those seven named KotlinPoet types, directly or
+  through the helpers they call: `KotlinTypeMapper.kotlinTypeName`,
+  `payloadTypeName`, `mapValueScalarTypeName` and `enumTypeName` return
+  `com.metaobjects.generator.kotlin.writer.KotlinTypeName` / `KotlinClassName` where they
+  returned KotlinPoet's `TypeName` / `ClassName`, and `KotlinPoetFileWriter` is removed. Re-eject
+  the generator (`mvn metaobjects:eject`) and re-apply your changes. `KotlinClassName` keeps the
+  members those copies used (`packageName`, `simpleName`, `canonicalName`, `parameterizedBy`,
+  `copy(nullable = …)`), and `toString()` spells a type fully qualified as KotlinPoet did, so code
+  that reads a type as text behaves as before. A copy of any other Kotlin generator still
+  compiles unchanged. A build that relied on getting KotlinPoet transitively through `codegen-kotlin`
+  declares it itself; `kotlin-reflect` is still on the runtime classpath, now declared directly.
 - **Kotlin: a request body that cannot be read answers with an `issues` list.** The generated
   `MetaDecimalWire.kt` (one per generated package) maps the failure into the
   validation envelope every other 400 uses: `{"error": "validation", "issues": [{"code", "path",
@@ -1748,6 +1761,20 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   `emitM2mEndpoint`, `emitTphSubtypeM2mEndpoint`) now take a `KotlinWriter` where they took a
   `StringBuilder`; an owned copy ejected at an earlier version carries its own and still compiles
   (`EjectedAtBaseGeneratorsCompatTest`).
+
+- **The last Kotlin generators write through `KotlinWriter`, and KotlinPoet leaves the build**
+  (ADR-0063): the entity generator (the data class with its Java builder and cross-field
+  properties, the TPH `<Sub>Validation` shape, the abstract interface shape and `MetaNetJson.kt`),
+  the enum emitter and the Spring config generator. `KotlinTypeMapper` answers with the writer's
+  own `KotlinTypeName` / `KotlinClassName` (`writer/KotlinTypeName.kt`) instead of KotlinPoet's,
+  `KotlinCrossFieldRules.rules` answers each rule as a Kotlin expression string, and
+  `KotlinPoetFileWriter` is gone: every file goes through `GeneratedFileWriter`'s marker guard, as
+  before. The layout ratchet's allowlist of unconverted files is empty; the ratchet still fails a
+  generator that types its own layout or imports KotlinPoet. **The output changes in layout
+  only:** no explicit `public`, no `kotlin.*` imports, a four-space indent, imports in one sorted
+  group, a one-line KDoc on one line, and a call or constructor that fits written on one line
+  (`fun build(): Author = Author(id = id, name = name)`). Regenerating shows those diffs and
+  nothing else; `MetaNetJson.kt` is byte-identical. See Upgrading for owned copies.
 
 - **Python publishes a shared model (FR-023).** A `shared-model` generator, wired in
   `metaobjects.config.yaml` like any other (`metaobjects gen --list` names its options), writes

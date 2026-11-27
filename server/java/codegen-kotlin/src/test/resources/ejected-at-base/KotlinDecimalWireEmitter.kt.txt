@@ -1,0 +1,259 @@
+package com.metaobjects.generator.kotlin
+
+import com.metaobjects.config.WireFormat
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
+import com.metaobjects.generator.util.GeneratedFileWriter
+import java.nio.file.Path
+
+/**
+ * Writes the per-package `MetaDecimalWire.kt` support file (ADR-0019 Amendment 1): the canonical
+ * decimal wire rule the generated entity, table and controller share, in generated source, so the
+ * generated code imports nothing from MetaObjects at runtime. Mirrors C#'s per-namespace
+ * `DecimalWire.g.cs` and the portable column-type file beside it.
+ *
+ * The entity, table and controller generators each write it into every package they emit a decimal
+ * (or, for the controller, a request body handler) into. The content is fixed, so several writers
+ * of the same path agree byte for byte.
+ */
+object KotlinDecimalWireEmitter {
+
+    /** File name (sans `.kt`) and the name of the `internal object` it declares. */
+    const val FILE_NAME = "MetaDecimalWire"
+
+    /** Write `MetaDecimalWire.kt` into [pkg] under [outRoot]. */
+    fun write(pkg: String, outRoot: Path, wire: WireFormat) {
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$FILE_NAME.kt")
+        GeneratedFileWriter.write(outFile, render(pkg, wire))
+    }
+
+    /** The file for [pkg] under [wire]: its package line, the imports and the body. */
+    fun render(pkg: String, wire: WireFormat): String {
+        val w = KotlinWriter().packageName(pkg)
+        writeBody(w, wire)
+        return w.toString()
+    }
+
+    /** The file for [wire] with no package line, for a caller that places it in a package of its own. */
+    fun body(wire: WireFormat): String = render("", wire)
+
+    /** The file under `decimals: string` with no package line. */
+    val BODY: String get() = render("", WireFormat(WireFormat.Decimals.STRING, null, null))
+
+    /**
+     * The imports and the body for [wire] (ADR-0019 Amendment 2): the output
+     * [MetaDecimalWire.Serializer] exists only under `decimals: string`; under `native` Jackson
+     * writes a BigDecimal as the host configures it. The strict input half (parse, range checks,
+     * [MetaDecimalWire.Deserializer]) is in every mode. No Kotlin string templates, so the
+     * snippets need no `$` escaping.
+     */
+    fun writeBody(w: KotlinWriter, wire: WireFormat) {
+        val asString = wire.decimalsAsString()
+        w.use("com.fasterxml.jackson.core.JsonParser")
+        w.use("com.fasterxml.jackson.core.JsonToken")
+        w.use("com.fasterxml.jackson.databind.DeserializationContext")
+        w.use("com.fasterxml.jackson.databind.BeanProperty")
+        w.use("com.fasterxml.jackson.databind.JsonDeserializer")
+        w.use("com.fasterxml.jackson.databind.JsonMappingException")
+        w.use("com.fasterxml.jackson.databind.JsonNode")
+        w.use("com.fasterxml.jackson.databind.deser.ContextualDeserializer")
+        w.use("com.fasterxml.jackson.databind.deser.std.StdDeserializer")
+        w.use("com.fasterxml.jackson.databind.exc.InvalidFormatException")
+        w.use("java.math.BigDecimal")
+        w.use("java.math.MathContext")
+        w.use("java.math.RoundingMode")
+        if (asString) {
+            w.use("com.fasterxml.jackson.core.JsonGenerator")
+            w.use("com.fasterxml.jackson.databind.SerializerProvider")
+            w.use("com.fasterxml.jackson.databind.ser.std.StdSerializer")
+        }
+        w.text(
+            """
+            /**
+             * GENERATED (ADR-0019 Amendment 1) — do not hand-edit. The decimal wire rule: a decimal is
+            """
+        )
+        w.line(
+            if (asString) " * written as a canonical string (plain notation, no trailing fraction zeros, zero as \"0\"),"
+            else " * written as the host serializer writes it,",
+        )
+        w.text(
+            """
+             * and read from a string or number in the JSON-number grammar, exactly, never through a
+             * binary float. Dependency-free (Jackson only).
+             */
+            internal object MetaDecimalWire {
+                private val JSON_NUMBER = Regex("-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?")
+                private const val MAX_INTEGER_DIGITS = 131072
+                private const val MAX_FRACTION_DIGITS = 16383
+                private const val SQLITE_SIGNIFICANT_DIGITS = 15
+
+                /** The canonical string of a decimal: plain notation, no trailing fraction zeros, zero as "0". */
+                fun format(value: BigDecimal?): String? {
+                    if (value == null) return null
+                    if (value.signum() == 0) return "0"
+                    return value.stripTrailingZeros().toPlainString()
+                }
+
+                /** Strict read of a decimal string (the JSON-number grammar; an exponent is allowed). */
+                fun parse(text: String?): BigDecimal {
+                    require(text != null && JSON_NUMBER.matches(text)) { "not a decimal: " + text }
+                    val value = try {
+                        BigDecimal(text)
+                    } catch (e: NumberFormatException) {
+                        throw IllegalArgumentException("decimal out of range: " + text)
+                    }
+                    return checkRange(value, text)
+                }
+
+                /** A filter operand: parsed exactly, the same grammar as a body value. */
+                fun parseFilterOperand(text: String): BigDecimal = parse(text)
+
+                /** A JSON number token already parsed as a decimal (never a double). */
+                fun fromJsonNumber(value: BigDecimal): BigDecimal = checkRange(value, value.toString())
+
+                /** A decimal from a JSON node: a string or a number, anything else is rejected. */
+                fun fromNode(node: JsonNode): BigDecimal {
+                    if (node.isTextual) return parse(node.asText())
+                    if (node.isNumber) return fromJsonNumber(node.decimalValue())
+                    throw IllegalArgumentException("not a decimal: " + node)
+                }
+
+                /** SQLite keeps a REAL: a stored double reads at 15 significant digits, so 0.1 + 0.2 reads 0.3. */
+                fun fromDouble15(value: Double): BigDecimal {
+                    require(!value.isNaN() && !value.isInfinite()) { "not a finite decimal: " + value }
+                    if (value == 0.0) return BigDecimal.ZERO
+                    val rounded = BigDecimal(value).round(MathContext(SQLITE_SIGNIFICANT_DIGITS, RoundingMode.HALF_EVEN))
+                    return if (rounded.signum() == 0) BigDecimal.ZERO else rounded.stripTrailingZeros()
+                }
+
+                /** True when [value] fits decimal(precision, scale): at most scale fraction digits and precision - scale integer digits. */
+                fun fits(value: BigDecimal?, precision: Int, scale: Int): Boolean {
+                    if (value == null || value.signum() == 0) return true
+                    val stripped = value.stripTrailingZeros()
+                    val integerDigits = maxOf(0L, stripped.precision().toLong() - stripped.scale())
+                    val fractionDigits = maxOf(0, stripped.scale())
+                    return fractionDigits <= scale && integerDigits <= precision.toLong() - scale
+                }
+
+                private fun checkRange(value: BigDecimal, shown: String): BigDecimal {
+                    if (value.signum() == 0) return BigDecimal.ZERO
+                    val stripped = value.stripTrailingZeros()
+                    val integerDigits = stripped.precision().toLong() - stripped.scale()
+                    require(integerDigits <= MAX_INTEGER_DIGITS && stripped.scale() <= MAX_FRACTION_DIGITS) {
+                        "decimal out of range: " + shown
+                    }
+                    return value
+                }
+
+                /**
+                 * The Zod-style code for a binding failure: a decimal over its precision/scale or range is too_big, an
+                 * unknown enum member invalid_value, a malformed date/time/uuid/uri invalid_format, anything else (a
+                 * wrong JSON type, an unparseable value) invalid_type.
+                 */
+                fun failureCode(failure: Throwable): String {
+                    var t: Throwable? = failure
+                    while (t != null) {
+                        val message = t.message
+                        if (t is InvalidFormatException) {
+                            val target = t.targetType
+                            if (target != null) {
+                                if (target.isEnum) return "invalid_value"
+                                val n = target.name
+                                if (n.startsWith("java.time.") || n == "java.util.UUID" || n == "java.net.URI" ||
+                                    n == "java.net.URL" || n == "java.util.Date") return "invalid_format"
+                            }
+                            if (message != null && message.contains(": decimal out of range: ")) return "too_big"
+                        }
+                        if (t is IllegalArgumentException && message != null && message.startsWith("decimal out of range: ")) return "too_big"
+                        t = if (t.cause === t) null else t.cause
+                    }
+                    return "invalid_type"
+                }
+
+                /**
+                 * The validation envelope for a request body Jackson could not read: one issue whose path is every property
+                 * Jackson was binding (empty when the body as a whole cannot be read), plus the last field name as `field`.
+                 */
+                fun unreadableBody(failure: Throwable): Map<String, Any> {
+                    val path = ArrayList<Any>()
+                    var t: Throwable? = failure
+                    while (t != null) {
+                        if (t is JsonMappingException && t.path.isNotEmpty()) {
+                            for (ref in t.path) {
+                                if (ref.fieldName != null) path.add(ref.fieldName) else if (ref.index >= 0) path.add(ref.index)
+                            }
+                            break
+                        }
+                        t = if (t.cause === t) null else t.cause
+                    }
+                    val message = if (path.isEmpty()) "request body is not readable" else "field '" + path[path.size - 1] + "' is not a valid value"
+                    val issue = linkedMapOf<String, Any>("code" to failureCode(failure), "path" to path, "message" to message)
+                    val out = LinkedHashMap<String, Any>()
+                    out["error"] = "validation"
+                    out["issues"] = listOf(issue)
+                    val field = path.lastOrNull { it is String }
+                    if (field != null) out["field"] = field
+                    return out
+                }
+            """
+        )
+        w.blank()
+        if (asString) {
+            // The snippet is a member of the object, one level in.
+            w.indented {
+                w.text(
+                    """
+                        /** Writes a decimal as its canonical string. */
+                        class Serializer : StdSerializer<BigDecimal>(BigDecimal::class.java) {
+                            override fun serialize(value: BigDecimal, gen: JsonGenerator, provider: SerializerProvider) {
+                                gen.writeString(format(value))
+                            }
+                        }
+                    """
+                )
+            }
+            w.blank()
+        }
+        w.text(
+            """
+                /**
+                 * The `@precision` and `@scale` a decimal inside a value object declares. [Deserializer] reads it
+                 * from the property it is bound to and refuses, with a 400, a value the field cannot hold
+                 * (more fraction digits than [scale], or more integer digits than precision - scale). Trailing
+                 * zeros do not count and nothing is rounded.
+                 */
+                @Retention(AnnotationRetention.RUNTIME)
+                @Target(AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.PROPERTY, AnnotationTarget.FIELD)
+                annotation class Declared(val precision: Int, val scale: Int)
+
+                /**
+                 * Reads a decimal from a string or a number, exactly; anything else is a 400-shaped mapping
+                 * error. A property carrying [Declared] is also range-checked against it.
+                 */
+                class Deserializer(private val precision: Int? = null, private val scale: Int = 0) :
+                    StdDeserializer<BigDecimal>(BigDecimal::class.java), ContextualDeserializer {
+                    override fun createContextual(ctxt: DeserializationContext, property: BeanProperty?): JsonDeserializer<*> {
+                        val declared = property?.getAnnotation(Declared::class.java) ?: return this
+                        return Deserializer(declared.precision, declared.scale)
+                    }
+
+                    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): BigDecimal? {
+                        val token = p.currentToken()
+                        try {
+                            val value = when (token) {
+                                JsonToken.VALUE_STRING -> parse(p.text)
+                                JsonToken.VALUE_NUMBER_INT, JsonToken.VALUE_NUMBER_FLOAT -> fromJsonNumber(p.decimalValue)
+                                else -> return ctxt.handleUnexpectedToken(BigDecimal::class.java, p) as BigDecimal?
+                            }
+                            require(precision == null || fits(value, precision, scale)) { "decimal out of range: " + value }
+                            return value
+                        } catch (e: IllegalArgumentException) {
+                            return ctxt.handleWeirdStringValue(BigDecimal::class.java, p.text, "%s", e.message) as BigDecimal?
+                        }
+                    }
+                }
+            }
+            """
+        )
+    }
+}

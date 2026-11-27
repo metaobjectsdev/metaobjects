@@ -2,6 +2,7 @@ package com.metaobjects.generator.kotlin
 
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.generator.GeneratorException
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 import com.metaobjects.generator.util.RouteNaming
 
 /**
@@ -166,7 +167,7 @@ object KotlinNaming {
      * emits into the ROOT package (see [promptsPackage]), where no `package` declaration may
      * appear — the one spelling of that rule for every template-tier generator.
      */
-    fun packageHeader(pkg: String): String = if (pkg.isEmpty()) "" else "package $pkg\n\n"
+    fun packageHeader(pkg: String): String = KotlinWriter.packageHeader(pkg)
 
     /**
      * The strict value-object data-class reference for [vo], as [KotlinEntityGenerator] names it —

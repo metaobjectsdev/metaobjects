@@ -150,7 +150,7 @@ both a one-call seam Kotlin uses idiomatically.
 > `LlmTraceHelperGenerator` emits a Java `record<Entity>(...)` helper (per concrete
 > entity extending `LlmCallBase` with a `@responseRef`-carrying `template.prompt`);
 > Kotlin code calls it directly (same JVM, same classpath) — there is no separate
-> Kotlin-native (`codegen-kotlin`/KotlinPoet) trace-helper emitter yet. What's TS-only
+> Kotlin-native (`codegen-kotlin`) trace-helper emitter yet. What's TS-only
 > is the **`call<Entity>` render→call→record convenience loop** — neither JVM
 > generator emits it, because the `LlmClient` seam it wraps is BYO / vendor-neutral on
 > the JVM (ADR-0024). So you compose render → your LLM call → the generated Java

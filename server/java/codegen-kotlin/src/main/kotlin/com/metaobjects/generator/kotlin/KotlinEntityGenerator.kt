@@ -11,10 +11,13 @@ import com.metaobjects.generator.kotlin.KotlinCrossFieldRules
 import com.metaobjects.generator.kotlin.KotlinEnumEmitter
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
-import com.metaobjects.generator.kotlin.KotlinPoetFileWriter
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinClassName
+import com.metaobjects.generator.kotlin.writer.KotlinTypeName
+import com.metaobjects.generator.kotlin.writer.KotlinTypes
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.MetaData
 import com.metaobjects.field.DecimalField
@@ -36,21 +39,6 @@ import com.metaobjects.validator.MetaValidator
 import com.metaobjects.validator.NumericValidator
 import com.metaobjects.validator.RegexValidator
 import com.metaobjects.validator.RequiredValidator
-import com.squareup.kotlinpoet.AnnotationSpec
-import com.squareup.kotlinpoet.BOOLEAN
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.LIST
-import com.squareup.kotlinpoet.MAP
-import com.squareup.kotlinpoet.ParameterSpec
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.STRING
-import com.squareup.kotlinpoet.TypeName
-import com.squareup.kotlinpoet.TypeSpec
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Path
@@ -63,9 +51,9 @@ import com.metaobjects.reporting.ReportReadModel
  * Generator: one plain Kotlin data class (Jackson-compatible) per `object.entity` and
  * `object.value`. No kotlinx `@Serializable` — see [emit] for why.
  *
- * <p>Skips abstract objects and any subType other than `entity` or `value`. KotlinPoet emits
- * whole files; the parent class's print-style writer machinery is bypassed in favour of a
- * direct override of [execute].
+ * <p>Skips abstract objects and any subType other than `entity` or `value`. Each file is laid
+ * out by [KotlinWriter] (ADR-0063); the parent class's print-style writer machinery is bypassed
+ * in favour of a direct override of [execute].
  *
  * <p>Nested objects: when a parent field is a `field.object` with `@objectRef`, the parent
  * data class gets a typed property referencing the generated `object.value` data class
@@ -179,10 +167,81 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      *  strict URI / IP-literal rules (verified against the shared validation-conformance corpus). The
      *  class body is fixed; only the package header varies. */
     private fun writeNetJsonSupportFile(pkg: String, outRoot: Path) {
-        val header = if (pkg.isEmpty()) "" else "package $pkg\n\n"
-        val body = header + NET_JSON_SUPPORT_BODY
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$NET_JSON_SUPPORT.kt")
-        GeneratedFileWriter.write(outFile, body)
+        GeneratedFileWriter.write(outFile, netJsonSupportSource(pkg))
+    }
+
+    /** The whole `MetaNetJson.kt` for [pkg]: its package line, the imports and the fixed body. */
+    protected open fun netJsonSupportSource(pkg: String): String {
+        val w = KotlinWriter().packageName(pkg)
+        w.use("com.fasterxml.jackson.core.JsonParser")
+        w.use("com.fasterxml.jackson.databind.DeserializationContext")
+        w.use("com.fasterxml.jackson.databind.JsonDeserializer")
+        w.use("java.net.InetAddress")
+        w.use("java.net.URI")
+        w.use("java.net.URISyntaxException")
+        // Uses `+`-concatenated messages (no Kotlin string templates) so the snippet needs no `$`
+        // escaping.
+        w.text(
+            """
+            /** GENERATED (#234) — strict Jackson deserializers for field.uri / field.inet.
+             *  Do not hand-edit; regenerated from metadata. Dependency-free (java.net + Jackson). */
+            internal object MetaNetJson {
+                /** field.uri — an ABSOLUTE URI carrying a scheme (leading/trailing whitespace trimmed,
+                 *  WHATWG). A relative reference (example.com, /path) or malformed value is rejected. */
+                class AbsoluteUriDeserializer : JsonDeserializer<URI>() {
+                    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): URI? {
+                        val raw = p.valueAsString ?: return null
+                        val uri = try {
+                            URI(raw.trim())
+                        } catch (e: URISyntaxException) {
+                            throw IllegalArgumentException("field.uri: not a valid URI: " + raw, e)
+                        }
+                        require(uri.isAbsolute) { "field.uri: must be an absolute URI carrying a scheme: " + raw }
+                        return uri
+                    }
+                }
+
+                /** field.inet — an IPv4 or IPv6 LITERAL only. Never a DNS lookup: a value containing
+                 *  ':' can only be an IPv6 literal (getByName parses it offline), otherwise a strict
+                 *  dotted-quad IPv4. Hostnames, CIDR, padding, out-of-range octets are rejected. */
+                class InetLiteralDeserializer : JsonDeserializer<InetAddress>() {
+                    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): InetAddress? {
+                        val raw = p.valueAsString ?: return null
+                        // No trim: IP-literal grammar has no whitespace, so padding is rejected.
+                        if (raw.indexOf(':') >= 0) {
+                            return try {
+                                InetAddress.getByName(raw) // ':' => IPv6 literal — getByName does no DNS
+                            } catch (e: Exception) {
+                                throw IllegalArgumentException("field.inet: not a valid IPv6 literal: " + raw, e)
+                            }
+                        }
+                        return parseIpv4(raw)
+                    }
+
+                    private fun parseIpv4(s: String): InetAddress {
+                        val parts = s.split(".")
+                        require(parts.size == 4) { "field.inet: not a valid IPv4 literal: " + s }
+                        val octets = ByteArray(4)
+                        for (i in 0 until 4) {
+                            val part = parts[i]
+                            // #234 review H1: reject a leading-zero octet (010 / 01) — the octal/decimal
+                            // -parse ambiguity — matching Python ipaddress + the TS regex.
+                            require(part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() }
+                                && !(part.length > 1 && part[0] == '0')) {
+                                "field.inet: not a valid IPv4 literal: " + s
+                            }
+                            val v = part.toInt()
+                            require(v <= 255) { "field.inet: IPv4 octet out of range: " + s }
+                            octets[i] = v.toByte()
+                        }
+                        return InetAddress.getByAddress(octets)
+                    }
+                }
+            }
+            """
+        )
+        return w.toString()
     }
 
     protected open fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
@@ -204,7 +263,43 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * It reaches [resolveElementType] this way, not as a parameter, because that function is
      * `protected open` and an adopter's subclass may override it.
      */
-    private var reportEnumClasses: Map<String, ClassName> = emptyMap()
+    private var reportEnumClasses: Map<String, KotlinClassName> = emptyMap()
+
+    /**
+     * One annotation on a generated declaration: its class, the use-site target it is written
+     * with (`field`, `get`, `param`, or none) and its arguments as Kotlin text. An argument that
+     * names a type names one in the file's own package or the annotation's own class, so it
+     * needs no import of its own.
+     */
+    protected class AnnotationUse(
+        val type: KotlinClassName,
+        val siteTarget: String? = null,
+        val arguments: List<String> = emptyList(),
+    ) {
+        /** `@site:Type(arg, arg)`, the type imported through [w]. */
+        fun write(w: KotlinWriter): String {
+            val site = if (siteTarget == null) "" else "$siteTarget:"
+            val args = if (arguments.isEmpty()) "" else arguments.joinToString(", ", "(", ")")
+            return "@" + site + type.write(w) + args
+        }
+    }
+
+    /**
+     * One constructor property of a generated class: its name, type, default (Kotlin text, or
+     * null for none) and the annotations written above it.
+     */
+    protected class PropertyParam(
+        val name: String,
+        val type: KotlinTypeName,
+        val default: String?,
+        val annotations: List<AnnotationUse>,
+    )
+
+    /**
+     * One `@get:AssertTrue` cross-field property of an entity data class: the property's name,
+     * the validator it checks and its Kotlin boolean expression.
+     */
+    protected class CrossFieldProperty(val name: String, val validator: MetaValidator, val expression: String)
 
     /**
      * Whether [obj] gets a data class: an entity, value object or projection, and the read
@@ -217,14 +312,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     private fun emitDataClass(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
         val reportRow = obj is ReportReadModel
         // Emit one Kotlin enum class file per `field.enum` child BEFORE the data class
-        // so the resolved property type (a ClassName) points at a real file. Deduped per run.
+        // so the resolved property type (a class name) points at a real file. Deduped per run.
         for (field in obj.metaFields) {
             // A report's enum field references an entity's class; nothing is materialized.
             if (reportRow) break
             if (field is EnumField) KotlinEnumEmitter.emitEnumFile(obj, field, outRoot, emittedEnumFqns, fr019Config)
         }
         // FR-017 TPH: the base union folds in subtype-only fields (below). A folded field.enum
-        // resolves to a typed enum ClassName, so its enum file must be emitted here (owner = base,
+        // resolves to a typed enum class, so its enum file must be emitted here (owner = base,
         // matching the fold's type resolution) — the declaring subtype is skipped in execute(), so
         // no other pass emits it. No-op for a non-TPH entity (collectSubtypeFields is empty).
         for (field in KotlinTphPlan.collectSubtypeFields(obj, loader)) {
@@ -241,32 +336,20 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // every consumer actually uses) round-trips them with zero per-type plumbing — including the
         // response parser, which decodes a model's reply straight into these classes (ADR-0056).
         // Only KotlinEnumEmitter's enums keep @Serializable, where it is harmless.
-        val typeBuilder = TypeSpec.classBuilder(shortName)
-            .addModifiers(KModifier.DATA)
-            .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
-            .apply {
-                // A request body DROPS an undeclared key, never rejects it, whatever
-                // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries. Only a write route's
-                // entity and the value objects nested in it are one; a stored-proc argument class, a
-                // response parser's decode target (ADR-0056), a prompt payload or a projection keeps
-                // the host mapper's strictness.
-                if (obj.name in requestBodies) {
-                    addAnnotation(
-                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnoreProperties"))
-                            .addMember("ignoreUnknown = true")
-                            .build(),
-                    )
-                }
-                // `wire.nullMembers: omit` (ADR-0019 Amendment 2): a value object's null members are left
-                // out. Under native/emit Jackson writes them as null with the key present.
-                if (obj.subType == MetaObject.SUBTYPE_VALUE && wire.omitNullMembers()) {
-                    addAnnotation(
-                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
-                            .addMember("%T.Include.NON_NULL", ClassName("com.fasterxml.jackson.annotation", "JsonInclude"))
-                            .build(),
-                    )
-                }
-            }
+        val classAnnotations = mutableListOf<AnnotationUse>()
+        // A request body DROPS an undeclared key, never rejects it, whatever
+        // FAIL_ON_UNKNOWN_PROPERTIES the host's ObjectMapper carries. Only a write route's
+        // entity and the value objects nested in it are one; a stored-proc argument class, a
+        // response parser's decode target (ADR-0056), a prompt payload or a projection keeps
+        // the host mapper's strictness.
+        if (obj.name in requestBodies) {
+            classAnnotations += AnnotationUse(JSON_IGNORE_PROPERTIES, null, listOf("ignoreUnknown = true"))
+        }
+        // `wire.nullMembers: omit` (ADR-0019 Amendment 2): a value object's null members are left
+        // out. Under native/emit Jackson writes them as null with the key present.
+        if (obj.subType == MetaObject.SUBTYPE_VALUE && wire.omitNullMembers()) {
+            classAnnotations += AnnotationUse(JSON_INCLUDE, null, listOf("JsonInclude.Include.NON_NULL"))
+        }
 
         // FR-017 TPH: a discriminator base's data class is the UNION of subtype columns and serves
         // as the partial-PATCH-friendly wire body — every property is nullable + defaulted + carries
@@ -285,7 +368,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // its primary source is always writable (the loader refuses a read-only primary).
         val entityHost = obj.subType == MetaObject.SUBTYPE_ENTITY
 
-        val ctorBuilder = FunSpec.constructorBuilder()
+        val params = mutableListOf<PropertyParam>()
         for (field in obj.metaFields) {
             val baseType = resolvePropertyType(field, obj, loader)
             val derivedReadOnly = entityHost && KotlinGenUtil.isDerivedField(field)
@@ -311,47 +394,35 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val serverOwned = KotlinGenUtil.isServerOwnedOnCreate(field, obj)
             val nullable = tphBase || derivedReadOnly || serverOwned || KotlinGenUtil.isNullableShapeProperty(field)
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
-            val propName = field.name
             // A literal @default is the ctor default, as C#'s initializer and Python's model default
             // are: a create body that omits the field binds @default (a required one would otherwise
             // fail to bind, a nullable one would be written as an explicit NULL the column default
             // never sees). Not for the shapes whose ctor default is null on purpose (TPH union,
             // derived, server-owned).
             val literalDefault = if (tphBase || derivedReadOnly || serverOwned) null else literalDefault(field, baseType)
-            val param = ParameterSpec.builder(propName, propType)
-                .apply {
-                    when {
-                        literalDefault != null -> defaultValue("%L", literalDefault)
-                        nullable -> defaultValue("null")
-                    }
-                }
-                .build()
-            ctorBuilder.addParameter(param)
-            val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
+            val default = literalDefault ?: if (nullable) "null" else null
+            val annotations = mutableListOf<AnnotationUse>()
             // FR-044: a report's row carries no constraint either. Nothing binds or validates
             // it (it is read from the view, never sent), and a `@Size(min = 1)` on a required
             // dimension would claim a rule the view does not have: an empty string is a group.
             if (!tphBase && !derivedReadOnly && !serverOwned && !reportRow) {
-                for (annotation in validationAnnotations(field)) {
-                    propBuilder.addAnnotation(annotation)
-                }
+                annotations += validationAnnotations(field)
                 // #234: a STRICT field.uri / field.inet property binds through the codegen-owned
                 // literal deserializer (absolute-scheme URI / IPv4-or-IPv6 literal, no DNS), so a
                 // malformed value is rejected at the wire tier — aligning with TS/Python strict.
-                netDeserializeAnnotation(field, pkg)?.let { propBuilder.addAnnotation(it) }
+                netDeserializeAnnotation(field, pkg)?.let { annotations += it }
                 // Program D (spec §0): a field.object (value-object) member carries @field:Valid so a
                 // parent validator.validate(bean) / @Valid cascades into the nested VO's own
                 // constraints (the create-body POST path). jakarta validateValue does NOT cascade, so
                 // the PATCH path validates present VO values explicitly in the controller. A dict-of-VO
                 // MapField cascades the same way: @Valid on a Map validates each VALUE.
                 if (field is ObjectField || (field is MapField && readObjectRef(field) != null)) {
-                    propBuilder.addAnnotation(constraint(VALID))
+                    annotations += constraint(VALID)
                 }
             }
-            decimalWireAnnotations(field, pkg, declaredRange = obj.subType == MetaObject.SUBTYPE_VALUE)
-                .forEach { propBuilder.addAnnotation(it) }
-            durationWireAnnotations(field, pkg).forEach { propBuilder.addAnnotation(it) }
-            typeBuilder.addProperty(propBuilder.build())
+            annotations += decimalWireAnnotations(field, pkg, declaredRange = obj.subType == MetaObject.SUBTYPE_VALUE)
+            annotations += durationWireAnnotations(field, pkg)
+            params += PropertyParam(field.name, propType, default, annotations)
         }
 
         // FR-017 TPH: a discriminator base's data class carries the UNION of subtype columns (each
@@ -359,34 +430,76 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // collectSubtypeFields is empty for a non-TPH entity (the loop is then a no-op).
         for (field in KotlinTphPlan.collectSubtypeFields(obj, loader)) {
             val propType = resolvePropertyType(field, obj, loader).copy(nullable = true)
-            val propName = field.name
-            ctorBuilder.addParameter(ParameterSpec.builder(propName, propType).defaultValue("null").build())
-            typeBuilder.addProperty(
-                PropertySpec.builder(propName, propType).initializer(propName)
-                    .apply { decimalWireAnnotations(field, pkg).forEach { addAnnotation(it) } }
-                    .apply { durationWireAnnotations(field, pkg).forEach { addAnnotation(it) } }
-                    .build(),
-            )
+            params += PropertyParam(field.name, propType, "null", decimalWireAnnotations(field, pkg) + durationWireAnnotations(field, pkg))
         }
 
         // Entity-scoped cross-field validators: class-level Bean Validation on the full create body.
         // Not on the TPH union / a report row / a value object, and never on a PATCH body.
-        if (!tphBase && !reportRow && obj.subType == MetaObject.SUBTYPE_ENTITY) {
-            crossFieldProperties(obj).forEach { typeBuilder.addProperty(it) }
+        val crossField = if (!tphBase && !reportRow && obj.subType == MetaObject.SUBTYPE_ENTITY) crossFieldProperties(obj) else emptyList()
+
+        val w = KotlinWriter().packageName(pkg)
+        val self = reserveOwnName(w, pkg, shortName)
+        w.doc(GENERATED_DOC)
+        for (annotation in classAnnotations) w.line(annotation.write(w))
+        val builder = javaBuilderApplies(obj, params)
+        writeConstructor(w, "data class $self(", params, hasBody = crossField.isNotEmpty() || builder)
+        if (crossField.isNotEmpty() || builder) {
+            var first = true
+            for (property in crossField) {
+                if (!first) w.blank()
+                first = false
+                writeCrossFieldProperty(w, property)
+            }
+            if (builder) {
+                if (!first) w.blank()
+                writeJavaBuilder(w, self, params)
+            }
+            w.close("}")
         }
 
-        val primaryCtor = ctorBuilder.build()
-        typeBuilder.primaryConstructor(primaryCtor)
-        addJavaBuilder(obj, typeBuilder, ClassName(pkg, shortName), primaryCtor.parameters)
-
-        val fileSpec = FileSpec.builder(pkg, shortName)
-            .addType(typeBuilder.build())
-            .build()
-
-        // Guarded: `<Entity>.kt` is the file an adopter is most likely to want to own, and a
-        // raw FileSpec.writeTo would overwrite a hand-written one unconditionally. The KDoc
+        // Guarded: `<Entity>.kt` is the file an adopter is most likely to want to own. The KDoc
         // above carries the GENERATED marker, so our own output is still overwritten freely.
-        KotlinPoetFileWriter.write(fileSpec, outRoot)
+        GeneratedFileWriter.write(outputFile(outRoot, pkg, shortName), w.toString())
+    }
+
+    /**
+     * Claim [shortName], the class this file declares, so that an imported class with the same
+     * simple name is written fully qualified rather than shadowing it. Returns the name to write.
+     */
+    private fun reserveOwnName(w: KotlinWriter, pkg: String, shortName: String): String =
+        w.use(if (pkg.isEmpty()) shortName else "$pkg.$shortName")
+
+    /** `<outRoot>/<package path>/<name>.kt`. */
+    private fun outputFile(outRoot: Path, pkg: String, name: String): Path =
+        (if (pkg.isEmpty()) outRoot else outRoot.resolve(pkg.replace('.', '/'))).resolve("$name.kt")
+
+    /**
+     * Write `[head]` and the primary constructor's properties, one per line with their
+     * annotations above them. With [hasBody] the constructor ends `) {` and the caller writes the
+     * body and closes it; otherwise it ends `)`.
+     */
+    private fun writeConstructor(w: KotlinWriter, head: String, params: List<PropertyParam>, hasBody: Boolean) {
+        if (params.isEmpty()) {
+            if (hasBody) w.open(head, ") {") else w.line(head, ")")
+            return
+        }
+        w.open(head)
+        for (p in params) {
+            for (annotation in p.annotations) w.line(annotation.write(w))
+            w.line("val ", KotlinWriter.escapeName(p.name), ": ", p.type.write(w), if (p.default == null) "" else " = " + p.default, ",")
+        }
+        if (hasBody) w.reopen(") {") else w.close(")")
+    }
+
+    /** One `@get:AssertTrue` property: true when the cross-field rule holds. */
+    private fun writeCrossFieldProperty(w: KotlinWriter, property: CrossFieldProperty) {
+        val name = property.validator.name
+        w.doc("Cross-field validator ${name.replace("*/", "* /")} (class-level Bean Validation; the DB CHECK enforces the PATCH path).")
+        w.line("@get:", w.use(JSON_IGNORE))
+        w.line("@get:", w.use(ASSERT_TRUE), "(message = ", KotlinWriter.str("validator $name violated"), ")")
+        w.line("@Suppress(", KotlinWriter.str("UNCHECKED_CAST"), ")")
+        w.line("val ", property.name, ": Boolean")
+        w.indented { w.line("get() = (", property.expression, ")") }
     }
 
     /**
@@ -415,33 +528,20 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val (pkg, shortName) = PackageMapping.splitFqn(subtype.name)
         val className = KotlinNaming.tphSubtypeValidationName(shortName)
 
-        val typeBuilder = TypeSpec.classBuilder(className)
-            .addModifiers(KModifier.DATA)
-            .addKdoc(
-                "GENERATED — do not hand-edit. Regenerated from metadata.\n" +
-                    "FR-036 validation-only shape for the $shortName TPH subtype: the base controller's\n" +
-                    "per-subtype POST/PATCH validates present values against these field constraints\n" +
-                    "(the folded union base data class is annotation-free). Never persisted or bound.\n"
-            )
-
-        val ctorBuilder = FunSpec.constructorBuilder()
-        for (field in fields) {
-            val propType = resolvePropertyType(field, base, loader).copy(nullable = true)
-            val propName = field.name
-            ctorBuilder.addParameter(
-                ParameterSpec.builder(propName, propType).defaultValue("null").build()
-            )
-            val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
-            for (annotation in validationAnnotations(field)) propBuilder.addAnnotation(annotation)
-            typeBuilder.addProperty(propBuilder.build())
+        val params = fields.map { field ->
+            PropertyParam(field.name, resolvePropertyType(field, base, loader).copy(nullable = true), "null", validationAnnotations(field))
         }
 
-        KotlinPoetFileWriter.write(
-            FileSpec.builder(pkg, className)
-                .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
-                .build(),
-            outRoot
+        val w = KotlinWriter().packageName(pkg)
+        val self = reserveOwnName(w, pkg, className)
+        w.doc(
+            GENERATED_DOC,
+            "FR-036 validation-only shape for the $shortName TPH subtype: the base controller's",
+            "per-subtype POST/PATCH validates present values against these field constraints",
+            "(the folded union base data class is annotation-free). Never persisted or bound.",
         )
+        writeConstructor(w, "data class $self(", params, hasBody = false)
+        GeneratedFileWriter.write(outputFile(outRoot, pkg, className), w.toString())
     }
 
     /**
@@ -458,29 +558,27 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
 
         val (pkg, shortName) = PackageMapping.splitFqn(obj.name)
-
-        val typeBuilder = TypeSpec.interfaceBuilder(shortName)
-            .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
-
-        for (field in obj.metaFields) {
-            val baseType = resolvePropertyType(field, obj, loader)
-            val nullable = !KotlinGenUtil.isRequiredField(field)
-            val propType = if (nullable) baseType.copy(nullable = true) else baseType
-            typeBuilder.addProperty(
-                PropertySpec.builder(field.name, propType).build()
-            )
+        val w = KotlinWriter().packageName(pkg)
+        val self = reserveOwnName(w, pkg, shortName)
+        w.doc(GENERATED_DOC)
+        val fields = obj.metaFields
+        if (fields.isEmpty()) {
+            w.line("interface ", self)
+        } else {
+            w.block("interface $self {") {
+                for (field in fields) {
+                    val baseType = resolvePropertyType(field, obj, loader)
+                    val nullable = !KotlinGenUtil.isRequiredField(field)
+                    val propType = if (nullable) baseType.copy(nullable = true) else baseType
+                    w.line("val ", KotlinWriter.escapeName(field.name), ": ", propType.write(w))
+                }
+            }
         }
-
-        KotlinPoetFileWriter.write(
-            FileSpec.builder(pkg, shortName)
-                .addType(typeBuilder.build())
-                .build(),
-            outRoot
-        )
+        GeneratedFileWriter.write(outputFile(outRoot, pkg, shortName), w.toString())
     }
 
     /**
-     * Resolve the Kotlin TypeName for a single property. For `field.object` fields,
+     * Resolve the Kotlin type for a single property. For `field.object` fields,
      * the type is a reference to the generated data class of the field's `@objectRef`
      * (e.g., `Address` for `field.object @objectRef="Address"`). For `field.enum`
      * fields, the type is the typed enum class generated alongside the entity
@@ -494,7 +592,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * Boolean, a String, or an Int / Long / Double number. A SQL-expression default (`now()`,
      * anything function-like) is the database's to fill and gets none, as does an array.
      */
-    protected open fun literalDefault(field: MetaField<*>, type: TypeName): String? {
+    protected open fun literalDefault(field: MetaField<*>, type: KotlinTypeName): String? {
         // ADR-0039: resolving — @default may be inherited via extends.
         if (!field.hasMetaAttr(MetaField.ATTR_DEFAULT) || field.isArrayType) return null
         val raw = field.getMetaAttr(MetaField.ATTR_DEFAULT).value ?: return null
@@ -504,9 +602,9 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val declaration = com.metaobjects.field.EnumField.resolveSharedEnumDeclaration(field) as? com.metaobjects.field.EnumField ?: field
             val members = (runCatching { declaration.getMetaAttr(com.metaobjects.field.EnumField.ATTR_VALUES).value }.getOrNull() as? List<*>)
                 ?.mapNotNull { it?.toString() } ?: return null
-            return if (text in members) "${(type as? com.squareup.kotlinpoet.ClassName)?.canonicalName ?: type}.$text" else null
+            return if (text in members) "${(type as? KotlinClassName)?.canonicalName ?: type}.$text" else null
         }
-        return when ((type as? com.squareup.kotlinpoet.ClassName)?.canonicalName) {
+        return when ((type as? KotlinClassName)?.canonicalName) {
             "kotlin.Boolean" -> text.lowercase().takeIf { it == "true" || it == "false" }
             // A database expression (now(), gen_random_uuid()) is the database's to fill.
             "kotlin.String" -> if (com.metaobjects.generator.util.GeneratorUtil.isSqlExpressionDefault(text)) null
@@ -518,17 +616,17 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         }
     }
 
-    protected open fun resolvePropertyType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
+    protected open fun resolvePropertyType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): KotlinTypeName {
         val element = resolveElementType(field, owner, loader)
         // @isArray fields are a List of the element type (List<T>). isArrayType()
         // covers both the `isArray: true` shorthand and a child @isArray attr.
         // Nullable handling is applied by the caller to the List itself (List<T>?),
         // not the elements — an array of non-null items.
-        return if (field.isArrayType) LIST.parameterizedBy(element) else element
+        return if (field.isArrayType) KotlinTypes.LIST.parameterizedBy(element) else element
     }
 
-    /** The Kotlin TypeName for a single (non-array) element of [field]. */
-    protected open fun resolveElementType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): TypeName {
+    /** The Kotlin type for a single (non-array) element of [field]. */
+    protected open fun resolveElementType(field: MetaField<*>, owner: MetaObject, loader: MetaDataLoader): KotlinTypeName {
         // FR-044: a report's derived enum field → the class of the entity field it reads.
         if (owner is ReportReadModel) reportEnumClasses[field.name]?.let { return it }
         // field.enum → the typed enum class generated alongside this entity, the shared one it
@@ -539,7 +637,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val target = ref?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
             if (target != null) {
                 val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
-                return ClassName(targetPkg, targetShort)
+                return KotlinClassName(targetPkg, targetShort)
             }
         }
         // field.map → Map<String, V>. The value is the @valueType scalar (handled by
@@ -550,7 +648,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             val target = ref?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
             if (target != null) {
                 val (targetPkg, targetShort) = PackageMapping.splitFqn(target.name)
-                return MAP.parameterizedBy(STRING, ClassName(targetPkg, targetShort))
+                return KotlinTypes.MAP.parameterizedBy(KotlinTypes.STRING, KotlinClassName(targetPkg, targetShort))
             }
         }
         return KotlinTypeMapper.kotlinTypeName(field)
@@ -571,33 +669,16 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * sense (SQL NULL = Kotlin null; "" is not null). A validator naming a missing field is
      * skipped. Body-declared, so it stays out of the data class's equals / copy / constructor.
      */
-    protected open fun crossFieldProperties(obj: MetaObject): List<PropertySpec> {
-        val out = mutableListOf<PropertySpec>()
+    protected open fun crossFieldProperties(obj: MetaObject): List<CrossFieldProperty> {
+        val out = mutableListOf<CrossFieldProperty>()
         val used = mutableSetOf<String>()
-        for ((v, expr) in KotlinCrossFieldRules.rules(obj) { CodeBlock.of("%N", it.name).toString() }) {
+        for ((v, expr) in KotlinCrossFieldRules.rules(obj) { KotlinWriter.escapeName(it.name) }) {
             val base = v.name.map { if (it.isLetterOrDigit() || it == '_') it else '_' }.joinToString("")
                 .ifEmpty { "CrossField" }.replaceFirstChar { it.uppercaseChar() }
             var name = "is${base}Valid"
             var n = 2
             while (!used.add(name)) name = "is${base}${n++}Valid"
-            out.add(
-                PropertySpec.builder(name, BOOLEAN)
-                    .addKdoc("Cross-field validator ${v.name.replace("*/", "* /")} (class-level Bean Validation; the DB CHECK enforces the PATCH path).\n")
-                    .addAnnotation(
-                        AnnotationSpec.builder(ClassName("com.fasterxml.jackson.annotation", "JsonIgnore"))
-                            .useSiteTarget(AnnotationSpec.UseSiteTarget.GET).build(),
-                    )
-                    .addAnnotation(
-                        AnnotationSpec.builder(ClassName(JAKARTA_CONSTRAINTS, "AssertTrue"))
-                            .useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
-                            .addMember("message = %S", "validator ${v.name} violated").build(),
-                    )
-                    .addAnnotation(
-                        AnnotationSpec.builder(ClassName("kotlin", "Suppress")).addMember("%S", "UNCHECKED_CAST").build(),
-                    )
-                    .getter(FunSpec.getterBuilder().addStatement("return·(%L)", expr).build())
-                    .build(),
-            )
+            out.add(CrossFieldProperty(name, v, expr))
         }
         return out
     }
@@ -613,7 +694,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * <p>The Kotlin entity data class IS the controller request body
      * (`@RequestBody dto: <Entity>` in [KotlinSpringControllerGenerator]); these
      * annotations make Spring's `@Valid` enforce the constraints at the boundary.
-     * Site target is [AnnotationSpec.UseSiteTarget.FIELD] because jakarta's reflective
+     * Site target is `field` because jakarta's reflective
      * validator reads the backing field, not the Kotlin property/getter.
      *
      * <p>Cross-port semantics (the SP-C validator-parity contract — mirrors the Spring
@@ -633,10 +714,10 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      *   <li>`validator.array @min/@max` → `@Size(min=…, max=…)` on the `List`.</li>
      * </ul>
      */
-    protected open fun validationAnnotations(field: MetaField<*>): List<AnnotationSpec> {
+    protected open fun validationAnnotations(field: MetaField<*>): List<AnnotationUse> {
         val isArray = field.isArrayType
         val isString = field is StringField
-        val out = mutableListOf<AnnotationSpec>()
+        val out = mutableListOf<AnnotationUse>()
 
         val required = KotlinGenUtil.isRequiredField(field) || hasValidator(field, RequiredValidator::class.java) ||
             KotlinGenUtil.isAssignedPrimaryKeyField(field)
@@ -685,32 +766,17 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // Regex pattern.
         validator(field, RegexValidator::class.java)?.let { regex ->
             regex.resolvePattern()?.let { pattern ->
-                out.add(
-                    AnnotationSpec.builder(PATTERN)
-                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-                        .addMember("regexp = %S", pattern)
-                        .build()
-                )
+                out.add(AnnotationUse(PATTERN, SITE_FIELD, listOf("regexp = " + KotlinWriter.str(pattern))))
             }
         }
 
         // Numeric value bounds.
         validator(field, NumericValidator::class.java)?.let { numeric ->
             attrInt(numeric, NumericValidator.ATTR_MIN)?.let { min ->
-                out.add(
-                    AnnotationSpec.builder(MIN)
-                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-                        .addMember("value = %L", min.toLong())
-                        .build()
-                )
+                out.add(AnnotationUse(MIN, SITE_FIELD, listOf("value = ${min.toLong()}")))
             }
             attrInt(numeric, NumericValidator.ATTR_MAX)?.let { max ->
-                out.add(
-                    AnnotationSpec.builder(MAX)
-                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-                        .addMember("value = %L", max.toLong())
-                        .build()
-                )
+                out.add(AnnotationUse(MAX, SITE_FIELD, listOf("value = ${max.toLong()}")))
             }
         }
 
@@ -728,12 +794,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         if (isString && !isArray && field.hasMetaAttr(StringField.ATTR_STRING_FORMAT)) {
             when (field.getMetaAttr(StringField.ATTR_STRING_FORMAT).value?.toString()?.trim()) {
                 StringField.STRING_FORMAT_EMAIL -> out.add(constraint(EMAIL))
-                StringField.STRING_FORMAT_HOSTNAME -> out.add(
-                    AnnotationSpec.builder(PATTERN)
-                        .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-                        .addMember("regexp = %S", HOSTNAME_REGEX)
-                        .build()
-                )
+                StringField.STRING_FORMAT_HOSTNAME ->
+                    out.add(AnnotationUse(PATTERN, SITE_FIELD, listOf("regexp = " + KotlinWriter.str(HOSTNAME_REGEX))))
             }
         }
 
@@ -741,10 +803,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     /** A no-member `@field:`-targeted constraint annotation (e.g. `@field:NotNull`). */
-    private fun constraint(type: ClassName): AnnotationSpec =
-        AnnotationSpec.builder(type)
-            .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-            .build()
+    private fun constraint(type: KotlinClassName): AnnotationUse = AnnotationUse(type, SITE_FIELD)
 
     /**
      * #234: true iff `field` is a STRICT (non-`@lenient`) field.uri / field.inet — the properties
@@ -759,29 +818,25 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * constructor parameter, the two places Jackson's Kotlin module looks. `contentUsing` for an
      * `@isArray` property (the elements are the decimals).
      */
-    private fun decimalWireAnnotations(field: MetaField<*>, pkg: String, declaredRange: Boolean = false): List<AnnotationSpec> {
+    private fun decimalWireAnnotations(field: MetaField<*>, pkg: String, declaredRange: Boolean = false): List<AnnotationUse> {
         if (field !is DecimalField) return emptyList()
         decimalWirePackages.add(pkg)
-        val serializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Serializer")
-        val deserializer = ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Deserializer")
+        val wireClass = KotlinDecimalWireEmitter.FILE_NAME
         val member = if (field.isArrayType) "contentUsing" else "using"
-        val annotations = mutableListOf<AnnotationSpec>()
+        val annotations = mutableListOf<AnnotationUse>()
         // The output half only under `wire.decimals: string`; native lets Jackson write the BigDecimal.
         if (wire.decimalsAsString()) {
-            annotations += AnnotationSpec.builder(JSON_SERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
-                .addMember("$member = %T::class", serializer).build()
+            annotations += AnnotationUse(JSON_SERIALIZE, SITE_GET, listOf("$member = $wireClass.Serializer::class"))
         }
-        annotations += AnnotationSpec.builder(JSON_DESERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
-            .addMember("$member = %T::class", deserializer).build()
+        annotations += AnnotationUse(JSON_DESERIALIZE, SITE_PARAM, listOf("$member = $wireClass.Deserializer::class"))
         // C1: a decimal inside a (jsonb) value object has no controller range check of its own, so the
         // deserializer enforces the field's declared @precision/@scale: nothing rounded, excess is a 400.
         // Only a declared precision bounds it, as with a top-level decimal.
         if (declaredRange && !KotlinTypeMapper.isUnboundedDecimal(field)) {
-            annotations += AnnotationSpec.builder(ClassName(pkg, KotlinDecimalWireEmitter.FILE_NAME, "Declared"))
-                .useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
-                .addMember("precision = %L", KotlinTypeMapper.decimalPrecision(field))
-                .addMember("scale = %L", KotlinTypeMapper.decimalScale(field))
-                .build()
+            annotations += AnnotationUse(
+                KotlinClassName(pkg, wireClass, "Declared"), SITE_PARAM,
+                listOf("precision = ${KotlinTypeMapper.decimalPrecision(field)}", "scale = ${KotlinTypeMapper.decimalScale(field)}"),
+            )
         }
         return annotations
     }
@@ -795,16 +850,15 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * span), and `Duration.parse` accepts more than the accepted form. The serializer sits on the
      * getter and the deserializer on the constructor parameter; `contentUsing` for an `isArray`.
      */
-    private fun durationWireAnnotations(field: MetaField<*>, pkg: String): List<AnnotationSpec> {
+    private fun durationWireAnnotations(field: MetaField<*>, pkg: String): List<AnnotationUse> {
         // wire.durations: native (the default) leaves the host ObjectMapper's own java.time handling.
         if (field !is DurationField || !wire.durationsIso()) return emptyList()
         durationWirePackages.add(pkg)
+        val wireClass = KotlinDurationWireEmitter.FILE_NAME
         val member = if (field.isArrayType) "contentUsing" else "using"
         return listOf(
-            AnnotationSpec.builder(JSON_SERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.GET)
-                .addMember("$member = %T::class", ClassName(pkg, KotlinDurationWireEmitter.FILE_NAME, "Serializer")).build(),
-            AnnotationSpec.builder(JSON_DESERIALIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.PARAM)
-                .addMember("$member = %T::class", ClassName(pkg, KotlinDurationWireEmitter.FILE_NAME, "Deserializer")).build(),
+            AnnotationUse(JSON_SERIALIZE, SITE_GET, listOf("$member = $wireClass.Serializer::class")),
+            AnnotationUse(JSON_DESERIALIZE, SITE_PARAM, listOf("$member = $wireClass.Deserializer::class")),
         )
     }
 
@@ -817,31 +871,20 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * absolute-scheme URI or an IPv4/IPv6 literal (never a DNS lookup). `contentUsing` for an
      * `@isArray` property (the ELEMENTS deserialize strictly). Null for any other field.
      */
-    private fun netDeserializeAnnotation(field: MetaField<*>, pkg: String): AnnotationSpec? {
+    private fun netDeserializeAnnotation(field: MetaField<*>, pkg: String): AnnotationUse? {
         if (!isStrictNetField(field)) return null
-        val deserializer = ClassName(pkg, NET_JSON_SUPPORT,
-            if (field is UriField) "AbsoluteUriDeserializer" else "InetLiteralDeserializer")
+        val deserializer = if (field is UriField) "AbsoluteUriDeserializer" else "InetLiteralDeserializer"
         val member = if (field.isArrayType) "contentUsing" else "using"
-        return AnnotationSpec.builder(JSON_DESERIALIZE)
-            .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-            .addMember("$member = %T::class", deserializer)
-            .build()
+        return AnnotationUse(JSON_DESERIALIZE, SITE_FIELD, listOf("$member = $NET_JSON_SUPPORT.$deserializer::class"))
     }
 
-    /**
-     * `@field:Size(min = …, max = …)` — each bound omitted when null. Emitted as ONE member
-     * (a single literal) so a two-bound `@Size` stays single-line, matching the historical
-     * single-bound shape (KotlinPoet wraps multi-`addMember` annotations across lines).
-     */
-    private fun sizeAnnotation(min: Int?, max: Int?): AnnotationSpec {
+    /** `@field:Size(min = …, max = …)` — each bound omitted when null. */
+    private fun sizeAnnotation(min: Int?, max: Int?): AnnotationUse {
         val bounds = buildList {
             if (min != null) add("min = $min")
             if (max != null) add("max = $max")
         }
-        return AnnotationSpec.builder(SIZE)
-            .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-            .addMember("%L", bounds.joinToString(", "))
-            .build()
+        return AnnotationUse(SIZE, SITE_FIELD, bounds)
     }
 
     /** Read an int-valued attr from a node, trying each name in order; null when absent/unparseable. */
@@ -879,93 +922,39 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         // jakarta.validation.constraints annotation types (SP-C validator parity).
         private const val JAKARTA_CONSTRAINTS = "jakarta.validation.constraints"
-        val NOT_NULL = ClassName(JAKARTA_CONSTRAINTS, "NotNull")
-        val SIZE = ClassName(JAKARTA_CONSTRAINTS, "Size")
-        val PATTERN = ClassName(JAKARTA_CONSTRAINTS, "Pattern")
-        val MIN = ClassName(JAKARTA_CONSTRAINTS, "Min")
-        val MAX = ClassName(JAKARTA_CONSTRAINTS, "Max")
-        val EMAIL = ClassName(JAKARTA_CONSTRAINTS, "Email")
+        val NOT_NULL = KotlinClassName(JAKARTA_CONSTRAINTS, "NotNull")
+        val SIZE = KotlinClassName(JAKARTA_CONSTRAINTS, "Size")
+        val PATTERN = KotlinClassName(JAKARTA_CONSTRAINTS, "Pattern")
+        val MIN = KotlinClassName(JAKARTA_CONSTRAINTS, "Min")
+        val MAX = KotlinClassName(JAKARTA_CONSTRAINTS, "Max")
+        val EMAIL = KotlinClassName(JAKARTA_CONSTRAINTS, "Email")
+        val ASSERT_TRUE = KotlinClassName(JAKARTA_CONSTRAINTS, "AssertTrue").canonicalName
+
+        /** The use-site targets the annotations are written with. */
+        const val SITE_FIELD = "field"
+        const val SITE_GET = "get"
+        const val SITE_PARAM = "param"
+
+        /** The KDoc line every generated class carries: the GENERATED marker. */
+        const val GENERATED_DOC = "GENERATED — do not hand-edit. Regenerated from metadata."
+
+        private const val JACKSON_ANNOTATION = "com.fasterxml.jackson.annotation"
+        val JSON_IGNORE_PROPERTIES = KotlinClassName(JACKSON_ANNOTATION, "JsonIgnoreProperties")
+        val JSON_INCLUDE = KotlinClassName(JACKSON_ANNOTATION, "JsonInclude")
+        val JSON_IGNORE = KotlinClassName(JACKSON_ANNOTATION, "JsonIgnore").canonicalName
 
         /** Program D: `@field:Valid` on a value-object member so a parent `@Valid` / whole-bean
          *  validate cascades into the nested VO's own constraints (lives in `jakarta.validation`,
          *  NOT `jakarta.validation.constraints`). */
-        val VALID = ClassName("jakarta.validation", "Valid")
+        val VALID = KotlinClassName("jakarta.validation", "Valid")
 
         /** #234: `@field:JsonDeserialize(using = …)` binds a STRICT field.uri / field.inet property
          *  to the same-package [NET_JSON_SUPPORT] literal deserializer. */
-        val JSON_DESERIALIZE = ClassName("com.fasterxml.jackson.databind.annotation", "JsonDeserialize")
-        val JSON_SERIALIZE = ClassName("com.fasterxml.jackson.databind.annotation", "JsonSerialize")
+        val JSON_DESERIALIZE = KotlinClassName("com.fasterxml.jackson.databind.annotation", "JsonDeserialize")
+        val JSON_SERIALIZE = KotlinClassName("com.fasterxml.jackson.databind.annotation", "JsonSerialize")
         /** The per-package generated support object holding the #234 strict Jackson deserializers. */
         const val NET_JSON_SUPPORT = "MetaNetJson"
 
-        /** The fixed `MetaNetJson.kt` body (below the package header). Two strict Jackson
-         *  deserializers — an absolute-scheme URI and an IPv4/IPv6 literal (never a DNS lookup) —
-         *  implementing the #234 Contract-A rules. Uses `+`-concatenated messages (no Kotlin string
-         *  templates) so THIS generator's raw string needs no `$` escaping. */
-        val NET_JSON_SUPPORT_BODY: String = """
-            |import com.fasterxml.jackson.core.JsonParser
-            |import com.fasterxml.jackson.databind.DeserializationContext
-            |import com.fasterxml.jackson.databind.JsonDeserializer
-            |import java.net.InetAddress
-            |import java.net.URI
-            |import java.net.URISyntaxException
-            |
-            |/** GENERATED (#234) — strict Jackson deserializers for field.uri / field.inet.
-            | *  Do not hand-edit; regenerated from metadata. Dependency-free (java.net + Jackson). */
-            |internal object MetaNetJson {
-            |    /** field.uri — an ABSOLUTE URI carrying a scheme (leading/trailing whitespace trimmed,
-            |     *  WHATWG). A relative reference (example.com, /path) or malformed value is rejected. */
-            |    class AbsoluteUriDeserializer : JsonDeserializer<URI>() {
-            |        override fun deserialize(p: JsonParser, ctxt: DeserializationContext): URI? {
-            |            val raw = p.valueAsString ?: return null
-            |            val uri = try {
-            |                URI(raw.trim())
-            |            } catch (e: URISyntaxException) {
-            |                throw IllegalArgumentException("field.uri: not a valid URI: " + raw, e)
-            |            }
-            |            require(uri.isAbsolute) { "field.uri: must be an absolute URI carrying a scheme: " + raw }
-            |            return uri
-            |        }
-            |    }
-            |
-            |    /** field.inet — an IPv4 or IPv6 LITERAL only. Never a DNS lookup: a value containing
-            |     *  ':' can only be an IPv6 literal (getByName parses it offline), otherwise a strict
-            |     *  dotted-quad IPv4. Hostnames, CIDR, padding, out-of-range octets are rejected. */
-            |    class InetLiteralDeserializer : JsonDeserializer<InetAddress>() {
-            |        override fun deserialize(p: JsonParser, ctxt: DeserializationContext): InetAddress? {
-            |            val raw = p.valueAsString ?: return null
-            |            // No trim: IP-literal grammar has no whitespace, so padding is rejected.
-            |            if (raw.indexOf(':') >= 0) {
-            |                return try {
-            |                    InetAddress.getByName(raw) // ':' => IPv6 literal — getByName does no DNS
-            |                } catch (e: Exception) {
-            |                    throw IllegalArgumentException("field.inet: not a valid IPv6 literal: " + raw, e)
-            |                }
-            |            }
-            |            return parseIpv4(raw)
-            |        }
-            |
-            |        private fun parseIpv4(s: String): InetAddress {
-            |            val parts = s.split(".")
-            |            require(parts.size == 4) { "field.inet: not a valid IPv4 literal: " + s }
-            |            val octets = ByteArray(4)
-            |            for (i in 0 until 4) {
-            |                val part = parts[i]
-            |                // #234 review H1: reject a leading-zero octet (010 / 01) — the octal/decimal
-            |                // -parse ambiguity — matching Python ipaddress + the TS regex.
-            |                require(part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() }
-            |                    && !(part.length > 1 && part[0] == '0')) {
-            |                    "field.inet: not a valid IPv4 literal: " + s
-            |                }
-            |                val v = part.toInt()
-            |                require(v <= 255) { "field.inet: IPv4 octet out of range: " + s }
-            |                octets[i] = v.toByte()
-            |            }
-            |            return InetAddress.getByAddress(octets)
-            |        }
-            |    }
-            |}
-            |""".trimMargin()
 
         /**
          * Canonical DNS-hostname matcher for `@stringFormat: hostname` (ADR-0036/0037 Wave 3).
@@ -978,7 +967,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
-    // KotlinPoet writes whole files in execute(); the parent's print-writer pipeline is unused.
+    // execute() writes whole files; the parent's print-writer pipeline is unused.
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }
     override fun <T : GeneratorIOWriter<*>?> getSingleWriter(
         loader: MetaDataLoader?, md: MetaObject?, pw: PrintWriter?
@@ -993,7 +982,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         PackageMapping.splitFqn(md.name).second + ".kt"
 
     /**
-     * Emit a nested `Builder` plus a `@JvmStatic builder()` factory.
+     * Whether the class gets a nested `Builder` plus a `@JvmStatic builder()` factory.
      *
      * Kotlin default arguments are a COMPILER feature, not a bytecode one. A data class whose
      * properties are all defaulted exposes only three constructors to Java — the full N-arg one,
@@ -1015,78 +1004,48 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * with `requireNotNull`, naming the property — the same trade every builder makes, and the
      * data-class constructor remains the real enforcement point.
      */
-    private fun addJavaBuilder(
-        obj: MetaObject,
-        typeBuilder: TypeSpec.Builder,
-        className: ClassName,
-        params: List<ParameterSpec>,
-    ) {
-        if (params.isEmpty()) return
+    private fun javaBuilderApplies(obj: MetaObject, params: List<PropertyParam>): Boolean {
+        if (params.isEmpty()) return false
         // NOT on an object.projection. A projection is a DERIVED read-only representation —
         // it arrives from a view query and nothing constructs one, so a builder would be an
         // affordance for something callers must not do. It would also put `var` backing fields
         // into a type KotlinProjectionCompileTest requires to be immutable, which is how this
         // exclusion was found rather than reasoned about.
-        if (obj.subType == MetaObject.SUBTYPE_PROJECTION) return
+        if (obj.subType == MetaObject.SUBTYPE_PROJECTION) return false
         // Nor on a report's row (FR-044), for the same reason: it arrives from the view.
-        if (obj is ReportReadModel) return
-
-        val builderClass = ClassName(className.packageName, className.simpleName, "Builder")
-        val builder = TypeSpec.classBuilder("Builder")
-            .addKdoc("Fluent builder — lets a JAVA caller set a subset of properties.\n")
-
-        for (param in params) {
-            val backingType = param.type.copy(nullable = true)
-            builder.addProperty(
-                PropertySpec.builder(param.name, backingType)
-                    .addModifiers(KModifier.PRIVATE)
-                    .mutable(true)
-                    .initializer("null")
-                    .build()
-            )
-            builder.addFunction(
-                FunSpec.builder(param.name)
-                    .addParameter("v", backingType)
-                    .returns(builderClass)
-                    .addStatement("this.%N = v", param.name)
-                    .addStatement("return this")
-                    .build()
-            )
-        }
-
-        // Each assignment is joined with KotlinPoet's NON-BREAKING SPACE (U+00B7), which it
-        // renders as an ordinary space but never treats as a line-break candidate. That matters
-        // because this text is handed to addStatement as raw format-string content: KotlinPoet
-        // wraps at column 100 on any plain space it sees, and it cannot tell that the spaces in
-        // `"<name> is required"` are INSIDE a string literal. A property name long enough to push
-        // the line past the margin therefore had its message wrapped mid-literal, emitting Kotlin
-        // that does not parse (a regular string literal has no line continuation) — see #388.
-        // Making the whole assignment atomic leaves the explicit ",\n  " separators below as the
-        // only break points, which are the ones that are actually safe.
-        val args = params.joinToString(",\n  ") { p ->
-            if (p.type.isNullable) "${p.name}\u00b7=\u00b7${p.name}"
-            else "${p.name}\u00b7=\u00b7requireNotNull(${p.name})\u00b7{\u00b7" +
-                "\"${p.name}\u00b7is\u00b7required\"\u00b7}"
-        }
-        builder.addFunction(
-            FunSpec.builder("build")
-                .returns(className)
-                .addStatement("return %T(\n  $args\n)", className)
-                .build()
-        )
-
-        typeBuilder.addType(builder.build())
-        typeBuilder.addType(
-            TypeSpec.companionObjectBuilder()
-                .addFunction(
-                    FunSpec.builder("builder")
-                        .addAnnotation(JvmStatic::class)
-                        .returns(builderClass)
-                        .addStatement("return Builder()")
-                        .build()
-                )
-                .build()
-        )
+        return obj !is ReportReadModel
     }
 
+    /** Write the nested `Builder` class and the companion's `builder()` factory for class [self]. */
+    private fun writeJavaBuilder(w: KotlinWriter, self: String, params: List<PropertyParam>) {
+        w.doc("Fluent builder — lets a JAVA caller set a subset of properties.")
+        w.block("class Builder {") {
+            for (p in params) {
+                w.line("private var ", KotlinWriter.escapeName(p.name), ": ", p.type.copy(nullable = true).write(w), " = null")
+            }
+            for (p in params) {
+                val name = KotlinWriter.escapeName(p.name)
+                w.blank()
+                w.block("fun $name(v: ${p.type.copy(nullable = true).write(w)}): Builder {") {
+                    w.line("this.", name, " = v")
+                    w.line("return this")
+                }
+            }
+            w.blank()
+            // `build()` restores each non-null property's guarantee with requireNotNull, naming the
+            // property. The writer breaks the argument list only between arguments, never inside
+            // the message's string literal (#388).
+            val args = params.map { p ->
+                val name = KotlinWriter.escapeName(p.name)
+                if (p.type.isNullable) "$name = $name"
+                else "$name = requireNotNull($name) { ${KotlinWriter.str("${p.name} is required")} }"
+            }
+            w.line("fun build(): ", self, " = ", KotlinWriter.call(self, *args.toTypedArray()))
+        }
+        w.blank()
+        w.block("companion object {") {
+            w.line("@", w.use("kotlin.jvm.JvmStatic"))
+            w.line("fun builder(): Builder = Builder()")
+        }
+    }
 }

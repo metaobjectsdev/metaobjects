@@ -32,6 +32,14 @@ import kotlin.test.assertTrue
  *
  * Refresh them ONLY when a release note tells adopters to re-eject: until then, a copy that
  * stops compiling here is an adopter's build that stops compiling on upgrade.
+ *
+ * Refreshed once, in 1.3.0: KotlinPoet left the build, and the entity, Exposed table, Spring
+ * controller and relations generators named its types (`ClassName`, `TypeName`) through the
+ * helpers they call, so a copy ejected before then cannot compile against this module. The
+ * 1.3.0 release note tells adopters who own one of those four to re-eject it, and those four
+ * copies, with the classes eject copies beside them (`ejectWith`), are now what
+ * `mvn metaobjects:eject` writes at 1.3.0. The output-parser and render-helper copies never
+ * named a KotlinPoet type and are still the originals.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class EjectedAtBaseGeneratorsCompatTest {
@@ -47,6 +55,14 @@ class EjectedAtBaseGeneratorsCompatTest {
             "KotlinRelationsGenerator",
             "KotlinOutputParserGenerator",
             "KotlinRenderHelperGenerator",
+            // Copied with the four generators refreshed in 1.3.0 (their `ejectWith` classes), as
+            // `mvn metaobjects:eject` writes them beside the generator in the owned package.
+            "KotlinEnumEmitter",
+            "KotlinDecimalWireEmitter",
+            "KotlinCrossFieldRules",
+            "KotlinDurationWireEmitter",
+            "KotlinValidationIssuesEmitter",
+            "KotlinUnknownBodyKeysEmitter",
         )
 
         val packageLine = Regex("(?m)^package\\s+[\\w.]+\\s*$")
@@ -149,26 +165,28 @@ class EjectedAtBaseGeneratorsCompatTest {
     }
 
     /**
-     * A table generator ejected at base takes no provided-enum args and never did. Before the
-     * config existed it named a `@provided` enum by the class in the declaration's own package
-     * and generated without error; it must keep doing both, not start failing an adopter's build
-     * on upgrade. The stand-in `acme.shop.Currency` is that class, so the output compiling
-     * against it is the proof of where the reference points.
+     * A table generator ejected at 1.3.0 reads the same provided-enum config as the entity
+     * generator, so its columns are typed by the class the entity property uses: a `@provided`
+     * enum by the configured namespace's class, a shared one by its declaration. The output
+     * compiling against those classes, and the column types naming them, is the proof.
+     *
+     * (The copy this replaced predated that config and took no provided-enum args; it named
+     * KotlinPoet types, so it was refreshed in 1.3.0 with the rest — see the class doc.)
      */
     @Test
     fun `the Exposed table generator ejected at base still generates for a provided enum`() {
-        val entityOut = generate("KotlinEntityGenerator", mapOf("providedEnumNamespace" to PROVIDED_NAMESPACE))
-        val tableOut = generate("KotlinExposedTableGenerator", emptyMap())
+        val args = mapOf("providedEnumNamespace" to PROVIDED_NAMESPACE)
+        val entityOut = generate("KotlinEntityGenerator", args)
+        val tableOut = generate("KotlinExposedTableGenerator", args)
         try {
             val classes = compileGenerated(
                 sourcesUnder(entityOut) + sourcesUnder(tableOut),
                 providedCurrencyIn(PROVIDED_NAMESPACE),
-                providedCurrencyIn("acme.shop"),
             ).classLoader
             for ((tableClass, column) in listOf("acme.shop.TicketTable" to "getCurrency", "acme.shop.RefundTable" to "getTender")) {
                 val columnType = classes.loadClass(tableClass).getMethod(column).genericReturnType.typeName
-                assertTrue("acme.shop.Currency" in columnType,
-                    "$tableClass.$column must stay a column of the declaration-package Currency; was $columnType")
+                assertTrue("$PROVIDED_NAMESPACE.Currency" in columnType,
+                    "$tableClass.$column must be a column of the provided $PROVIDED_NAMESPACE.Currency; was $columnType")
             }
             val importance = classes.loadClass("acme.shop.TaskTable").getMethod("getImportance").genericReturnType.typeName
             assertTrue("acme.shop.Priority" in importance,

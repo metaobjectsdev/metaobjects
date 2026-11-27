@@ -221,10 +221,10 @@ class KotlinReportRestSurfaceTest {
     @Test
     fun `the row is an immutable data class with one property per derived field, nullable by Table B`() {
         val src = emit(withModel()).getValue("acme/shop/StoreTotals.kt")
-        assertTrue("public data class StoreTotals(" in src, src)
-        assertTrue("  public val purchases: Long,\n" in src, src)
-        assertTrue("  public val buyers: Long,\n" in src, src)
-        assertTrue("  public val revenue: Long? = null,\n" in src, src)
+        assertTrue("data class StoreTotals(" in src, src)
+        assertTrue("    val purchases: Long,\n" in src, src)
+        assertTrue("    val buyers: Long,\n" in src, src)
+        assertTrue("    val revenue: Long? = null,\n" in src, src)
         // Read from the view, never constructed or bound: no builder, no constraint.
         assertFalse("Builder" in src, src)
         assertFalse(Regex("""\bvar\s+\w""").containsMatchIn(src), src)
@@ -236,7 +236,7 @@ class KotlinReportRestSurfaceTest {
         val files = emit(canonical(), listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator()))
         val row = files.getValue("fitness/ProgramsByMonth.kt")
         val table = files.getValue("fitness/ProgramsByMonthTable.kt")
-        assertTrue("  public val status: ProgramStatus" in row, row)
+        assertTrue("    val status: ProgramStatus" in row, row)
         assertTrue("ProgramStatus.valueOf(" in table, table)
         // No generator materializes an enum for the report.
         assertFalse(files.keys.any { "ProgramsByMonthStatus" in it }, files.keys.toString())
@@ -246,8 +246,8 @@ class KotlinReportRestSurfaceTest {
     @Test
     fun `a time bucket is a date and a ratio is a decimal`() {
         val files = emit(canonical(), listOf(KotlinEntityGenerator()))
-        assertTrue("  public val createdAtMonth: LocalDate,\n" in files.getValue("fitness/ProgramsByMonth.kt"))
-        assertTrue("  public val longShare: BigDecimal? = null,\n" in files.getValue("fitness/ProgramMinutes.kt"))
+        assertTrue("    val createdAtMonth: LocalDate,\n" in files.getValue("fitness/ProgramsByMonth.kt"))
+        assertTrue("    val longShare: BigDecimal? = null,\n" in files.getValue("fitness/ProgramMinutes.kt"))
     }
 
     @Test
@@ -400,7 +400,7 @@ class KotlinReportRestSurfaceTest {
           ] }
         }"""
         val files = emit(loadString("report-rest-int-enum", json))
-        assertTrue("  public val channel: SaleChannel,\n" in files.getValue("acme/shop/SalesByChannel.kt"))
+        assertTrue("    val channel: SaleChannel,\n" in files.getValue("acme/shop/SalesByChannel.kt"))
         val src = files.getValue("acme/shop/SalesByChannelController.kt")
         assertTrue("acme.shop.SaleChannel.entries.firstOrNull { it.name == (p.value as String) }" in src, src)
         assertFalse("SalesByChannelChannel" in files.toString(), "a per-report enum leaked")

@@ -22,14 +22,13 @@ import com.metaobjects.field.UriField
 import com.metaobjects.field.InetField
 import com.metaobjects.field.DurationField
 import com.metaobjects.metadata.ktx.loadString
-import com.squareup.kotlinpoet.BOOLEAN
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.DOUBLE
-import com.squareup.kotlinpoet.FLOAT
-import com.squareup.kotlinpoet.INT
-import com.squareup.kotlinpoet.LONG
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.STRING
+import com.metaobjects.generator.kotlin.writer.KotlinClassName
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.BOOLEAN
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.DOUBLE
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.FLOAT
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.INT
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.LONG
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.STRING
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -77,14 +76,14 @@ class KotlinTypeMapperTest {
 
     @Test fun `date field maps to java time LocalDate`() {
         val f = DateField("birthday")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.time", tn.packageName)
         assertEquals("LocalDate", tn.simpleName)
     }
 
     @Test fun `time field maps to java time LocalTime`() {
         val f = TimeField("startTime")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.time", tn.packageName)
         assertEquals("LocalTime", tn.simpleName)
     }
@@ -94,7 +93,7 @@ class KotlinTypeMapperTest {
         // `timestamp with time zone`, UTC `Z` wire form). The naive zone-less LocalDateTime
         // shape is now the @localTime opt-out.
         val f = TimestampField("createdAt")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.time", tn.packageName)
         assertEquals("Instant", tn.simpleName)
     }
@@ -104,7 +103,7 @@ class KotlinTypeMapperTest {
         // `timestamp without time zone`, no `Z`), which an Instant cannot carry.
         val f = TimestampField("observedAt")
         f.addMetaAttr(BooleanAttribute.create("localTime", true))
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.time", tn.packageName)
         assertEquals("LocalDateTime", tn.simpleName)
     }
@@ -140,7 +139,7 @@ class KotlinTypeMapperTest {
         // ADR-0036/0037 Wave 3: native java.net.URI property; the Exposed column is the
         // file-local `uriColumn(...)` extension (Column<URI> over a plain text column).
         val f = UriField("webhookUrl")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.net", tn.packageName)
         assertEquals("URI", tn.simpleName)
         assertEquals("uriColumn(\"webhook_url\")", KotlinTypeMapper.exposedColumnSpec(f))
@@ -151,7 +150,7 @@ class KotlinTypeMapperTest {
         // ADR-0036/0037 Wave 3: native java.net.InetAddress property; the Exposed column is the
         // file-local `inetColumn(...)` extension (Column<InetAddress> over native inet).
         val f = InetField("sourceIp")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.net", tn.packageName)
         assertEquals("InetAddress", tn.simpleName)
         assertEquals("inetColumn(\"source_ip\")", KotlinTypeMapper.exposedColumnSpec(f))
@@ -163,7 +162,7 @@ class KotlinTypeMapperTest {
         // `durationColumn(...)` (Column<Duration> over native INTERVAL, a BIGINT count of microseconds elsewhere) and, with
         // isArray, `durationArrayColumn(...)`.
         val f = DurationField("holdFor")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.time", tn.packageName)
         assertEquals("Duration", tn.simpleName)
         assertEquals("durationColumn(\"hold_for\")", KotlinTypeMapper.exposedColumnSpec(f))
@@ -237,7 +236,7 @@ class KotlinTypeMapperTest {
         // column function needs NO external import.
         assertEquals(null, KotlinTypeMapper.exposedColumnImport(f))
         // The data-class property type is Instant (the wire/DTO contract).
-        assertEquals(ClassName("java.time", "Instant"), KotlinTypeMapper.kotlinTypeName(f))
+        assertEquals(KotlinClassName("java.time", "Instant"), KotlinTypeMapper.kotlinTypeName(f))
         // And the table generator is told this field needs the file-local support helper.
         assertEquals(true, KotlinTypeMapper.usesInstantWithTimeZone(f))
     }
@@ -251,7 +250,7 @@ class KotlinTypeMapperTest {
         // The javatime `datetime` import is required for the naive opt-out.
         assertEquals("org.jetbrains.exposed.sql.javatime.datetime", KotlinTypeMapper.exposedColumnImport(f))
         // The data-class property type is LocalDateTime.
-        assertEquals(ClassName("java.time", "LocalDateTime"), KotlinTypeMapper.kotlinTypeName(f))
+        assertEquals(KotlinClassName("java.time", "LocalDateTime"), KotlinTypeMapper.kotlinTypeName(f))
         // A naive timestamp does NOT need the instantWithTimeZone support helper.
         assertEquals(false, KotlinTypeMapper.usesInstantWithTimeZone(f))
     }
@@ -302,7 +301,7 @@ class KotlinTypeMapperTest {
             "jsonb(\"rubric_weights\", { it.toString() }, { Json.parseToJsonElement(it) })",
             KotlinTypeMapper.exposedColumnSpec(f),
         )
-        assertEquals(ClassName("kotlinx.serialization.json", "JsonElement"), KotlinTypeMapper.kotlinTypeName(f))
+        assertEquals(KotlinClassName("kotlinx.serialization.json", "JsonElement"), KotlinTypeMapper.kotlinTypeName(f))
         // The column needs the exposed-json `jsonb` extension import.
         assertEquals("org.jetbrains.exposed.sql.json.jsonb", KotlinTypeMapper.exposedColumnImport(f))
     }
@@ -317,7 +316,7 @@ class KotlinTypeMapperTest {
         val f = StringField("rubricWeights")
         f.addMetaAttr(StringAttribute.create("dbColumnType", "jsonb"))
 
-        val jsonElement = ClassName("kotlinx.serialization.json", "JsonElement")
+        val jsonElement = KotlinClassName("kotlinx.serialization.json", "JsonElement")
         // REST payload → parsed JSON value.
         assertEquals(jsonElement, KotlinTypeMapper.payloadTypeName(f))
         // Entity data class / entity-CRUD DTO → parsed JSON value (now uniform with payload).
@@ -443,7 +442,7 @@ class KotlinTypeMapperTest {
     @Test fun `decimal field maps to java math BigDecimal`() {
         // field.decimal → high-precision java.math.BigDecimal (NUMERIC/DECIMAL).
         val f = DecimalField.create("preciseKg", 9, 4)
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.math", tn.packageName)
         assertEquals("BigDecimal", tn.simpleName)
     }
@@ -462,7 +461,7 @@ class KotlinTypeMapperTest {
         // R6 Plan 2a: `field.uuid` is now a real UuidField JVM class — the mapper matches it
         // by instanceof (the latent subtype-string arm is promoted to a live typed arm).
         val f = UuidField("externalId")
-        val tn = KotlinTypeMapper.kotlinTypeName(f) as ClassName
+        val tn = KotlinTypeMapper.kotlinTypeName(f) as KotlinClassName
         assertEquals("java.util", tn.packageName)
         assertEquals("UUID", tn.simpleName)
         // Column name snake_case-d for Postgres convention.
@@ -478,7 +477,7 @@ class KotlinTypeMapperTest {
         val f = MapField("labels")
         f.addMetaAttr(StringAttribute.create(MapField.ATTR_VALUE_TYPE, "string"))
         assertEquals(
-            com.squareup.kotlinpoet.MAP.parameterizedBy(STRING, STRING),
+            com.metaobjects.generator.kotlin.writer.KotlinTypes.MAP.parameterizedBy(STRING, STRING),
             KotlinTypeMapper.kotlinTypeName(f),
         )
     }
@@ -487,7 +486,7 @@ class KotlinTypeMapperTest {
         val f = MapField("counts")
         f.addMetaAttr(StringAttribute.create(MapField.ATTR_VALUE_TYPE, "long"))
         assertEquals(
-            com.squareup.kotlinpoet.MAP.parameterizedBy(STRING, LONG),
+            com.metaobjects.generator.kotlin.writer.KotlinTypes.MAP.parameterizedBy(STRING, LONG),
             KotlinTypeMapper.kotlinTypeName(f),
         )
     }

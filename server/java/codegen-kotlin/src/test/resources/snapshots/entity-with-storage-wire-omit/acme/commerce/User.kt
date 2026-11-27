@@ -1,67 +1,52 @@
 package acme.commerce
 
-import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
-import kotlin.Long
-import kotlin.String
-import kotlin.jvm.JvmStatic
 
-/**
- * GENERATED — do not hand-edit. Regenerated from metadata.
- */
+/** GENERATED — do not hand-edit. Regenerated from metadata. */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public data class User(
-  public val id: Long? = null,
-  @field:Size(max = 255)
-  public val email: String? = null,
-  @field:Valid
-  public val address: Address? = null,
-  @field:Valid
-  public val preferences: UserMetadata? = null,
+data class User(
+    val id: Long? = null,
+    @field:Size(max = 255)
+    val email: String? = null,
+    @field:Valid
+    val address: Address? = null,
+    @field:Valid
+    val preferences: UserMetadata? = null,
 ) {
-  /**
-   * Fluent builder — lets a JAVA caller set a subset of properties.
-   */
-  public class Builder {
-    private var id: Long? = null
+    /** Fluent builder — lets a JAVA caller set a subset of properties. */
+    class Builder {
+        private var id: Long? = null
+        private var email: String? = null
+        private var address: Address? = null
+        private var preferences: UserMetadata? = null
 
-    private var email: String? = null
+        fun id(v: Long?): Builder {
+            this.id = v
+            return this
+        }
 
-    private var address: Address? = null
+        fun email(v: String?): Builder {
+            this.email = v
+            return this
+        }
 
-    private var preferences: UserMetadata? = null
+        fun address(v: Address?): Builder {
+            this.address = v
+            return this
+        }
 
-    public fun id(v: Long?): Builder {
-      this.id = v
-      return this
+        fun preferences(v: UserMetadata?): Builder {
+            this.preferences = v
+            return this
+        }
+
+        fun build(): User = User(id = id, email = email, address = address, preferences = preferences)
     }
 
-    public fun email(v: String?): Builder {
-      this.email = v
-      return this
+    companion object {
+        @JvmStatic
+        fun builder(): Builder = Builder()
     }
-
-    public fun address(v: Address?): Builder {
-      this.address = v
-      return this
-    }
-
-    public fun preferences(v: UserMetadata?): Builder {
-      this.preferences = v
-      return this
-    }
-
-    public fun build(): User = User(
-      id = id,
-      email = email,
-      address = address,
-      preferences = preferences
-    )
-  }
-
-  public companion object {
-    @JvmStatic
-    public fun builder(): Builder = Builder()
-  }
 }

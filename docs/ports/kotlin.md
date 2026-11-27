@@ -5,7 +5,7 @@ Flyway. The Kotlin port is a **codegen tier built on top of the Java port** — 
 loader, OMDB persistence engine, render engine, Maven plugin, and conformance
 runners are all Java; Kotlin emits idiomatic Kotlin (`data class`,
 Exposed `Table` objects, extension-fn relationship helpers, Spring `@Configuration`
-wiring) via KotlinPoet.
+wiring), laid out by `KotlinWriter` (ADR-0063).
 
 **Baselines.** JVM 21 (the published artifacts target JVM 21), Kotlin 2.0, and Spring Boot 3.x
 for the generated controllers (`jakarta.*`; Spring Boot 2 is not supported).
@@ -16,7 +16,7 @@ classes.
 
 Two modules:
 
-- **`metaobjects-codegen-kotlin`** — the generators; most lay their output out through `KotlinWriter` (ADR-0063), and the layout ratchet's allowlist names the ones still on KotlinPoet.
+- **`metaobjects-codegen-kotlin`** — the generators; every one lays its output out through `KotlinWriter` (ADR-0063). KotlinPoet left the build in 1.3.0.
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
@@ -159,10 +159,10 @@ your own `<groupId>`, `<artifactId>` and `<version>`:
 
 ## Configure
 
-Generators that have moved to the code writer lay their output out with `KotlinWriter`
+Every generator lays its output out with `KotlinWriter`
 (ADR-0063; the dialect and its ops are in [spec/code-writer.md](../../spec/code-writer.md#kotlin-dialect-kotlinwriter)).
-The layout ratchet (`KotlinLayoutRatchetTest`) keeps the emitters still on KotlinPoet on a
-shrink-only allowlist.
+The layout ratchet (`KotlinLayoutRatchetTest`) fails a generator that types its own line breaks
+or indentation, or imports KotlinPoet; its shrink-only allowlist of unconverted emitters is empty.
 
 The 18 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
@@ -328,7 +328,7 @@ classloader, so your generator wires exactly like a built-in one.
 **Declarative** means a Mustache template and no generator code at all. Kotlin gets
 this from the shared JVM engine — `TemplateScopeGenerator` is a plain `<generator>`,
 wired in the same `<generators>` block as the `Kotlin*` generators above (it is
-language-neutral, so there is no KotlinPoet involvement and no Kotlin-specific
+language-neutral, so there is no `KotlinWriter` involvement and no Kotlin-specific
 variant):
 
 ```xml

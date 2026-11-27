@@ -4,13 +4,12 @@ package com.metaobjects.generator.kotlin
 // that calls it. The engine siblings stay in com.metaobjects.generator.kotlin, so each is imported
 // by name — a bare same-package reference would not resolve from the copy.
 import com.metaobjects.generator.kotlin.Fr019SharedEnum
-import com.metaobjects.generator.kotlin.KotlinPoetFileWriter
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
+import com.metaobjects.generator.kotlin.writer.KotlinClassName
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.field.EnumField
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.TypeSpec
+import com.metaobjects.generator.util.GeneratedFileWriter
 import com.metaobjects.`object`.MetaObject
 import java.nio.file.Path
 
@@ -29,14 +28,14 @@ object KotlinEnumEmitter {
 
     /**
      * Emit a top-level `@Serializable enum class` for an [field.enum] hung off [owner] into
-     * [outRoot] (KotlinPoet package directories created under it). Members come from the
+     * [outRoot] (package directories created under it), laid out by [KotlinWriter]. Members come from the
      * field's required `@values` string-array attr — emitted verbatim to preserve case
      * (typically SCREAMING_SNAKE_CASE per spec). No-op (returns false) when [field] is not an
      * enum or has no `@values` (defensive — the loader's ValidationPhase already requires
      * non-empty `@values`).
      *
      * <p>Deduped by enum-class FQN via [emittedFqns]: two fields that share an abstract enum
-     * super resolve (via [KotlinTypeMapper.enumTypeName]) to the SAME ClassName and emit ONE
+     * super resolve (via [KotlinTypeMapper.enumTypeName]) to the SAME class name and emit ONE
      * file. Returns true iff a file was written.</p>
      */
     fun emitEnumFile(
@@ -69,19 +68,7 @@ object KotlinEnumEmitter {
                     "@values set."
             )
         }
-        val serializable = ClassName("kotlinx.serialization", "Serializable")
-        val enumBuilder = TypeSpec.enumBuilder(enumClassName.simpleName)
-            .addAnnotation(serializable)
-            .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
-        for (member in members) {
-            enumBuilder.addEnumConstant(member)
-        }
-        KotlinPoetFileWriter.write(
-            FileSpec.builder(enumClassName.packageName, enumClassName.simpleName)
-                .addType(enumBuilder.build())
-                .build(),
-            outRoot
-        )
+        GeneratedFileWriter.write(enumFile(enumClassName, outRoot), enumSource(enumClassName, members))
         // Returns true for "this emitter handled the FQN", which is what the caller's dedupe
         // set means — deliberately NOT "bytes hit the disk". A refused (hand-owned) enum file
         // must still consume its FQN, or a second field sharing the enum super would re-emit
@@ -103,6 +90,24 @@ object KotlinEnumEmitter {
         outRoot: Path,
         emittedFqns: MutableSet<String>,
     ): Boolean = emitEnumFile(owner, field, outRoot, emittedFqns, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
+
+    /** The `enum class` file for [enumClassName] with [members], in declaration order. */
+    private fun enumSource(enumClassName: KotlinClassName, members: List<String>): String {
+        val w = KotlinWriter().packageName(enumClassName.packageName)
+        w.doc("GENERATED — do not hand-edit. Regenerated from metadata.")
+        w.line("@", w.use("kotlinx.serialization.Serializable"))
+        w.block("enum class ${KotlinWriter.escapeName(enumClassName.simpleName)} {") {
+            for (member in members) w.line(KotlinWriter.escapeName(member), ",")
+        }
+        return w.toString()
+    }
+
+    /** Where [enumClassName]'s file goes under [outRoot]: its package directory, `<Name>.kt`. */
+    private fun enumFile(enumClassName: KotlinClassName, outRoot: Path): Path {
+        val dir = if (enumClassName.packageName.isEmpty()) outRoot
+            else outRoot.resolve(enumClassName.packageName.replace('.', '/'))
+        return dir.resolve("${enumClassName.simpleName}.kt")
+    }
 
     /**
      * Read the `@values` string-array attr, INCLUDING inherited values — a field that

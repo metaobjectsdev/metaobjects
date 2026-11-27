@@ -6,23 +6,14 @@ package com.metaobjects.generator.kotlin
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
 import com.metaobjects.generator.kotlin.ConfiguredRequires
 import com.metaobjects.generator.kotlin.ExposedApi
-import com.metaobjects.generator.kotlin.KotlinPoetFileWriter
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
+import com.metaobjects.generator.util.GeneratedFileWriter
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
-import com.squareup.kotlinpoet.AnnotationSpec
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.CodeBlock
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.MemberName
-import com.squareup.kotlinpoet.ParameterSpec
-import com.squareup.kotlinpoet.PropertySpec
-import com.squareup.kotlinpoet.TypeSpec
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Paths
@@ -77,92 +68,66 @@ open class KotlinSpringConfigGenerator : MultiFileDirectGeneratorBase<MetaObject
             .map { it.trim() }
             .filter { it.isNotEmpty() }
 
-        val typeBuilder = TypeSpec.classBuilder(className)
-            .addKdoc(
-                if (validatorEnabled) {
-                    "GENERATED — wires Exposed's `Database.connect()` from the Spring " +
-                        "[DataSource] bean\nand runs [MetadataStartupValidator.validate] at " +
-                        "app startup.\n\nIf you don't want the validator auto-call, set " +
-                        "`metaobjects.validator.enabled=false`.\n"
-                } else {
-                    // Generated with validatorEnabled=false: no validator hook is emitted, so the
-                    // KDoc must not say one runs.
-                    "GENERATED — wires Exposed's `Database.connect()` from the Spring " +
-                        "[DataSource] bean.\n"
-                }
-            )
-            .addAnnotation(CONFIGURATION)
-            .primaryConstructor(
-                FunSpec.constructorBuilder()
-                    .addParameter(ParameterSpec.builder("dataSource", DATA_SOURCE).build())
-                    .build()
-            )
-            .addProperty(
-                PropertySpec.builder("dataSource", DATA_SOURCE, KModifier.PRIVATE)
-                    .initializer("dataSource")
-                    .build()
-            )
-            .addInitializerBlock(CodeBlock.of("%T.connect(dataSource)\n", databaseClassName(api)))
-
+        val w = KotlinWriter().packageName(pkg)
         if (validatorEnabled) {
-            typeBuilder.addFunction(buildValidatorFn(resources))
+            w.doc(
+                "GENERATED — wires Exposed's `Database.connect()` from the Spring [DataSource] bean",
+                "and runs [MetadataStartupValidator.validate] at app startup.",
+                "",
+                "If you don't want the validator auto-call, set `metaobjects.validator.enabled=false`.",
+            )
+        } else {
+            // Generated with validatorEnabled=false: no validator hook is emitted, so the
+            // KDoc must not say one runs.
+            w.doc("GENERATED — wires Exposed's `Database.connect()` from the Spring [DataSource] bean.")
+        }
+        w.line("@", w.use(CONFIGURATION))
+        w.block("class $className(private val dataSource: ${w.use(DATA_SOURCE)}) {") {
+            w.block("init {") {
+                w.line(w.use(databaseClassName(api)), ".connect(dataSource)")
+            }
+            if (validatorEnabled) {
+                w.blank()
+                writeValidatorFn(w, resources)
+            }
         }
 
-        KotlinPoetFileWriter.write(
-            FileSpec.builder(pkg, className)
-                .addType(typeBuilder.build())
-                .build(),
-            Paths.get(outDir.absolutePath)
-        )
+        val outRoot = Paths.get(outDir.absolutePath)
+        GeneratedFileWriter.write(outRoot.resolve(pkg.replace('.', '/')).resolve("$className.kt"), w.toString())
     }
 
     /**
-     * Build the `@EventListener(ApplicationReadyEvent::class) fun validateMetadata()` function
+     * Write the `@EventListener(ApplicationReadyEvent::class) fun validateMetadata()` function
      * that calls `loadResources(...)` over [resources] and feeds the loader into the generated
      * `MetadataStartupValidator`.
      */
-    private fun buildValidatorFn(resources: List<String>): FunSpec {
-        // `listOf("a", "b", ...)` rendered as `listOf(%S, %S, ...)` placeholders so KotlinPoet
-        // string-escapes each resource path correctly.
-        val resourcesLiteral = resources.joinToString(prefix = "listOf(", postfix = ")") { "%S" }
-        val body = CodeBlock.builder()
-            .addStatement(
-                "val loader = %M(%S, $resourcesLiteral)",
-                LOAD_RESOURCES, "app", *resources.toTypedArray()
-            )
-            .addStatement("MetadataStartupValidator.validate(loader)")
-            .build()
-
-        val listenerAnnotation = AnnotationSpec.builder(EVENT_LISTENER)
-            .addMember("%T::class", APPLICATION_READY_EVENT)
-            .build()
-
-        return FunSpec.builder("validateMetadata")
-            .addAnnotation(listenerAnnotation)
-            .returns(Unit::class)
-            .addCode(body)
-            .build()
+    private fun writeValidatorFn(w: KotlinWriter, resources: List<String>) {
+        w.line("@", w.use(EVENT_LISTENER), "(", w.use(APPLICATION_READY_EVENT), "::class)")
+        w.block("fun validateMetadata() {") {
+            val listOf = KotlinWriter.call("listOf", *resources.map { KotlinWriter.str(it) }.toTypedArray())
+            w.line("val loader = ", KotlinWriter.call(w.use(LOAD_RESOURCES), KotlinWriter.str("app"), listOf))
+            w.line("MetadataStartupValidator.validate(loader)")
+        }
     }
 
     /**
-     * `Database`'s [ClassName], keyed by [ExposedApi] (issue #390) — `org.jetbrains.exposed.sql`
+     * `Database`'s qualified name, keyed by [ExposedApi] (issue #390) — `org.jetbrains.exposed.sql`
      * under 0.x, `org.jetbrains.exposed.v1.jdbc` under 1.x (Database moved to the JDBC tier,
      * same as `SchemaUtils`/`Query`/`selectAll`/`insert`/`update`/`deleteWhere`).
      */
-    private fun databaseClassName(api: ExposedApi): ClassName =
-        if (api == ExposedApi.V1) ClassName("org.jetbrains.exposed.v1.jdbc", "Database")
-        else ClassName("org.jetbrains.exposed.sql", "Database")
+    private fun databaseClassName(api: ExposedApi): String =
+        if (api == ExposedApi.V1) "org.jetbrains.exposed.v1.jdbc.Database"
+        else "org.jetbrains.exposed.sql.Database"
 
     private companion object {
         const val DEFAULT_CLASS_NAME = "MetadataExposedConfig"
         const val DEFAULT_METADATA_RESOURCE = "meta.entities.json"
 
-        val DATA_SOURCE = ClassName("javax.sql", "DataSource")
-        val CONFIGURATION = ClassName("org.springframework.context.annotation", "Configuration")
-        val EVENT_LISTENER = ClassName("org.springframework.context.event", "EventListener")
-        val APPLICATION_READY_EVENT =
-            ClassName("org.springframework.boot.context.event", "ApplicationReadyEvent")
-        val LOAD_RESOURCES = MemberName("com.metaobjects.metadata.ktx", "loadResources")
+        const val DATA_SOURCE = "javax.sql.DataSource"
+        const val CONFIGURATION = "org.springframework.context.annotation.Configuration"
+        const val EVENT_LISTENER = "org.springframework.context.event.EventListener"
+        const val APPLICATION_READY_EVENT = "org.springframework.boot.context.event.ApplicationReadyEvent"
+        const val LOAD_RESOURCES = "com.metaobjects.metadata.ktx.loadResources"
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

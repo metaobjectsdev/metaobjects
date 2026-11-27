@@ -101,7 +101,7 @@ The pattern that has actually shipped across all four language ports is: **each 
 | TS      | `codegen-ts`            | TS entities, Drizzle, Zod, Fastify routes             |
 | C#      | `MetaObjects.Codegen`   | EF Core entities, `AppDbContext`, ASP.NET routes, Postgres DDL |
 | Java    | `codegen-spring`        | Spring `@RestController`, DTO records, repositories, filter allowlists |
-| Kotlin  | `codegen-kotlin`        | KotlinPoet output: Exposed tables, Spring controllers, payload VOs, output parsers, stored procs |
+| Kotlin  | `codegen-kotlin`        | `KotlinWriter` output: Exposed tables, Spring controllers, payload VOs, output parsers, stored procs |
 | Python  | `metaobjects.codegen`   | Pydantic models, FastAPI routes, output parsers       |
 
 A polyglot codegen engine in TS would have meant forcing every Java consumer to install Node/bun just to generate Java — and the C# / Kotlin / Python ports already proved this isn't necessary. Java's `codegen-spring` is real, shipped, and emits the full cross-port surface (FR-006 / FR-008 / FR-009 / FR-010) alongside the other ports; there is no remaining per-port codegen gap.
@@ -333,7 +333,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **TypeScript** — `@metaobjectsdev/metadata` + `codegen-ts` (Vite-style plugins) + `runtime-ts` + `migrate-ts` + the universal web client packages (`runtime-web`, `react`, `tanstack`). The reference port for everything cross-language.
 - **C# full-stack target** — `MetaObjects` (loader + canonical serializer + conformance) + `MetaObjects.Render` (Mustache + payload-VO codegen + `verify`) + `MetaObjects.Codegen` (EF Core entities + `AppDbContext`/owned-types via `OwnsOne` + CRUD minimal-API routes). Schema migrations are TS-owned (ADR-0015) — the C# migrate engine and its `--from-db` CLI surface were removed; the `dotnet meta` CLI is `gen`/`verify` only.
 - **Java port** — `metadata` + `omdb` + `om` + `dynamic` + `core-spring` + `metadata-ktx` (Kotlin facade) + `codegen-spring` (Spring REST controllers + DTOs + repos + filter allowlists) + `codegen-mustache` + `codegen-plantuml` + `codegen-base` + `render` + `maven-plugin` (`metaobjects:generate` / `:verify` / `:editor`; schema migrations are owned by the TS toolchain — the Java diff-and-converge engine and the live-DB-drift mode of `verify` were removed).
-- **Kotlin** — `codegen-kotlin` (KotlinPoet on JVM): entity + Exposed table + Spring controller + Spring config + payload + relations + filter allowlist + validator + stored-proc + output-parser generators; `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
+- **Kotlin** — `codegen-kotlin` (laid out by `KotlinWriter`, ADR-0063, on the JVM): entity + Exposed table + Spring controller + Spring config + payload + relations + filter allowlist + validator + stored-proc + output-parser generators; `integration-tests-kotlin` runs the persistence-conformance corpus through Exposed against Testcontainers Postgres.
 - **Python port** — `metaobjects` (metadata loader + canonical serializer + conformance) + `ObjectManager` runtime + render (Mustache) + codegen (Pydantic + FastAPI, output parsers). The `migrate` module was removed when schema consolidated onto the TS toolchain (ADR-0015).
 
 #### Cross-port conformance corpora (every port runs the shared corpus)

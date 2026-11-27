@@ -8,7 +8,7 @@ are good at different things.
 
 | | Programmatic | Declarative template |
 |---|---|---|
-| What you write | a `Generator` in the port's language, using its AST builder (ts-poet, KotlinPoet, …) | a `.mustache` file + `{ template, scope, outputPattern, format? }` |
+| What you write | a `Generator` in the port's language, using its code writer (`JavaWriter`, `KotlinWriter`, …) | a `.mustache` file + `{ template, scope, outputPattern, format? }` |
 | Output shape | expressed in code | **is the file you are editing** |
 | Cross-language | per-port by construction | one template emits for any language — it renders against the neutral, byte-gated data dict |
 | Logic | any | what a template can express: sections, iteration, presence flags |
