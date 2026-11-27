@@ -172,7 +172,10 @@ copies the templates of both sites to `codegen/docs-site/templates/` (the explor
 (`explorer.css`, `explorer.js`). Only files that are not there yet are written (`--force`
 overwrites). `docsSiteFile()` renders with your copies, and a file you did not copy falls back
 to the packaged one. The app carries your templates in `explorer-model.js` and draws every
-page with them, and writes your CSS and JS in place of its own. A project that ejected the theme before the explorer existed has only the
+page with them, and writes your CSS and JS in place of its own. The app keeps only each drawn
+page's title and body, so what an owned `explorer-head.mustache` adds to `<head>` (a stylesheet,
+a `<style>` block, a favicon, `<meta>` tags) reaches the static export only; put those
+additions in your `explorer.css` or `explorer.js` instead. A project that ejected the theme before the explorer existed has only the
 classic files; `meta gen` warns about it, and running `meta eject docs-site` again adds the
 explorer's files without touching the ones you own.
 

@@ -123,7 +123,9 @@ meta gen
 `docsSiteFile()` reads `codegen/docs-site/` and uses your owned copies; any
 file you didn't override falls back to the bundled default. The explorer app carries your
 owned templates in `explorer-model.js` and draws with them, and writes your owned CSS and JS
-in place of its own. The engine
+in place of its own. The app keeps only each drawn page's title and body, so additions to an
+owned `explorer-head.mustache`'s `<head>` (stylesheets, `<style>`, a favicon, `<meta>`) reach the
+static export only; put them in your owned `explorer.css` or `explorer.js`. The engine
 (`@metaobjectsdev/docs-site`) stays a versioned dependency — you own only the theme.
 
 When calling `generateSite` or `generateExplorerSite` directly, pass `templatesDir` / `assetsDir` to point at your

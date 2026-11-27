@@ -124,7 +124,7 @@ function startApp(w: AppWindow): void {
     const html =
       draw !== undefined
         ? draw()
-        : `<!doctype html><html><head><title>Not found</title></head><body><main><h1>No such page</h1><p><code>${escapeHtml(r.path)}</code> is not a page of this model.</p><p><a href="${HOME}">Overview</a></p></main></body></html>`;
+        : `<!doctype html><html><head><title>Not found</title></head><body><main><h1>No such page</h1><p><code>${escapeHtml(r.path)}</code> is not a page of this model.</p><p><a href="${"../".repeat(r.path.split("/").length - 1)}${HOME}">Overview</a></p></main></body></html>`;
     const doc = new DOMParser().parseFromString(html, "text/html");
     doc.querySelectorAll("script").forEach((s) => s.remove());
     rewrite(doc, r.path, r.search);
