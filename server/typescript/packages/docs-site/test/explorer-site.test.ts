@@ -186,6 +186,22 @@ describe("explorer site over explorer-conformance/shop", () => {
     const r = generateExplorerSite({ output: "static", view: shopView, outDir: out, title: "Shop", assetBase: "https://mirror.example/npm/" });
     expect(readFileSync(join(out, "map.html"), "utf8")).toContain('<script src="https://mirror.example/npm/cytoscape@3.30.2/dist/cytoscape.min.js"></script>');
     expect(r.files).not.toContain("assets/cytoscape.min.js");
+    expect(readFileSync(join(out, "map.html"), "utf8")).toContain('data-src="https://mirror.example/npm/3d-force-graph@1.77.0/dist/3d-force-graph.min.js"');
+    expect(r.files).not.toContain("assets/3d-force-graph.min.js");
+  });
+
+  test("the map has a 3D mode, whose library ships with the site and loads only when chosen", () => {
+    const map = shop.page("map.html");
+    expect(map).toContain('<select id="dim"><option value="2d">2D</option><option value="3d">3D</option></select>');
+    expect(map).toContain('<div id="g3d" class="graph" role="img" aria-label="Model map in 3D" data-src="assets/3d-force-graph.min.js" hidden></div>');
+    // Loaded on demand by the theme script, never by a script tag.
+    expect(map).not.toContain('<script src="assets/3d-force-graph.min.js">');
+    expect(shop.files).toContain("assets/3d-force-graph.min.js");
+    expect(shop.page("gaps.html")).not.toContain("3d-force-graph");
+    // The vendored copy carries its MIT notice and those of what it bundles.
+    const lib = readFileSync(join(shop.out, "assets/3d-force-graph.min.js"), "utf8");
+    expect(lib.startsWith("/*!\n * 3d-force-graph 1.77.0")).toBe(true);
+    expect(lib).toContain("---- three (MIT) ----");
   });
 });
 

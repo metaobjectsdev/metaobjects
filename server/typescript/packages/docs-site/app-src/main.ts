@@ -9,6 +9,12 @@
 // It follows the model on disk: once a second it reloads the stamp file, and when the stamp moves
 // it reloads the model and draws the page it is on again.
 //
+// Or it follows a running application: `index.html?source=<url>` names the application's
+// `GET {apiPrefix}/_meta/docs` endpoint (docs/features/metadata-api.md), and the app reads the
+// docs view from there instead of the model file, once a second, drawing the page again when the
+// view changes. The model file, when it loaded, still supplies the title, the prompt texts and
+// any owned templates, which a running application's view does not carry.
+//
 // Built by `scripts/build-app.ts` into `explorer-app/assets/explorer-app.js` at the repository
 // root. The bundle also sets `globalThis.MoExplorer`, so a script can render the same pages
 // outside a browser (the static export, and the test that holds the bundle to its sources).
@@ -45,6 +51,8 @@ function explorerFor(model: Model): ExplorerCore {
     assetBase: "",
     // The app loads Cytoscape once, in its shell; a drawn page's own script tags are dropped.
     cytoscapeSrc: () => "",
+    // Relative to the shell, which every page is drawn into; the map loads it on demand.
+    graph3dSrc: () => "assets/3d-force-graph.min.js",
   });
 }
 
@@ -92,13 +100,45 @@ function startApp(w: AppWindow): void {
     },
   };
 
-  const build = (): boolean => {
-    const model = w.MO_MODEL;
+  const build = (model: Model | undefined = w.MO_MODEL): boolean => {
     if (model === undefined) return false;
     site = explorerFor(model);
     w.MO_EXPLORER = site.graphData();
     loaded = model.stamp;
     return true;
+  };
+
+  // A running application's endpoint, when the shell was opened with `?source=<url>`.
+  const params = new URLSearchParams(location.search);
+  const sourceParam = params.get("source");
+  let source: URL | undefined;
+  let live: { ok: boolean; at: number; error: string } | undefined;
+  if (sourceParam !== null && sourceParam !== "") {
+    try {
+      source = new URL(sourceParam, location.href);
+    } catch {
+      // Reported by start(): an unusable URL is a source that cannot be read.
+    }
+  }
+  const paintLive = (): void => {
+    if (sourceParam === null || sourceParam === "") return;
+    const ok = live?.ok ?? false;
+    const url = escapeHtml(source?.href ?? sourceParam);
+    const html = ok
+      ? `<b>●</b> Following the running application at <code>${url}</code>`
+      : `<b>●</b> Cannot read <code>${url}</code>${live !== undefined && live.error !== "" ? ` (${escapeHtml(live.error)})` : ""}${site !== undefined ? ", showing the model it last served" : ""}; trying again every second`;
+    // Touched only when its text changes, so a page that stays the same stays still.
+    let bar = document.getElementById("mo-live");
+    if (bar === null) {
+      bar = document.createElement("div");
+      bar.id = "mo-live";
+      document.body.appendChild(bar);
+    }
+    if (bar.innerHTML !== html) bar.innerHTML = html;
+    const cls = ok ? "live-source" : "live-source down";
+    if (bar.className !== cls) bar.className = cls;
+    if (live !== undefined) bar.dataset.checked = new Date(live.at).toISOString();
+    document.documentElement.setAttribute("data-mo-source", ok ? "live" : "down");
   };
 
   // A drawn page's links are relative to its own path; each becomes a route.
@@ -138,6 +178,7 @@ function startApp(w: AppWindow): void {
     else if (r.anchor !== "") document.getElementById(r.anchor)?.scrollIntoView();
     else window.scrollTo(0, 0);
     document.documentElement.setAttribute("data-mo-route", r.path);
+    paintLive();
   };
 
   window.addEventListener("hashchange", () => {
@@ -177,7 +218,62 @@ function startApp(w: AppWindow): void {
     });
   };
 
+  // The running application's view replaces the model file's; the file still names the
+  // project and carries the prompt texts and owned templates.
+  const follow = (url: URL): void => {
+    let last = "";
+    const tick = async (): Promise<void> => {
+      try {
+        // `no-cache` revalidates with the ETag the endpoint sends, so an unchanged view costs a
+        // 304 on the wire; the body is compared because a cross-origin read may hide the tag.
+        const res = await fetch(url.href, { cache: "no-cache" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const text = await res.text();
+        if (text !== last) {
+          const view = JSON.parse(text) as DocsView;
+          if (typeof view !== "object" || view === null || !String((view as { format?: unknown }).format).startsWith("metaobjects-docs-view/")) {
+            throw new Error("the response is not a docs view");
+          }
+          const base = w.MO_MODEL;
+          const first = site === undefined;
+          build({
+            stamp: res.headers.get("etag") ?? `${text.length}`,
+            title: params.get("title") ?? base?.title ?? url.host,
+            footer: base?.footer ?? "",
+            texts: base?.texts ?? {},
+            templates: base?.templates ?? {},
+            view,
+          });
+          last = text;
+          live = { ok: true, at: Date.now(), error: "" };
+          show(!first);
+        } else {
+          live = { ok: true, at: Date.now(), error: "" };
+          paintLive();
+        }
+      } catch (e) {
+        live = { ok: false, at: Date.now(), error: e instanceof Error ? e.message : String(e) };
+        if (site === undefined) {
+          document.body.innerHTML = `<main><h1>No model yet</h1><p>The explorer is waiting for the running application's docs view.</p></main>`;
+        }
+        paintLive();
+      }
+      setTimeout(() => void tick(), 1000);
+    };
+    void tick();
+  };
+
   const start = (): void => {
+    if (sourceParam !== null && sourceParam !== "") {
+      if (source === undefined) {
+        live = { ok: false, at: Date.now(), error: "not a URL" };
+        document.body.innerHTML = "<main><h1>No model</h1><p>The <code>source</code> parameter is not a URL.</p></main>";
+        paintLive();
+        return;
+      }
+      follow(source);
+      return;
+    }
     if (!build()) {
       document.body.innerHTML = "<main><h1>No model</h1><p>explorer-model.js did not load. Run <code>meta gen</code> to write it beside this page.</p></main>";
     } else {

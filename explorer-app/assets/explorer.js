@@ -167,6 +167,75 @@
     if (params.get("slice") && sliceSel.querySelector('option[value="' + CSS.escape(params.get("slice")) + '"]')) sliceSel.value = params.get("slice");
     if (params.get("colour") && colourSel.querySelector('option[value="' + CSS.escape(params.get("colour")) + '"]')) colourSel.value = params.get("colour");
     var focus = params.get("focus");
+    // The 3D mode: the same nodes and edges as the flat map, drawn by 3d-force-graph, which the
+    // page loads only when a reader switches to it. An owned map template without the toggle
+    // simply has no 3D mode.
+    var dimSel = $("#dim"), g3dEl = $("#g3d"), g3d = null, g3dLast = null;
+    if (!dimSel || !g3dEl) dimSel = null;
+    else if (params.get("view") === "3d") dimSel.value = "3d";
+    var drop3d = function () {
+      if (g3d) { g3d.pauseAnimation(); g3d._destructor(); g3d = null; }
+      if (g3dEl) g3dEl.innerHTML = "";
+    };
+    var fit3d = function () { if (g3d) g3d.width(g3dEl.clientWidth).height(g3dEl.clientHeight); };
+    window.addEventListener("resize", fit3d);
+    if (APP) APP.onLeave(function () { window.removeEventListener("resize", fit3d); drop3d(); });
+    var load3d = function (done) {
+      if (typeof window.ForceGraph3D === "function") return done();
+      var s = document.createElement("script");
+      s.src = g3dEl.getAttribute("data-src");
+      s.onload = s.onerror = function () { s.remove(); done(); };
+      document.head.appendChild(s);
+    };
+    var draw3d = function (nodes, edges, inSlice, mode) {
+      drop3d();
+      g3dEl.innerHTML = '<div class="sub" style="margin:12px">Loading the 3D view…</div>';
+      load3d(function () {
+        // The reader may have left the page, or switched back, while the library loaded.
+        if (!g3dEl.isConnected || dimSel.value !== "3d") return;
+        if (typeof window.ForceGraph3D !== "function") {
+          g3dEl.innerHTML = '<div class="note" style="margin:12px">The 3D library did not load. The 2D map and every node page still work.</div>';
+          return;
+        }
+        g3dEl.innerHTML = "";
+        var muted = css("--retired-soft");
+        var data = {
+          nodes: nodes.map(function (n) {
+            return { id: n.id, name: n.name, pkg: n.pkg, col: inSlice && !inSlice[n.id] ? muted : fill(n, mode), val: 1 + Math.min(20, n.fields / 3 + n.claims / 2) };
+          }),
+          links: edges.map(function (e) { return { source: e.s, target: e.t, label: e.v || e.k }; }),
+        };
+        g3d = window.ForceGraph3D()(g3dEl)
+          .width(g3dEl.clientWidth).height(g3dEl.clientHeight)
+          .backgroundColor(css("--panel") || "#ffffff")
+          .nodeLabel(function (n) { return esc(n.name) + " · " + esc(n.pkg); })
+          .nodeColor(function (n) { return n.col; })
+          .nodeVal(function (n) { return n.val; })
+          .nodeOpacity(0.95)
+          .linkLabel(function (l) { return esc(l.label); })
+          .linkColor(function () { return css("--muted"); })
+          .linkOpacity(0.45)
+          .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
+          // One click shows the side panel, as a tap does on the flat map; a second click on
+          // the same node opens its page, as a double tap does.
+          .onNodeClick(function (n) {
+            var now = Date.now();
+            if (g3dLast && g3dLast.id === n.id && now - g3dLast.t < 450) {
+              var node = byId[n.id];
+              if (node) location.href = href(node.href);
+              g3dLast = null;
+              return;
+            }
+            g3dLast = { id: n.id, t: now };
+            showPanel(n.id);
+          })
+          .graphData(data);
+        // The drawn graph, for a script that drives the page (a test finds a node's position).
+        g3dEl.moGraph = g3d;
+        g3dEl.setAttribute("data-nodes", String(data.nodes.length));
+        g3dEl.setAttribute("data-links", String(data.links.length));
+      });
+    };
     var promptSet = function () {
       var s = {};
       D.nodes.forEach(function (n) { if (n.kind === "prompt" || n.kind === "template") s[n.id] = 1; });
@@ -193,6 +262,23 @@
         if (!ids[e.s] || !ids[e.t] || (!showExt && e.k === "extends")) return;
         els.push({ data: { id: "e" + i, source: e.s, target: e.t, label: e.v || e.k, ext: e.k === "extends" ? 1 : 0, faded: inSlice && !(inSlice[e.s] && inSlice[e.t]) ? 1 : 0 } });
       });
+      var three = dimSel !== null && dimSel.value === "3d";
+      cyEl.hidden = three;
+      if (g3dEl) g3dEl.hidden = !three;
+      var qs3 = new URLSearchParams(query());
+      if (three) qs3.set("view", "3d"); else qs3.delete("view");
+      if (three) {
+        if (cy) { cy.destroy(); cy = null; }
+        draw3d(nodes, D.edges.filter(function (e) { return ids[e.s] && ids[e.t] && (showExt || e.k !== "extends"); }), inSlice, mode);
+        var sliceReq3 = slice.indexOf("requirement:") === 0 ? reqById[slice.slice("requirement:".length)] : null;
+        if (sliceReq3) $("#panel").innerHTML = slicePanel(sliceReq3, D.slices[slice] || []);
+        if (focus && byId[focus]) { showPanel(focus); focus = null; }
+        if (slice) qs3.set("slice", slice); else qs3.delete("slice");
+        qs3.set("colour", mode);
+        setQuery("?" + qs3.toString());
+        return;
+      }
+      drop3d();
       seedGrid(els);
       var pan = cy && !relayout ? { pos: {} } : null;
       if (pan) cy.nodes().forEach(function (n) { pan.pos[n.id()] = n.position(); });
@@ -207,13 +293,17 @@
       var sliceReq = slice.indexOf("requirement:") === 0 ? reqById[slice.slice("requirement:".length)] : null;
       if (sliceReq) $("#panel").innerHTML = slicePanel(sliceReq, D.slices[slice] || []);
       if (focus && byId[focus] && cy.getElementById(focus).length) { cy.getElementById(focus).select(); showPanel(focus); focus = null; }
-      var qs = new URLSearchParams(query());
+      var qs = qs3;
       if (slice) qs.set("slice", slice); else qs.delete("slice");
       qs.set("colour", mode);
       setQuery("?" + qs.toString());
     };
     ["#slice", "#colour", "#hideOut", "#showValues", "#showExt"].forEach(function (s) { $(s).onchange = function () { build(false); }; });
-    $("#relayout").onclick = function () { if (cy) cy.layout(Object.assign({}, COSE, { randomize: true })).run(); };
+    if (dimSel) dimSel.onchange = function () { build(true); };
+    $("#relayout").onclick = function () {
+      if (cy) cy.layout(Object.assign({}, COSE, { randomize: true })).run();
+      if (g3d) g3d.d3ReheatSimulation();
+    };
     redraw.push(function () { build(false); });
     build(true);
   }

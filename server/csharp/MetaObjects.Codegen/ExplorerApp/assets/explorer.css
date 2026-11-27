@@ -158,7 +158,8 @@ details > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 
 /* ── Graphs ─────────────────────────────────────────────────────────────── */
 .graph { width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
-#cy { height: 640px; } #cymini { height: 260px; } #cytrace { height: 680px; }
+#cy, #g3d { height: 640px; } #cymini { height: 260px; } #cytrace { height: 680px; }
+#g3d { overflow: hidden; position: relative; } .graph[hidden] { display: none; }
 .panel h3 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .maplegend { margin-top: 8px; }
 .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
@@ -221,7 +222,7 @@ footer { color: var(--muted); font-size: 12px; padding: 24px 20px; text-align: c
   .tile .n { font-size: 22px; }
   .cap { grid-template-columns: minmax(0, 1fr); }
   .apis { grid-template-columns: minmax(0, 1fr); }
-  #cy { height: 440px; } #cytrace { height: 520px; }
+  #cy, #g3d { height: 440px; } #cytrace { height: 520px; }
   .mx { max-height: none; }
   /* A wide table scrolls inside its own box, never the page. */
   main table { display: block; max-width: 100%; overflow-x: auto; }
@@ -230,3 +231,8 @@ footer { color: var(--muted); font-size: 12px; padding: 24px 20px; text-align: c
   .tree ul { padding-left: 12px; margin-left: 4px; }
 }
 @media print { header.top, #search, #theme, .toolbar { display: none; } .card { box-shadow: none; } }
+
+/* ── The app following a running application (`index.html?source=<url>`) ── */
+.live-source { position: fixed; right: 12px; bottom: 12px; z-index: 20; max-width: min(520px, calc(100vw - 24px)); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-lift); padding: 6px 10px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.live-source b { color: var(--live); font-weight: 600; }
+.live-source.down b { color: var(--bad); }

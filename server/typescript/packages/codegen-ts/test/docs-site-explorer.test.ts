@@ -71,7 +71,7 @@ describe("docsSiteFile() builds the model explorer", () => {
     await runGen({ config: config([entityFile(), docsSiteFile()]), metadata: root, projectRoot: tmp, sourceRoots: [sources] });
     const site = join(tmp, "docs", "site");
     expect(readFileSync(join(site, "index.html"), "utf8")).toContain('<script src="assets/explorer-app.js"></script>');
-    for (const f of ["assets/explorer-app.js", "assets/cytoscape.min.js", "explorer-model.js", "explorer-stamp.js", "explorer.json"]) expect(existsSync(join(site, f))).toBe(true);
+    for (const f of ["assets/explorer-app.js", "assets/cytoscape.min.js", "assets/3d-force-graph.min.js", "explorer-model.js", "explorer-stamp.js", "explorer.json"]) expect(existsSync(join(site, f))).toBe(true);
     expect(existsSync(join(site, "api.html"))).toBe(false);
   });
 

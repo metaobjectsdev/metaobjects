@@ -12,6 +12,7 @@
 //   assets/explorer-app.js          the app: the page code, the templates and the router
 //   assets/explorer.css, explorer.js the theme (`meta eject docs-site` copies them)
 //   assets/cytoscape.min.js         the graph library (MIT), so the graphs draw offline
+//   assets/3d-force-graph.min.js    the map's 3D mode (MIT, bundles three.js), loaded on demand
 //   explorer-model.js               the docs view, the prompt texts, the title and any owned
 //                                   templates, as one script the shell loads
 //   explorer-stamp.js               the model file's hash, which the app polls
@@ -34,7 +35,7 @@
 //   requirements/<pkg>/<dotted.path>.html                 S6
 //   matrix.html, trace.html, gaps.html, api.html, prompts.html, model/index.html, model/<pkg>/index.html
 //   assets/explorer.css, assets/explorer.js               the theme
-//   assets/cytoscape.min.js         unless `assetBase` names a mirror to load it from
+//   assets/cytoscape.min.js, assets/3d-force-graph.min.js   unless `assetBase` names a mirror
 //   assets/explorer-data.js         the graph and the search index the scripts read
 //   explorer.json                   the docs view itself, byte for byte
 //
@@ -49,9 +50,9 @@ import { serializeDocsView, type DocsView } from "@metaobjectsdev/metadata";
 import { TEMPLATE_ATTR_TEXT_REF } from "@metaobjectsdev/metadata/constants";
 import { checkLinks, checkLinksInMemory } from "../link-check.js";
 import { EXPLORER_APP_FILES, EXPLORER_ASSET_NAMES, EXPLORER_TEMPLATE_NAMES } from "../scaffold.js";
-import { CYTOSCAPE_ASSET, CYTOSCAPE_PATH, createExplorer } from "./core.js";
+import { CYTOSCAPE_ASSET, CYTOSCAPE_PATH, GRAPH3D_ASSET, GRAPH3D_PATH, createExplorer } from "./core.js";
 
-export { EXPLORER_APP_FILES, EXPLORER_ASSET_NAMES, EXPLORER_TEMPLATE_NAMES, CYTOSCAPE_PATH };
+export { EXPLORER_APP_FILES, EXPLORER_ASSET_NAMES, EXPLORER_TEMPLATE_NAMES, CYTOSCAPE_PATH, GRAPH3D_PATH };
 
 /** The two ways the explorer is written. */
 export const EXPLORER_OUTPUT_APP = "app";
@@ -78,9 +79,10 @@ export interface ExplorerSiteOptions {
   /** Override dirs: a file of the same basename there wins over the bundled one. */
   templatesDir?: string;
   assetsDir?: string;
-  /** Static output only: where Cytoscape is loaded from, as a CDN-style base
-   *  (`${assetBase}/cytoscape@3.30.2/dist/cytoscape.min.js`). Default: the copy the site ships
-   *  in `assets/`. The app always uses its own copy. */
+  /** Static output only: where Cytoscape and the map's 3D library are loaded from, as a
+   *  CDN-style base (`${assetBase}/cytoscape@3.30.2/dist/cytoscape.min.js`,
+   *  `${assetBase}/3d-force-graph@1.77.0/dist/3d-force-graph.min.js`). Default: the copies the
+   *  site ships in `assets/`. The app always uses its own copies. */
   assetBase?: string;
 }
 
@@ -150,6 +152,7 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
     ...(opts.stamp !== undefined && { stamp: opts.stamp }),
     assetBase: assetBase ?? "",
     cytoscapeSrc: (relRoot) => (assetBase !== undefined ? `${assetBase}/${CYTOSCAPE_PATH}` : `${relRoot}assets/${CYTOSCAPE_ASSET}`),
+    graph3dSrc: (relRoot) => (assetBase !== undefined ? `${assetBase}/${GRAPH3D_PATH}` : `${relRoot}assets/${GRAPH3D_ASSET}`),
   });
   const pages = [...core.pages.keys()];
   const theme = (): void => {
@@ -159,7 +162,9 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
   if (output === EXPLORER_OUTPUT_STATIC) {
     for (const [href, draw] of core.pages) write(href, draw());
     theme();
-    if (assetBase === undefined) write(`assets/${CYTOSCAPE_ASSET}`, readFileSync(join(BUNDLED_APP, "assets", CYTOSCAPE_ASSET), "utf8"));
+    if (assetBase === undefined) {
+      for (const lib of [CYTOSCAPE_ASSET, GRAPH3D_ASSET]) write(`assets/${lib}`, readFileSync(join(BUNDLED_APP, "assets", lib), "utf8"));
+    }
     write("assets/explorer-data.js", `window.MO_EXPLORER = ${JSON.stringify(core.graphData())};\n`);
     write(EXPLORER_VIEW_FILE, serializeDocsView(opts.view));
     const dangling = checkLinks(opts.outDir, pages);

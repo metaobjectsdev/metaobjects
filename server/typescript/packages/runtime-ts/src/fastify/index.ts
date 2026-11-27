@@ -323,7 +323,10 @@ export { parseId } from "../drizzle-fastify/util.js";
 // ---------------------------------------------------------------------------
 
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson } from "../meta-endpoint.js";
+import {
+  META_ROUTE_PATH, META_CONTENT_TYPE, metaJson,
+  META_DOCS_ROUTE_PATH, metaDocsJson, metaDocsEtag, metaDocsHeaders, etagMatches, type MetaDocsOptions,
+} from "../meta-endpoint.js";
 
 export interface MetaRouteOptions {
   fastify: FastifyInstance;
@@ -355,5 +358,43 @@ export function mountMetaRoute(opts: MetaRouteOptions): void {
       .code(200)
       .header("content-type", META_CONTENT_TYPE)
       .send(metaJson(opts.root));
+  });
+}
+
+export interface MetaDocsRouteOptions extends MetaDocsOptions {
+  fastify: FastifyInstance;
+  /** The loaded model root. */
+  root: MetaData;
+  /** Mounted under this prefix; defaults to "" (the bare `/_meta/docs`). */
+  prefix?: string;
+  /** Sent as `Access-Control-Allow-Origin`, so the model explorer app can read the route
+   *  from another origin: `"null"` or `"*"` for the app opened from `file://`, or the origin
+   *  that serves it. Omit it (the default) and the route is same-origin only. */
+  allowOrigin?: string;
+}
+
+/**
+ * Mount `GET {prefix}/_meta/docs`, serving the loaded model's docs view, which the model
+ * explorer app reads and follows (`index.html?source=<this URL>`).
+ *
+ * Opt-in, and guarded the same way as {@link mountMetaRoute}: it publishes the same shape of
+ * the model (plus the requirements that claim it), never row data.
+ *
+ * The view is built on the first read and kept, since the model is immutable after load. Each
+ * response carries an ETag, and a matching `If-None-Match` is answered `304`, so a poller pays
+ * for the body only when the application has restarted on a changed model.
+ */
+export function mountMetaDocsRoute(opts: MetaDocsRouteOptions): void {
+  const path = `${opts.prefix ?? ""}${META_DOCS_ROUTE_PATH}`;
+  let cached: { body: string; etag: string } | undefined;
+  opts.fastify.get(path, withContractErrorHandler(undefined), async (req, reply) => {
+    if (cached === undefined) {
+      const body = metaDocsJson(opts.root, opts);
+      cached = { body, etag: metaDocsEtag(body) };
+    }
+    reply.headers(metaDocsHeaders(cached.etag, opts.allowOrigin));
+    const inm = req.headers["if-none-match"];
+    if (etagMatches(Array.isArray(inm) ? inm.join(",") : inm, cached.etag)) return reply.code(304).send();
+    return reply.code(200).send(cached.body);
   });
 }

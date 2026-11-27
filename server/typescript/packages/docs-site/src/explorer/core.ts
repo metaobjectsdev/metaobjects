@@ -37,6 +37,13 @@ export const CYTOSCAPE_PATH = "cytoscape@3.30.2/dist/cytoscape.min.js";
 /** The file name the app and the static export ship Cytoscape under, in `assets/`. */
 export const CYTOSCAPE_ASSET = "cytoscape.min.js";
 
+/** The library the map's 3D mode loads, under a CDN-style base (MIT; it bundles three.js). */
+export const GRAPH3D_PATH = "3d-force-graph@1.77.0/dist/3d-force-graph.min.js";
+
+/** The file name the app and the static export ship the 3D library under, in `assets/`. The map
+ *  loads it only when a reader switches to 3D, so no other page pays for its size. */
+export const GRAPH3D_ASSET = "3d-force-graph.min.js";
+
 interface NavItem {
   key: string;
   label: string;
@@ -67,6 +74,9 @@ export interface ExplorerCoreOptions {
   /** Where a graph page loads Cytoscape from, relative to the page or absolute. A function of
    *  the page's root-relative prefix (`relRoot`), since a relative path differs per page. */
   cytoscapeSrc: (relRoot: string) => string;
+  /** Where the map loads its 3D library from when a reader switches to 3D, relative to the page
+   *  or absolute; a function of `relRoot` like `cytoscapeSrc`. */
+  graph3dSrc: (relRoot: string) => string;
   /** Kept on every page's payload for an owned template that reads it. */
   assetBase: string;
 }
@@ -115,6 +125,7 @@ export function createExplorer(opts: ExplorerCoreOptions): ExplorerCore {
         relRoot,
         assetBase: opts.assetBase,
         cytoscapeSrc: opts.cytoscapeSrc(relRoot),
+        graph3dSrc: opts.graph3dSrc(relRoot),
         needsGraph: graph,
         pageKey: nav,
         nav: NAV.map((n) => ({ label: n.label, href: relHref(href, n.href), on: n.key === nav })),

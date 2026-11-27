@@ -19,7 +19,8 @@ export {
   EXPLORER_STAMP_FILE,
   EXPLORER_VIEW_FILE,
   CYTOSCAPE_PATH,
+  GRAPH3D_PATH,
 } from "./explorer/site.js";
 export type { ExplorerSiteOptions, ExplorerSiteResult, ExplorerOutput, ExplorerModelInput } from "./explorer/site.js";
-export { createExplorer, CYTOSCAPE_ASSET } from "./explorer/core.js";
+export { createExplorer, CYTOSCAPE_ASSET, GRAPH3D_ASSET } from "./explorer/core.js";
 export type { ExplorerCore, ExplorerCoreOptions } from "./explorer/core.js";

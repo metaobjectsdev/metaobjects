@@ -52,6 +52,7 @@ export const EXPLORER_APP_FILES: readonly string[] = [
   "assets/explorer.css",
   "assets/explorer.js",
   "assets/cytoscape.min.js",
+  "assets/3d-force-graph.min.js",
 ];
 
 /** Every template `meta eject docs-site` copies: both sites' themes, so either can be owned. */

@@ -40,10 +40,17 @@ can check them), `assetBase` (see below) and `target`.
 
 ## Offline use: `assetBase`
 
-The explorer needs no network access: it ships its one third-party file, Cytoscape.js
-3.30.2 (MIT), as `assets/cytoscape.min.js`. A static explorer given an `assetBase` loads it
-from `${assetBase}/cytoscape@3.30.2/dist/cytoscape.min.js` instead and ships no copy. Without
-it every page still renders and the graphs show a notice. The rest of this section is about
+The explorer needs no network access: it ships its two third-party files, Cytoscape.js
+3.30.2 (MIT) as `assets/cytoscape.min.js`, and 3d-force-graph 1.77.0 (MIT, bundling three.js)
+as `assets/3d-force-graph.min.js`, which the map loads only when a reader switches it to 3D. A
+static explorer given an `assetBase` loads them from
+`${assetBase}/cytoscape@3.30.2/dist/cytoscape.min.js` and
+`${assetBase}/3d-force-graph@1.77.0/dist/3d-force-graph.min.js` instead and ships no copies.
+Without them every page still renders and the graphs show a notice.
+
+The app can also follow a running application: open it as `index.html?source=<url>`, where the
+URL is the application's `GET {apiPrefix}/_meta/docs` route (`mountMetaDocsRoute` in
+`@metaobjectsdev/runtime-ts`). See `docs/features/explorer-site.md`. The rest of this section is about
 the classic site.
 
 The classic page chrome loads five third-party files from jsDelivr (`https://cdn.jsdelivr.net/npm`):
