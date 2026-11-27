@@ -36,16 +36,6 @@
       <artifactId>metaobjects-metadata-ktx</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- kotlin-reflect at RUNTIME scope, as KotlinPoet supplied it to this module and every
-         consumer of it before KotlinPoet left the build (1.3.0). Declared directly so the
-         classpath a Maven build of generated code runs on does not change with that removal,
-         and pinned to this module's Kotlin so it matches kotlin-stdlib. -->
-    <dependency>
-      <groupId>org.jetbrains.kotlin</groupId>
-      <artifactId>kotlin-reflect</artifactId>
-      <version>${kotlin.version}</version>
-      <scope>runtime</scope>
-    </dependency>
 
     <!-- Shared JVM render engine. KotlinRenderHelperGenerator uses Verify/FilesystemProvider/
          PayloadField at BUILD time (the mustache↔VO drift gate) and emits Kotlin that calls
@@ -128,6 +118,14 @@
       <groupId>com.fasterxml.jackson.module</groupId>
       <artifactId>jackson-module-kotlin</artifactId>
       <version>2.18.1</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- jackson-module-kotlin's reflection, pinned to this module's Kotlin so it matches kotlin-stdlib
+         instead of the older kotlin-reflect jackson-module-kotlin declares. -->
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-reflect</artifactId>
+      <version>${kotlin.version}</version>
       <scope>test</scope>
     </dependency>
     <!-- The generated typed-jsonb Exposed columns emit a shared `metaJsonbMapper` (MetaJsonbMapper.kt)

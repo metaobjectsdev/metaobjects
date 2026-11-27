@@ -409,16 +409,16 @@ class KotlinEntityGeneratorTest {
 
     /**
      * #388 — the builder's `requireNotNull` message must not be line-wrapped inside its string
-     * literal. The statement is handed to KotlinPoet as raw format-string text, and KotlinPoet
-     * wraps at column 100 on any plain space; it cannot see that the spaces in
-     * `"<name> is required"` are inside a literal, and a regular Kotlin string has no line
-     * continuation, so a break there emits source that does not parse.
+     * literal. The defect came from KotlinPoet: the statement was handed to it as raw
+     * format-string text, and KotlinPoet wrapped at column 100 on any plain space. It could not
+     * see that the spaces in `"<name> is required"` were inside a literal, and a regular Kotlin
+     * string has no line continuation, so a break there emitted source that did not parse.
      *
-     * Whether it breaks inside the literal depends on where column 100 lands, which is a function
-     * of the property name's LENGTH — so this sweeps a range rather than pinning one name. On the
-     * unfixed generator the window is roughly 20-23 characters; a name shorter than that never
-     * reaches the margin and a longer one breaks harmlessly BEFORE the literal, which is exactly
-     * why a single hand-picked name is not a reliable gate.
+     * The builder is now written by KotlinWriter, which breaks a statement only between the
+     * arguments of `KotlinWriter.call`, never inside one. This test guards that: no property name
+     * length may put a line break inside the message literal. It sweeps a range of lengths
+     * rather than pinning one name, because under KotlinPoet the failing window was roughly
+     * 20-23 characters, and a single hand-picked name is not a reliable gate.
      */
     @Test fun `no required property name length wraps the requireNotNull message mid-literal`() {
         for (n in 16..30) {

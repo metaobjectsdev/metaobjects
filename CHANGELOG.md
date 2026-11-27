@@ -302,7 +302,7 @@ there is described in full here. This list is where to start.
   `copy(nullable = …)`), and `toString()` spells a type fully qualified as KotlinPoet did, so code
   that reads a type as text behaves as before. A copy of any other Kotlin generator still
   compiles unchanged. A build that relied on getting KotlinPoet transitively through `codegen-kotlin`
-  declares it itself; `kotlin-reflect` is still on the runtime classpath, now declared directly.
+  declares it itself.
 - **Kotlin: a request body that cannot be read answers with an `issues` list.** The generated
   `MetaDecimalWire.kt` (one per generated package) maps the failure into the
   validation envelope every other 400 uses: `{"error": "validation", "issues": [{"code", "path",
