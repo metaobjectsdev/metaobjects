@@ -1341,8 +1341,7 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   for Pagefind, work at phone width, depend on the model alone (so `meta verify --codegen` holds
   them) and are link-checked. The graphs load Cytoscape.js from `assetBase`. `meta eject
   docs-site` now copies the explorer's `explorer-*.mustache` templates and `explorer.css` /
-  `explorer.js` beside the classic theme. `buildExplorer` takes an optional `routes` input, and
-  nodes carry their declaration `order`. Each `requirements.rows` entry in `meta verify
+  `explorer.js` beside the classic theme. Each `requirements.rows` entry in `meta verify
   --format json` now carries `node`: the entity's resolution key on a
   `WARN_REQUIREMENT_OBJECT_UNCLAIMED` row, `""` on every other row, and each finding in a
   `requirementLedger` row carries its `message`. See `docs/features/explorer-site.md`.
@@ -1458,13 +1457,34 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
     `{ "hash", "generatedBy", "sourceNode" }`. `EmittedFile.sourceNode` lets an owned generator set
     it, and `perEntity` sets it automatically. A file rendered from the whole model keeps the plain
     hash entry. The field is not called `generator`, because on the JVM that word claims ownership.
-  - `@metaobjectsdev/docs-site` exports `buildExplorer` and `serializeExplorer`. Together they build a
-    deterministic `explorer.json` from those three inputs. The file holds nodes, typed edges, the
-    requirement ledger, the generated files for each node, and derived slices for each package,
-    requirement subtree and prompt.
+  - `@metaobjectsdev/metadata` exports `buildDocsView` and `serializeDocsView`, which build the
+    **docs view**: one port-neutral document of the facts every documentation page reads, built
+    from the model the port has already loaded, with those inputs and the routes the run mounts
+    as optional additions. It holds every top-level node of any type with its effective
+    attributes, its members grouped by type (an inherited member names the node that declares
+    it), the references the loader resolved and their reverse, requirement claims and generated
+    files; the requirements flat, with depth, status, links and the roll-up of the statuses
+    below; packages, counts, the gate's advisories and derived slices for each package,
+    requirement subtree and prompt. Facts only, no HTML, with a boolean or a count wherever a
+    page must choose, so a Mustache template can render it. A provider's own vocabulary gets
+    its members and links with no docs code: the view reads the loader's resolution, never a
+    list of attribute names. `docsSiteFile()` writes it as the site's `explorer.json`.
 
-  Gated by the new `fixtures/explorer-conformance/` corpus. See `docs/features/explorer-data.md`.
-  No metamodel vocabulary changes, and `metamodelVersion` does not move.
+  Gated by the new `fixtures/explorer-conformance/` corpus (`shop`, and `crm` for vocabulary a
+  data-driven provider registers), which every port that builds the view is held to byte for
+  byte. See `docs/features/docs-view.md` and `docs/features/explorer-data.md`. No metamodel
+  vocabulary changes, and `metamodelVersion` does not move. **If you ran 1.3.0-rc.1 or rc.2:**
+  those candidates exported `buildExplorer`, `serializeExplorer` and the `ExplorerJson` types
+  from `@metaobjectsdev/docs-site` and wrote a `metaobjects-explorer/1` file built from
+  `meta export --effective`; all are gone. Build the view from the loaded model
+  (`buildDocsView({ root, verify, manifest, routes })`), pass it to `generateExplorerSite` as
+  `view`, and regenerate: `explorer.json` and the explorer pages change. Map edges are labelled
+  with the reference attribute (`objectRef`, `payloadRef`, `responseRef`, …) and, with each
+  page's "Referenced by", include every reference the loader resolves (`@from`, `@of`, `@via`,
+  `@through`, `@spine` too). An attribute links to a node only when the loader resolved it as a
+  reference, never because its text matches a name, and a map-valued attribute such as
+  `@filter` prints its keys sorted. A theme ejected from an rc needs no change.
+  Generated-output change — regenerate to pick it up; three-way merge preserves hand edits.
 - **`@flattenedColumnPrefix`: name a flattened value object's columns.** On a `field.object` with
   `@storage: "flattened"`, it replaces the default prefix (the field's column and `_`) verbatim;
   `""` keeps the members' own column names. It sits on the embedding field because one value
@@ -3011,7 +3031,7 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
   (`caseRow`) that a collection-name clash already took.
 - **The model explorer builds on a project with its own top-level vocabulary.** Two top-level
   nodes of different types sharing a package and a name (an entity `Lead` and a page `Lead`)
-  made `buildExplorer` throw `two nodes share the id`. The object now keeps the plain
+  made the explorer throw `two nodes share the id`. The object now keeps the plain
   `<package>::<name>` id and each other node adds its type, `acme::crm::Lead[page.list]`, as a
   nested sibling already did; a model with no such collision gets the same ids as before. A
   requirement whose id took a qualifier still takes its ledger row.

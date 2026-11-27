@@ -24,7 +24,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync, readdirSync
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { loadUris, TYPE_API, type MetaRoot } from "@metaobjectsdev/metadata";
+import { loadUris, TYPE_API, type DocsView, type MetaRoot } from "@metaobjectsdev/metadata";
 import { runGen, buildProjectionViews, type Generator, type MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
 import { composeCatalog } from "../../src/lib/catalog.js";
@@ -179,7 +179,8 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     const actual = await emit(withRules, [catalog[DOCS_SITE]!.factory()]);
     expect(expected["<threw>"]).toBeUndefined();
     // Every top-level node gets an explorer page, so the declared API (`Purchasing`) adds its
-    // own; no page the model already had goes away.
+    // own; no page the model already had goes away. The value objects its operations name in
+    // `@inputRef` / `@outputRef` are referenced by it, so their pages list it.
     const site = "src/generated/site/";
     expect(Object.keys(expected).filter((p) => !(p in actual))).toEqual([]);
     expect(Object.keys(actual).filter((p) => !(p in expected))).toEqual([`${site}model/acme/purchasing/Purchasing.html`]);
@@ -188,18 +189,31 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
       `${site}assets/explorer-data.js`,
       `${site}explorer.json`,
       `${site}index.html`,
+      `${site}model/acme/purchasing/DecisionInput.html`,
+      `${site}model/acme/purchasing/RequestSummary.html`,
       `${site}model/acme/purchasing/index.html`,
       `${site}model/index.html`,
     ]);
 
-    // The data payload: every line it had is still there, in order; every added line belongs to
-    // a new node.
+    // The data payload (the docs view): the API is the one new node; every node the model had
+    // keeps its members, references and claims, and gains a referrer only from the API.
     const data = `${site}explorer.json`;
+    const v0 = JSON.parse(expected[data]!) as DocsView;
+    const v1 = JSON.parse(actual[data]!) as DocsView;
+    const ids0 = new Set(v0.nodes.map((x) => x.id));
+    const api = v1.nodes.filter((x) => !ids0.has(x.id));
+    expect(api.map((x) => x.type)).toEqual([TYPE_API]);
+    const apiId = api[0]!.id;
+    expect(v1.requirements).toEqual(v0.requirements);
+    for (const n0 of v0.nodes) {
+      const n1 = v1.nodes.find((x) => x.id === n0.id)!;
+      const fresh = n1.referencedBy.filter((r) => !n0.referencedBy.some((q) => JSON.stringify(q) === JSON.stringify(r)));
+      expect({ node: n0.id, from: [...new Set(fresh.map((r) => r.from.id))] }).toEqual({ node: n0.id, from: fresh.length > 0 ? [apiId] : [] });
+      expect(n1.refs).toEqual(n0.refs);
+      expect(n1.claims).toEqual(n0.claims);
+    }
     const before = expected[data]!.split("\n");
     const after = actual[data]!.split("\n");
-    let kept = 0;
-    for (const line of after) if (line === before[kept]) kept++;
-    expect(kept).toBe(before.length);
     const beforeLines = new Set(before);
     const ids = after.filter((l) => !beforeLines.has(l) && l.includes(`"type": `)).map((l) => l.trim());
     expect([...new Set(ids)].sort()).toEqual(
@@ -216,8 +230,15 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
     ]);
     expect({ ...g1, search: undefined }).toEqual({ ...g0, search: undefined });
 
-    // The HTML pages that list the package's members name the API, and change nowhere else.
-    for (const page of [`${site}index.html`, `${site}model/index.html`, `${site}model/acme/purchasing/index.html`]) {
+    // The HTML pages that list the package's members, or what references a node, name the API,
+    // and change nowhere else.
+    for (const page of [
+      `${site}index.html`,
+      `${site}model/index.html`,
+      `${site}model/acme/purchasing/index.html`,
+      `${site}model/acme/purchasing/DecisionInput.html`,
+      `${site}model/acme/purchasing/RequestSummary.html`,
+    ]) {
       const b = new Set(expected[page]!.split("\n"));
       const changed = actual[page]!.split("\n").filter((l) => !b.has(l));
       // The page and the offending lines, so a failure names what moved.

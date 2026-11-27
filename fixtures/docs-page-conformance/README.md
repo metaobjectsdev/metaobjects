@@ -40,7 +40,7 @@ built over these rows, not a new extraction. A port checks its rows first (compa
 values), then its page data, then the bytes. The model-only page data follows from the rows
 and the model alone; the TypeScript runner proves it by rebuilding the page from
 `rows/schema.json` (`schemaInputFromRows`). `cli/test/docs-page-shapes.test.ts` holds the
-requirement rows equal to the explorer graph's (on `fixtures/explorer-conformance/shop/`) and
+requirement rows equal to the docs view's (on `fixtures/explorer-conformance/shop/`) and
 the schema rows to a subset of `meta schema`'s output.
 
 A page the case does not list is a page the port must NOT write: a model with no

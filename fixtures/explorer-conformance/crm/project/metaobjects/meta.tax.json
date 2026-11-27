@@ -1,0 +1,8 @@
+{
+  "metadata.root": {
+    "package": "acme::tax",
+    "children": [
+      { "capability.module": { "name": "tax", "@description": "Sales tax.", "@owner": "finance" } }
+    ]
+  }
+}

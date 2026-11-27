@@ -9,7 +9,7 @@
 // Nothing here colours a test result: the build does not read one.
 
 import { REQUIREMENT_ATTR_DISPOSITION } from "@metaobjectsdev/metadata";
-import { STATUSES, STATUS_GLYPH, type ReqEntry, type Rollup } from "./index-model.js";
+import { STATUSES, STATUS_GLYPH, type ReqEntry, type Rollup } from "./view-index.js";
 
 export function esc(s: unknown): string {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -41,7 +41,7 @@ export const GATE_SOURCE = "gate";
 /** A gate verdict as an outlined badge: `error` or `warn`, with the finding codes. Authoring
  *  advisories never reach it. */
 export function verdictBadge(r: ReqEntry): string {
-  const gate = (r.row?.diagnostics ?? []).filter((d) => d.source === GATE_SOURCE);
+  const gate = r.req.diagnostics.filter((d) => d.source === GATE_SOURCE);
   if (gate.length === 0) return "";
   const worst = gate.some((d) => d.severity === "error") ? "error" : "warn";
   const codes = gate.map((d) => d.code).join(", ");

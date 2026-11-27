@@ -1,0 +1,62 @@
+{
+  "requirementLedger": [
+    {
+      "path": "Crm",
+      "package": "acme::crm",
+      "qualifiedPath": "acme::crm::Crm",
+      "subType": "functional",
+      "level": 1,
+      "status": "live",
+      "digest": "f347de6f80a855b33009120f1a497ab46df959a527ad969f3e8caded5155fa72",
+      "implementedBy": [],
+      "diagnostics": [],
+      "verdict": "clean"
+    },
+    {
+      "path": "Crm.Leads",
+      "package": "acme::crm",
+      "qualifiedPath": "acme::crm::Crm.Leads",
+      "subType": "functional",
+      "level": 4,
+      "status": "live",
+      "digest": "29446ca9b724321faf53f1e69602a10043a0c99b26dc4ed41e61d4f661e5359b",
+      "implementedBy": [
+        {
+          "ref": "Lead",
+          "resolves": true,
+          "target": "acme::crm::Lead"
+        },
+        {
+          "ref": "Account",
+          "resolves": true,
+          "target": "acme::crm::Account"
+        },
+        {
+          "ref": "acme::tax::tax",
+          "resolves": true,
+          "target": "acme::tax::tax"
+        }
+      ],
+      "diagnostics": [],
+      "verdict": "clean"
+    }
+  ],
+  "requirementCounts": {
+    "total": 2,
+    "functional": 2,
+    "architectural": 0,
+    "byStatus": [
+      {
+        "status": "live",
+        "count": 2
+      }
+    ],
+    "undecided": 0,
+    "entitiesClaimed": 2,
+    "entitiesTotal": 2,
+    "metadataFiles": 2
+  },
+  "requirements": {
+    "rows": []
+  }
+}

@@ -23,14 +23,8 @@
 import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { canonicalSerializeEffective } from "@metaobjectsdev/metadata";
-import {
-  buildExplorer,
-  generateExplorerSite,
-  generateSite,
-  readPromptTexts,
-  type ExplorerRoute,
-} from "@metaobjectsdev/docs-site";
+import { buildDocsView } from "@metaobjectsdev/metadata";
+import { generateExplorerSite, generateSite, readPromptTexts } from "@metaobjectsdev/docs-site";
 import type { EmittedFile, GenContext, Generator, GeneratorFactory } from "../generator.js";
 import { DOCS_TARGET_NAME } from "../docs-run.js";
 import { buildApiModelForRun } from "./api-model.js";
@@ -162,8 +156,15 @@ async function buildInScratch(prefix: string, build: (outDir: string) => string[
 }
 
 /** The routes the run mounts, as the api reference states them (`METHOD /path` per symbol). */
-function runRoutes(ctx: GenContext): ExplorerRoute[] {
-  const routes: ExplorerRoute[] = [];
+/** A route the run mounts, keyed by its node's resolution key: the docs view's `routes` input. */
+interface RunRoute {
+  node: string;
+  method: string;
+  path: string;
+}
+
+function runRoutes(ctx: GenContext): RunRoute[] {
+  const routes: RunRoute[] = [];
   for (const unit of buildApiModelForRun(ctx).units) {
     const node = unit.package !== undefined && unit.package !== "" ? `${unit.package}::${unit.node}` : unit.node;
     for (const sym of unit.symbols) {
@@ -194,13 +195,15 @@ async function explorerSite(ctx: GenContext, project: string, prefix: string, op
   // No route at all means this run recorded none (no routes generator, or REST off), which the
   // site says as such; an empty list would claim the run mounted nothing.
   const routes = runRoutes(ctx);
-  const explorer = buildExplorer({
-    model: JSON.parse(canonicalSerializeEffective(ctx.loadedRoot)) as unknown,
+  // The docs view is built from the model this run already loaded: ids, pages, inheritance and
+  // references are the loader's, never re-derived from a serialized copy.
+  const view = buildDocsView({
+    root: ctx.loadedRoot,
     ...(ledger !== undefined && { verify: ledger }),
     manifest,
     ...(routes.length > 0 && { routes }),
   });
-  const texts = readPromptTexts(explorer, promptSourceDirs(ctx, project, opts, ctx.sourceRoots ?? []));
+  const texts = readPromptTexts(view, promptSourceDirs(ctx, project, opts, ctx.sourceRoots ?? []));
   const owned = ownedSiteDirs(project);
   if (owned.templatesDir !== undefined && !existsSync(join(owned.templatesDir, EXPLORER_MARKER_TEMPLATE))) {
     ctx.warn(
@@ -210,7 +213,7 @@ async function explorerSite(ctx: GenContext, project: string, prefix: string, op
     );
   }
   return buildInScratch(prefix, (outDir) => generateExplorerSite({
-    explorer,
+    view,
     outDir,
     title: opts?.title ?? (basename(project) || "Metadata"),
     stamp: opts?.stamp ?? "",

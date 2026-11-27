@@ -2,7 +2,7 @@
 
 `docsSiteFile()` builds a static site that shows one project: what the software does, how the
 model is put together, and whether each requirement claim holds. Every page is drawn from one
-data file, [`explorer.json`](explorer-data.md), which the generator builds during the same
+data file, [`explorer.json`](docs-view.md) (the docs view), which the generator builds during the same
 `meta gen` run. A page never works a model fact out for itself.
 
 The explorer is the default site. The earlier site (package navigation, a page per object, the
@@ -87,7 +87,7 @@ docsSiteFile({ assetBase: "/vendor/npm" })
 | Model map | `map.html` | Every top-level node and the edges between them. Open a slice (a package, a requirement subtree, a prompt), colour by kind, API, claims, capability or status, and hide or show value objects and nodes outside the slice. The URL keeps the choice (`?slice=&colour=&focus=`) |
 | Object | `model/<package>/<Name>.html` | Why it exists (the requirements that claim it), its fields, inherited ones marked, relationships, indexes, a one-hop mini-map, its routes and the files generated from it. A projection shows its read model and each field's origin; a report shows where its rows come from, its dimensions and its measures |
 | Prompt | `model/<package>/<Name>.html` | The payload and reply types, the template text with each variable marked, and which payload fields the text never uses |
-| Any other node | `model/<package>/<Name>.html` | A generic page for every other top-level type, including vocabulary an application registers itself (a `capability.module`, a `page.list`): its attributes, each one linked when it names a node, its members, the requirements that claim it, what references it and the files generated from it |
+| Any other node | `model/<package>/<Name>.html` | A generic page for every other top-level type, including vocabulary an application registers itself (a `capability.module`, a `page.list`): its attributes, each one linked when the loader resolves it as a reference, its members, the requirements that claim it, what references it and the files generated from it |
 | Features, qualities | `requirements/features.html`, `requirements/qualities.html` | The requirement tree, one card per entry |
 | Requirement | `requirements/<package>/<id>.html` | Its status, what it claims, the entries below it with their roll-up, what the gate found, its authoring advisories apart, and links to its slice of the map and its trace |
 | Matrix | `matrix.html` | Requirements against stored entities and prompts. An empty column is a node nothing claims |
@@ -98,7 +98,7 @@ docsSiteFile({ assetBase: "/vendor/npm" })
 An object named `index` gets `index.node.html`, so it never takes its package's index page,
 and a model with no package puts its pages under `model/-root/`. A node whose id carries its
 type (because a node of another type has the same name in its package, see
-[explorer-data.md](explorer-data.md)) carries it in its file name too: the page `Lead` beside
+[docs-view.md](docs-view.md#ids)) carries it in its file name too: the page `Lead` beside
 the entity `Lead` is `Lead.page-list.html`.
 
 Every page works at phone width: the navigation scrolls, the tiles stack in two columns, and
@@ -144,20 +144,22 @@ one.
 ## As a library
 
 ```ts
-import { generateExplorerSite, readPromptTexts, type ExplorerJson } from "@metaobjectsdev/docs-site";
+import { MetaDataLoader, buildDocsView } from "@metaobjectsdev/metadata";
+import { generateExplorerSite, readPromptTexts } from "@metaobjectsdev/docs-site";
 
-const explorer: ExplorerJson = JSON.parse(readFileSync("explorer.json", "utf8"));
+const { root } = await MetaDataLoader.fromDirectory("metaobjects", { strict: true });
+const view = buildDocsView({ root });
 generateExplorerSite({
-  explorer,
+  view,
   outDir: "site",
   title: "Shop",
-  texts: readPromptTexts(explorer, ["prompts"]),
+  texts: readPromptTexts(view, ["prompts"]),
 });
 ```
 
 It takes `templatesDir`, `assetsDir`, `assetBase` and `stamp` as well, and throws on a
-dangling link. Build `explorer.json` itself with `buildExplorer`
-([explorer-data.md](explorer-data.md)).
+dangling link. `buildDocsView` also takes the verify payload, the manifest and the routes
+([explorer-data.md](explorer-data.md)); the view's shape is [docs-view.md](docs-view.md).
 
 ## Not built yet
 
@@ -170,11 +172,12 @@ dangling link. Build `explorer.json` itself with `buildExplorer`
 
 ## Verified by
 
-- `server/typescript/packages/docs-site/test/explorer-site.test.ts`: the shop fixture
-  (`fixtures/explorer-conformance/shop/`) and the fitness model
+- `server/typescript/packages/docs-site/test/explorer-site.test.ts`: the shop and crm cases
+  (`fixtures/explorer-conformance/`) and the fitness model
   (`fixtures/persistence-conformance/canonical/meta.fitness.json`). Every screen is written,
   links resolve, two builds match byte for byte, status chips and verdict outlines are
-  distinct, and projection and report pages show their read model.
+  distinct, projection and report pages show their read model, and a provider's own vocabulary
+  gets its pages and links.
 - `server/typescript/packages/codegen-ts/test/docs-site-explorer.test.ts`: the generator sees
   the files and routes of generators listed after it, and the ledger is asked for once.
 - `server/typescript/packages/cli/test/explorer-site-ledger.test.ts`: the requirement views read

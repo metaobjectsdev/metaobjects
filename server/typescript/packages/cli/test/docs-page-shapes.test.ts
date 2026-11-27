@@ -5,18 +5,17 @@
 // those rows rather than pinning a second shape for the same facts. This file holds that to
 // the two sources the site actually reads:
 //
-// - the requirement rows are what the explorer graph (`explorer.json`: the requirement nodes
-//   and the verify ledger) already holds, field for field;
+// - the requirement rows are what the docs view (`explorer.json`, `buildDocsView`) already
+//   holds, field for field;
 // - the schema rows are a literal subset of `meta schema --as json` (the `serializeSnapshot`
 //   format), the storage lens's input.
 
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { InMemoryStringSource, MetaDataLoader } from "@metaobjectsdev/metadata";
+import { InMemoryStringSource, MetaDataLoader, buildDocsView, type DocsView } from "@metaobjectsdev/metadata";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { requirementRows, type RequirementRow, type SchemaRows } from "@metaobjectsdev/codegen-ts";
-import { buildExplorer, type ExplorerJson } from "@metaobjectsdev/docs-site";
 import { resolveSchemaConventions, serializeSnapshot } from "@metaobjectsdev/migrate-ts";
 import { buildAgentSchemaInput } from "../src/lib/agent-schema.js";
 
@@ -41,33 +40,23 @@ function metaFiles(dir: string): { id: string; text: string }[] {
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v !== "" ? v : undefined);
 
-/** The requirement rows as the docs site would read them off the explorer graph. */
-function rowsFromGraph(doc: ExplorerJson): RequirementRow[] {
-  const nodes = new Map(doc.nodes.map((n) => [n.id, n]));
-  return (doc.ledger?.rows ?? []).map((row) => {
-    const attrs = nodes.get(row.node)?.attrs ?? {};
-    const trackedBy = attrs["trackedBy"];
-    const concerns = row.implementedBy
-      .filter((l) => l.resolves && l.target !== undefined)
-      .map((l) => nodes.get(l.target as string))
-      .filter((n) => n !== undefined)
-      .map((n) => `${n.type}.${n.subType}`);
-    return {
-      path: row.path,
-      depth: row.path.split(".").length - 1,
-      title: str(attrs["title"]),
-      subType: row.subType,
-      level: row.level,
-      status: row.status,
-      disposition: row.disposition,
-      trackedBy: Array.isArray(trackedBy) ? (trackedBy as string[]) : [],
-      statement: str(attrs["statement"]),
-      counterexample: str(attrs["counterexample"]),
-      description: str(attrs["description"]),
-      implementedBy: row.implementedBy.map((l) => l.ref),
-      claimedConcerns: [...new Set(concerns)],
-    };
-  });
+/** The requirement rows as the docs site would read them off the docs view. */
+function rowsFromView(view: DocsView): RequirementRow[] {
+  return view.requirements.map((r) => ({
+    path: r.address,
+    depth: r.depth,
+    title: str(r.title),
+    subType: r.subType,
+    level: r.level ?? undefined,
+    status: r.status,
+    disposition: str(r.disposition),
+    trackedBy: r.trackedBy,
+    statement: str(r.statement),
+    counterexample: str(r.counterexample),
+    description: str(r.description),
+    implementedBy: r.implementedBy.map((l) => l.ref),
+    claimedConcerns: [...new Set(r.implementedBy.filter((l) => l.resolves).map((l) => l.target.kind))],
+  }));
 }
 
 /** True when every key of `part` is in `whole` with an equal value (arrays: element-wise). */
@@ -86,16 +75,13 @@ function isSubset(part: unknown, whole: unknown): boolean {
 const byName = <T extends { name: string }>(list: readonly T[]): Map<string, T> => new Map(list.map((x) => [x.name, x]));
 
 describe("docs page rows are the docs site's rows", () => {
-  test("requirement rows equal what the explorer graph holds (explorer-conformance/shop)", async () => {
+  test("requirement rows equal what the docs view holds (explorer-conformance/shop)", async () => {
     const root = await load(metaFiles(join(SHOP, "project/metaobjects")));
-    const doc = buildExplorer({
-      model: JSON.parse(readFileSync(join(SHOP, "effective.json"), "utf8")),
-      verify: JSON.parse(readFileSync(join(SHOP, "verify.json"), "utf8")),
-    });
+    const view = buildDocsView({ root, verify: JSON.parse(readFileSync(join(SHOP, "verify.json"), "utf8")) as unknown });
     const fromModel = requirementRows(root);
     expect(fromModel.length).toBeGreaterThan(0);
     // JSON round trip: absent keys and `undefined` values compare the same, as they do on disk.
-    expect(JSON.parse(JSON.stringify(rowsFromGraph(doc)))).toEqual(JSON.parse(JSON.stringify(fromModel)));
+    expect(JSON.parse(JSON.stringify(rowsFromView(view)))).toEqual(JSON.parse(JSON.stringify(fromModel)));
   });
 
   const cases = readdirSync(CORPUS, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();

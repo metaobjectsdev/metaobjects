@@ -75,10 +75,12 @@ packaged copy is what the option fills.
 The explorer:
 
 ```ts
-import { buildExplorer, generateExplorerSite, readPromptTexts } from "@metaobjectsdev/docs-site";
+import { buildDocsView } from "@metaobjectsdev/metadata";
+import { generateExplorerSite, readPromptTexts } from "@metaobjectsdev/docs-site";
 
-const explorer = buildExplorer({ model, verify, manifest, routes });
-generateExplorerSite({ explorer, outDir: "docs/site", title: "My Model", texts: readPromptTexts(explorer, ["prompts"]) });
+// root: the loaded model. verify, manifest and routes are optional (docs/features/docs-view.md).
+const view = buildDocsView({ root, verify, manifest, routes });
+generateExplorerSite({ view, outDir: "docs/site", title: "My Model", texts: readPromptTexts(view, ["prompts"]) });
 ```
 
 The classic site:

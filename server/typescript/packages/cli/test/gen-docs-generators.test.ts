@@ -254,8 +254,8 @@ describe("meta gen writes the documentation the list declares", () => {
     expect(index).toContain("by the metaobjects <code>docs-site</code> generator. Static");
     expect(existsSync(join(site, "model", "app", "Talk.html"))).toBe(true);
     // It runs after the entity generator, so the files that run wrote are traced to their node.
-    const explorer = JSON.parse(readFileSync(join(site, "explorer.json"), "utf8")) as { generated?: { node: string; files: { path: string }[] }[] };
-    expect(explorer.generated?.find((g) => g.node === "app::Talk")?.files.map((f) => f.path)).toEqual(
+    const view = JSON.parse(readFileSync(join(site, "explorer.json"), "utf8")) as { nodes: { id: string; files: { paths: string[] }[] }[] };
+    expect(view.nodes.find((x) => x.id === "app::Talk")?.files.flatMap((g) => g.paths)).toEqual(
       expect.arrayContaining([expect.stringContaining("Talk.ts")]),
     );
 

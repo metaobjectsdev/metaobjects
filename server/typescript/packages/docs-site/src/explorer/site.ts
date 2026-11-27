@@ -1,6 +1,7 @@
 // generateExplorerSite(): the model explorer as a static site (design report §3.3, phase P1).
 //
-// It reads one `explorer.json` (and, for the prompt pages, the prompt texts), renders a page per
+// It reads one docs view (`buildDocsView` in `@metaobjectsdev/metadata`, and, for the prompt
+// pages, the prompt texts), renders a page per
 // screen through the bundled Mustache templates, and writes:
 //
 //   index.html                      S1  what the project does
@@ -15,7 +16,7 @@
 //   matrix.html, trace.html, gaps.html, api.html, prompts.html, model/index.html, model/<pkg>/index.html
 //   assets/explorer.css, assets/explorer.js               the theme (`meta eject docs-site` copies them)
 //   assets/explorer-data.js         the graph and the search index the scripts read
-//   explorer.json                   the data spine itself, byte for byte
+//   explorer.json                   the docs view itself, byte for byte
 //
 // The output depends on its inputs alone (no clock, no random layout seed in the files), so the
 // site can sit under `meta verify --codegen`. Search works offline from explorer-data.js; when the
@@ -26,12 +27,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { render, InMemoryProvider } from "@metaobjectsdev/render";
-import { REQUIREMENT_ATTR_STATEMENT, REQUIREMENT_SUBTYPE_ARCHITECTURAL, REQUIREMENT_SUBTYPE_FUNCTIONAL } from "@metaobjectsdev/metadata";
-import { TEMPLATE_ATTR_TEXT_REF, TYPE_REQUIREMENT, DOC_ATTR_DESCRIPTION, OBJECT_SUBTYPE_REPORT, OBJECT_REPORT_ATTR_FROM } from "@metaobjectsdev/metadata/constants";
+import { REQUIREMENT_SUBTYPE_ARCHITECTURAL, REQUIREMENT_SUBTYPE_FUNCTIONAL, serializeDocsView, type DocsView } from "@metaobjectsdev/metadata";
+import { TEMPLATE_ATTR_TEXT_REF, TYPE_REQUIREMENT, DOC_ATTR_DESCRIPTION } from "@metaobjectsdev/metadata/constants";
 import { checkLinks } from "../link-check.js";
 import { EXPLORER_ASSET_NAMES, EXPLORER_TEMPLATE_NAMES } from "../scaffold.js";
-import { ExplorerIndex } from "./index-model.js";
-import { serializeExplorer } from "./build.js";
+import { ViewIndex } from "./view-index.js";
 import { esc, legendHtml, relHref } from "./html.js";
 import {
   PAGE_API,
@@ -46,7 +46,6 @@ import {
   PAGE_TRACE,
   Pages,
 } from "./pages.js";
-import type { ExplorerJson } from "./types.js";
 
 export { EXPLORER_ASSET_NAMES, EXPLORER_TEMPLATE_NAMES };
 
@@ -56,7 +55,8 @@ export const CYTOSCAPE_PATH = "cytoscape@3.30.2/dist/cytoscape.min.js";
 const DEFAULT_ASSET_BASE = "https://cdn.jsdelivr.net/npm";
 
 export interface ExplorerSiteOptions {
-  explorer: ExplorerJson;
+  /** The docs view of the model (`buildDocsView`). */
+  view: DocsView;
   outDir: string;
   /** The project's name, as the header and the home page print it. */
   title: string;
@@ -108,11 +108,11 @@ const NAV: readonly NavItem[] = [
 ];
 
 /** Read each prompt's `.mustache` text from the directories the model's `@textRef` resolves in. */
-export function readPromptTexts(explorer: ExplorerJson, dirs: readonly string[]): Map<string, string> {
+export function readPromptTexts(view: DocsView, dirs: readonly string[]): Map<string, string> {
   const out = new Map<string, string>();
-  for (const n of explorer.nodes) {
-    const ref = n.attrs[TEMPLATE_ATTR_TEXT_REF];
-    if (n.parent !== undefined || typeof ref !== "string") continue;
+  for (const n of view.nodes) {
+    const ref = n.attrs.find((a) => a.name === TEMPLATE_ATTR_TEXT_REF)?.value;
+    if (typeof ref !== "string") continue;
     // A ref names a file below one of the directories: an absolute ref, or one that climbs out
     // with `..`, is not read, so a model cannot pull an arbitrary file into a published page.
     const segments = ref.split(/[\\/]/);
@@ -129,7 +129,7 @@ export function readPromptTexts(explorer: ExplorerJson, dirs: readonly string[])
 }
 
 export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteResult {
-  const ix = new ExplorerIndex(opts.explorer);
+  const ix = new ViewIndex(opts.view);
   const pagesModel = new Pages(ix);
   for (const [id, text] of opts.texts ?? []) pagesModel.texts.set(id, text);
   // The one partial: the requirement card S1 repeats (`{{> card}}`).
@@ -201,7 +201,7 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
 
   for (const a of EXPLORER_ASSET_NAMES) write(`assets/${a}`, loadFrom(BUNDLED_ASSETS, a, opts.assetsDir));
   write("assets/explorer-data.js", `window.MO_EXPLORER = ${JSON.stringify(graphData(ix, pagesModel))};\n`);
-  write("explorer.json", serializeExplorer(opts.explorer));
+  write("explorer.json", serializeDocsView(opts.view));
 
   const dangling = checkLinks(opts.outDir, pages);
   if (dangling.length > 0) throw new Error("explorer link check failed:\n" + dangling.join("\n"));
@@ -209,7 +209,7 @@ export function generateExplorerSite(opts: ExplorerSiteOptions): ExplorerSiteRes
 }
 
 /** The data the map, mini-maps, trace and search read. Every value comes off the index. */
-function graphData(ix: ExplorerIndex, p: Pages): Record<string, unknown> {
+function graphData(ix: ViewIndex, p: Pages): Record<string, unknown> {
   const features = ix.features();
   const top = [...ix.objects, ...ix.templates];
   const nodes = top.map((n) => {
@@ -235,7 +235,7 @@ function graphData(ix: ExplorerIndex, p: Pages): Record<string, unknown> {
   });
   const ids = new Set(top.map((n) => n.id));
   const slices: Record<string, string[]> = {};
-  for (const s of ix.doc.slices) slices[s.id] = [...new Set(s.nodes.map((x) => ix.ownerOf(x)).filter((x) => ids.has(x)))].sort();
+  for (const s of ix.view.slices) slices[s.id] = [...new Set(s.nodes.map((x) => ix.ownerOf(x)).filter((x) => ids.has(x)))].sort();
   const reqs = ix.requirements.map((r) => ({
     id: r.node.id,
     label: p.reqLabel(r),
@@ -245,8 +245,8 @@ function graphData(ix: ExplorerIndex, p: Pages): Record<string, unknown> {
     kind: r.kind,
     parent: r.parent?.node.id ?? "",
     href: p.reqPage(r),
-    targets: (r.row?.implementedBy ?? []).filter((l) => l.target !== undefined && ix.byId.has(l.target)).map((l) => ix.ownerOf(l.target!)),
-    statement: typeof r.node.attrs[REQUIREMENT_ATTR_STATEMENT] === "string" ? r.node.attrs[REQUIREMENT_ATTR_STATEMENT] : "",
+    targets: ix.linkTargets(r).map((id) => ix.ownerOf(id)),
+    statement: r.req.statement,
     rollup: ix.rollup(r),
     claimed: ix.targetsOf(r).length,
   }));
@@ -274,18 +274,18 @@ function graphData(ix: ExplorerIndex, p: Pages): Record<string, unknown> {
       t: p.reqLabel(r),
       s: `${r.level !== undefined ? `L${r.level}` : "—"} ${r.kind}${r.status !== "" ? ` · ${r.status}` : ""} · ${p.reqPath(r)}`,
       h: p.reqPage(r),
-      k: `${p.reqPath(r)} ${r.node.id} ${p.reqLabel(r)} ${String(r.node.attrs[REQUIREMENT_ATTR_STATEMENT] ?? "")}`.toLowerCase(),
+      k: `${p.reqPath(r)} ${r.node.id} ${p.reqLabel(r)} ${r.req.statement}`.toLowerCase(),
     });
   }
   return {
     nodes,
-    edges: [
-      ...ix.modelEdges().map((e) => ({ s: e.from, t: e.to, k: e.kind, ...(e.via !== undefined ? { v: localTail(e.via) } : {}) })),
-      // A report reads its rows from the `@from` entity: drawn so a report is not an island.
-      ...ix.objects
-        .filter((n) => n.subType === OBJECT_SUBTYPE_REPORT && typeof n.attrs[OBJECT_REPORT_ATTR_FROM] === "string" && ix.byId.has(n.attrs[OBJECT_REPORT_ATTR_FROM] as string))
-        .map((n) => ({ s: n.id, t: n.attrs[OBJECT_REPORT_ATTR_FROM] as string, k: "from" })),
-    ],
+    // Every reference the view lists between two nodes on the map, labelled by the attribute
+    // that carries it (a report's `@from` among them, so a report is not an island). The map
+    // draws objects and prompts, and an edge to a node it does not draw would not load.
+    edges: ix
+      .modelEdges()
+      .filter((e) => ids.has(e.from) && ids.has(e.to))
+      .map((e) => ({ s: e.from, t: e.to, k: e.kind, ...(e.via !== undefined ? { v: localTail(e.via) } : {}) })),
     slices,
     features: features.map((f) => ({ id: f.node.id, label: p.reqLabel(f) })),
     reqs,

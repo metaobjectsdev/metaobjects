@@ -51,7 +51,8 @@ docs/
 │   ├── business-rules.md            # operations, permission names and lifecycles: vocabulary, load rules, verify checks (ADR-0066)
 │   ├── contract-emitters.md         # the contract-schema and openapi generators: JSON Schema and OpenAPI for the REST contract (FR-022)
 │   ├── cube-export.md               # the cube-model generator: reporting vocabulary as Cube data-model files (FR-044)
-│   ├── explorer-data.md             # explorer.json and its inputs: export --effective, the verify ledger rows, manifest provenance
+│   ├── docs-view.md                 # the docs view (explorer.json): the port-neutral facts every docs page reads, built from the loaded model
+│   ├── explorer-data.md             # the docs view's inputs: the verify ledger rows, manifest provenance, routes, export --effective
 │   ├── explorer-site.md             # the model explorer site docsSiteFile() builds from explorer.json
 │   ├── metadata-driven-runtime.md   # one grid, one form and one route mount for every entity, read from the loaded metadata (TypeScript example, measured)
 │   ├── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
@@ -89,7 +90,7 @@ this tree is documentation, not the source of truth.
 | Keep Prisma as the ORM, with `schema.prisma` generated from the model and gated by `verify` (TypeScript) | [`recipes/prisma.md`](recipes/prisma.md) |
 | Publish the API as JSON Schema or OpenAPI, and check a change against the last release | [`features/contract-emitters.md`](features/contract-emitters.md), [`recipes/check-api-against-last-release.md`](recipes/check-api-against-last-release.md) |
 | Export the reporting vocabulary to Cube (`cube-model`: cubes, joins, rollups; the `cube` lane that checks it against a real Cube) | [`features/cube-export.md`](features/cube-export.md) |
-| Build the data a model explorer reads (`explorer.json` from `meta export --effective`, `meta verify --format json` and the generated-file manifest) | [`features/explorer-data.md`](features/explorer-data.md) |
+| Build the data a model explorer reads (the docs view, `explorer.json`, from the loaded model, `meta verify --format json`, the generated-file manifest and the routes) | [`features/docs-view.md`](features/docs-view.md), [`features/explorer-data.md`](features/explorer-data.md) |
 | Build the model explorer site: what the software does, the model map, requirement pages, the matrix, trace and gaps (`docsSiteFile()`) | [`features/explorer-site.md`](features/explorer-site.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |

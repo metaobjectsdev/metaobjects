@@ -1,22 +1,42 @@
-// The explorer data spine, end to end, over `fixtures/explorer-conformance/shop/`:
+// The docs view corpus, end to end (`fixtures/explorer-conformance/`):
 //
-//   `meta export --effective`   → effective.json   (committed)
-//   `meta verify --format json` → verify.json      (committed; carries `requirementLedger`)
-//   buildExplorer(both + the manifest)             → expected.json (committed, byte-checked in docs-site)
+//   shop/  `meta verify --format json` → verify.json (committed; carries `requirementLedger`)
+//   crm/   the same payload (`requirementPayload`), loaded with the fixture's provider.json,
+//          since the CLI reads providers from a TypeScript config the fixture does not carry
+//   buildDocsView(the loaded project + the committed inputs) → expected.json
+//          (committed, byte-checked in metadata's docs-view-conformance.test.ts)
 //
 // This file keeps the committed INPUTS honest: regenerating them from `project/` must give
-// the same bytes, so a change to either command's output shows up here as a fixture diff
-// rather than as an explorer that quietly reads stale data.
+// the same bytes, so a change to the gate's output shows up here as a fixture diff rather
+// than as a docs site that quietly reads stale data.
+//
+// Regenerate crm/verify.json after a deliberate change: `UPDATE_DOCS_VIEW=1 bun test test/explorer-fixture.test.ts`.
 import { describe, test, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { buildExplorer, serializeExplorer } from "@metaobjectsdev/docs-site";
+import {
+  MetaData,
+  MetaDataLoader,
+  applyProviderDefinition,
+  buildDocsView,
+  composeRegistry,
+  coreProviders,
+  serializeDocsView,
+  type FactoryMap,
+  type ProviderDefinition,
+} from "@metaobjectsdev/metadata";
+import { requirementPayload } from "../src/lib/requirement-payload.js";
 import { run } from "../src/index.js";
 
-const FIXTURE = resolve(import.meta.dir, "../../../../../fixtures/explorer-conformance/shop");
+/** A node of a type the fixture's provider.json declares: no behaviour beyond MetaData's own. */
+class FixtureNode extends MetaData {}
+
+const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/explorer-conformance");
+const FIXTURE = join(CORPUS, "shop");
 const PROJECT = join(FIXTURE, "project");
-const committed = (name: string): string => readFileSync(join(FIXTURE, name), "utf8");
+const CRM = join(CORPUS, "crm");
+const committed = (name: string, dir = FIXTURE): string => readFileSync(join(dir, name), "utf8");
 
 const dirs: string[] = [];
 afterAll(() => {
@@ -53,6 +73,20 @@ async function verifyJson(): Promise<string> {
   return out.join("\n") + "\n";
 }
 
+/** The crm project, loaded with the vocabulary its provider.json declares. */
+async function loadCrm(): Promise<MetaData> {
+  const def = JSON.parse(committed("provider.json", CRM)) as ProviderDefinition;
+  const factories: FactoryMap = {};
+  for (const t of def.types ?? []) factories[`${t.type}.${t.subType}`] = (id, name) => new FixtureNode(id, name);
+  const registry = composeRegistry([
+    ...coreProviders,
+    { id: def.provider, dependencies: ["metaobjects-core-types"], registerTypes: (r) => applyProviderDefinition(r, def, factories) },
+  ]);
+  const loaded = await MetaDataLoader.fromDirectory(join(CRM, "project", "metaobjects"), { strict: true, registry });
+  expect(loaded.errors.map(String)).toEqual([]);
+  return loaded.root;
+}
+
 interface LedgerRow {
   path: string;
   qualifiedPath: string;
@@ -62,21 +96,29 @@ interface LedgerRow {
   diagnostics: { code: string; severity: string; source: string; message: string }[];
 }
 
-describe("explorer fixture — the committed inputs are what the CLI writes today", () => {
-  test("`meta export --effective` reproduces effective.json", async () => {
-    expect(await exportJson(true)).toBe(committed("effective.json"));
-  });
-
-  test("`meta verify --format json` reproduces verify.json", async () => {
+describe("docs view corpus — the committed inputs are what the gate writes today", () => {
+  test("shop: `meta verify --format json` reproduces verify.json", async () => {
     expect(await verifyJson()).toBe(committed("verify.json"));
   });
 
-  test("the fresh inputs build the committed expected.json", async () => {
-    const model = JSON.parse(await exportJson(true));
-    out = [];
-    const verify = JSON.parse(await verifyJson());
-    const manifest = JSON.parse(committed("hashes.json"));
-    expect(serializeExplorer(buildExplorer({ model, verify, manifest }))).toBe(committed("expected.json"));
+  test("shop: the fresh verify payload builds the committed expected.json", async () => {
+    const verify = JSON.parse(await verifyJson()) as unknown;
+    const loaded = await MetaDataLoader.fromDirectory(join(PROJECT, "metaobjects"), { strict: true });
+    const view = buildDocsView({
+      root: loaded.root,
+      verify,
+      manifest: JSON.parse(committed("hashes.json")) as unknown,
+      routes: JSON.parse(committed("routes.json")) as unknown,
+    });
+    expect(serializeDocsView(view)).toBe(committed("expected.json"));
+  });
+
+  test("crm: the gate's payload reproduces verify.json", async () => {
+    const root = await loadCrm();
+    const files = readdirSync(join(CRM, "project", "metaobjects")).sort();
+    const actual = JSON.stringify(requirementPayload(root, { inCoverage: () => true, files }), null, 2) + "\n";
+    if (process.env.UPDATE_DOCS_VIEW === "1") writeFileSync(join(CRM, "verify.json"), actual);
+    expect(actual).toBe(committed("verify.json", CRM));
   });
 });
 

@@ -1,20 +1,15 @@
-// The model explorer site (`generateExplorerSite`) over the public fixtures: the shop
-// explorer-conformance fixture (requirements, a prompt, an unclaimed entity) and the
-// persistence-conformance fitness model (projections, reports, no requirements).
+// The model explorer site (`generateExplorerSite`) over the public fixtures: the docs view
+// corpus's shop fixture (requirements, a prompt, an unclaimed entity) and crm fixture
+// (application-owned vocabulary), and the persistence-conformance fitness model (projections,
+// reports, no requirements). Every view is built from a loaded model, as `meta gen` builds it.
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { MetaDataLoader, canonicalSerializeEffective } from "@metaobjectsdev/metadata";
+import { MetaDataLoader, buildDocsView, type DocsView } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
-import {
-  buildExplorer,
-  EXPLORER_ASSET_NAMES,
-  generateExplorerSite,
-  readPromptTexts,
-  type ExplorerJson,
-} from "../src/index.js";
-import { CUSTOM_VOCABULARY_MODEL, CUSTOM_VOCABULARY_VERIFY } from "./fixture/custom-vocabulary.js";
+import { EXPLORER_ASSET_NAMES, generateExplorerSite, readPromptTexts } from "../src/index.js";
+import { corpusView, inlineView } from "./fixture/views.js";
 
 const REPO = resolve(import.meta.dir, "../../../../..");
 const SHOP = join(REPO, "fixtures/explorer-conformance/shop");
@@ -37,25 +32,24 @@ function filesUnder(dir: string): string[] {
     .sort();
 }
 
-const shopExplorer = (): ExplorerJson => JSON.parse(readFileSync(join(SHOP, "expected.json"), "utf8")) as ExplorerJson;
+const shopView = await corpusView("shop");
 
-function buildShop(): { out: string; pages: string[]; files: string[]; page: (p: string) => string } {
-  const explorer = shopExplorer();
+function buildShop(view: DocsView = shopView): { out: string; pages: string[]; files: string[]; page: (p: string) => string } {
   const out = scratch();
   const r = generateExplorerSite({
-    explorer,
+    view,
     outDir: out,
     title: "Shop",
-    texts: readPromptTexts(explorer, [join(SHOP, "project/prompts"), join(SHOP, "project")]),
+    texts: readPromptTexts(view, [join(SHOP, "project/prompts"), join(SHOP, "project")]),
   });
   return { out, pages: r.pages, files: r.files, page: (p) => readFileSync(join(out, p), "utf8") };
 }
 
 async function buildFitness(): Promise<{ page: (p: string) => string; files: string[] }> {
   const root = (await new MetaDataLoader().load([new FileSource(join(FITNESS, "meta.fitness.json"))])).root;
-  const explorer = buildExplorer({ model: JSON.parse(canonicalSerializeEffective(root)) as unknown });
+  const view = buildDocsView({ root });
   const out = scratch();
-  const r = generateExplorerSite({ explorer, outDir: out, title: "Fitness", texts: readPromptTexts(explorer, [join(FITNESS, "prompts"), FITNESS]) });
+  const r = generateExplorerSite({ view, outDir: out, title: "Fitness", texts: readPromptTexts(view, [join(FITNESS, "prompts"), FITNESS]) });
   return { files: r.files, page: (p) => readFileSync(join(out, p), "utf8") };
 }
 
@@ -82,7 +76,7 @@ describe("explorer site over explorer-conformance/shop", () => {
     for (const f of shop.files) expect(again.page(f)).toBe(shop.page(f));
   });
 
-  test("the explorer.json it ships is the one it read", () => {
+  test("the explorer.json it ships is the docs view it read, byte for byte", () => {
     expect(shop.page("explorer.json")).toBe(readFileSync(join(SHOP, "expected.json"), "utf8"));
   });
 
@@ -125,24 +119,19 @@ describe("explorer site over explorer-conformance/shop", () => {
     expect(audit).toContain("WARN_REQUIREMENT_OBJECT_UNCLAIMED");
   });
 
-  test("the unclaimed outline follows the finding's node field, not its message", () => {
-    const reworded = (node: string, message: string): ExplorerJson => {
-      const explorer = shopExplorer();
-      const ledger = explorer.ledger;
-      if (ledger === undefined) throw new Error("the shop fixture has a ledger");
-      ledger.diagnostics = ledger.diagnostics.map((d) => {
-        const r = d as Record<string, unknown>;
-        return r["code"] === "WARN_REQUIREMENT_OBJECT_UNCLAIMED" ? { ...r, node, message } : d;
+  test("the unclaimed outline follows the finding's node field, not its message", async () => {
+    const reworded = (node: string, message: string): Promise<DocsView> =>
+      corpusView("shop", (input) => {
+        const verify = input.verify as { requirements: { rows: Record<string, unknown>[] } };
+        verify.requirements.rows = verify.requirements.rows.map((r) => (r["code"] === "WARN_REQUIREMENT_OBJECT_UNCLAIMED" ? { ...r, node, message } : r));
       });
-      return explorer;
-    };
-    const auditPage = (explorer: ExplorerJson): string => {
+    const auditPage = (view: DocsView): string => {
       const out = scratch();
-      generateExplorerSite({ explorer, outDir: out, title: "Shop" });
+      generateExplorerSite({ view, outDir: out, title: "Shop" });
       return readFileSync(join(out, "model/acme/shop/AuditEntry.html"), "utf8");
     };
-    expect(auditPage(reworded("acme::shop::AuditEntry", "an entity is unclaimed"))).toContain("chip v-unclaimed");
-    expect(auditPage(reworded("", "no requirement claims 'acme::shop::AuditEntry'."))).not.toContain("chip v-unclaimed");
+    expect(auditPage(await reworded("acme::shop::AuditEntry", "an entity is unclaimed"))).toContain("chip v-unclaimed");
+    expect(auditPage(await reworded("", "no requirement claims 'acme::shop::AuditEntry'."))).not.toContain("chip v-unclaimed");
   });
 
   test("a field and a key that share a name get distinct anchors", () => {
@@ -158,6 +147,9 @@ describe("explorer site over explorer-conformance/shop", () => {
     expect(order).toContain('href="../../../requirements/acme/shop/Shop.Checkout.Orders.Recorded.html"');
     expect(order).toContain('id="m-reference"');
     expect(order).toContain("src/generated/acme/shop/Order.queries.ts");
+    expect(order).toContain("/api/orders/{id}");
+    // A member with no row (the source) still has an anchor, so the view's link to it lands.
+    expect(order).toContain('<span id="m-source-db"></span>');
     expect(order).toContain('<div id="cymini" class="graph" data-node="acme::shop::Order"');
   });
 
@@ -211,10 +203,11 @@ describe("explorer site over the fitness model", async () => {
   });
 });
 
-describe("explorer site over application-owned vocabulary", () => {
+describe("explorer site over application-owned vocabulary (explorer-conformance/crm)", async () => {
+  const view = await corpusView("crm");
   const build = (): { pages: string[]; page: (p: string) => string } => {
     const out = scratch();
-    const r = generateExplorerSite({ explorer: buildExplorer({ model: CUSTOM_VOCABULARY_MODEL, verify: CUSTOM_VOCABULARY_VERIFY }), outDir: out, title: "Acme" });
+    const r = generateExplorerSite({ view, outDir: out, title: "Acme" });
     return { pages: r.pages, page: (p) => readFileSync(join(out, p), "utf8") };
   };
 
@@ -230,12 +223,32 @@ describe("explorer site over application-owned vocabulary", () => {
     const tax = page("model/acme/tax/tax.html");
     expect(tax).toContain("capability.module");
     expect(tax).toContain("Sales tax.");
-    expect(tax).toContain("The software computes sales tax.");
+    expect(tax).toContain("Each lead is stored with its email and account.");
     const list = page("model/acme/crm/Lead.page-list.html");
     expect(list).toContain("page.list");
     expect(list).toContain(`id="m-block-leads"`);
-    // An attribute naming a node links to that node's page.
+    // An attribute the loader resolves as a reference links to its node's page; one it does
+    // not resolve stays text, whatever it happens to spell.
     expect(list).toContain(`href="../../../model/acme/crm/Lead.html"`);
+    expect(list).toContain(`href="../../../model/acme/crm/Account.html"`);
+    expect(list).toContain("<code>[&quot;email&quot;,&quot;accountId&quot;]</code>");
+  });
+
+  test("the map draws only edges whose two ends it draws", () => {
+    const out = scratch();
+    generateExplorerSite({ view, outDir: out, title: "Acme" });
+    const js = readFileSync(join(out, "assets/explorer-data.js"), "utf8");
+    const data = JSON.parse(js.slice(js.indexOf("=") + 1).trim().replace(/;$/, "")) as { nodes: { id: string }[]; edges: { s: string; t: string; k: string; v?: string }[] };
+    const drawn = new Set(data.nodes.map((n) => n.id));
+    // The page.list references Lead and Account, but the map does not draw the page.
+    expect(drawn.has("acme::crm::Lead[page.list]")).toBe(false);
+    expect(data.edges.filter((e) => !drawn.has(e.s) || !drawn.has(e.t))).toEqual([]);
+    expect(data.edges).toContainEqual({ s: "acme::crm::Lead", t: "acme::crm::Account", k: "references", v: "accountRef" });
+  });
+
+  test("an entity's page lists the custom node referencing it", () => {
+    const { page } = build();
+    expect(page("model/acme/crm/Account.html")).toContain(`href="../../../model/acme/crm/Lead.page-list.html"`);
   });
 
   test("the package page lists the custom nodes beside the objects", () => {
@@ -252,29 +265,30 @@ describe("explorer site page paths", () => {
   });
   const entity = (name: string): unknown => ({ "object.entity": { name, children: [{ "field.string": { name: "title" } }] } });
 
-  test("an object named index does not take its package's index page", () => {
+  test("an object named index does not take its package's index page", async () => {
     const out = scratch();
-    const r = generateExplorerSite({ explorer: buildExplorer({ model: model("acme", [entity("index"), entity("Order")]) }), outDir: out, title: "T" });
+    const r = generateExplorerSite({ view: await inlineView(model("acme", [entity("index"), entity("Order")])), outDir: out, title: "T" });
     expect(r.pages).toContain("model/acme/index.html");
     expect(r.pages).toContain("model/acme/index.node.html");
     expect(readFileSync(join(out, "model/acme/index.html"), "utf8")).toContain("Order");
   });
 
-  test("a model with no package gets pages under a directory no package name can take", () => {
+  test("a model with no package gets pages under a directory no package name can take", async () => {
     const out = scratch();
-    const r = generateExplorerSite({ explorer: buildExplorer({ model: model(undefined, [entity("Order")]) }), outDir: out, title: "T" });
+    const r = generateExplorerSite({ view: await inlineView(model(undefined, [entity("Order")])), outDir: out, title: "T" });
     expect(r.pages).toContain("model/-root/Order.html");
   });
 
-  test("a prompt's @textRef is read only below the directories it is given", () => {
+  test("a prompt's @textRef is read only below the directories it is given", async () => {
     const base = scratch();
     const prompts = join(base, "prompts");
     mkdirSync(prompts);
     writeFileSync(join(prompts, "ok.mustache"), "Hello {{name}}");
     writeFileSync(join(base, "secret.mustache"), "outside");
-    const prompt = (name: string, ref: string): unknown => ({ "template.prompt": { name, "@textRef": ref } });
-    const explorer = buildExplorer({ model: model("acme", [prompt("Ok", "ok"), prompt("Up", "../secret"), prompt("Abs", join(base, "secret"))]) });
-    const texts = readPromptTexts(explorer, [prompts]);
+    const prompt = (name: string, ref: string): unknown => ({ "template.prompt": { name, "@textRef": ref, "@payloadRef": "Req" } });
+    const req = { "object.value": { name: "Req", children: [{ "field.string": { name: "name" } }] } };
+    const view = await inlineView(model("acme", [req, prompt("Ok", "ok"), prompt("Up", "../secret"), prompt("Abs", join(base, "secret"))]));
+    const texts = readPromptTexts(view, [prompts]);
     expect(texts.get("acme::Ok")).toBe("Hello {{name}}");
     expect(texts.has("acme::Up")).toBe(false);
     expect(texts.has("acme::Abs")).toBe(false);

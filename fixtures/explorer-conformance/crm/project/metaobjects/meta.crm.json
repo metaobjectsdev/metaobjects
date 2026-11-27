@@ -1,0 +1,65 @@
+{
+  "metadata.root": {
+    "package": "acme::crm",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Lead",
+          "@description": "A prospective customer.",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "email" } },
+            { "field.long": { "name": "accountId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "identity.reference": { "name": "accountRef", "@fields": ["accountId"], "@references": "Account" } },
+            { "source.rdb": { "name": "db", "@table": "leads" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+            { "source.rdb": { "name": "db", "@table": "accounts" } }
+          ]
+        }
+      },
+      {
+        "page.list": {
+          "name": "Lead",
+          "@title": "Leads",
+          "@objectRef": "Lead",
+          "@route": "/leads",
+          "children": [
+            { "block.table": { "name": "leads", "@objectRef": "Lead", "@columns": ["email", "accountId"] } },
+            { "block.table": { "name": "accounts", "@objectRef": "Account", "@columns": ["name"] } }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "Crm",
+          "@level": 1,
+          "@status": "live",
+          "@statement": "The software tracks leads and the accounts they belong to.",
+          "@counterexample": "A lead is recorded with no account it can be traced to.",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "Leads",
+                "@level": 4,
+                "@status": "live",
+                "@statement": "Each lead is stored with its email and account.",
+                "@counterexample": "A lead's email is lost on save.",
+                "@implementedBy": ["Lead", "Account", "acme::tax::tax"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
