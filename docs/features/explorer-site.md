@@ -30,7 +30,7 @@ generator in the run, wherever it appears in the list, because it reads what the
 
 | `explorer.json` input | Where `meta gen` gets it |
 |---|---|
-| The effective model | The model this run loaded (the same bytes as `meta export --effective`) |
+| The effective model | The model this run loaded, through `buildDocsView` ([docs-view.md](docs-view.md)) |
 | The requirement ledger | The requirement gate, run with its defaults (the rows `meta verify --format json` prints) |
 | Generated files per node | The files this run wrote, with the node each came from. Files under a target whose `outDir` lies outside the project are left out, under `meta gen` and `verify --codegen` alike |
 | Routes per node | The REST routes this run's routes generator mounts; none if the run has no routes generator |
