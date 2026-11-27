@@ -83,9 +83,9 @@ the expected schema writes) leaves out.
 
 The corpus also pins the rows those builders start from (`expected/rows/`): `RequirementRow[]`
 (`requirementRows`) for both requirements pages, and `SchemaRows` (`schemaRows`, a subset of the
-`meta schema --as json` shape) for the model-only schema page. These are the rows the docs site
-reads too: the requirement rows are what the explorer graph holds, and the schema rows are part
-of the storage lens's input. One shape serves the pages and the site, so it is not pinned twice.
+`meta schema --as json` shape) for the model-only schema page. These are the rows the pages
+read: the requirement rows feed the requirements pages, and the schema rows are part
+of the agent schema page's input. The docs site does not read these rows: its explorer builds requirements from the verify payload's `requirementLedger` and the loaded model ([docs-view.md](docs-view.md), pinned by `fixtures/explorer-conformance/`).
 
 ### Neutral structural shapes → `EntityTemplateData` / `PackageTemplateData` / `ModelTemplateData`
 

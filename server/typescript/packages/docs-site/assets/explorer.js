@@ -156,7 +156,7 @@
     var promptSet = function () {
       var s = {};
       D.nodes.forEach(function (n) { if (n.kind === "prompt" || n.kind === "template") s[n.id] = 1; });
-      D.edges.forEach(function (e) { if (s[e.s] && (e.k === "payload" || e.k === "reply")) s[e.t] = 1; });
+      D.edges.forEach(function (e) { if (s[e.s] && (e.k === "payloadRef" || e.k === "responseRef")) s[e.t] = 1; });
       D.edges.forEach(function (e) { if (s[e.s] && byId[e.s] && byId[e.s].kind === "value" && e.k === "objectRef") s[e.t] = 1; });
       return s;
     };

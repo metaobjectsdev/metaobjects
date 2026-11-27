@@ -1,0 +1,42 @@
+{
+  "provider": "example-docs-vocabulary",
+  "types": [
+    {
+      "type": "page",
+      "subType": "list",
+      "description": "An application page listing the rows of one object.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 1, "max": 1, "description": "The object the page lists." },
+        { "type": "attr", "subType": "string", "name": "route", "min": 0, "max": 1, "description": "The path the page is served at." },
+        { "type": "block", "subType": "*", "name": "*", "min": 0, "max": null }
+      ]
+    },
+    {
+      "type": "block",
+      "subType": "table",
+      "description": "A table of one object's rows on a page.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "objectRef", "min": 1, "max": 1, "description": "The object whose rows the table shows." },
+        { "type": "attr", "subType": "string", "name": "columns", "isArray": true, "min": 0, "max": 1, "description": "The fields shown, in order." }
+      ]
+    },
+    {
+      "type": "capability",
+      "subType": "module",
+      "description": "A unit of capability the application ships.",
+      "children": [
+        { "type": "attr", "subType": "string", "name": "owner", "min": 0, "max": 1, "description": "The team that owns it." }
+      ]
+    }
+  ],
+  "extends": [
+    {
+      "type": "metadata",
+      "subType": "root",
+      "children": [
+        { "type": "page", "subType": "*", "name": "*", "min": 0, "max": null },
+        { "type": "capability", "subType": "*", "name": "*", "min": 0, "max": null }
+      ]
+    }
+  ]
+}

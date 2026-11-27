@@ -3,8 +3,9 @@
 // template renders; every string in it is already HTML-escaped, because the renderer's text
 // format does not escape.
 //
-// Every fact a page states is read off the ExplorerIndex, which reads only `explorer.json`. The
-// pages add presentation (grouping, ordering, wording) and the explorer checks the gaps page
+// Every fact a page states is read off the ViewIndex, which reads only the docs view
+// (`buildDocsView`, `docs/features/docs-view.md`): ids, pages, links, inheritance, references
+// and claims are the view's, built from the loaded model. The pages add presentation (grouping, ordering, wording) and the explorer checks the gaps page
 // labels as such; they never recompute what the loader or the gate decided.
 
 import {
@@ -18,7 +19,6 @@ import {
   FIELD_ATTR_VALUES,
   FIELD_SUBTYPE_ENUM,
   IDENTITY_ATTR_FIELDS,
-  PACKAGE_SEPARATOR,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   OBJECT_REPORT_ATTR_DIMENSIONS,
   OBJECT_REPORT_ATTR_FILTER,
@@ -54,7 +54,6 @@ import {
   TEMPLATE_ATTR_TEXT_REF,
   DOC_ATTR_DESCRIPTION,
   DOC_ATTR_SUMMARY,
-  DOC_ATTR_TITLE,
   TYPE_DIMENSION,
   TYPE_FIELD,
   TYPE_IDENTITY,
@@ -83,9 +82,9 @@ import {
   REQUIREMENT_SUBTYPE_ARCHITECTURAL,
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
 } from "@metaobjectsdev/metadata";
-import type { ExplorerIndex, ReqEntry } from "./index-model.js";
-import { STATUSES } from "./index-model.js";
-import type { ExplorerNode } from "./types.js";
+import type { DocsViewAttrValue, DocsViewLink } from "@metaobjectsdev/metadata";
+import type { PageNode, ReqEntry, ViewIndex } from "./view-index.js";
+import { STATUSES } from "./view-index.js";
 import {
   dispositionPill,
   esc,
@@ -111,16 +110,20 @@ export const PAGE_API = "api.html";
 export const PAGE_GAPS = "gaps.html";
 export const PAGE_MODEL = "model/index.html";
 
-/** The member types a page gives an anchor, so an L5 link can land on its row. */
-const ANCHORED_TYPES = new Set<string>([TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX, TYPE_RELATIONSHIP, TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
-
-/** A member row's anchor: `m-<name>` for a field, `m-<type>-<name>` for anything else, since
- *  siblings of different types may share a name. */
-const memberAnchor = (n: ExplorerNode): string => (n.type === TYPE_FIELD ? `m-${n.name}` : `m-${n.type}-${n.name}`);
+/** The member types the object page gives a row (and so the row carries the member's anchor).
+ *  Every other direct member gets an empty anchor element, so a link the view states lands. */
+const ROWED_TYPES = new Set<string>([TYPE_FIELD, TYPE_IDENTITY, TYPE_INDEX, TYPE_RELATIONSHIP, TYPE_DIMENSION, TYPE_MEASURE, TYPE_SEGMENT]);
 
 /** The gate codes that report the level and nesting rules (the proof table's "Level rules"). */
 const LEVEL_RULE_CODES = new Set(["ERR_REQUIREMENT_BAD_LEVEL", "ERR_REQUIREMENT_LEVEL_NESTING", "ERR_REQUIREMENT_LINK_ABOVE_FLOOR"]);
 const CODE_OBJECT_UNCLAIMED = "WARN_REQUIREMENT_OBJECT_UNCLAIMED";
+
+/** A requirement's `@implementedBy` link as the pages read it: the target's id when it resolves. */
+interface ImplLink {
+  ref: string;
+  resolves: boolean;
+  target?: string;
+}
 
 const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
@@ -132,11 +135,6 @@ function pkgDir(pkg: string): string {
   return pkg === "" ? "-root" : pkg.split("::").join("/");
 }
 
-/** A page's file stem: the name, unless it would take the package page's `index.html` (on a
- *  case-insensitive file system too). */
-function pageStem(name: string): string {
-  return name.toLowerCase() === "index" ? `${name}.node` : name;
-}
 
 /** A short form of an id for display: the part after the package. */
 export function localName(id: string): string {
@@ -145,16 +143,13 @@ export function localName(id: string): string {
 }
 
 export class Pages {
-  constructor(readonly ix: ExplorerIndex) {}
+  constructor(readonly ix: ViewIndex) {}
 
   // ─── Addresses ───────────────────────────────────────────────────────────────
 
-  /** A top-level node's page. A node whose id is qualified by its type (another type holds
-   *  the plain id) carries the type in its file name too, so the two never share a page. */
-  objectPage(n: ExplorerNode): string {
-    const qualifier = `[${n.type}.${n.subType}]`;
-    const typed = n.parent === undefined && n.id.endsWith(qualifier) ? `.${n.type}-${n.subType}` : "";
-    return `model/${pkgDir(n.package)}/${pageStem(n.name)}${typed}.html`;
+  /** A top-level node's page, as the view states it. */
+  objectPage(n: PageNode): string {
+    return n.path;
   }
 
   packagePage(pkg: string): string {
@@ -162,43 +157,62 @@ export class Pages {
   }
 
   reqPage(r: ReqEntry): string {
-    return `requirements/${pkgDir(r.node.package)}/${pageStem(this.reqPath(r))}.html`;
+    return r.req.path;
   }
 
   /** The requirement's dotted path, as every `verify` diagnostic prints it. */
   reqPath(r: ReqEntry): string {
-    if (r.row !== undefined) return r.row.path;
-    const prefix = r.node.package === "" ? "" : `${r.node.package}::`;
-    return r.node.id.startsWith(prefix) ? r.node.id.slice(prefix.length) : r.node.id;
+    return r.req.address;
   }
 
   reqLabel(r: ReqEntry): string {
-    return str(r.node.attrs[DOC_ATTR_TITLE]) ?? r.node.name;
+    return r.req.label;
   }
 
-  /** Where a node id lands: its own page, or its owner's page at the member's row. */
+  /** Where a node id lands, as the view states it: its own page, or its owner's page at the
+   *  member's anchor. */
   pageOf(id: string): string | undefined {
-    const req = this.ix.reqById.get(id);
-    if (req !== undefined) return this.reqPage(req);
-    const ownerId = this.ix.ownerOf(id);
-    const owner = this.ix.byId.get(ownerId);
-    if (owner === undefined || owner.type === TYPE_REQUIREMENT) return undefined;
-    const page = this.objectPage(owner);
-    if (ownerId === id) return page;
-    const member = this.memberOf(ownerId, id);
-    if (member === undefined) return page;
-    // A generic page lists every member, so each one has a row to land on.
-    return ANCHORED_TYPES.has(member.type) || this.ix.kindOf(owner) === "other" ? `${page}#${memberAnchor(member)}` : page;
+    const path = this.ix.byId.get(id)?.path;
+    return path === undefined || path === "" ? undefined : path;
   }
 
-  /** The direct child of `ownerId` that `id` sits in (or is). */
-  private memberOf(ownerId: string, id: string): ExplorerNode | undefined {
-    let cur = this.ix.byId.get(id);
-    while (cur !== undefined && cur.parent !== ownerId) cur = cur.parent !== undefined ? this.ix.byId.get(cur.parent) : undefined;
-    return cur;
+  /** A requirement's `@implementedBy` links, each with the id it resolved to. */
+  implLinks(r: ReqEntry): ImplLink[] {
+    return r.req.implementedBy.map((l) => ({ ref: l.ref, resolves: l.resolves, ...(l.resolves && this.ix.byId.has(l.target.id) ? { target: l.target.id } : {}) }));
   }
 
-  kindClass(n: ExplorerNode): string {
+  /** The values of one attribute of a node, each with the link the loader resolved. */
+  attrValues(n: PageNode, name: string): DocsViewAttrValue[] {
+    return n.view.attrs.find((a) => a.name === name)?.values ?? [];
+  }
+
+  /** The nodes one attribute of a node references, where the loader resolved them. */
+  refLinks(n: PageNode, name: string): DocsViewLink[] {
+    return this.attrValues(n, name).flatMap((v) => (v.link !== null && !v.link.unresolved ? [v.link] : []));
+  }
+
+  /** Links to what one attribute of a node references, joined; "" when it names nothing. A
+   *  value the loader did not resolve renders as the red "unresolved" chip. */
+  refHtml(from: string, n: PageNode, name: string, label?: (text: string) => string): string {
+    return this.attrValues(n, name)
+      .filter((v) => v.link !== null)
+      .map((v) => this.viewLink(from, v.link!, label?.(v.text)))
+      .join(", ");
+  }
+
+  /** A link the view states, relative to `from`. */
+  viewLink(from: string, l: DocsViewLink, label?: string): string {
+    return l.unresolved ? `<span class="chip v-error">${esc(label ?? localName(l.label))} (unresolved)</span>` : this.link(from, l.id, label);
+  }
+
+  /** An empty element per direct member a page gives no row, so every link the view states
+   *  lands. It rides in the crumbs, which every explorer template prints, so a template a
+   *  project owns needs no change for it. */
+  private memberAnchors(n: PageNode, rowed: ReadonlySet<string>): string {
+    return this.ix.children(n.id).filter((c) => !rowed.has(c.type) && c.anchor !== "").map((c) => `<span id="${esc(c.anchor)}"></span>`).join("");
+  }
+
+  kindClass(n: PageNode): string {
     return `k-${this.ix.kindOf(n)}`;
   }
 
@@ -217,7 +231,7 @@ export class Pages {
     return `<a href="${esc(relHref(from, this.reqPage(r)))}">${esc(this.reqLabel(r))}</a>`;
   }
 
-  description(n: ExplorerNode): string {
+  description(n: PageNode): string {
     return esc(str(n.attrs[DOC_ATTR_DESCRIPTION]) ?? str(n.attrs[DOC_ATTR_SUMMARY]) ?? "");
   }
 
@@ -238,40 +252,34 @@ export class Pages {
     const values = ix.objects.filter((o) => ix.kindOf(o) === "value").length;
     const projections = ix.objects.filter((o) => ix.kindOf(o) === "projection").length;
     const reports = ix.objects.filter((o) => ix.kindOf(o) === "report").length;
-    const counts = ix.doc.ledger?.counts ?? {};
-    const num = (k: string): number | undefined => (typeof counts[k] === "number" ? (counts[k] as number) : undefined);
-    const features = ix.requirements.filter((r) => r.kind === REQUIREMENT_SUBTYPE_FUNCTIONAL).length;
-    const qualities = ix.requirements.filter((r) => r.kind === REQUIREMENT_SUBTYPE_ARCHITECTURAL).length;
+    const vc = ix.view.counts;
     const tiles: { n: string; l: string; href: string }[] = [];
     tiles.push({ n: `${stored.length}`, l: `stored entities${abstract > 0 ? ` (${abstract} abstract base${abstract === 1 ? "" : "s"})` : ""}`, href: relHref(from, PAGE_MAP) });
     tiles.push({ n: `${prompts.length}`, l: `declared prompt${prompts.length === 1 ? "" : "s"}, ${count(values, "payload or reply type", "payload and reply types")}`, href: relHref(from, PAGE_PROMPTS) });
     if (ix.hasRequirements()) {
-      tiles.push({ n: `${num("total") ?? ix.requirements.length}`, l: `requirements: ${count(num("functional") ?? features, "feature")}, ${count(num("architectural") ?? qualities, "quality", "qualities")}`, href: relHref(from, PAGE_FEATURES) });
+      tiles.push({ n: `${vc.requirements}`, l: `requirements: ${count(vc.functional, "feature")}, ${count(vc.architectural, "quality", "qualities")}`, href: relHref(from, PAGE_FEATURES) });
     } else {
       tiles.push({ n: `${projections + reports}`, l: `read models: ${projections} projection${projections === 1 ? "" : "s"}, ${reports} report${reports === 1 ? "" : "s"}`, href: relHref(from, PAGE_MODEL) });
     }
-    const claimed = num("entitiesClaimed");
-    const claimTotal = num("entitiesTotal");
-    if (claimed !== undefined && claimTotal !== undefined && claimTotal > 0) {
-      tiles.push({ n: `${claimed}/${claimTotal}`, l: "entities claimed by a requirement (gate)", href: relHref(from, PAGE_GAPS) });
+    if (vc.coverageMeasured && vc.entitiesTotal > 0) {
+      tiles.push({ n: `${vc.entitiesClaimed}/${vc.entitiesTotal}`, l: "entities claimed by a requirement (gate)", href: relHref(from, PAGE_GAPS) });
     } else {
       tiles.push({ n: `${ix.packages.length}`, l: `package${ix.packages.length === 1 ? "" : "s"} in the model`, href: relHref(from, PAGE_MODEL) });
     }
-    if (ix.doc.api !== undefined) {
+    if (ix.view.sources.routes) {
       const routed = ix.objects.filter((o) => ix.routes(o.id).length > 0).length;
       tiles.push({ n: `${routed}`, l: "objects with mounted REST routes", href: relHref(from, PAGE_API) });
     } else {
       tiles.push({ n: "—", l: "REST routes: none recorded by this run", href: relHref(from, PAGE_API) });
     }
-    const genFiles = new Set((ix.doc.generated ?? []).flatMap((g) => g.files.map((f) => f.path)));
     tiles.push({
-      n: ix.doc.generated !== undefined ? `${genFiles.size}` : "—",
-      l: ix.doc.generated !== undefined ? "generated files traced to a node" : "generated files: no manifest read",
+      n: ix.view.sources.files ? `${vc.files}` : "—",
+      l: ix.view.sources.files ? "generated files traced to a node" : "generated files: no manifest read",
       href: relHref(from, PAGE_TRACE),
     });
     const sources = ["the effective model"];
-    if (ix.doc.ledger !== undefined) sources.push("the requirement gate's ledger");
-    if (ix.doc.generated !== undefined) sources.push("the generation manifest");
+    if (ix.view.sources.requirements) sources.push("the requirement gate's ledger");
+    if (ix.view.sources.files) sources.push("the generation manifest");
     return {
       heading: esc(`What ${title} does`),
       sourcesLine: esc(joinAnd(sources)),
@@ -343,7 +351,7 @@ export class Pages {
 
   // ─── S3: Object page (entity, value, projection, report) ─────────────────────
 
-  object(n: ExplorerNode): Record<string, unknown> {
+  object(n: PageNode): Record<string, unknown> {
     const ix = this.ix;
     const from = this.objectPage(n);
     const kind = ix.kindOf(n);
@@ -357,14 +365,16 @@ export class Pages {
     const layouts = ix.children(n.id).filter((c) => c.type === TYPE_LAYOUT).map((l) => this.layoutRow(l));
     const isUnclaimed = this.unclaimedEntity(n);
     const whyRows = this.whyRows(from, n);
-    const usedBy = ix.doc.edges.filter((e) => (e.kind === "payload" || e.kind === "reply") && e.to === n.id).map((e) => this.link(from, e.from));
-    const refBy = [...new Set(ix.modelEdges().filter((e) => e.to === n.id && e.kind !== "payload" && e.kind !== "reply").map((e) => e.from))].sort(byCodeUnit).map((id) => this.link(from, id));
+    const referrers = ix.top(n.id)?.referencedBy ?? [];
+    const isPromptRef = (attr: string): boolean => attr === TEMPLATE_ATTR_PAYLOAD_REF || attr === TEMPLATE_ATTR_RESPONSE_REF;
+    const usedBy = [...new Set(referrers.filter((e) => isPromptRef(e.attr)).map((e) => e.from.id))].sort(byCodeUnit).map((id) => this.link(from, id));
+    const refBy = [...new Set(referrers.filter((e) => !isPromptRef(e.attr)).map((e) => e.from.id))].sort(byCodeUnit).map((id) => this.link(from, id));
     const ext = n.extends !== undefined ? this.link(from, n.extends) : "";
     return {
       id: esc(n.id),
       name: esc(n.name),
       kindLabel: esc(`object.${n.subType}`),
-      crumbsHtml: `<a href="${esc(relHref(from, PAGE_MAP))}">Model</a> › <a href="${esc(relHref(from, this.packagePage(n.package)))}">${esc(n.package === "" ? "(no package)" : n.package)}</a> › object.${esc(n.subType)}`,
+      crumbsHtml: `<a href="${esc(relHref(from, PAGE_MAP))}">Model</a> › <a href="${esc(relHref(from, this.packagePage(n.package)))}">${esc(n.package === "" ? "(no package)" : n.package)}</a> › object.${esc(n.subType)}${this.memberAnchors(n, ROWED_TYPES)}`,
       isAbstract: n.abstract === true,
       isUnclaimed,
       isReadOnly: storage?.kind === "view",
@@ -390,12 +400,12 @@ export class Pages {
       report: kind === "report" ? this.reportBlock(from, n) : undefined,
       routes: ix.routes(n.id).map((r) => ({ method: esc(r.method), path: esc(r.path) })),
       hasRoutes: ix.routes(n.id).length > 0,
-      routesNote: ix.doc.api === undefined ? "This run recorded no routes." : "No generated routes are mounted for it.",
+      routesNote: !ix.view.sources.routes ? "This run recorded no routes." : "No generated routes are mounted for it.",
       usedByHtml: usedBy.join(", "),
       referencedByHtml: refBy.join(", "),
       generated: this.generatedGroups(n.id),
       hasGenerated: ix.generated(n.id).length > 0,
-      generatedNote: ix.doc.generated === undefined ? "No generation manifest was read." : "Nothing generated is traced to it.",
+      generatedNote: !ix.view.sources.files ? "No generation manifest was read." : "Nothing generated is traced to it.",
       claimCount: claims.length,
     };
   }
@@ -403,14 +413,13 @@ export class Pages {
   /** A concrete entity that no requirement claims, once any requirement claims anything. That
    *  is the gate's object coverage (`WARN_REQUIREMENT_OBJECT_UNCLAIMED`), which only activates
    *  when the project's requirements claim something. */
-  unclaimedEntity(n: ExplorerNode): boolean {
+  unclaimedEntity(n: PageNode): boolean {
     const ix = this.ix;
     if (!ix.isEntity(n) || n.abstract === true) return false;
-    const diags = ix.doc.ledger?.diagnostics ?? [];
-    return diags.some((d) => isDiag(d) && d.code === CODE_OBJECT_UNCLAIMED && d.node === n.id);
+    return ix.top(n.id)?.unclaimed === true;
   }
 
-  private whyRows(from: string, n: ExplorerNode): Record<string, unknown>[] {
+  private whyRows(from: string, n: PageNode): Record<string, unknown>[] {
     const claims = [...this.ix.claims(n.id)].sort((a, b) => this.ix.requirements.indexOf(a.req) - this.ix.requirements.indexOf(b.req));
     const rows: Record<string, unknown>[] = [];
     let lastTop: ReqEntry | undefined;
@@ -429,14 +438,14 @@ export class Pages {
     return rows;
   }
 
-  private whyEmpty(n: ExplorerNode): string {
+  private whyEmpty(n: PageNode): string {
     if (!this.ix.hasRequirements()) return `This model declares no requirements, so nothing states why ${esc(n.name)} exists.`;
     if (this.unclaimedEntity(n)) return `No requirement claims ${esc(n.name)}. The gate reports this as <code>${CODE_OBJECT_UNCLAIMED}</code>.`;
     return `No requirement claims ${esc(n.name)}.`;
   }
 
-  private fieldRow(from: string, owner: ExplorerNode, f: ExplorerNode): { [k: string]: unknown; column: string } {
-    const ref = str(f.attrs[FIELD_ATTR_OBJECT_REF]);
+  private fieldRow(from: string, owner: PageNode, f: PageNode): { [k: string]: unknown; column: string } {
+    const ref = this.refHtml(from, f, FIELD_ATTR_OBJECT_REF);
     const values = f.subType === FIELD_SUBTYPE_ENUM ? strs(f.attrs[FIELD_ATTR_VALUES]) : [];
     const flags: string[] = [];
     if (f.attrs[FIELD_ATTR_REQUIRED] === true) flags.push("required");
@@ -447,11 +456,11 @@ export class Pages {
     if (this.ix.children(f.id).some((c) => c.type === TYPE_ORIGIN)) flags.push("derived");
     const claims = this.ix.claims(owner.id).filter((c) => c.member !== undefined && c.member.split(".")[0] === f.name);
     return {
-      anchor: esc(memberAnchor(f)),
+      anchor: esc(f.anchor),
       name: esc(f.name),
       inheritedHtml: f.inheritedFrom !== undefined ? `<span class="pill" title="declared on ${esc(f.inheritedFrom)}">inherited</span>` : "",
       type: esc(`${f.subType}${f.isArray === true ? "[]" : ""}`),
-      refHtml: ref !== undefined ? ` → ${this.link(from, ref)}` : "",
+      refHtml: ref !== "" ? ` → ${ref}` : "",
       valuesHtml: values.length > 0 ? `<div class="vals">${values.map(esc).join(" | ")}</div>` : "",
       column: esc(str(f.attrs[FIELD_ATTR_COLUMN]) ?? ""),
       flagsHtml: flags.map((x) => `<span class="pill">${esc(x)}</span>`).join(""),
@@ -459,29 +468,29 @@ export class Pages {
     };
   }
 
-  private keyRow(from: string, c: ExplorerNode): Record<string, unknown> {
+  private keyRow(from: string, c: PageNode): Record<string, unknown> {
     const fields = strs(c.attrs[IDENTITY_ATTR_FIELDS]);
-    const target = str(c.attrs[IDENTITY_REFERENCE_ATTR_REFERENCES]) ?? str(c.attrs[RELATIONSHIP_ATTR_OBJECT_REF]);
+    const target = this.refHtml(from, c, IDENTITY_REFERENCE_ATTR_REFERENCES) || this.refHtml(from, c, RELATIONSHIP_ATTR_OBJECT_REF);
     const through = str(c.attrs[RELATIONSHIP_ATTR_THROUGH]);
     const card = str(c.attrs[RELATIONSHIP_ATTR_CARDINALITY]);
     const shape = c.type === TYPE_RELATIONSHIP ? [card, through !== undefined ? `through ${localName(through)}` : undefined].filter((x) => x !== undefined).join(", ") : `(${fields.join(", ")})`;
     return {
-      anchor: esc(memberAnchor(c)),
+      anchor: esc(c.anchor),
       kind: esc(`${c.type}.${c.subType}`),
       name: esc(c.name),
       inheritedHtml: c.inheritedFrom !== undefined ? `<span class="pill">inherited</span>` : "",
       shape: esc(shape),
-      targetHtml: target !== undefined ? `→ ${this.link(from, target)}` : "",
+      targetHtml: target !== "" ? `→ ${target}` : "",
     };
   }
 
-  private reportingRow(from: string, c: ExplorerNode): Record<string, unknown> {
+  private reportingRow(from: string, c: PageNode): Record<string, unknown> {
     const a = c.attrs;
     const parts: string[] = [];
     const agg = str(a[REPORTING_ATTR_AGG]);
-    const of = strs(a[REPORTING_ATTR_OF]);
-    if (agg !== undefined) parts.push(`${esc(agg)}(${of.map((o) => this.link(from, o, localName(o))).join(", ")})`);
-    else if (of.length > 0) parts.push(`of ${of.map((o) => this.link(from, o, localName(o))).join(", ")}`);
+    const of = this.refHtml(from, c, REPORTING_ATTR_OF, localName);
+    if (agg !== undefined) parts.push(`${esc(agg)}(${of})`);
+    else if (of !== "") parts.push(`of ${of}`);
     const num = str(a[REPORTING_ATTR_NUMERATOR]);
     const den = str(a[REPORTING_ATTR_DENOMINATOR]);
     if (num !== undefined && den !== undefined) parts.push(`<code>${esc(num)}</code> ÷ <code>${esc(den)}</code>`);
@@ -493,10 +502,10 @@ export class Pages {
     if (seg !== undefined) parts.push(`segment <code>${esc(seg)}</code>`);
     if (a[REPORTING_ATTR_FILTER] !== undefined) parts.push(`filter <code>${esc(fmt(a[REPORTING_ATTR_FILTER]))}</code>`);
     if (a[REPORTING_ATTR_DEFAULT] !== undefined) parts.push(`default <code>${esc(fmt(a[REPORTING_ATTR_DEFAULT]))}</code>`);
-    return { anchor: esc(memberAnchor(c)), kind: esc(`${c.type}.${c.subType}`), name: esc(c.name), definitionHtml: parts.join(" · ") };
+    return { anchor: esc(c.anchor), kind: esc(`${c.type}.${c.subType}`), name: esc(c.name), definitionHtml: parts.join(" · ") };
   }
 
-  private layoutRow(l: ExplorerNode): Record<string, unknown> {
+  private layoutRow(l: PageNode): Record<string, unknown> {
     const parts: string[] = [];
     const cols = strs(l.attrs[LAYOUT_DATA_GRID_ATTR_COLUMNS]);
     if (cols.length > 0) parts.push(`columns ${cols.map((c) => `<code>${esc(c)}</code>`).join(", ")}`);
@@ -506,7 +515,7 @@ export class Pages {
     return { kind: esc(`${l.type}.${l.subType}`), name: esc(l.name), detailHtml: parts.join(", ") };
   }
 
-  private projectionBlock(from: string, n: ExplorerNode): Record<string, unknown> {
+  private projectionBlock(from: string, n: PageNode): Record<string, unknown> {
     const ix = this.ix;
     const rows: Record<string, unknown>[] = [];
     const bases = new Set<string>();
@@ -514,8 +523,7 @@ export class Pages {
       if (f.extends !== undefined) bases.add(ix.ownerOf(f.extends));
       for (const o of ix.children(f.id).filter((c) => c.type === TYPE_ORIGIN)) {
         const def = this.originDefinition(from, o);
-        const src = str(o.attrs[ORIGIN_PASSTHROUGH_ATTR_FROM]);
-        if (src !== undefined && ix.byId.has(src)) bases.add(ix.ownerOf(src));
+        for (const src of this.refLinks(o, ORIGIN_PASSTHROUGH_ATTR_FROM)) bases.add(ix.ownerOf(src.id));
         rows.push({ field: esc(f.name), origin: esc(`origin.${o.subType}`), definitionHtml: def });
       }
     }
@@ -526,26 +534,27 @@ export class Pages {
     };
   }
 
-  private originDefinition(from: string, o: ExplorerNode): string {
+  private originDefinition(from: string, o: PageNode): string {
     const a = o.attrs;
-    const ref = (v: unknown): string => {
-      const s = str(v);
-      return s === undefined ? "" : this.ix.byId.has(s) ? this.link(from, s, localName(s)) : `<code>${esc(localName(s))}</code>`;
-    };
+    // A value the loader resolved links to its node; any other is shown as written.
+    const ref = (name: string): string =>
+      this.attrValues(o, name)
+        .map((v) => (v.link !== null && !v.link.unresolved ? this.link(from, v.link.id, localName(v.text)) : `<code>${esc(localName(v.text))}</code>`))
+        .join(", ");
     const parts: string[] = [];
     const agg = str(a[ORIGIN_AGGREGATE_ATTR_AGG]);
-    if (agg !== undefined) parts.push(`${esc(agg)}(${ref(a[ORIGIN_AGGREGATE_ATTR_OF])})`);
-    else if (a[ORIGIN_AGGREGATE_ATTR_OF] !== undefined) parts.push(`of ${ref(a[ORIGIN_AGGREGATE_ATTR_OF])}`);
-    if (a[ORIGIN_PASSTHROUGH_ATTR_FROM] !== undefined) parts.push(`from ${ref(a[ORIGIN_PASSTHROUGH_ATTR_FROM])}`);
+    if (agg !== undefined) parts.push(`${esc(agg)}(${ref(ORIGIN_AGGREGATE_ATTR_OF)})`);
+    else if (a[ORIGIN_AGGREGATE_ATTR_OF] !== undefined) parts.push(`of ${ref(ORIGIN_AGGREGATE_ATTR_OF)}`);
+    if (a[ORIGIN_PASSTHROUGH_ATTR_FROM] !== undefined) parts.push(`from ${ref(ORIGIN_PASSTHROUGH_ATTR_FROM)}`);
     if (a[ORIGIN_AGGREGATE_ATTR_VIA] !== undefined) parts.push(`via <code>${esc(localName(String(a[ORIGIN_AGGREGATE_ATTR_VIA])))}</code>`);
     if (a[ORIGIN_COMPUTED_ATTR_EXPR] !== undefined) parts.push(`<code>${esc(fmt(a[ORIGIN_COMPUTED_ATTR_EXPR]))}</code>`);
     if (a[ORIGIN_AGGREGATE_ATTR_FILTER] !== undefined) parts.push(`filter <code>${esc(fmt(a[ORIGIN_AGGREGATE_ATTR_FILTER]))}</code>`);
     return parts.join(" · ");
   }
 
-  private reportBlock(from: string, n: ExplorerNode): Record<string, unknown> {
+  private reportBlock(from: string, n: PageNode): Record<string, unknown> {
     const a = n.attrs;
-    const fromId = str(a[OBJECT_REPORT_ATTR_FROM]);
+    const fromId = this.refLinks(n, OBJECT_REPORT_ATTR_FROM)[0]?.id ?? str(a[OBJECT_REPORT_ATTR_FROM]);
     const resolve = (name: string, kindType: string): string => {
       const candidates = [fromId !== undefined ? `${fromId}.${name}` : undefined, `${n.package === "" ? "" : `${n.package}::`}${name}`].filter((x): x is string => x !== undefined);
       const hit = candidates.find((c) => this.ix.byId.get(c)?.type === kindType || (this.ix.byId.has(c) && name.includes(".")));
@@ -553,7 +562,7 @@ export class Pages {
     };
     const spine = str(a[OBJECT_REPORT_ATTR_SPINE]);
     return {
-      fromHtml: fromId !== undefined ? this.link(from, fromId) : "",
+      fromHtml: this.refHtml(from, n, OBJECT_REPORT_ATTR_FROM),
       spineHtml: spine !== undefined ? `<code>${esc(spine)}</code>` : "",
       dimensionsHtml: strs(a[OBJECT_REPORT_ATTR_DIMENSIONS]).map((d) => resolve(d, TYPE_DIMENSION)).join(", "),
       measuresHtml: strs(a[OBJECT_REPORT_ATTR_MEASURES]).map((m) => resolve(m, TYPE_MEASURE)).join(", "),
@@ -573,13 +582,16 @@ export class Pages {
   /** The page of a top-level node the explorer has no specific screen for: what the model
    *  states about it (attributes, members), why it exists, what points at it, what was
    *  generated from it. Every value comes off the node; nothing is interpreted. */
-  node(n: ExplorerNode): Record<string, unknown> {
+  node(n: PageNode): Record<string, unknown> {
     const ix = this.ix;
     const from = this.objectPage(n);
     const kindLabel = `${n.type}.${n.subType}`;
     const whyRows = this.whyRows(from, n);
     const attrs = this.attrRows(from, n);
-    const refBy = [...new Set(ix.doc.edges.filter((e) => e.to === n.id || ix.ownerOf(e.to) === n.id).map((e) => ix.ownerOf(e.from)).filter((id) => id !== n.id))]
+    // What points at it: every node referencing it or a member of it, and every requirement
+    // (by its top-level requirement) that claims it.
+    const referrers = [...(ix.top(n.id)?.referencedBy ?? []).map((e) => e.from.id), ...ix.claims(n.id).map((c) => this.topOf(c.req).node.id)];
+    const refBy = [...new Set(referrers.filter((id) => id !== n.id))]
       .sort(byCodeUnit)
       .map((id) => this.link(from, id));
     return {
@@ -593,7 +605,7 @@ export class Pages {
       attrs,
       hasAttrs: attrs.length > 0,
       members: ix.children(n.id).map((c) => ({
-        anchor: esc(memberAnchor(c)),
+        anchor: esc(c.anchor),
         kind: esc(`${c.type}.${c.subType}`),
         nameHtml: ix.reqById.has(c.id) ? this.link(from, c.id) : esc(c.name === "" ? `#${c.order}` : c.name),
         attrsHtml: this.attrRows(from, c).map((a) => `<span class="mono">@${a.name}</span> ${a.valueHtml}`).join("<br>"),
@@ -606,29 +618,29 @@ export class Pages {
       referencedByHtml: refBy.join(", "),
       generated: this.generatedGroups(n.id),
       hasGenerated: ix.generated(n.id).length > 0,
-      generatedNote: ix.doc.generated === undefined ? "No generation manifest was read." : "Nothing generated is traced to it.",
+      generatedNote: !ix.view.sources.files ? "No generation manifest was read." : "Nothing generated is traced to it.",
     };
   }
 
-  /** A node's attributes, sorted, each value linked when it names a node. */
-  private attrRows(from: string, n: ExplorerNode): { name: string; valueHtml: string }[] {
-    return Object.keys(n.attrs)
-      .sort(byCodeUnit)
-      .map((k) => {
-        const v = n.attrs[k];
-        const target = typeof v === "string" ? (v.startsWith(PACKAGE_SEPARATOR) ? v.slice(PACKAGE_SEPARATOR.length) : v) : undefined;
-        const linked = target !== undefined && this.ix.byId.has(target) && this.pageOf(target) !== undefined;
-        return { name: esc(k), valueHtml: linked ? this.link(from, target) : `<code>${esc(fmt(v))}</code>` };
-      });
+  /** A node's attributes, as the view orders them, each value linked where the loader resolved
+   *  it as a reference. */
+  private attrRows(from: string, n: PageNode): { name: string; valueHtml: string }[] {
+    return n.view.attrs.map((a) => {
+      const links = a.values.filter((v) => v.link !== null && !v.link.unresolved);
+      return {
+        name: esc(a.name),
+        valueHtml: links.length > 0 && links.length === a.values.length ? links.map((v) => this.link(from, v.link!.id)).join(", ") : `<code>${esc(fmt(a.value))}</code>`,
+      };
+    });
   }
 
   // ─── S4: Prompt (and other template) page ────────────────────────────────────
 
-  prompt(n: ExplorerNode, text: string | undefined): Record<string, unknown> {
+  prompt(n: PageNode, text: string | undefined): Record<string, unknown> {
     const ix = this.ix;
     const from = this.objectPage(n);
-    const payloadId = str(n.attrs[TEMPLATE_ATTR_PAYLOAD_REF]);
-    const replyId = str(n.attrs[TEMPLATE_ATTR_RESPONSE_REF]);
+    const payloadId = this.refLinks(n, TEMPLATE_ATTR_PAYLOAD_REF)[0]?.id;
+    const replyId = this.refLinks(n, TEMPLATE_ATTR_RESPONSE_REF)[0]?.id;
     const vars = text !== undefined ? templateVariables(text) : undefined;
     const payload = payloadId !== undefined ? ix.byId.get(payloadId) : undefined;
     const reply = replyId !== undefined ? ix.byId.get(replyId) : undefined;
@@ -636,7 +648,7 @@ export class Pages {
       name: esc(f.name),
       requiredHtml: f.attrs[FIELD_ATTR_REQUIRED] === true ? `<span class="pill">required</span>` : "",
       type: esc(`${f.subType}${f.isArray === true ? "[]" : ""}`),
-      refHtml: str(f.attrs[FIELD_ATTR_OBJECT_REF]) !== undefined ? ` → ${this.link(from, str(f.attrs[FIELD_ATTR_OBJECT_REF])!)}` : "",
+      refHtml: this.refHtml(from, f, FIELD_ATTR_OBJECT_REF) !== "" ? ` → ${this.refHtml(from, f, FIELD_ATTR_OBJECT_REF)}` : "",
       usedHtml: vars === undefined ? `<span class="sub">text not read</span>` : vars.has(f.name) ? "yes" : `<span class="chip v-warn">no</span>`,
     })) : [];
     const replyRows = reply !== undefined ? ix.fields(reply.id).map((f) => ({
@@ -655,7 +667,7 @@ export class Pages {
     return {
       name: esc(n.name),
       kindLabel: esc(`template.${n.subType}`),
-      crumbsHtml: `<a href="${esc(relHref(from, PAGE_PROMPTS))}">Prompts</a> › <a href="${esc(relHref(from, this.packagePage(n.package)))}">${esc(n.package === "" ? "(no package)" : n.package)}</a> › template.${esc(n.subType)}`,
+      crumbsHtml: `<a href="${esc(relHref(from, PAGE_PROMPTS))}">Prompts</a> › <a href="${esc(relHref(from, this.packagePage(n.package)))}">${esc(n.package === "" ? "(no package)" : n.package)}</a> › template.${esc(n.subType)}${this.memberAnchors(n, new Set())}`,
       isUnclaimed: ix.hasClaims() && claimed.length === 0,
       description: this.description(n),
       attrsHtml: attrs,
@@ -671,7 +683,7 @@ export class Pages {
       hasText: text !== undefined,
       generated: this.generatedGroups(n.id),
       hasGenerated: ix.generated(n.id).length > 0,
-      generatedNote: ix.doc.generated === undefined ? "No generation manifest was read." : "Nothing generated is traced to it.",
+      generatedNote: !ix.view.sources.files ? "No generation manifest was read." : "Nothing generated is traced to it.",
       whyRows,
       hasWhy: whyRows.length > 0,
       whyEmptyHtml: ix.hasRequirements() ? `No requirement claims ${esc(n.name)}. The gate counts entity coverage only, so this shows here and on the gaps page, not in <code>meta verify</code>.` : `This model declares no requirements.`,
@@ -683,15 +695,15 @@ export class Pages {
   prompts(): Record<string, unknown> {
     const from = PAGE_PROMPTS;
     const rows = this.ix.templates.map((p) => {
-      const payload = str(p.attrs[TEMPLATE_ATTR_PAYLOAD_REF]);
-      const reply = str(p.attrs[TEMPLATE_ATTR_RESPONSE_REF]);
+      const payload = this.refHtml(from, p, TEMPLATE_ATTR_PAYLOAD_REF);
+      const reply = this.refHtml(from, p, TEMPLATE_ATTR_RESPONSE_REF);
       const claims = this.ix.claims(p.id);
       return {
         linkHtml: this.link(from, p.id),
         kind: esc(`template.${p.subType}`),
         description: this.description(p),
-        payloadHtml: payload !== undefined ? this.link(from, payload) : `<span class="sub">none</span>`,
-        replyHtml: reply !== undefined ? this.link(from, reply) : `<span class="sub">none (outbound only)</span>`,
+        payloadHtml: payload !== "" ? payload : `<span class="sub">none</span>`,
+        replyHtml: reply !== "" ? reply : `<span class="sub">none (outbound only)</span>`,
         claimsHtml: claims.length > 0 ? claims.map((c) => statusChip(c.req.status)).join("") : this.ix.hasClaims() ? `<span class="chip v-unclaimed">unclaimed</span>` : `<span class="sub">—</span>`,
       };
     });
@@ -716,8 +728,8 @@ export class Pages {
   }
 
   private treeNode(from: string, r: ReqEntry): string {
-    const links = (r.row?.implementedBy ?? []).map((l) => {
-      if (l.target !== undefined && this.ix.byId.has(l.target)) return `<span class="chip">${this.link(from, l.target, l.ref)}</span>`;
+    const links = this.implLinks(r).map((l) => {
+      if (l.target !== undefined) return `<span class="chip">${this.link(from, l.target, l.ref)}</span>`;
       return r.status === REQUIREMENT_STATUS_PLANNED
         ? `<span class="chip s-planned" title="dangling, allowed on planned">${esc(l.ref)} (not yet)</span>`
         : `<span class="chip v-error" title="ERR_REQUIREMENT_DANGLING_REF">${esc(l.ref)} (dangling)</span>`;
@@ -735,8 +747,9 @@ export class Pages {
     const chain: ReqEntry[] = [];
     for (let x: ReqEntry | undefined = r; x !== undefined; x = x.parent) chain.unshift(x);
     const tab = r.kind === REQUIREMENT_SUBTYPE_FUNCTIONAL ? { href: PAGE_FEATURES, label: "Features" } : { href: PAGE_QUALITIES, label: "Qualities" };
-    const row = r.row;
-    const links = row?.implementedBy ?? [];
+    const inLedger = r.req.inLedger;
+    const diagnostics = r.req.diagnostics;
+    const links = this.implLinks(r);
     const linkRows = links.map((l) => {
       const target = l.target !== undefined ? ix.byId.get(l.target) : undefined;
       return {
@@ -749,9 +762,9 @@ export class Pages {
             : `<span class="chip v-error">dangling</span>`,
       };
     });
-    const findings = (row?.diagnostics ?? []).filter((d) => d.source === GATE_SOURCE);
-    const advisories = (row?.diagnostics ?? []).filter((d) => d.source !== GATE_SOURCE);
-    const levelFinding = row?.diagnostics.some((d) => LEVEL_RULE_CODES.has(d.code)) ?? false;
+    const findings = diagnostics.filter((d) => d.source === GATE_SOURCE);
+    const advisories = diagnostics.filter((d) => d.source !== GATE_SOURCE);
+    const levelFinding = diagnostics.some((d) => LEVEL_RULE_CODES.has(d.code));
     const testable = r.kind === REQUIREMENT_SUBTYPE_FUNCTIONAL && (r.level ?? 0) >= REQUIREMENT_LEVEL_OBJECT;
     const linksOk = links.length === 0 ? "none" : links.every((l) => l.resolves) ? "yes" : "no";
     const below = ix.below(r);
@@ -767,7 +780,7 @@ export class Pages {
       statusHtml: statusChip(r.status),
       dispositionHtml: dispositionPill(r),
       verdictHtml: verdictBadge(r),
-      address: esc(`${row?.qualifiedPath ?? r.node.id} · requirement.${r.kind}`),
+      address: esc(`${r.req.qualifiedPath} · requirement.${r.kind}`),
       statement: esc(str(r.node.attrs[REQUIREMENT_ATTR_STATEMENT]) ?? ""),
       counterexample: esc(str(r.node.attrs[REQUIREMENT_ATTR_COUNTEREXAMPLE]) ?? ""),
       description: desc,
@@ -793,15 +806,15 @@ export class Pages {
         { what: "Level rules", verdictHtml: levelFinding ? `<span class="chip v-error">no</span>` : `<span class="chip s-live">yes</span>`, how: "Nesting agrees with level, and links sit only at L4 and L5." },
         {
           what: "Gate findings",
-          verdictHtml: findings.length > 0 ? `<span class="chip v-warn">${findings.length}</span>` : row !== undefined ? `<span class="chip s-live">none</span>` : `<span class="chip">not read</span>`,
-          how: findings.length > 0 ? findings.map((d) => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join("<br>") : row !== undefined ? "Nothing reported for this entry." : "This build read no <code>meta verify</code> output.",
+          verdictHtml: findings.length > 0 ? `<span class="chip v-warn">${findings.length}</span>` : inLedger ? `<span class="chip s-live">none</span>` : `<span class="chip">not read</span>`,
+          how: findings.length > 0 ? findings.map((d) => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join("<br>") : inLedger ? "Nothing reported for this entry." : "This build read no <code>meta verify</code> output.",
         },
         {
           what: "Authoring advisories",
-          verdictHtml: row !== undefined ? `<span class="chip">${advisories.length}</span>` : `<span class="chip">not read</span>`,
+          verdictHtml: inLedger ? `<span class="chip">${advisories.length}</span>` : `<span class="chip">not read</span>`,
           how: advisories.length > 0
             ? advisories.map((d) => `<code>${esc(d.code)}</code> ${esc(d.message)}`).join("<br>")
-            : row !== undefined ? "None. The authoring lint never fails a build." : "This build read no <code>meta verify</code> output.",
+            : inLedger ? "None. The authoring lint never fails a build." : "This build read no <code>meta verify</code> output.",
         },
         {
           what: "Test exists",
@@ -814,7 +827,7 @@ export class Pages {
         { what: "Status is true", verdictHtml: `<span class="chip">unprovable</span>`, how: "No gate can prove the status. The colour is the author's claim, held to referential integrity." },
       ].map((p) => ({ what: esc(p.what), verdictHtml: p.verdictHtml, howHtml: p.how })),
       trackedHtml: tracked.map((t) => `<code>${esc(t)}</code>`).join(" "),
-      digest: esc(row?.digest ?? ""),
+      digest: esc(r.req.digest),
     };
   }
 
@@ -825,7 +838,7 @@ export class Pages {
     const from = PAGE_MATRIX;
     // Stored entities and prompts, plus anything else a row claims (an abstract base a policy
     // names), so no claim lands outside the grid.
-    const claimed = ix.requirements.flatMap((r) => (r.row?.implementedBy ?? []).flatMap((l) => (l.target !== undefined ? [ix.ownerOf(l.target)] : [])));
+    const claimed = ix.requirements.flatMap((r) => this.implLinks(r).flatMap((l) => (l.target !== undefined ? [ix.ownerOf(l.target)] : [])));
     const colSet = new Set([...ix.storedEntities(), ...ix.templates.filter((t) => ix.isPrompt(t))].map((n) => n.id));
     for (const id of claimed) if (ix.byId.get(id)?.parent === undefined && ix.byId.get(id)?.type !== TYPE_REQUIREMENT) colSet.add(id);
     const cols = [...colSet].map((id) => ix.byId.get(id)!).sort(
@@ -834,11 +847,11 @@ export class Pages {
     const head = `<tr><th class="col corner"></th>${cols.map((o) => `<th class="col${ix.claims(o.id).length === 0 ? " unc" : ""}"><div>${this.link(from, o.id)}</div></th>`).join("")}</tr>`;
     const rows: string[] = [];
     for (const top of ix.topRequirements) {
-      const leaves = ix.subtree(top).filter((x) => (x.row?.implementedBy.length ?? 0) > 0);
+      const leaves = ix.subtree(top).filter((x) => x.req.implementedBy.length > 0);
       if (leaves.length === 0) continue;
       rows.push(`<tr class="grp"><td class="rh">${top.kind === REQUIREMENT_SUBTYPE_FUNCTIONAL ? "Feature" : "Quality"}: ${this.reqLink(from, top)}</td>${cols.map(() => `<td class="c"></td>`).join("")}</tr>`);
       for (const r of leaves) {
-        const tg = new Set((r.row?.implementedBy ?? []).filter((l) => l.target !== undefined).map((l) => ix.ownerOf(l.target!)));
+        const tg = new Set(this.implLinks(r).filter((l) => l.target !== undefined).map((l) => ix.ownerOf(l.target!)));
         const label = this.reqPath(r).split(".").slice(1).join(".") || this.reqLabel(r);
         rows.push(
           `<tr><td class="rh" title="${esc(str(r.node.attrs[REQUIREMENT_ATTR_STATEMENT]) ?? "")}">${levelBadge(r)}<a href="${esc(relHref(from, this.reqPage(r)))}">${esc(label)}</a></td>${cols
@@ -871,12 +884,12 @@ export class Pages {
     const card = (title: string, count: number | string, source: string, why: string, bodyHtml: string): void => {
       cards.push({ title: esc(title), count: esc(String(count)), source: esc(source), isGate: source === "meta verify", whyHtml: why, bodyHtml });
     };
-    if (ix.doc.ledger !== undefined) {
+    if (ix.view.sources.requirements) {
       // Each requirement's own findings come from its ledger row, which the gate scoped to that
       // node; the flat list contributes only the findings with no requirement subject.
       const findingsOf = (gate: boolean): { req?: ReqEntry; d: { code: string; severity: string; message: string } }[] => [
-        ...ix.requirements.flatMap((req) => (req.row?.diagnostics ?? []).filter((d) => (d.source === GATE_SOURCE) === gate).map((d) => ({ req, d }))),
-        ...(ix.doc.ledger?.diagnostics ?? []).filter((d): d is Diag => isDiag(d) && d.path === "" && (d.source === GATE_SOURCE) === gate).map((d) => ({ d })),
+        ...ix.requirements.flatMap((req) => req.req.diagnostics.filter((d) => (d.source === GATE_SOURCE) === gate).map((d) => ({ req, d }))),
+        ...ix.view.advisories.filter((d) => d.path === "" && (d.source === GATE_SOURCE) === gate).map((d) => ({ d })),
       ];
       const table = (rows: ReturnType<typeof findingsOf>, chip: (severity: string) => string): string =>
         rows.length === 0
@@ -890,8 +903,7 @@ export class Pages {
       card("Entities no requirement claims", unclaimed.length, "meta verify", "The gate's coverage warning. Each is a capability nobody has written down.", unclaimed.length > 0 ? unclaimed.map((e) => this.link(from, e.id)).join(", ") : `<div class="sub">None.</div>`);
       const outstanding = (r: ReqEntry): boolean => (REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK as readonly string[]).includes(r.status);
       const undecided = ix.requirements.filter((r) => outstanding(r) && r.node.attrs[REQUIREMENT_ATTR_DISPOSITION] === undefined && !ix.below(r).some(outstanding));
-      const counted = ix.doc.ledger.counts["undecided"];
-      card("Undecided gaps", typeof counted === "number" ? counted : "—", "meta verify", "A partial or planned entry with no <code>@disposition</code> and no outstanding work below it: a gap nobody has ruled on. A roll-up parent is left out, since a ruling on it settles nothing. The gate counts these.", list(undecided.map((r) => `${levelBadge(r)}${this.reqLink(from, r)} ${statusChip(r.status)}`)));
+      card("Undecided gaps", ix.view.counts.undecided, "meta verify", "A partial or planned entry with no <code>@disposition</code> and no outstanding work below it: a gap nobody has ruled on. A roll-up parent is left out, since a ruling on it settles nothing. The gate counts these.", list(undecided.map((r) => `${levelBadge(r)}${this.reqLink(from, r)} ${statusChip(r.status)}`)));
     }
     if (ix.hasRequirements()) {
       const behind = ix.requirements.filter((r) => r.status === REQUIREMENT_STATUS_PLANNED && ix.below(r).some((x) => x.status === REQUIREMENT_STATUS_LIVE));
@@ -915,12 +927,12 @@ export class Pages {
   /** Set by the site builder: prompt id → text, for the gaps page's payload check. */
   texts = new Map<string, string>();
 
-  private unusedPayload(): { p: ExplorerNode; f: ExplorerNode }[] | undefined {
-    const out: { p: ExplorerNode; f: ExplorerNode }[] = [];
+  private unusedPayload(): { p: PageNode; f: PageNode }[] | undefined {
+    const out: { p: PageNode; f: PageNode }[] = [];
     let read = false;
     for (const p of this.ix.templates) {
       const text = this.texts.get(p.id);
-      const payload = str(p.attrs[TEMPLATE_ATTR_PAYLOAD_REF]);
+      const payload = this.refLinks(p, TEMPLATE_ATTR_PAYLOAD_REF)[0]?.id;
       if (text === undefined || payload === undefined) continue;
       read = true;
       const vars = templateVariables(text);
@@ -944,7 +956,7 @@ export class Pages {
     return {
       groups,
       hasGroups: groups.length > 0,
-      recorded: ix.doc.api !== undefined,
+      recorded: ix.view.sources.routes,
       summary: esc(`${total} route${total === 1 ? "" : "s"} on ${groups.length} object${groups.length === 1 ? "" : "s"}`),
     };
   }
@@ -976,22 +988,6 @@ export class Pages {
 }
 
 // ─── Small helpers ───────────────────────────────────────────────────────────────────────────
-
-interface Diag {
-  code: string;
-  path: string;
-  severity: string;
-  source?: string;
-  /** The entity an object-coverage finding is about; "" or absent otherwise. */
-  node?: string;
-  message: string;
-}
-
-function isDiag(d: unknown): d is Diag {
-  if (typeof d !== "object" || d === null) return false;
-  const r = d as Record<string, unknown>;
-  return typeof r["code"] === "string" && typeof r["path"] === "string" && typeof r["message"] === "string" && typeof r["severity"] === "string";
-}
 
 function list(items: string[]): string {
   return items.length === 0 ? `<div class="sub">None.</div>` : `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;

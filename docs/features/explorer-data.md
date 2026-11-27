@@ -1,31 +1,33 @@
-# Explorer data: `explorer.json` and the inputs it reads
+# Explorer data: the inputs a docs build reads
 
 A model explorer shows one project so a reader can see what it does and how it was designed:
 the objects and how they connect, the prompts and what they send and get back, the requirement
-tree and whether each claim holds, and which generated files each node produced. All of that
-is read from one data file, `explorer.json`. This page documents that file and the inputs it is
-built from.
+tree and whether each claim holds, and which generated files each node produced. Every page of
+it reads one document, the **docs view**, which the site ships as `explorer.json`. Its shape is
+[docs-view.md](docs-view.md).
 
-This page is the data layer. The site that reads it, built by `docsSiteFile()`, is
-[explorer-site.md](explorer-site.md); that generator builds the file during `meta gen`, so
-you only build it by hand to feed a tool of your own.
+This page documents what the view is built from besides the model: the requirement gate's
+ledger, the generated-file manifest, and the routes. The site that reads the view, built by
+`docsSiteFile()`, is [explorer-site.md](explorer-site.md); that generator builds the view during
+`meta gen`, so you only build it by hand to feed a tool of your own.
 
-## The inputs are port-neutral
+## What the view is built from
 
-The builder (`buildExplorer` in `@metaobjectsdev/docs-site`) never loads metadata itself. It
-reads three documents, and a fourth optional input, the REST routes (see [`api`](#api)):
+`buildDocsView` (in `@metaobjectsdev/metadata`) takes the model the port has already loaded,
+plus three optional inputs:
 
 | Input | Produced by | What it contributes |
 | --- | --- | --- |
-| Effective canonical JSON | `meta export --effective` | nodes, inheritance, every model edge |
-| The verify payload | `meta verify --format json` | the requirement ledger, and the `implementedBy` / `supersededBy` edges |
+| The loaded model | the port's own loader | nodes, members, inheritance, every reference, every claim |
+| The verify payload | `meta verify --format json` | the requirement ledger: each requirement's verdict, digest and findings, the counts, the findings about other nodes |
 | The generated-file manifest | `.metaobjects/.gen-state/.hashes/`, written by `meta gen` | which generated files each node produced |
+| The routes | the generators that mount them | which REST routes each node serves |
 
-Only the first is required. Without the verify payload there is no `ledger` and no requirement
-claim edge; without the manifest there is no `generated` section.
-
-Because the builder reads no loader and no provider, it does not depend on which port wrote
-its inputs. Every port has a canonical serializer and writes the same manifest file.
+Only the model is required. The view reads the model the loader resolved, so it re-derives
+nothing (no reference is matched by name, no inheritance is re-walked). An earlier version read
+the effective canonical JSON from `meta export --effective` and rebuilt references from a fixed
+list of attribute names; the view replaced it, and a provider's own vocabulary now gets its
+links, on every attribute the loader resolves as a reference, with no change to the docs code.
 
 ### `meta export --effective`
 
@@ -41,7 +43,8 @@ as the canonical fully-qualified name. Reference attributes (`@references`, `@ob
 `@payloadRef`, `@responseRef`) are written in their canonical form in both modes.
 
 The effective document is for reading, not for loading back. A loader reading it would see
-each inherited member twice, once on the base and once on the subtype.
+each inherited member twice, once on the base and once on the subtype. The docs view does not
+read it.
 
 ### `meta verify --format json`: `requirementLedger`
 
@@ -84,9 +87,10 @@ in `requirements.rows` and in no ledger row. Each `requirements.rows` entry is `
 node, severity, source, message }`. `path` is the requirement's dotted path, or `""` when the
 subject is not a requirement. `node` names that other subject: a
 `WARN_REQUIREMENT_OBJECT_UNCLAIMED` row carries the entity's resolution key there (for example
-`"node": "acme::shop::AuditEntry"`, the entity's id in `explorer.json`), and every other row
+`"node": "acme::shop::AuditEntry"`, the entity's id in the docs view), and every other row
 carries `""`. Read the subject from `path` and `node`, never from `message`, whose wording may
-change. The structured payload is TypeScript-only, as the rest of `--format json` is.
+change. The docs view turns these rows into its `advisories`, and an entity's `unclaimed` flag
+comes from the `node` field. The structured payload is TypeScript-only, as the rest of `--format json` is.
 
 ### Node provenance in the manifest
 
@@ -115,138 +119,50 @@ manifest, `generator` means that generator owns the file (ADR-0060), and the orp
 on that ownership. TypeScript does not make that claim. TypeScript is the only port that writes
 provenance today, and the JVM rewrites its manifest without these fields.
 
-## The `explorer.json` shape
-
-```ts
-interface ExplorerJson {
-  format: "metaobjects-explorer/1";
-  nodes: ExplorerNode[];
-  edges: ExplorerEdge[];
-  ledger?: ExplorerLedger;        // absent without a verify payload with requirements
-  generated?: ExplorerGenerated[]; // absent without a manifest
-  api?: ExplorerRoute[];           // absent without a routes input
-  slices: ExplorerSlice[];
-}
-```
-
-The types are exported from `@metaobjectsdev/docs-site`. The `format` value changes when a field
-changes meaning or is removed. Adding a field does not change it.
-
-### `nodes`
-
-The output has one node for each top-level node (object, prompt, requirement) and one for
-each node nested inside one (field, identity, source, view, index, nested requirement).
-
-| Field | Meaning |
-| --- | --- |
-| `id` | A top-level node's id is `<package>::<name>`. When top-level nodes of different types share a package and a name (an entity `Lead` and an application's page `Lead`), the object keeps `<package>::<name>`, because every model reference names an object; if none is an object, the first one in the effective JSON keeps it. Each other one adds its type, for example `acme::crm::Lead[page.list]`. A model with no such collision gets no qualified top-level id. A nested node's id is its parent's id followed by `.<name>`, for example `acme::shop::Order.total`. A nested requirement's id equals its ledger row's `qualifiedPath`. A nested node with no name gets `#<index>` in place of `.<name>`. When siblings of different types share a name, the first one in the effective JSON keeps `.<name>`, because that is the node a dotted `@implementedBy` reference such as `Order.id` resolves to. Each later one adds its type, for example `acme::shop::AuditEntry.id[identity.primary]`. |
-| `type`, `subType`, `name`, `package` | As in the model. `package` is the package of the top-level ancestor. |
-| `parent` | The id of the node it is nested in. A top-level node has no `parent`. |
-| `order` | Its position among its siblings in the effective tree, from 0: the declaration order, which the id sort does not keep. |
-| `extends`, `abstract`, `isArray` | As in the effective JSON. |
-| `inheritedFrom` | Set on a member that came from a super. It holds the id of the object the member is declared on, meaning the topmost ancestor that has a member with the same type, name and body. A member redeclared with a different body belongs to the node itself. |
-| `attrs` | Every `@` attribute, without the `@`, with keys sorted. |
-
-Two nodes that would still share an id are an error: two top-level nodes with one name in one package, or two siblings with the same type and name. The builder throws and names the id.
-
-### `edges`
-
-Each edge is typed. An edge is emitted only when both its ends are nodes in the file.
-
-| `kind` | From → to | Source |
-| --- | --- | --- |
-| `extends` | node → its super | `extends` |
-| `references` | object → referenced object, `via` the `identity.reference` | `@references` |
-| `objectRef` | object → value or entity, `via` the `field.object` | `@objectRef` on a field |
-| `association` | object → target, `via` the `relationship.*` | `@objectRef` on a relationship |
-| `payload` | prompt → payload object | `@payloadRef` |
-| `reply` | prompt → reply object | `@responseRef` |
-| `contains` | requirement → nested requirement | nesting |
-| `implementedBy` | requirement → object or member | a ledger row's resolved `target` |
-| `supersededBy` | requirement → replacing requirement | a ledger row's resolved `target` |
-
-An `implementedBy` edge exists only when the verify payload resolved that link. The builder
-never matches names itself. A planned requirement that names a node that does not exist yet
-has a ledger row whose link is `"resolves": false`, and it has no edge.
-
-### `ledger`
-
-`counts` is `requirementCounts`, copied as is. `rows` holds the `requirementLedger` rows, each
-with a `node` id added. `diagnostics` is `requirements.rows`, copied as is: every gate and lint
-finding, including those about something other than a single requirement.
-
-### `generated`
-
-The manifest entries that carry `sourceNode`, grouped by node: `{ node, files: [{ path,
-generatedBy }] }`, sorted by node and then by path. A plain entry has no node and is left out.
-
-### `api`
-
-One row per REST route: `{ node, method, path }`, with the project's `apiPrefix` in the path,
-sorted by node, then path, then method. Absent when no routes were passed.
-
-### `slices`
-
-Slices are named node sets that a view can open on. They are all derived from the model, so
-none needs to be written by hand:
-
-- `package:<package>`: the top-level nodes of one package.
-- `requirement:<id>`: one for every requirement that has nested requirements. It holds the
-  subtree, every node the subtree claims, and the object that owns each claimed member.
-- `prompt:<id>`: one for every prompt. It holds the prompt, its payload and its reply.
-
-The design report also proposes slices saved by hand. Those belong in tool configuration,
-never in metadata, and are not built yet.
-
-### Determinism
-
-The same inputs always produce the same bytes. Nodes are sorted by id. Edges are sorted
-by kind, then `from`, then `to`, then `via`, with duplicates removed. Slices are sorted by id,
-and ledger rows stay in the verify payload's order. `serializeExplorer` writes JSON indented
-two spaces, with one trailing newline. That makes the file safe to commit and diff.
-
-## Building it
+## Building it by hand
 
 ```ts
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { buildExplorer, serializeExplorer } from "@metaobjectsdev/docs-site";
+import { MetaDataLoader, buildDocsView, serializeDocsView } from "@metaobjectsdev/metadata";
 
 const read = (f: string) => JSON.parse(readFileSync(f, "utf8"));
-// The manifest is one file per model package; the explorer wants their union.
+// The manifest is one file per model package; the view wants their union.
 const hashes = ".metaobjects/.gen-state/.hashes";
 const manifest = Object.assign(
   {},
   ...readdirSync(hashes).filter((f) => f.endsWith(".json")).map((f) => read(`${hashes}/${f}`)),
 );
 
-writeFileSync("explorer.json", serializeExplorer(buildExplorer({
-  model: read("effective.json"),                        // meta export --effective --out effective.json
+const { root } = await MetaDataLoader.fromDirectory("metaobjects", { strict: true });
+writeFileSync("explorer.json", serializeDocsView(buildDocsView({
+  root,
   verify: read("verify.json"),                          // meta verify --format json > verify.json
   manifest,
 })));
 ```
 
-`routes` (optional) is a list of `{ node, method, path }`, one per REST route, and becomes the
-`api` section; `docsSiteFile()` fills it from the routes the run mounts. The manifest records
-files, not the routes inside them, so a hand build that wants routes passes them here.
-
-A `verify`, `manifest` or `routes` that is missing or malformed leaves its section out. A `model` that is
-not canonical metadata JSON makes the builder throw.
+`routes` (optional) is a list of `{ node, method, path }`, one per REST route, with `node` a
+resolution key and the project's `apiPrefix` in `path`; `docsSiteFile()` fills it from the
+routes the run mounts. The manifest records files, not the routes inside them, so a hand build
+that wants routes passes them here. A `verify`, `manifest` or `routes` that is missing or
+malformed leaves its part of the view empty.
 
 ## Not built yet
 
 - **`usage`**: which hand-written modules import a generated module. The design marks it
   optional, and nothing builds it yet.
 - **Provenance from the JVM, Python and C# generators.** Their manifests have no `sourceNode`
-  yet, so for those ports `generated` is empty.
+  yet, so for those ports a node lists no files.
+- **The docs view in the other ports.** TypeScript builds it today; the corpus is what the
+  other ports will be held to.
 
 ## Verified by
 
-- [`fixtures/explorer-conformance/shop/`](../../fixtures/explorer-conformance/shop/): a small
-  model with inheritance, a prompt, and a five-level requirement tree. Its `expected.json` is
-  checked byte for byte. `server/typescript/packages/cli/test/explorer-fixture.test.ts` checks
-  that the CLI still writes the committed `effective.json` and `verify.json`, and checks the
-  `requirementLedger` rows.
+- [`fixtures/explorer-conformance/`](../../fixtures/explorer-conformance/): the view of each
+  case, byte for byte ([docs-view.md](docs-view.md)).
+  `server/typescript/packages/cli/test/explorer-fixture.test.ts` checks that the gate still
+  writes each case's committed `verify.json`, and checks the `requirementLedger` rows and
+  `meta export --effective`.
 - `server/typescript/packages/codegen-ts/test/generated-provenance.test.ts`: covers how
   `perEntity` stamps each file, the object and plain manifest forms, and that JVM owner fields
   are preserved.

@@ -524,3 +524,6 @@ export {
 export type { AttrContradiction } from "./attr-contradictions.js";
 export { rewriteDocument } from "./vocabulary-rewrite.js";
 export type { RewriteResult, RewriteChange, RewriteRefusal, RewriteOpts } from "./vocabulary-rewrite.js";
+
+// The docs view: the port-neutral facts every documentation page reads (docs/features/docs-view.md).
+export * from "./docs-view/index.js";

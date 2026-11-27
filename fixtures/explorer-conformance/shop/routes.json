@@ -1,0 +1,7 @@
+[
+  { "node": "acme::shop::Order", "method": "get", "path": "/api/orders" },
+  { "node": "acme::shop::Order", "method": "post", "path": "/api/orders" },
+  { "node": "acme::shop::Order", "method": "get", "path": "/api/orders/{id}" },
+  { "node": "acme::shop::Customer", "method": "get", "path": "/api/customers" },
+  { "node": "acme::shop::Customer", "method": "get", "path": "/api/customers" }
+]

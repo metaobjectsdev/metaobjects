@@ -1,0 +1,2233 @@
+{
+  "format": "metaobjects-docs-view/1",
+  "sources": {
+    "requirements": true,
+    "files": false,
+    "routes": false
+  },
+  "counts": {
+    "nodes": 8,
+    "packages": 2,
+    "requirements": 3,
+    "functional": 3,
+    "architectural": 0,
+    "byStatus": [
+      {
+        "status": "planned",
+        "count": 0
+      },
+      {
+        "status": "live",
+        "count": 3
+      },
+      {
+        "status": "partial",
+        "count": 0
+      },
+      {
+        "status": "retired",
+        "count": 0
+      }
+    ],
+    "claims": 4,
+    "files": 0,
+    "routes": 0,
+    "undecided": 0,
+    "coverageMeasured": true,
+    "entitiesClaimed": 2,
+    "entitiesTotal": 2
+  },
+  "packages": [
+    {
+      "name": "acme::crm",
+      "count": 7,
+      "groups": [
+        {
+          "type": "object",
+          "subType": "entity",
+          "count": 3,
+          "nodes": [
+            {
+              "label": "Account",
+              "id": "acme::crm::Account",
+              "path": "model/acme/crm/Account.html",
+              "kind": "object.entity",
+              "unresolved": false
+            },
+            {
+              "label": "Lead",
+              "id": "acme::crm::Lead",
+              "path": "model/acme/crm/Lead.html",
+              "kind": "object.entity",
+              "unresolved": false
+            },
+            {
+              "label": "Scored",
+              "id": "acme::crm::Scored",
+              "path": "model/acme/crm/Scored.html",
+              "kind": "object.entity",
+              "unresolved": false
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "subType": "projection",
+          "count": 1,
+          "nodes": [
+            {
+              "label": "AccountScore",
+              "id": "acme::crm::AccountScore",
+              "path": "model/acme/crm/AccountScore.html",
+              "kind": "object.projection",
+              "unresolved": false
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "subType": "value",
+          "count": 1,
+          "nodes": [
+            {
+              "label": "ScoreParams",
+              "id": "acme::crm::ScoreParams",
+              "path": "model/acme/crm/ScoreParams.html",
+              "kind": "object.value",
+              "unresolved": false
+            }
+          ]
+        },
+        {
+          "type": "page",
+          "subType": "list",
+          "count": 1,
+          "nodes": [
+            {
+              "label": "Lead",
+              "id": "acme::crm::Lead[page.list]",
+              "path": "model/acme/crm/Lead.page-list.html",
+              "kind": "page.list",
+              "unresolved": false
+            }
+          ]
+        },
+        {
+          "type": "requirement",
+          "subType": "functional",
+          "count": 1,
+          "nodes": [
+            {
+              "label": "Crm",
+              "id": "acme::crm::Crm",
+              "path": "requirements/acme/crm/Crm.html",
+              "kind": "requirement.functional",
+              "unresolved": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "acme::tax",
+      "count": 1,
+      "groups": [
+        {
+          "type": "capability",
+          "subType": "module",
+          "count": 1,
+          "nodes": [
+            {
+              "label": "tax",
+              "id": "acme::tax::tax",
+              "path": "model/acme/tax/tax.html",
+              "kind": "capability.module",
+              "unresolved": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "acme::crm::Account",
+      "name": "Account",
+      "package": "acme::crm",
+      "type": "object",
+      "subType": "entity",
+      "order": 3,
+      "path": "model/acme/crm/Account.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": false,
+      "extends": null,
+      "attrs": [],
+      "memberGroups": [
+        {
+          "type": "field",
+          "count": 2,
+          "members": [
+            {
+              "id": "acme::crm::Account.id",
+              "name": "id",
+              "type": "field",
+              "subType": "long",
+              "order": 0,
+              "anchor": "m-id",
+              "path": "model/acme/crm/Account.html#m-id",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::crm::Account.name",
+              "name": "name",
+              "type": "field",
+              "subType": "string",
+              "order": 1,
+              "anchor": "m-name",
+              "path": "model/acme/crm/Account.html#m-name",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "relationship",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::Account.leads",
+              "name": "leads",
+              "type": "relationship",
+              "subType": "association",
+              "order": 2,
+              "anchor": "m-relationship-leads",
+              "path": "model/acme/crm/Account.html#m-relationship-leads",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "cardinality",
+                  "value": "many",
+                  "values": [
+                    {
+                      "text": "many",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "objectRef",
+                  "value": "acme::crm::Lead",
+                  "values": [
+                    {
+                      "text": "acme::crm::Lead",
+                      "link": {
+                        "label": "Lead",
+                        "id": "acme::crm::Lead",
+                        "path": "model/acme/crm/Lead.html",
+                        "kind": "object.entity",
+                        "unresolved": false
+                      }
+                    }
+                  ]
+                }
+              ],
+              "refs": [
+                {
+                  "attr": "objectRef",
+                  "via": {
+                    "label": "Account.leads",
+                    "id": "acme::crm::Account.leads",
+                    "path": "model/acme/crm/Account.html#m-relationship-leads",
+                    "kind": "relationship.association",
+                    "unresolved": false
+                  },
+                  "target": {
+                    "label": "Lead",
+                    "id": "acme::crm::Lead",
+                    "path": "model/acme/crm/Lead.html",
+                    "kind": "object.entity",
+                    "unresolved": false
+                  }
+                }
+              ],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "identity",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::Account.pk",
+              "name": "pk",
+              "type": "identity",
+              "subType": "primary",
+              "order": 3,
+              "anchor": "m-identity-pk",
+              "path": "model/acme/crm/Account.html#m-identity-pk",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "fields",
+                  "value": [
+                    "id"
+                  ],
+                  "values": [
+                    {
+                      "text": "id",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "source",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::Account.db",
+              "name": "db",
+              "type": "source",
+              "subType": "rdb",
+              "order": 4,
+              "anchor": "m-source-db",
+              "path": "model/acme/crm/Account.html#m-source-db",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "table",
+                  "value": "accounts",
+                  "values": [
+                    {
+                      "text": "accounts",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [
+        {
+          "attr": "objectRef",
+          "via": {
+            "label": "Account.leads",
+            "id": "acme::crm::Account.leads",
+            "path": "model/acme/crm/Account.html#m-relationship-leads",
+            "kind": "relationship.association",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "referencedBy": [
+        {
+          "attr": "via",
+          "from": {
+            "label": "AccountScore",
+            "id": "acme::crm::AccountScore",
+            "path": "model/acme/crm/AccountScore.html",
+            "kind": "object.projection",
+            "unresolved": false
+          },
+          "via": {
+            "label": "AccountScore.totalScore#0",
+            "id": "acme::crm::AccountScore.totalScore#0",
+            "path": "model/acme/crm/AccountScore.html#m-totalScore",
+            "kind": "origin.aggregate",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Account.leads",
+            "id": "acme::crm::Account.leads",
+            "path": "model/acme/crm/Account.html#m-relationship-leads",
+            "kind": "relationship.association",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "references",
+          "from": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          },
+          "via": {
+            "label": "Lead.accountRef",
+            "id": "acme::crm::Lead.accountRef",
+            "path": "model/acme/crm/Lead.html#m-identity-accountRef",
+            "kind": "identity.reference",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Account",
+            "id": "acme::crm::Account",
+            "path": "model/acme/crm/Account.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "objectRef",
+          "from": {
+            "label": "Lead",
+            "id": "acme::crm::Lead[page.list]",
+            "path": "model/acme/crm/Lead.page-list.html",
+            "kind": "page.list",
+            "unresolved": false
+          },
+          "via": {
+            "label": "Lead.accounts",
+            "id": "acme::crm::Lead[page.list].accounts",
+            "path": "model/acme/crm/Lead.page-list.html#m-block-accounts",
+            "kind": "block.table",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Account",
+            "id": "acme::crm::Account",
+            "path": "model/acme/crm/Account.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "claims": [
+        {
+          "requirement": {
+            "label": "Leads",
+            "id": "acme::crm::Crm.Leads",
+            "path": "requirements/acme/crm/Crm.Leads.html",
+            "kind": "requirement.functional",
+            "unresolved": false
+          },
+          "member": "",
+          "status": "live",
+          "level": 4
+        }
+      ],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 5,
+        "refs": 1,
+        "referencedBy": 3,
+        "claims": 1,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::crm::AccountScore",
+      "name": "AccountScore",
+      "package": "acme::crm",
+      "type": "object",
+      "subType": "projection",
+      "order": 5,
+      "path": "model/acme/crm/AccountScore.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": false,
+      "extends": null,
+      "attrs": [],
+      "memberGroups": [
+        {
+          "type": "source",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::AccountScore#0",
+              "name": "",
+              "type": "source",
+              "subType": "rdb",
+              "order": 0,
+              "anchor": "m-source-0",
+              "path": "model/acme/crm/AccountScore.html#m-source-0",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "kind",
+                  "value": "storedProc",
+                  "values": [
+                    {
+                      "text": "storedProc",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "parameterRef",
+                  "value": "acme::crm::ScoreParams",
+                  "values": [
+                    {
+                      "text": "acme::crm::ScoreParams",
+                      "link": {
+                        "label": "ScoreParams",
+                        "id": "acme::crm::ScoreParams",
+                        "path": "model/acme/crm/ScoreParams.html",
+                        "kind": "object.value",
+                        "unresolved": false
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "proc",
+                  "value": "account_score",
+                  "values": [
+                    {
+                      "text": "account_score",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [
+                {
+                  "attr": "parameterRef",
+                  "via": {
+                    "label": "AccountScore#0",
+                    "id": "acme::crm::AccountScore#0",
+                    "path": "model/acme/crm/AccountScore.html#m-source-0",
+                    "kind": "source.rdb",
+                    "unresolved": false
+                  },
+                  "target": {
+                    "label": "ScoreParams",
+                    "id": "acme::crm::ScoreParams",
+                    "path": "model/acme/crm/ScoreParams.html",
+                    "kind": "object.value",
+                    "unresolved": false
+                  }
+                }
+              ],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "field",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::AccountScore.totalScore",
+              "name": "totalScore",
+              "type": "field",
+              "subType": "long",
+              "order": 1,
+              "anchor": "m-totalScore",
+              "path": "model/acme/crm/AccountScore.html#m-totalScore",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": [
+                {
+                  "type": "origin",
+                  "count": 1,
+                  "members": [
+                    {
+                      "id": "acme::crm::AccountScore.totalScore#0",
+                      "name": "",
+                      "type": "origin",
+                      "subType": "aggregate",
+                      "order": 0,
+                      "anchor": "",
+                      "path": "model/acme/crm/AccountScore.html#m-totalScore",
+                      "abstract": false,
+                      "isArray": false,
+                      "extends": null,
+                      "declaredOn": null,
+                      "attrs": [
+                        {
+                          "name": "agg",
+                          "value": "sum",
+                          "values": [
+                            {
+                              "text": "sum",
+                              "link": null
+                            }
+                          ]
+                        },
+                        {
+                          "name": "of",
+                          "value": "acme::crm::Lead.score",
+                          "values": [
+                            {
+                              "text": "acme::crm::Lead.score",
+                              "link": {
+                                "label": "Lead.score",
+                                "id": "acme::crm::Lead.score",
+                                "path": "model/acme/crm/Lead.html#m-score",
+                                "kind": "field.long",
+                                "unresolved": false
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "name": "via",
+                          "value": "acme::crm::Account.leads",
+                          "values": [
+                            {
+                              "text": "acme::crm::Account.leads",
+                              "link": {
+                                "label": "Account.leads",
+                                "id": "acme::crm::Account.leads",
+                                "path": "model/acme/crm/Account.html#m-relationship-leads",
+                                "kind": "relationship.association",
+                                "unresolved": false
+                              }
+                            }
+                          ]
+                        }
+                      ],
+                      "refs": [
+                        {
+                          "attr": "of",
+                          "via": {
+                            "label": "AccountScore.totalScore#0",
+                            "id": "acme::crm::AccountScore.totalScore#0",
+                            "path": "model/acme/crm/AccountScore.html#m-totalScore",
+                            "kind": "origin.aggregate",
+                            "unresolved": false
+                          },
+                          "target": {
+                            "label": "Lead.score",
+                            "id": "acme::crm::Lead.score",
+                            "path": "model/acme/crm/Lead.html#m-score",
+                            "kind": "field.long",
+                            "unresolved": false
+                          }
+                        },
+                        {
+                          "attr": "via",
+                          "via": {
+                            "label": "AccountScore.totalScore#0",
+                            "id": "acme::crm::AccountScore.totalScore#0",
+                            "path": "model/acme/crm/AccountScore.html#m-totalScore",
+                            "kind": "origin.aggregate",
+                            "unresolved": false
+                          },
+                          "target": {
+                            "label": "Account.leads",
+                            "id": "acme::crm::Account.leads",
+                            "path": "model/acme/crm/Account.html#m-relationship-leads",
+                            "kind": "relationship.association",
+                            "unresolved": false
+                          }
+                        }
+                      ],
+                      "claims": [],
+                      "memberGroups": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "refs": [
+        {
+          "attr": "parameterRef",
+          "via": {
+            "label": "AccountScore#0",
+            "id": "acme::crm::AccountScore#0",
+            "path": "model/acme/crm/AccountScore.html#m-source-0",
+            "kind": "source.rdb",
+            "unresolved": false
+          },
+          "target": {
+            "label": "ScoreParams",
+            "id": "acme::crm::ScoreParams",
+            "path": "model/acme/crm/ScoreParams.html",
+            "kind": "object.value",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "of",
+          "via": {
+            "label": "AccountScore.totalScore#0",
+            "id": "acme::crm::AccountScore.totalScore#0",
+            "path": "model/acme/crm/AccountScore.html#m-totalScore",
+            "kind": "origin.aggregate",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Lead.score",
+            "id": "acme::crm::Lead.score",
+            "path": "model/acme/crm/Lead.html#m-score",
+            "kind": "field.long",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "via",
+          "via": {
+            "label": "AccountScore.totalScore#0",
+            "id": "acme::crm::AccountScore.totalScore#0",
+            "path": "model/acme/crm/AccountScore.html#m-totalScore",
+            "kind": "origin.aggregate",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Account.leads",
+            "id": "acme::crm::Account.leads",
+            "path": "model/acme/crm/Account.html#m-relationship-leads",
+            "kind": "relationship.association",
+            "unresolved": false
+          }
+        }
+      ],
+      "referencedBy": [],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 2,
+        "refs": 3,
+        "referencedBy": 0,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::crm::Crm",
+      "name": "Crm",
+      "package": "acme::crm",
+      "type": "requirement",
+      "subType": "functional",
+      "order": 6,
+      "path": "requirements/acme/crm/Crm.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": false,
+      "extends": null,
+      "attrs": [
+        {
+          "name": "counterexample",
+          "value": "A lead is recorded with no account it can be traced to.",
+          "values": [
+            {
+              "text": "A lead is recorded with no account it can be traced to.",
+              "link": null
+            }
+          ]
+        },
+        {
+          "name": "level",
+          "value": 1,
+          "values": [
+            {
+              "text": "1",
+              "link": null
+            }
+          ]
+        },
+        {
+          "name": "statement",
+          "value": "The software tracks leads and the accounts they belong to.",
+          "values": [
+            {
+              "text": "The software tracks leads and the accounts they belong to.",
+              "link": null
+            }
+          ]
+        },
+        {
+          "name": "status",
+          "value": "live",
+          "values": [
+            {
+              "text": "live",
+              "link": null
+            }
+          ]
+        }
+      ],
+      "memberGroups": [
+        {
+          "type": "requirement",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::Crm.Leads",
+              "name": "Leads",
+              "type": "requirement",
+              "subType": "functional",
+              "order": 0,
+              "anchor": "m-requirement-Leads",
+              "path": "requirements/acme/crm/Crm.Leads.html",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "counterexample",
+                  "value": "A lead's email is lost on save.",
+                  "values": [
+                    {
+                      "text": "A lead's email is lost on save.",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "implementedBy",
+                  "value": [
+                    "Lead",
+                    "Account",
+                    "acme::tax::tax"
+                  ],
+                  "values": [
+                    {
+                      "text": "Lead",
+                      "link": null
+                    },
+                    {
+                      "text": "Account",
+                      "link": null
+                    },
+                    {
+                      "text": "acme::tax::tax",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "level",
+                  "value": 4,
+                  "values": [
+                    {
+                      "text": "4",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "statement",
+                  "value": "Each lead is stored with its email and account.",
+                  "values": [
+                    {
+                      "text": "Each lead is stored with its email and account.",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "status",
+                  "value": "live",
+                  "values": [
+                    {
+                      "text": "live",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": [
+                {
+                  "type": "requirement",
+                  "count": 1,
+                  "members": [
+                    {
+                      "id": "acme::crm::Crm.Leads.Scoring",
+                      "name": "Scoring",
+                      "type": "requirement",
+                      "subType": "functional",
+                      "order": 0,
+                      "anchor": "",
+                      "path": "requirements/acme/crm/Crm.Leads.Scoring.html",
+                      "abstract": false,
+                      "isArray": false,
+                      "extends": null,
+                      "declaredOn": null,
+                      "attrs": [
+                        {
+                          "name": "counterexample",
+                          "value": "A lead whose score is left out of its account's total.",
+                          "values": [
+                            {
+                              "text": "A lead whose score is left out of its account's total.",
+                              "link": null
+                            }
+                          ]
+                        },
+                        {
+                          "name": "implementedBy",
+                          "value": [
+                            "Lead.score"
+                          ],
+                          "values": [
+                            {
+                              "text": "Lead.score",
+                              "link": null
+                            }
+                          ]
+                        },
+                        {
+                          "name": "level",
+                          "value": 5,
+                          "values": [
+                            {
+                              "text": "5",
+                              "link": null
+                            }
+                          ]
+                        },
+                        {
+                          "name": "statement",
+                          "value": "Each lead carries a score its account totals.",
+                          "values": [
+                            {
+                              "text": "Each lead carries a score its account totals.",
+                              "link": null
+                            }
+                          ]
+                        },
+                        {
+                          "name": "status",
+                          "value": "live",
+                          "values": [
+                            {
+                              "text": "live",
+                              "link": null
+                            }
+                          ]
+                        }
+                      ],
+                      "refs": [],
+                      "claims": [],
+                      "memberGroups": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "refs": [],
+      "referencedBy": [],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 1,
+        "refs": 0,
+        "referencedBy": 0,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::crm::Lead",
+      "name": "Lead",
+      "package": "acme::crm",
+      "type": "object",
+      "subType": "entity",
+      "order": 2,
+      "path": "model/acme/crm/Lead.html",
+      "title": "",
+      "description": "A prospective customer.",
+      "summary": "",
+      "abstract": false,
+      "extends": {
+        "label": "Scored",
+        "id": "acme::crm::Scored",
+        "path": "model/acme/crm/Scored.html",
+        "kind": "object.entity",
+        "unresolved": false
+      },
+      "attrs": [
+        {
+          "name": "description",
+          "value": "A prospective customer.",
+          "values": [
+            {
+              "text": "A prospective customer.",
+              "link": null
+            }
+          ]
+        }
+      ],
+      "memberGroups": [
+        {
+          "type": "field",
+          "count": 4,
+          "members": [
+            {
+              "id": "acme::crm::Lead.score",
+              "name": "score",
+              "type": "field",
+              "subType": "long",
+              "order": 0,
+              "anchor": "m-score",
+              "path": "model/acme/crm/Lead.html#m-score",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": {
+                "label": "Scored",
+                "id": "acme::crm::Scored",
+                "path": "model/acme/crm/Scored.html",
+                "kind": "object.entity",
+                "unresolved": false
+              },
+              "attrs": [],
+              "refs": [],
+              "claims": [
+                {
+                  "requirement": {
+                    "label": "Scoring",
+                    "id": "acme::crm::Crm.Leads.Scoring",
+                    "path": "requirements/acme/crm/Crm.Leads.Scoring.html",
+                    "kind": "requirement.functional",
+                    "unresolved": false
+                  },
+                  "member": "score",
+                  "status": "live",
+                  "level": 5
+                }
+              ],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::crm::Lead.id",
+              "name": "id",
+              "type": "field",
+              "subType": "long",
+              "order": 1,
+              "anchor": "m-id",
+              "path": "model/acme/crm/Lead.html#m-id",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::crm::Lead.email",
+              "name": "email",
+              "type": "field",
+              "subType": "string",
+              "order": 2,
+              "anchor": "m-email",
+              "path": "model/acme/crm/Lead.html#m-email",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::crm::Lead.accountId",
+              "name": "accountId",
+              "type": "field",
+              "subType": "long",
+              "order": 3,
+              "anchor": "m-accountId",
+              "path": "model/acme/crm/Lead.html#m-accountId",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "identity",
+          "count": 2,
+          "members": [
+            {
+              "id": "acme::crm::Lead.pk",
+              "name": "pk",
+              "type": "identity",
+              "subType": "primary",
+              "order": 4,
+              "anchor": "m-identity-pk",
+              "path": "model/acme/crm/Lead.html#m-identity-pk",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "fields",
+                  "value": [
+                    "id"
+                  ],
+                  "values": [
+                    {
+                      "text": "id",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::crm::Lead.accountRef",
+              "name": "accountRef",
+              "type": "identity",
+              "subType": "reference",
+              "order": 5,
+              "anchor": "m-identity-accountRef",
+              "path": "model/acme/crm/Lead.html#m-identity-accountRef",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "fields",
+                  "value": [
+                    "accountId"
+                  ],
+                  "values": [
+                    {
+                      "text": "accountId",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "references",
+                  "value": "acme::crm::Account",
+                  "values": [
+                    {
+                      "text": "acme::crm::Account",
+                      "link": {
+                        "label": "Account",
+                        "id": "acme::crm::Account",
+                        "path": "model/acme/crm/Account.html",
+                        "kind": "object.entity",
+                        "unresolved": false
+                      }
+                    }
+                  ]
+                }
+              ],
+              "refs": [
+                {
+                  "attr": "references",
+                  "via": {
+                    "label": "Lead.accountRef",
+                    "id": "acme::crm::Lead.accountRef",
+                    "path": "model/acme/crm/Lead.html#m-identity-accountRef",
+                    "kind": "identity.reference",
+                    "unresolved": false
+                  },
+                  "target": {
+                    "label": "Account",
+                    "id": "acme::crm::Account",
+                    "path": "model/acme/crm/Account.html",
+                    "kind": "object.entity",
+                    "unresolved": false
+                  }
+                }
+              ],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "source",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::Lead.db",
+              "name": "db",
+              "type": "source",
+              "subType": "rdb",
+              "order": 6,
+              "anchor": "m-source-db",
+              "path": "model/acme/crm/Lead.html#m-source-db",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "table",
+                  "value": "leads",
+                  "values": [
+                    {
+                      "text": "leads",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [
+        {
+          "attr": "extends",
+          "via": null,
+          "target": {
+            "label": "Scored",
+            "id": "acme::crm::Scored",
+            "path": "model/acme/crm/Scored.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "references",
+          "via": {
+            "label": "Lead.accountRef",
+            "id": "acme::crm::Lead.accountRef",
+            "path": "model/acme/crm/Lead.html#m-identity-accountRef",
+            "kind": "identity.reference",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Account",
+            "id": "acme::crm::Account",
+            "path": "model/acme/crm/Account.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "referencedBy": [
+        {
+          "attr": "objectRef",
+          "from": {
+            "label": "Account",
+            "id": "acme::crm::Account",
+            "path": "model/acme/crm/Account.html",
+            "kind": "object.entity",
+            "unresolved": false
+          },
+          "via": {
+            "label": "Account.leads",
+            "id": "acme::crm::Account.leads",
+            "path": "model/acme/crm/Account.html#m-relationship-leads",
+            "kind": "relationship.association",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "of",
+          "from": {
+            "label": "AccountScore",
+            "id": "acme::crm::AccountScore",
+            "path": "model/acme/crm/AccountScore.html",
+            "kind": "object.projection",
+            "unresolved": false
+          },
+          "via": {
+            "label": "AccountScore.totalScore#0",
+            "id": "acme::crm::AccountScore.totalScore#0",
+            "path": "model/acme/crm/AccountScore.html#m-totalScore",
+            "kind": "origin.aggregate",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Lead.score",
+            "id": "acme::crm::Lead.score",
+            "path": "model/acme/crm/Lead.html#m-score",
+            "kind": "field.long",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "objectRef",
+          "from": {
+            "label": "Lead",
+            "id": "acme::crm::Lead[page.list]",
+            "path": "model/acme/crm/Lead.page-list.html",
+            "kind": "page.list",
+            "unresolved": false
+          },
+          "via": null,
+          "target": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "objectRef",
+          "from": {
+            "label": "Lead",
+            "id": "acme::crm::Lead[page.list]",
+            "path": "model/acme/crm/Lead.page-list.html",
+            "kind": "page.list",
+            "unresolved": false
+          },
+          "via": {
+            "label": "Lead.leads",
+            "id": "acme::crm::Lead[page.list].leads",
+            "path": "model/acme/crm/Lead.page-list.html#m-block-leads",
+            "kind": "block.table",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "claims": [
+        {
+          "requirement": {
+            "label": "Leads",
+            "id": "acme::crm::Crm.Leads",
+            "path": "requirements/acme/crm/Crm.Leads.html",
+            "kind": "requirement.functional",
+            "unresolved": false
+          },
+          "member": "",
+          "status": "live",
+          "level": 4
+        },
+        {
+          "requirement": {
+            "label": "Scoring",
+            "id": "acme::crm::Crm.Leads.Scoring",
+            "path": "requirements/acme/crm/Crm.Leads.Scoring.html",
+            "kind": "requirement.functional",
+            "unresolved": false
+          },
+          "member": "score",
+          "status": "live",
+          "level": 5
+        }
+      ],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 7,
+        "refs": 2,
+        "referencedBy": 4,
+        "claims": 2,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::crm::Lead[page.list]",
+      "name": "Lead",
+      "package": "acme::crm",
+      "type": "page",
+      "subType": "list",
+      "order": 0,
+      "path": "model/acme/crm/Lead.page-list.html",
+      "title": "Leads",
+      "description": "",
+      "summary": "",
+      "abstract": false,
+      "extends": null,
+      "attrs": [
+        {
+          "name": "objectRef",
+          "value": "acme::crm::Lead",
+          "values": [
+            {
+              "text": "acme::crm::Lead",
+              "link": {
+                "label": "Lead",
+                "id": "acme::crm::Lead",
+                "path": "model/acme/crm/Lead.html",
+                "kind": "object.entity",
+                "unresolved": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "route",
+          "value": "/leads",
+          "values": [
+            {
+              "text": "/leads",
+              "link": null
+            }
+          ]
+        },
+        {
+          "name": "title",
+          "value": "Leads",
+          "values": [
+            {
+              "text": "Leads",
+              "link": null
+            }
+          ]
+        }
+      ],
+      "memberGroups": [
+        {
+          "type": "block",
+          "count": 2,
+          "members": [
+            {
+              "id": "acme::crm::Lead[page.list].leads",
+              "name": "leads",
+              "type": "block",
+              "subType": "table",
+              "order": 0,
+              "anchor": "m-block-leads",
+              "path": "model/acme/crm/Lead.page-list.html#m-block-leads",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "columns",
+                  "value": [
+                    "email",
+                    "accountId"
+                  ],
+                  "values": [
+                    {
+                      "text": "email",
+                      "link": null
+                    },
+                    {
+                      "text": "accountId",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "objectRef",
+                  "value": "acme::crm::Lead",
+                  "values": [
+                    {
+                      "text": "acme::crm::Lead",
+                      "link": {
+                        "label": "Lead",
+                        "id": "acme::crm::Lead",
+                        "path": "model/acme/crm/Lead.html",
+                        "kind": "object.entity",
+                        "unresolved": false
+                      }
+                    }
+                  ]
+                }
+              ],
+              "refs": [
+                {
+                  "attr": "objectRef",
+                  "via": {
+                    "label": "Lead.leads",
+                    "id": "acme::crm::Lead[page.list].leads",
+                    "path": "model/acme/crm/Lead.page-list.html#m-block-leads",
+                    "kind": "block.table",
+                    "unresolved": false
+                  },
+                  "target": {
+                    "label": "Lead",
+                    "id": "acme::crm::Lead",
+                    "path": "model/acme/crm/Lead.html",
+                    "kind": "object.entity",
+                    "unresolved": false
+                  }
+                }
+              ],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::crm::Lead[page.list].accounts",
+              "name": "accounts",
+              "type": "block",
+              "subType": "table",
+              "order": 1,
+              "anchor": "m-block-accounts",
+              "path": "model/acme/crm/Lead.page-list.html#m-block-accounts",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "columns",
+                  "value": [
+                    "name"
+                  ],
+                  "values": [
+                    {
+                      "text": "name",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "objectRef",
+                  "value": "acme::crm::Account",
+                  "values": [
+                    {
+                      "text": "acme::crm::Account",
+                      "link": {
+                        "label": "Account",
+                        "id": "acme::crm::Account",
+                        "path": "model/acme/crm/Account.html",
+                        "kind": "object.entity",
+                        "unresolved": false
+                      }
+                    }
+                  ]
+                }
+              ],
+              "refs": [
+                {
+                  "attr": "objectRef",
+                  "via": {
+                    "label": "Lead.accounts",
+                    "id": "acme::crm::Lead[page.list].accounts",
+                    "path": "model/acme/crm/Lead.page-list.html#m-block-accounts",
+                    "kind": "block.table",
+                    "unresolved": false
+                  },
+                  "target": {
+                    "label": "Account",
+                    "id": "acme::crm::Account",
+                    "path": "model/acme/crm/Account.html",
+                    "kind": "object.entity",
+                    "unresolved": false
+                  }
+                }
+              ],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [
+        {
+          "attr": "objectRef",
+          "via": null,
+          "target": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "objectRef",
+          "via": {
+            "label": "Lead.leads",
+            "id": "acme::crm::Lead[page.list].leads",
+            "path": "model/acme/crm/Lead.page-list.html#m-block-leads",
+            "kind": "block.table",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "objectRef",
+          "via": {
+            "label": "Lead.accounts",
+            "id": "acme::crm::Lead[page.list].accounts",
+            "path": "model/acme/crm/Lead.page-list.html#m-block-accounts",
+            "kind": "block.table",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Account",
+            "id": "acme::crm::Account",
+            "path": "model/acme/crm/Account.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "referencedBy": [],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 2,
+        "refs": 3,
+        "referencedBy": 0,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::crm::ScoreParams",
+      "name": "ScoreParams",
+      "package": "acme::crm",
+      "type": "object",
+      "subType": "value",
+      "order": 4,
+      "path": "model/acme/crm/ScoreParams.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": false,
+      "extends": null,
+      "attrs": [],
+      "memberGroups": [
+        {
+          "type": "field",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::ScoreParams.accountId",
+              "name": "accountId",
+              "type": "field",
+              "subType": "long",
+              "order": 0,
+              "anchor": "m-accountId",
+              "path": "model/acme/crm/ScoreParams.html#m-accountId",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [],
+      "referencedBy": [
+        {
+          "attr": "parameterRef",
+          "from": {
+            "label": "AccountScore",
+            "id": "acme::crm::AccountScore",
+            "path": "model/acme/crm/AccountScore.html",
+            "kind": "object.projection",
+            "unresolved": false
+          },
+          "via": {
+            "label": "AccountScore#0",
+            "id": "acme::crm::AccountScore#0",
+            "path": "model/acme/crm/AccountScore.html#m-source-0",
+            "kind": "source.rdb",
+            "unresolved": false
+          },
+          "target": {
+            "label": "ScoreParams",
+            "id": "acme::crm::ScoreParams",
+            "path": "model/acme/crm/ScoreParams.html",
+            "kind": "object.value",
+            "unresolved": false
+          }
+        }
+      ],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 1,
+        "refs": 0,
+        "referencedBy": 1,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::crm::Scored",
+      "name": "Scored",
+      "package": "acme::crm",
+      "type": "object",
+      "subType": "entity",
+      "order": 1,
+      "path": "model/acme/crm/Scored.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": true,
+      "extends": null,
+      "attrs": [],
+      "memberGroups": [
+        {
+          "type": "field",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::crm::Scored.score",
+              "name": "score",
+              "type": "field",
+              "subType": "long",
+              "order": 0,
+              "anchor": "m-score",
+              "path": "model/acme/crm/Scored.html#m-score",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [],
+      "referencedBy": [
+        {
+          "attr": "extends",
+          "from": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          },
+          "via": null,
+          "target": {
+            "label": "Scored",
+            "id": "acme::crm::Scored",
+            "path": "model/acme/crm/Scored.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 1,
+        "refs": 0,
+        "referencedBy": 1,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::tax::tax",
+      "name": "tax",
+      "package": "acme::tax",
+      "type": "capability",
+      "subType": "module",
+      "order": 7,
+      "path": "model/acme/tax/tax.html",
+      "title": "",
+      "description": "Sales tax.",
+      "summary": "",
+      "abstract": false,
+      "extends": null,
+      "attrs": [
+        {
+          "name": "description",
+          "value": "Sales tax.",
+          "values": [
+            {
+              "text": "Sales tax.",
+              "link": null
+            }
+          ]
+        },
+        {
+          "name": "owner",
+          "value": "finance",
+          "values": [
+            {
+              "text": "finance",
+              "link": null
+            }
+          ]
+        }
+      ],
+      "memberGroups": [],
+      "refs": [],
+      "referencedBy": [],
+      "claims": [
+        {
+          "requirement": {
+            "label": "Leads",
+            "id": "acme::crm::Crm.Leads",
+            "path": "requirements/acme/crm/Crm.Leads.html",
+            "kind": "requirement.functional",
+            "unresolved": false
+          },
+          "member": "",
+          "status": "live",
+          "level": 4
+        }
+      ],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 0,
+        "refs": 0,
+        "referencedBy": 0,
+        "claims": 1,
+        "files": 0,
+        "routes": 0
+      }
+    }
+  ],
+  "requirements": [
+    {
+      "id": "acme::crm::Crm",
+      "name": "Crm",
+      "label": "Crm",
+      "path": "requirements/acme/crm/Crm.html",
+      "address": "Crm",
+      "package": "acme::crm",
+      "qualifiedPath": "acme::crm::Crm",
+      "subType": "functional",
+      "level": 1,
+      "status": "live",
+      "disposition": "",
+      "statement": "The software tracks leads and the accounts they belong to.",
+      "counterexample": "A lead is recorded with no account it can be traced to.",
+      "title": "",
+      "description": "",
+      "trackedBy": [],
+      "depth": 0,
+      "parent": null,
+      "breadcrumbs": [],
+      "children": [
+        {
+          "label": "Leads",
+          "id": "acme::crm::Crm.Leads",
+          "path": "requirements/acme/crm/Crm.Leads.html",
+          "kind": "requirement.functional",
+          "unresolved": false
+        }
+      ],
+      "implementedBy": [],
+      "supersededBy": null,
+      "inLedger": true,
+      "verdict": "clean",
+      "digest": "f347de6f80a855b33009120f1a497ab46df959a527ad969f3e8caded5155fa72",
+      "diagnostics": [],
+      "rollup": [
+        {
+          "status": "planned",
+          "count": 0
+        },
+        {
+          "status": "live",
+          "count": 2
+        },
+        {
+          "status": "partial",
+          "count": 0
+        },
+        {
+          "status": "retired",
+          "count": 0
+        }
+      ],
+      "rollupTotal": 2,
+      "belowCount": 2,
+      "childCount": 1,
+      "targets": [
+        {
+          "label": "Account",
+          "id": "acme::crm::Account",
+          "path": "model/acme/crm/Account.html",
+          "kind": "object.entity",
+          "unresolved": false
+        },
+        {
+          "label": "Lead",
+          "id": "acme::crm::Lead",
+          "path": "model/acme/crm/Lead.html",
+          "kind": "object.entity",
+          "unresolved": false
+        },
+        {
+          "label": "tax",
+          "id": "acme::tax::tax",
+          "path": "model/acme/tax/tax.html",
+          "kind": "capability.module",
+          "unresolved": false
+        }
+      ],
+      "targetCount": 3
+    },
+    {
+      "id": "acme::crm::Crm.Leads",
+      "name": "Leads",
+      "label": "Leads",
+      "path": "requirements/acme/crm/Crm.Leads.html",
+      "address": "Crm.Leads",
+      "package": "acme::crm",
+      "qualifiedPath": "acme::crm::Crm.Leads",
+      "subType": "functional",
+      "level": 4,
+      "status": "live",
+      "disposition": "",
+      "statement": "Each lead is stored with its email and account.",
+      "counterexample": "A lead's email is lost on save.",
+      "title": "",
+      "description": "",
+      "trackedBy": [],
+      "depth": 1,
+      "parent": {
+        "label": "Crm",
+        "id": "acme::crm::Crm",
+        "path": "requirements/acme/crm/Crm.html",
+        "kind": "requirement.functional",
+        "unresolved": false
+      },
+      "breadcrumbs": [
+        {
+          "label": "Crm",
+          "id": "acme::crm::Crm",
+          "path": "requirements/acme/crm/Crm.html",
+          "kind": "requirement.functional",
+          "unresolved": false
+        }
+      ],
+      "children": [
+        {
+          "label": "Scoring",
+          "id": "acme::crm::Crm.Leads.Scoring",
+          "path": "requirements/acme/crm/Crm.Leads.Scoring.html",
+          "kind": "requirement.functional",
+          "unresolved": false
+        }
+      ],
+      "implementedBy": [
+        {
+          "ref": "Lead",
+          "resolves": true,
+          "target": {
+            "label": "Lead",
+            "id": "acme::crm::Lead",
+            "path": "model/acme/crm/Lead.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "ref": "Account",
+          "resolves": true,
+          "target": {
+            "label": "Account",
+            "id": "acme::crm::Account",
+            "path": "model/acme/crm/Account.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "ref": "acme::tax::tax",
+          "resolves": true,
+          "target": {
+            "label": "tax",
+            "id": "acme::tax::tax",
+            "path": "model/acme/tax/tax.html",
+            "kind": "capability.module",
+            "unresolved": false
+          }
+        }
+      ],
+      "supersededBy": null,
+      "inLedger": true,
+      "verdict": "clean",
+      "digest": "29446ca9b724321faf53f1e69602a10043a0c99b26dc4ed41e61d4f661e5359b",
+      "diagnostics": [],
+      "rollup": [
+        {
+          "status": "planned",
+          "count": 0
+        },
+        {
+          "status": "live",
+          "count": 2
+        },
+        {
+          "status": "partial",
+          "count": 0
+        },
+        {
+          "status": "retired",
+          "count": 0
+        }
+      ],
+      "rollupTotal": 2,
+      "belowCount": 1,
+      "childCount": 1,
+      "targets": [
+        {
+          "label": "Account",
+          "id": "acme::crm::Account",
+          "path": "model/acme/crm/Account.html",
+          "kind": "object.entity",
+          "unresolved": false
+        },
+        {
+          "label": "Lead",
+          "id": "acme::crm::Lead",
+          "path": "model/acme/crm/Lead.html",
+          "kind": "object.entity",
+          "unresolved": false
+        },
+        {
+          "label": "tax",
+          "id": "acme::tax::tax",
+          "path": "model/acme/tax/tax.html",
+          "kind": "capability.module",
+          "unresolved": false
+        }
+      ],
+      "targetCount": 3
+    },
+    {
+      "id": "acme::crm::Crm.Leads.Scoring",
+      "name": "Scoring",
+      "label": "Scoring",
+      "path": "requirements/acme/crm/Crm.Leads.Scoring.html",
+      "address": "Crm.Leads.Scoring",
+      "package": "acme::crm",
+      "qualifiedPath": "acme::crm::Crm.Leads.Scoring",
+      "subType": "functional",
+      "level": 5,
+      "status": "live",
+      "disposition": "",
+      "statement": "Each lead carries a score its account totals.",
+      "counterexample": "A lead whose score is left out of its account's total.",
+      "title": "",
+      "description": "",
+      "trackedBy": [],
+      "depth": 2,
+      "parent": {
+        "label": "Leads",
+        "id": "acme::crm::Crm.Leads",
+        "path": "requirements/acme/crm/Crm.Leads.html",
+        "kind": "requirement.functional",
+        "unresolved": false
+      },
+      "breadcrumbs": [
+        {
+          "label": "Crm",
+          "id": "acme::crm::Crm",
+          "path": "requirements/acme/crm/Crm.html",
+          "kind": "requirement.functional",
+          "unresolved": false
+        },
+        {
+          "label": "Leads",
+          "id": "acme::crm::Crm.Leads",
+          "path": "requirements/acme/crm/Crm.Leads.html",
+          "kind": "requirement.functional",
+          "unresolved": false
+        }
+      ],
+      "children": [],
+      "implementedBy": [
+        {
+          "ref": "Lead.score",
+          "resolves": true,
+          "target": {
+            "label": "Lead.score",
+            "id": "acme::crm::Lead.score",
+            "path": "model/acme/crm/Lead.html#m-score",
+            "kind": "field.long",
+            "unresolved": false
+          }
+        }
+      ],
+      "supersededBy": null,
+      "inLedger": true,
+      "verdict": "clean",
+      "digest": "6990b1edf77a7367a183eb110b02e990d84cee610f9c9531d7062270bbe2d000",
+      "diagnostics": [],
+      "rollup": [
+        {
+          "status": "planned",
+          "count": 0
+        },
+        {
+          "status": "live",
+          "count": 1
+        },
+        {
+          "status": "partial",
+          "count": 0
+        },
+        {
+          "status": "retired",
+          "count": 0
+        }
+      ],
+      "rollupTotal": 1,
+      "belowCount": 0,
+      "childCount": 0,
+      "targets": [
+        {
+          "label": "Lead",
+          "id": "acme::crm::Lead",
+          "path": "model/acme/crm/Lead.html",
+          "kind": "object.entity",
+          "unresolved": false
+        }
+      ],
+      "targetCount": 1
+    }
+  ],
+  "advisories": [],
+  "slices": [
+    {
+      "id": "package:acme::crm",
+      "kind": "package",
+      "anchor": "acme::crm",
+      "nodes": [
+        "acme::crm::Account",
+        "acme::crm::AccountScore",
+        "acme::crm::Crm",
+        "acme::crm::Lead",
+        "acme::crm::Lead[page.list]",
+        "acme::crm::ScoreParams",
+        "acme::crm::Scored"
+      ]
+    },
+    {
+      "id": "package:acme::tax",
+      "kind": "package",
+      "anchor": "acme::tax",
+      "nodes": [
+        "acme::tax::tax"
+      ]
+    },
+    {
+      "id": "requirement:acme::crm::Crm",
+      "kind": "requirement",
+      "anchor": "acme::crm::Crm",
+      "nodes": [
+        "acme::crm::Account",
+        "acme::crm::Crm",
+        "acme::crm::Crm.Leads",
+        "acme::crm::Crm.Leads.Scoring",
+        "acme::crm::Lead",
+        "acme::crm::Lead.score",
+        "acme::tax::tax"
+      ]
+    },
+    {
+      "id": "requirement:acme::crm::Crm.Leads",
+      "kind": "requirement",
+      "anchor": "acme::crm::Crm.Leads",
+      "nodes": [
+        "acme::crm::Account",
+        "acme::crm::Crm.Leads",
+        "acme::crm::Crm.Leads.Scoring",
+        "acme::crm::Lead",
+        "acme::crm::Lead.score",
+        "acme::tax::tax"
+      ]
+    }
+  ]
+}

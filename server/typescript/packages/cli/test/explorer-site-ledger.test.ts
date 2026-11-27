@@ -5,9 +5,9 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canonicalSerializeEffective } from "@metaobjectsdev/metadata";
+import { buildDocsView } from "@metaobjectsdev/metadata";
 import { loadMemory } from "@metaobjectsdev/sdk";
-import { buildExplorer, generateExplorerSite } from "@metaobjectsdev/docs-site";
+import { generateExplorerSite } from "@metaobjectsdev/docs-site";
 import { requirementPayload } from "../src/lib/requirement-payload.js";
 import { ERR_REQUIREMENT_DANGLING_REF, WARN_REQUIREMENT_NOTHING_IMPLEMENTS } from "../src/lib/requirement-check.js";
 import { WARN_REQUIREMENT_TITLE_IS_AN_ID } from "../src/lib/requirement-lint.js";
@@ -27,9 +27,9 @@ async function site(files: Record<string, string>): Promise<{ page: (p: string) 
   const root = await loadMemory(dir, { strict: true });
   const verify = requirementPayload(root, { inCoverage: () => true, files: Object.keys(files) });
   if (verify === undefined) throw new Error("the model declares requirements");
-  const explorer = buildExplorer({ model: JSON.parse(canonicalSerializeEffective(root)) as unknown, verify });
+  const view = buildDocsView({ root, verify });
   const out = join(dir, "site");
-  generateExplorerSite({ explorer, outDir: out, title: "Ledger" });
+  generateExplorerSite({ view, outDir: out, title: "Ledger" });
   return { page: (p) => readFileSync(join(out, p), "utf8"), undecided: verify.requirementCounts.undecided };
 }
 
