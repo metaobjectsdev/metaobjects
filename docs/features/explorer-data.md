@@ -27,7 +27,7 @@ Only the model is required. The view reads the model the loader resolved, so it 
 nothing (no reference is matched by name, no inheritance is re-walked). An earlier version read
 the effective canonical JSON from `meta export --effective` and rebuilt references from a fixed
 list of attribute names; the view replaced it, and a provider's own vocabulary now gets its
-links with no change to the docs code.
+links, on every attribute the loader resolves as a reference, with no change to the docs code.
 
 ### `meta export --effective`
 

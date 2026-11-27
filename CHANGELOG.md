@@ -1468,7 +1468,8 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
     requirement subtree and prompt. Facts only, no HTML, with a boolean or a count wherever a
     page must choose, so a Mustache template can render it. A provider's own vocabulary gets
     its members and links with no docs code: the view reads the loader's resolution, never a
-    list of attribute names. `docsSiteFile()` writes it as the site's `explorer.json`.
+    list the docs code keeps, so a provider attribute links when the loader resolves it as a
+    reference (one of the reference attributes it knows, such as `@objectRef`). `docsSiteFile()` writes it as the site's `explorer.json`.
 
   Gated by the new `fixtures/explorer-conformance/` corpus (`shop`, and `crm` for vocabulary a
   data-driven provider registers), which every port that builds the view is held to byte for

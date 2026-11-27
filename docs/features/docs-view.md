@@ -31,7 +31,9 @@ The builder re-derives nothing the loader already decided. Ids come from walking
 effective tree. Inheritance comes from where each effective child is declared, and references
 come from the loader's own resolution of every attribute it treats as a reference. Claims are
 resolved by the same resolver the requirement gate uses. A provider's vocabulary therefore
-gets its members and its links with no change to the docs code. The corpus's `crm` case
+gets its members and its links with no change to the docs code. A link needs an attribute
+the loader resolves as a reference (such as `@objectRef`); any other attribute stays text. The
+corpus's `crm` case
 declares a `page.list` and a `capability.module` in a data-driven provider, and both appear,
 linked, with nothing in the builder that names them.
 
