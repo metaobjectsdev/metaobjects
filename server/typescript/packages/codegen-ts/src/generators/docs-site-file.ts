@@ -66,9 +66,9 @@ export interface DocsSiteFileOpts {
   stamp?: string;
   /** Where the pages load their third-party CSS and JS from. The classic site loads daisyUI,
    *  Tailwind's browser build, Mermaid and svg-pan-zoom, default `https://cdn.jsdelivr.net/npm`.
-   *  The explorer ships its graph library (Cytoscape) with the site and ignores this, except
-   *  that a static explorer (`output: "static"`) given one loads Cytoscape from it and ships no
-   *  copy. Give an absolute URL or a root-relative path. See `@metaobjectsdev/docs-site`. */
+   *  The explorer ships its graph libraries (Cytoscape and the map's 3D library) with the site
+   *  and ignores this, except that a static explorer (`output: "static"`) given one loads both
+   *  from it and ships no copies. Give an absolute URL or a root-relative path. See `@metaobjectsdev/docs-site`. */
   assetBase?: string;
   /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;

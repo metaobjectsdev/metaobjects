@@ -50,10 +50,10 @@ export interface MetaDocsOptions {
 
 /**
  * The `GET {apiPrefix}/_meta/docs` response body: the loaded model's docs view
- * (docs/features/docs-view.md), as `serializeDocsView` writes it. For the same
- * model it is the same bytes as the `explorer.json` a docs-site build writes
- * (built from the model alone: no verify payload and no generation manifest,
- * which a running application does not hold).
+ * (docs/features/docs-view.md), as `serializeDocsView` writes it. It is built
+ * from the model alone: no verify payload and no generation manifest, which a
+ * running application does not hold. So it matches the `explorer.json` a
+ * docs-site build writes only when that build had neither.
  */
 export function metaDocsJson(root: MetaData, opts: MetaDocsOptions = {}): string {
   return serializeDocsView(buildDocsView({ root, ...(opts.routes !== undefined && { routes: opts.routes }) }));
