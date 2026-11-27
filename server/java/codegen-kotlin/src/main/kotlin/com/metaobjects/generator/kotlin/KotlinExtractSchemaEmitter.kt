@@ -265,7 +265,7 @@ object KotlinExtractSchemaEmitter {
         }
 
         // A single scalar: parse when the mirror leaf is a String and the strict type is not.
-        // The type mapper describes a type as a KotlinPoet value; it is compared by its qualified name.
+        // The type mapper's type is compared by its qualified name.
         val strict = KotlinTypeMapper.payloadTypeName(field).toString()
         val conv = if (mirrorScalar(field) == strict) null else fromStringConversion(field, strict)
         return when {

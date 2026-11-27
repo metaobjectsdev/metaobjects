@@ -61,7 +61,7 @@ Reference generators you own, ejectable in every port. They emit per-language co
 
 - TypeScript: Drizzle + Zod + Fastify integration (and React / TanStack on the client side). **Keep your ORM:** a target with `runtime: false` makes the `entity` generator write Zod schemas and inferred types only, with no Drizzle and no `runtime-ts` import. **Prisma:** `orm: "prisma"` also generates `schema.prisma` from the model (Postgres, MySQL, SQLite) with `prismaSchemaFile()`, and `verify --codegen` and `verify --db` fail when Prisma and the model drift (`docs/recipes/prisma.md`)
 - Java: Spring REST + DTO + repository interfaces (the persistence impl is consumer-supplied) via `codegen-spring`. **Keep your ORM:** `SpringDtoGenerator` and `SpringValueObjectGenerator` write records (jakarta validation) and your JPA entity stays hand-written. Baseline Java 21, Spring Boot 3.x (Boot 2 is not supported)
-- Kotlin: KotlinPoet + Exposed + Spring via `codegen-kotlin`. **Keep your ORM:** `KotlinEntityGenerator` alone writes plain data classes; JVM 21, Spring Boot 3.x
+- Kotlin: Exposed + Spring via `codegen-kotlin`, laid out by `KotlinWriter`. **Keep your ORM:** `KotlinEntityGenerator` alone writes plain data classes; JVM 21, Spring Boot 3.x
 - C#: EF Core + ASP.NET (.NET 8). **Keep your EF model:** an object declared with no `source.rdb` generates a POCO with DataAnnotations and no EF mapping, a contract separate from your entities
 - Python: Pydantic + FastAPI (Python 3.11+). **Keep your ORM:** the `entity` generator writes Pydantic models with no ORM of any kind
 
@@ -129,7 +129,7 @@ TypeScript, Java, Kotlin and C# projects publish; TypeScript, Python, Java, Kotl
 |---|---|---|
 | TypeScript | Reference implementation, npm `1.3.0` | All six pillars, and the only port that prints the requirements authoring lint and publishes shared models. 2500+ tests passing. Owns the reference schema-migration helper, one option beside each port's native tool (ADR-0015). Bun-first dev. |
 | Java | Maven Central `8.3.0` | Spring REST + DTO + repository-interface codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
-| Kotlin | Maven Central `8.3.0` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
+| Kotlin | Maven Central `8.3.0` | Kotlin codegen (laid out by `KotlinWriter`) + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
 | C# | NuGet `1.3.0` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
 | Python | PyPI `1.3.0` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
 

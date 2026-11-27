@@ -2,7 +2,7 @@
 
 The Kotlin port is a **codegen tier built on top of the Java port** — the loader,
 render engine, and Maven plugin are all Java; `metaobjects-codegen-kotlin` emits
-idiomatic Kotlin (KotlinPoet: `data class` (no `@Serializable` — entities are
+idiomatic Kotlin (laid out by `KotlinWriter`: `data class` (no `@Serializable` — entities are
 Jackson-compatible, not kotlinx-serialized), Exposed `Table` objects,
 Spring `@RestController`). Codegen runs as the same Maven plugin goal the Java port
 uses (`mvn metaobjects:generate`). Schema migration is the project's own tool or the
@@ -119,7 +119,7 @@ project needing a shape the built-ins do not emit has two legitimate answers and
 is a finding on its own: a **programmatic** generator (implement
 `com.metaobjects.generator.Generator`, name the class in a `<generator>` element), or a
 **declarative template** (`TemplateScopeGenerator`, wired with `<template>` / `<scope>` /
-`<outputPattern>` / `<format>` / `<templatesDir>` — no KotlinPoet involved). Prefer the
+`<outputPattern>` / `<format>` / `<templatesDir>` — no `KotlinWriter` involved). Prefer the
 template when the output SHAPE is the thing being iterated on or the same output is
 wanted in another language; prefer code when the logic is gnarly. See
 `docs/features/codegen-concepts.md` §3.

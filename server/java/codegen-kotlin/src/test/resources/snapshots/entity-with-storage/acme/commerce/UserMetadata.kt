@@ -1,43 +1,33 @@
 package acme.commerce
 
-import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
-import kotlin.String
-import kotlin.jvm.JvmStatic
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 
-/**
- * GENERATED — do not hand-edit. Regenerated from metadata.
- */
+/** GENERATED — do not hand-edit. Regenerated from metadata. */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public data class UserMetadata(
-  public val locale: String? = null,
-  public val timezone: String? = null,
+data class UserMetadata(
+    val locale: String? = null,
+    val timezone: String? = null,
 ) {
-  /**
-   * Fluent builder — lets a JAVA caller set a subset of properties.
-   */
-  public class Builder {
-    private var locale: String? = null
+    /** Fluent builder — lets a JAVA caller set a subset of properties. */
+    class Builder {
+        private var locale: String? = null
+        private var timezone: String? = null
 
-    private var timezone: String? = null
+        fun locale(v: String?): Builder {
+            this.locale = v
+            return this
+        }
 
-    public fun locale(v: String?): Builder {
-      this.locale = v
-      return this
+        fun timezone(v: String?): Builder {
+            this.timezone = v
+            return this
+        }
+
+        fun build(): UserMetadata = UserMetadata(locale = locale, timezone = timezone)
     }
 
-    public fun timezone(v: String?): Builder {
-      this.timezone = v
-      return this
+    companion object {
+        @JvmStatic
+        fun builder(): Builder = Builder()
     }
-
-    public fun build(): UserMetadata = UserMetadata(
-      locale = locale,
-      timezone = timezone
-    )
-  }
-
-  public companion object {
-    @JvmStatic
-    public fun builder(): Builder = Builder()
-  }
 }

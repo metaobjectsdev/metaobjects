@@ -1,56 +1,44 @@
 package acme.commerce
 
-import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import jakarta.validation.constraints.Size
-import kotlin.String
-import kotlin.jvm.JvmStatic
 
-/**
- * GENERATED — do not hand-edit. Regenerated from metadata.
- */
+/** GENERATED — do not hand-edit. Regenerated from metadata. */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public data class Address(
-  @field:Size(max = 200)
-  public val street: String? = null,
-  @field:Size(max = 100)
-  public val city: String? = null,
-  @field:Size(max = 20)
-  public val zip: String? = null,
+data class Address(
+    @field:Size(max = 200)
+    val street: String? = null,
+    @field:Size(max = 100)
+    val city: String? = null,
+    @field:Size(max = 20)
+    val zip: String? = null,
 ) {
-  /**
-   * Fluent builder — lets a JAVA caller set a subset of properties.
-   */
-  public class Builder {
-    private var street: String? = null
+    /** Fluent builder — lets a JAVA caller set a subset of properties. */
+    class Builder {
+        private var street: String? = null
+        private var city: String? = null
+        private var zip: String? = null
 
-    private var city: String? = null
+        fun street(v: String?): Builder {
+            this.street = v
+            return this
+        }
 
-    private var zip: String? = null
+        fun city(v: String?): Builder {
+            this.city = v
+            return this
+        }
 
-    public fun street(v: String?): Builder {
-      this.street = v
-      return this
+        fun zip(v: String?): Builder {
+            this.zip = v
+            return this
+        }
+
+        fun build(): Address = Address(street = street, city = city, zip = zip)
     }
 
-    public fun city(v: String?): Builder {
-      this.city = v
-      return this
+    companion object {
+        @JvmStatic
+        fun builder(): Builder = Builder()
     }
-
-    public fun zip(v: String?): Builder {
-      this.zip = v
-      return this
-    }
-
-    public fun build(): Address = Address(
-      street = street,
-      city = city,
-      zip = zip
-    )
-  }
-
-  public companion object {
-    @JvmStatic
-    public fun builder(): Builder = Builder()
-  }
 }

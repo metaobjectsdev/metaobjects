@@ -230,6 +230,14 @@ open class KotlinWriter @JvmOverloads constructor(options: WriterOptions = KOTLI
         fun escapeName(name: String): String =
             name.split('.').joinToString(".") { if (it in HARD_KEYWORDS) "`$it`" else it }
 
+        /**
+         * The `package` line and the blank line after it, for text assembled outside a writer, or
+         * nothing for the root package, where no `package` line may appear. Kept for generator
+         * copies ejected before their tier moved onto the writer (`KotlinNaming.packageHeader`).
+         */
+        @JvmStatic
+        fun packageHeader(pkg: String): String = if (pkg.isEmpty()) "" else "package ${escapeName(pkg)}\n\n"
+
         /** The last segment of a dotted name. */
         @JvmStatic
         fun simpleName(qualified: String): String = qualified.substring(qualified.lastIndexOf('.') + 1)

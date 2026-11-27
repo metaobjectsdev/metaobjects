@@ -1,6 +1,6 @@
 # MetaObjects :: Codegen :: Kotlin (`codegen-kotlin`)
 
-Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emits idiomatic Kotlin via KotlinPoet — no MetaObjects runtime dep on the consumer's query path.
+Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emits idiomatic Kotlin, laid out by `KotlinWriter` (ADR-0063) — no MetaObjects runtime dep on the consumer's query path.
 
 ## Generators
 

@@ -20,21 +20,19 @@ import com.metaobjects.field.UriField
 import com.metaobjects.field.InetField
 import com.metaobjects.field.DurationField
 import com.metaobjects.`object`.MetaObject
-import com.squareup.kotlinpoet.ANY
-import com.squareup.kotlinpoet.BOOLEAN
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.DOUBLE
-import com.squareup.kotlinpoet.FLOAT
-import com.squareup.kotlinpoet.INT
-import com.squareup.kotlinpoet.LIST
-import com.squareup.kotlinpoet.LONG
-import com.squareup.kotlinpoet.MAP
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import com.squareup.kotlinpoet.STRING
-import com.squareup.kotlinpoet.TypeName
+import com.metaobjects.generator.kotlin.writer.KotlinClassName
+import com.metaobjects.generator.kotlin.writer.KotlinTypeName
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.ANY
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.BOOLEAN
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.DOUBLE
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.FLOAT
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.INT
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.LONG
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.MAP
+import com.metaobjects.generator.kotlin.writer.KotlinTypes.STRING
 
 /**
- * Centralized mapping from MetaField subtype to (a) KotlinPoet TypeName for data class
+ * Centralized mapping from MetaField subtype to (a) [KotlinTypeName] for data class
  * properties and (b) the Exposed `Table` column statement.
  *
  * Per the codegen-kotlin spec §6 (type mapping table). Tier-1 invariant: the *semantic*
@@ -133,7 +131,7 @@ object KotlinTypeMapper {
      * ports (TS `z.unknown()`, Python `Any`, C# `JsonDocument`). The wire/serialized form stays
      * byte-identical to those ports (`{...}`); only the in-process Kotlin type is `JsonElement`.
      */
-    private val JSON_VALUE_TYPE = ClassName("kotlinx.serialization.json", "JsonElement")
+    private val JSON_VALUE_TYPE = KotlinClassName("kotlinx.serialization.json", "JsonElement")
 
     /**
      * Name of the generated, file-local Exposed extension function emitted for an
@@ -256,29 +254,29 @@ object KotlinTypeMapper {
      * {@code Player.status} → {@code PlayerStatus}; {@code Game.status} → {@code GameStatus}).
      * When [entity] is null (e.g., bare-mapper unit tests) the inline-case enum class is rendered
      * with no package prefix and no entity-name prefix — only the field name pascalised — so the
-     * helper still produces a useful ClassName for documentation / debug output. Generators that
+     * helper still produces a useful class name for documentation / debug output. Generators that
      * actually emit code always pass the owning entity.
      */
     fun enumTypeName(
         field: MetaField<*>,
         entity: MetaObject?,
         provided: Fr019SharedEnum.ProvidedEnumConfig,
-    ): ClassName? {
+    ): KotlinClassName? {
         if (field !is EnumField) return null
 
         val declaration = Fr019SharedEnum.resolveSharedEnumDecl(field)
         if (declaration != null) {
             if (Fr019SharedEnum.isProvided(declaration)) return Fr019SharedEnum.providedClassName(declaration, provided)
             val (declPkg, declShort) = PackageMapping.splitFqn(declaration.name)
-            return ClassName(declPkg, declShort.replaceFirstChar { it.uppercase() })
+            return KotlinClassName(declPkg, declShort.replaceFirstChar { it.uppercase() })
         }
 
         val fieldPascal = field.name.replaceFirstChar { it.uppercase() }
         return if (entity == null) {
-            ClassName("", fieldPascal)
+            KotlinClassName("", fieldPascal)
         } else {
             val (pkg, entityShort) = PackageMapping.splitFqn(entity.name)
-            ClassName(pkg, entityShort + fieldPascal)
+            KotlinClassName(pkg, entityShort + fieldPascal)
         }
     }
 
@@ -291,11 +289,11 @@ object KotlinTypeMapper {
             "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
             "class in its declaration's own package.",
     )
-    fun enumTypeName(field: MetaField<*>, entity: MetaObject?): ClassName? =
+    fun enumTypeName(field: MetaField<*>, entity: MetaObject?): KotlinClassName? =
         enumTypeName(field, entity, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
 
-    /** Map a MetaField to its KotlinPoet data-class property TypeName. */
-    fun kotlinTypeName(field: MetaField<*>): TypeName = when (field) {
+    /** Map a MetaField to its data-class property [KotlinTypeName]. */
+    fun kotlinTypeName(field: MetaField<*>): KotlinTypeName = when (field) {
         // This is the SCALAR/element mapper — `isArray` List<…> wrapping is applied by the
         // CALLERS (entity + payload generators), so a `field.string`'s element type is plain
         // String even when isArray (the column DDL `text[]` is derived separately in
@@ -309,15 +307,15 @@ object KotlinTypeMapper {
         is DoubleField    -> DOUBLE
         // field.decimal → exact-precision java.math.BigDecimal (NUMERIC/DECIMAL). NEVER a
         // floating type — the whole point of field.decimal is to avoid float rounding.
-        is DecimalField   -> ClassName("java.math", "BigDecimal")
+        is DecimalField   -> KotlinClassName("java.math", "BigDecimal")
         // REAL (float4) — distinct single-precision arm so field.float round-trips as
         // Kotlin Float / Exposed REAL, separate from field.double (float8). See R6.
         is FloatField     -> FLOAT
         is BooleanField   -> BOOLEAN
-        is DateField      -> ClassName("java.time", "LocalDate")
+        is DateField      -> KotlinClassName("java.time", "LocalDate")
         // field.time → java.time.LocalTime / Exposed `time(...)` (Postgres TIME). The
         // wall-clock-only sibling of DateField; the wire form is "HH:MM:SS".
-        is TimeField      -> ClassName("java.time", "LocalTime")
+        is TimeField      -> KotlinClassName("java.time", "LocalTime")
         // Default for field.timestamp is `java.time.Instant` — an absolute UTC instant
         // (Postgres `timestamp with time zone`), whose cross-port wire value carries a
         // `Z` (ADR-0036 Wave 2). The rare `@localTime:true` naive opt-out is the zone-less
@@ -325,8 +323,8 @@ object KotlinTypeMapper {
         // (an Instant cannot carry a zone-less wall clock — Jackson 400s on it), paired with
         // the Exposed `datetime` column. Mirrors the Java SpringTypeMapper flip.
         is TimestampField ->
-            if (localTimeOptIn(field)) ClassName("java.time", "LocalDateTime")
-            else ClassName("java.time", "Instant")
+            if (localTimeOptIn(field)) KotlinClassName("java.time", "LocalDateTime")
+            else KotlinClassName("java.time", "Instant")
         // Currency: integer minor units on the wire (project-wide invariant). Same JVM
         // representation as Long; surfaced as its own arm so the semantic is documented
         // and downstream tooling can branch on subtype.
@@ -340,20 +338,20 @@ object KotlinTypeMapper {
         // column DDL is derived separately in [exposedColumnSpec]. `@dbColumnType=uuid` on a
         // field.string is the separate physical escape hatch and keeps the String property —
         // handled by the StringField arm, not here.
-        is UuidField      -> ClassName("java.util", "UUID")
+        is UuidField      -> KotlinClassName("java.util", "UUID")
         // field.uri → native java.net.URI property (ADR-0036/0037 Wave 3). The DB column is
         // plain text (Postgres has no uri type); the file-local `uriColumn(...)` extension
         // gives a `Column<URI>` so the property and column types match.
         // #234: a @lenient field.uri degrades to a plain String (no native URI type, no validator).
-        is UriField       -> if (lenientNetField(field)) STRING else ClassName("java.net", "URI")
+        is UriField       -> if (lenientNetField(field)) STRING else KotlinClassName("java.net", "URI")
         // field.inet → native java.net.InetAddress property (ADR-0036/0037 Wave 3). The DB
         // column is the Postgres-native inet type; the file-local `inetColumn(...)` extension
         // gives a `Column<InetAddress>`. #234: a @lenient field.inet degrades to a plain String.
-        is InetField      -> if (lenientNetField(field)) STRING else ClassName("java.net", "InetAddress")
+        is InetField      -> if (lenientNetField(field)) STRING else KotlinClassName("java.net", "InetAddress")
         // field.duration → native java.time.Duration property. The DB column is the Postgres-native
         // interval (a BIGINT count of microseconds elsewhere); the file-local `durationColumn(...)` extension gives a
         // `Column<Duration>`, and the wire is the canonical ISO-8601 string (MetaDurationWire).
-        is DurationField  -> ClassName("java.time", "Duration")
+        is DurationField  -> KotlinClassName("java.time", "Duration")
         // field.map → an open-keyed Map<String, V> stored in a single jsonb column.
         // Keys are always String. The value type is the scalar named by @valueType,
         // or (for an @objectRef map) the referenced VO — which needs the loader to
@@ -377,7 +375,7 @@ object KotlinTypeMapper {
         field is StringField && dbColumnType(field) == DB_COLUMN_TYPE_JSONB
 
     /**
-     * Map a MetaField to its KotlinPoet TypeName for a REST/serialization **payload** property
+     * Map a MetaField to its [KotlinTypeName] for a REST/serialization **payload** property
      * (the value-object data classes the template tier binds to, ADR-0056).
      *
      * For the `field.string @dbColumnType=jsonb` open bag this is the parsed JSON value
@@ -388,18 +386,18 @@ object KotlinTypeMapper {
      * intention-revealing entry point for the payload generators (and to keep them robust if the
      * two surfaces ever diverge again).
      */
-    fun payloadTypeName(field: MetaField<*>): TypeName =
+    fun payloadTypeName(field: MetaField<*>): KotlinTypeName =
         if (isJsonbOpenBag(field)) JSON_VALUE_TYPE else kotlinTypeName(field)
 
     /**
-     * The Kotlin value TypeName for a scalar-valued [MapField] (the type named by its
+     * The Kotlin value KotlinTypeName for a scalar-valued [MapField] (the type named by its
      * `@valueType` attr — string/int/long/double/float/decimal/boolean/date/time/
      * timestamp/uuid). Returns null when the map carries no `@valueType` (an
      * `@objectRef`-valued map — the VO element type is resolved by the entity generator,
      * which has the loader). The loader has already validated that exactly one of
      * `@valueType` / `@objectRef` is set and that `@valueType` names a scalar subtype.
      */
-    fun mapValueScalarTypeName(field: MapField): TypeName? =
+    fun mapValueScalarTypeName(field: MapField): KotlinTypeName? =
         // ADR-0039: @valueType is an effective property — resolve through extends.
         when (stringAttr(field, MapField.ATTR_VALUE_TYPE, includeParent = true)) {
             StringField.SUBTYPE_STRING    -> STRING
@@ -407,14 +405,14 @@ object KotlinTypeMapper {
             LongField.SUBTYPE_LONG        -> LONG
             DoubleField.SUBTYPE_DOUBLE    -> DOUBLE
             FloatField.SUBTYPE_FLOAT      -> FLOAT
-            DecimalField.SUBTYPE_DECIMAL  -> ClassName("java.math", "BigDecimal")
+            DecimalField.SUBTYPE_DECIMAL  -> KotlinClassName("java.math", "BigDecimal")
             BooleanField.SUBTYPE_BOOLEAN  -> BOOLEAN
-            DateField.SUBTYPE_DATE        -> ClassName("java.time", "LocalDate")
-            TimeField.SUBTYPE_TIME        -> ClassName("java.time", "LocalTime")
+            DateField.SUBTYPE_DATE        -> KotlinClassName("java.time", "LocalDate")
+            TimeField.SUBTYPE_TIME        -> KotlinClassName("java.time", "LocalTime")
             // A map's @valueType:timestamp follows the field.timestamp DEFAULT — an
             // absolute instant (ADR-0036 Wave 2). @localTime has no place on a map value.
-            TimestampField.SUBTYPE_TIMESTAMP -> ClassName("java.time", "Instant")
-            UuidField.SUBTYPE_UUID        -> ClassName("java.util", "UUID")
+            TimestampField.SUBTYPE_TIMESTAMP -> KotlinClassName("java.time", "Instant")
+            UuidField.SUBTYPE_UUID        -> KotlinClassName("java.util", "UUID")
             else -> null
         }
 
@@ -857,7 +855,7 @@ object KotlinTypeMapper {
      */
     fun nowExpr(field: MetaField<*>): String {
         val tn = kotlinTypeName(field)
-        val fqn = (tn as? ClassName)?.canonicalName ?: tn.toString()
+        val fqn = (tn as? KotlinClassName)?.canonicalName ?: tn.toString()
         return "$fqn.now()"
     }
 }

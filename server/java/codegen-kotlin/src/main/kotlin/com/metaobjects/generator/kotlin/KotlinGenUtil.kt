@@ -789,9 +789,9 @@ public object KotlinGenUtil {
     fun reportEnumClasses(
         shape: ReportShape,
         provided: Fr019SharedEnum.ProvidedEnumConfig,
-    ): Map<String, com.squareup.kotlinpoet.ClassName> {
+    ): Map<String, com.metaobjects.generator.kotlin.writer.KotlinClassName> {
         val report = shape.report()
-        val out = LinkedHashMap<String, com.squareup.kotlinpoet.ClassName>()
+        val out = LinkedHashMap<String, com.metaobjects.generator.kotlin.writer.KotlinClassName>()
         for (f in shape.fields()) {
             if (f.typeSource !is com.metaobjects.field.EnumField) continue
             val item = "${f.role.wireName()} \"${f.name}\""
@@ -816,7 +816,7 @@ public object KotlinGenUtil {
             "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
             "class in its declaration's own package.",
     )
-    fun reportEnumClasses(shape: ReportShape): Map<String, com.squareup.kotlinpoet.ClassName> =
+    fun reportEnumClasses(shape: ReportShape): Map<String, com.metaobjects.generator.kotlin.writer.KotlinClassName> =
         reportEnumClasses(shape, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
 
     @Deprecated(
@@ -824,7 +824,7 @@ public object KotlinGenUtil {
             "@provided enum is typed by its configured class. Without it a @provided enum is named by the " +
             "class in its declaration's own package.",
     )
-    fun reportEnumClasses(obj: MetaObject, loader: MetaDataLoader): Map<String, com.squareup.kotlinpoet.ClassName> =
+    fun reportEnumClasses(obj: MetaObject, loader: MetaDataLoader): Map<String, com.metaobjects.generator.kotlin.writer.KotlinClassName> =
         reportEnumClasses(obj, loader, Fr019SharedEnum.ProvidedEnumConfig.DECLARATION_PACKAGE)
 
     /** [reportEnumClasses] for a report's read model; empty for any other object. */
@@ -832,7 +832,7 @@ public object KotlinGenUtil {
         obj: MetaObject,
         loader: MetaDataLoader,
         provided: Fr019SharedEnum.ProvidedEnumConfig,
-    ): Map<String, com.squareup.kotlinpoet.ClassName> {
+    ): Map<String, com.metaobjects.generator.kotlin.writer.KotlinClassName> {
         val report = (obj as? ReportReadModel)?.report() ?: return emptyMap()
         return reportEnumClasses(ReportShape.of(report, loader.root), provided)
     }

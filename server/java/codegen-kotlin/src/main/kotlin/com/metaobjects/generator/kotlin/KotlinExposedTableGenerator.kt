@@ -61,10 +61,8 @@ import com.metaobjects.generator.util.RestSurfaceGate
  * reports emit and which do not.
  *
  * <p>Exposed's `Column<T>` types are inferred by the Kotlin compiler from the initialiser
- * expressions (e.g., `val name = varchar("name", 100)`). KotlinPoet's [com.squareup.kotlinpoet.PropertySpec]
- * requires an explicit type, which would force `val name: Column<String> = ...` — verbose and
- * brittle. Rather than fight the API, this generator hand-rolls the file body as a string;
- * the syntactic surface is small (~20 lines per file) and matches the idiomatic Exposed style.
+ * expressions (e.g., `val name = varchar("name", 100)`), so the generated table object declares
+ * no column types: `val name = varchar("name", 100)`, the idiomatic Exposed style.
  *
  * <p>Args:
  * <ul>
@@ -481,7 +479,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * @property enumClasses derived enum field name → the generated enum class its column is typed by
      * @property unsizedDecimals derived decimal fields the shape gives no type source, so no precision
      */
-    private class ReportTablePlan(val enumClasses: Map<String, com.squareup.kotlinpoet.ClassName>, val unsizedDecimals: Set<String>)
+    private class ReportTablePlan(val enumClasses: Map<String, com.metaobjects.generator.kotlin.writer.KotlinClassName>, val unsizedDecimals: Set<String>)
 
     /**
      * The plan of the report being emitted, keyed by its read model for the duration of
@@ -565,7 +563,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * [KotlinTypeMapper.enumTypeName] for an entity or projection — the class
      * [KotlinEntityGenerator] emits for it — and [KotlinGenUtil.reportEnumClasses] for a report.
      */
-    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): com.squareup.kotlinpoet.ClassName? =
+    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): com.metaobjects.generator.kotlin.writer.KotlinClassName? =
         reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity, providedEnums)
 
     /**
@@ -1035,15 +1033,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // super declared in a DIFFERENT package (the FR-019 shared-enum collapse) resolves — via
         // KotlinTypeMapper.enumTypeName — to ONE enum class named for the super and generated in
         // the SUPER'S package, not this table's. The `enumerationByName(...)` column token below
-        // references that class by simple name only; unlike KotlinEntityGenerator's data class
-        // (KotlinPoet auto-imports the full ClassName it is handed), this generator hand-rolls its
-        // file body as a string, so a cross-package reference is unresolved without an explicit
-        // import here. Walks the same two enum-field surfaces the column-emit loops below use:
+        // references that class by simple name only; the column tokens are text, so a
+        // cross-package reference is unresolved without an explicit import here. Walks the same
+        // two enum-field surfaces the column-emit loops below use:
         // own fields, plus (TPH) the base's folded-in subtype-only fields. Same-package enums
         // (including this entity's own per-entity <EntityShort><FieldPascal> naming) contribute no
         // import, so a single-package model's output stays byte-identical.
         val crossPackageEnumImports = sortedSetOf<String>().apply {
-            fun consider(cn: com.squareup.kotlinpoet.ClassName?) {
+            fun consider(cn: com.metaobjects.generator.kotlin.writer.KotlinClassName?) {
                 if (cn != null && cn.packageName.isNotEmpty() && cn.packageName != pkg) {
                     add("${cn.packageName}.${cn.simpleName}")
                 }

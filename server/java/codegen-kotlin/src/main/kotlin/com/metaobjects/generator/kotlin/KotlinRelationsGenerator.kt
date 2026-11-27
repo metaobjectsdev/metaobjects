@@ -347,14 +347,12 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
     protected data class RenderedType(val name: String, val import: String?)
 
     /**
-     * Render [type] for text emission. A [ClassName] prints its simple name and imports its
+     * Render [type] for text emission. A class name prints its simple name and imports its
      * canonical name (nothing for the auto-imported `kotlin` / `java.lang` packages). Any other
      * shape (parameterized, nullable, ...) prints fully qualified, which is always valid.
-     * [KotlinTypeMapper] still describes a type as a KotlinPoet value, so it is read here by its
-     * qualified name; nothing in this file is laid out by KotlinPoet.
      */
-    protected fun renderType(type: com.squareup.kotlinpoet.TypeName): RenderedType {
-        if (type !is com.squareup.kotlinpoet.ClassName || type.isNullable) return RenderedType(type.toString(), null)
+    protected fun renderType(type: com.metaobjects.generator.kotlin.writer.KotlinTypeName): RenderedType {
+        if (type !is com.metaobjects.generator.kotlin.writer.KotlinClassName || type.isNullable) return RenderedType(type.toString(), null)
         val autoImported = type.packageName == "kotlin" || type.packageName == "java.lang"
         return RenderedType(type.simpleNames.joinToString("."), if (autoImported) null else type.topLevelClassName().canonicalName)
     }
@@ -377,7 +375,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             val targetShort = child.targetEntity?.let { PackageMapping.splitFqn(it).second } ?: ""
             val rendered = entity.metaFields.firstOrNull { it.name == fkField }?.let { f ->
                 runCatching { renderType(KotlinTypeMapper.kotlinTypeName(f)) }.getOrNull()
-            } ?: renderType(com.squareup.kotlinpoet.LONG)
+            } ?: renderType(com.metaobjects.generator.kotlin.writer.KotlinTypes.LONG)
             out.add(ReverseFk(fkField, targetShort, rendered.name, rendered.import))
         }
         return out
@@ -393,15 +391,15 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * the table generator: defensive defaults rather than throwing on
      * partially-formed metadata.
      */
-    protected open fun primaryKeyKotlinType(entity: MetaObject): com.squareup.kotlinpoet.TypeName {
+    protected open fun primaryKeyKotlinType(entity: MetaObject): com.metaobjects.generator.kotlin.writer.KotlinTypeName {
         // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);
         // entity.children (own-only) would miss an inherited primary identity.
         val primary = entity.getIdentities(true)
             .filterIsInstance<MetaIdentity>()
-            .firstOrNull { it.isPrimary } ?: return com.squareup.kotlinpoet.LONG
-        val pkFieldName = KotlinGenUtil.keyFields(entity, primary).firstOrNull() ?: return com.squareup.kotlinpoet.LONG
-        val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return com.squareup.kotlinpoet.LONG
-        return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }.getOrDefault(com.squareup.kotlinpoet.LONG)
+            .firstOrNull { it.isPrimary } ?: return com.metaobjects.generator.kotlin.writer.KotlinTypes.LONG
+        val pkFieldName = KotlinGenUtil.keyFields(entity, primary).firstOrNull() ?: return com.metaobjects.generator.kotlin.writer.KotlinTypes.LONG
+        val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return com.metaobjects.generator.kotlin.writer.KotlinTypes.LONG
+        return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }.getOrDefault(com.metaobjects.generator.kotlin.writer.KotlinTypes.LONG)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

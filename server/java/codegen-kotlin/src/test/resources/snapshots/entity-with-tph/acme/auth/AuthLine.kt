@@ -1,46 +1,35 @@
 package acme.auth
 
-import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import jakarta.validation.constraints.Size
-import kotlin.Long
-import kotlin.String
-import kotlin.jvm.JvmStatic
 
-/**
- * GENERATED — do not hand-edit. Regenerated from metadata.
- */
+/** GENERATED — do not hand-edit. Regenerated from metadata. */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public data class AuthLine(
-  public val id: Long? = null,
-  @field:Size(max = 40)
-  public val label: String? = null,
+data class AuthLine(
+    val id: Long? = null,
+    @field:Size(max = 40)
+    val label: String? = null,
 ) {
-  /**
-   * Fluent builder — lets a JAVA caller set a subset of properties.
-   */
-  public class Builder {
-    private var id: Long? = null
+    /** Fluent builder — lets a JAVA caller set a subset of properties. */
+    class Builder {
+        private var id: Long? = null
+        private var label: String? = null
 
-    private var label: String? = null
+        fun id(v: Long?): Builder {
+            this.id = v
+            return this
+        }
 
-    public fun id(v: Long?): Builder {
-      this.id = v
-      return this
+        fun label(v: String?): Builder {
+            this.label = v
+            return this
+        }
+
+        fun build(): AuthLine = AuthLine(id = id, label = label)
     }
 
-    public fun label(v: String?): Builder {
-      this.label = v
-      return this
+    companion object {
+        @JvmStatic
+        fun builder(): Builder = Builder()
     }
-
-    public fun build(): AuthLine = AuthLine(
-      id = id,
-      label = label
-    )
-  }
-
-  public companion object {
-    @JvmStatic
-    public fun builder(): Builder = Builder()
-  }
 }

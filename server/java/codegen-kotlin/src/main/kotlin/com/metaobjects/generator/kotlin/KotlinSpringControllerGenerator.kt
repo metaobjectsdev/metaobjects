@@ -2220,7 +2220,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // ADR-0039: resolving field lookup (the PK field may be inherited via extends).
         val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return "Long"
         return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }
-            .map { tn -> (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString() }
+            .map { tn -> (tn as? com.metaobjects.generator.kotlin.writer.KotlinClassName)?.simpleName ?: tn.toString() }
             .getOrDefault("Long")
     }
 
@@ -2230,7 +2230,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // VALUE type is String. The coercer already produces String / List<String> for enums.
         if (field is EnumField) return "String"
         return KotlinTypeMapper.kotlinTypeName(field).let { tn ->
-            (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
+            (tn as? com.metaobjects.generator.kotlin.writer.KotlinClassName)?.simpleName ?: tn.toString()
         }
     }
 

@@ -4,7 +4,7 @@ The Kotlin port is a **codegen tier built on top of the Java port**. The loader,
 render engine, and Maven plugin are all Java; `codegen-kotlin` emits idiomatic
 Kotlin (`data class` (no `@Serializable` — entities are Jackson-compatible, not
 kotlinx-serialized), Exposed `Table` objects, Spring
-`@RestController`/`@Configuration`) via KotlinPoet. Codegen runs as the same
+`@RestController`/`@Configuration`), laid out by `KotlinWriter`. Codegen runs as the same
 build-time Maven plugin goal the Java port uses — there is no standalone `meta`
 binary on the JVM side (the Node `meta` is for schema migrations only; see the
 migration reference).
@@ -27,7 +27,7 @@ All artifacts share `groupId` `com.metaobjects` and one version property:
 | `metaobjects-metadata` | metamodel + loader |
 | `metaobjects-metadata-ktx` | thin Kotlin facade over the Java loader + render engine |
 | `metaobjects-render` | render + `Verify` + tolerant `extract` (prompt/template) |
-| `metaobjects-codegen-kotlin` | the Kotlin (KotlinPoet) generators |
+| `metaobjects-codegen-kotlin` | the Kotlin generators (laid out by `KotlinWriter`) |
 | `metaobjects-maven-plugin` | the build-time codegen plugin |
 
 The generated code compiles against the consumer's own runtime dependencies, which the

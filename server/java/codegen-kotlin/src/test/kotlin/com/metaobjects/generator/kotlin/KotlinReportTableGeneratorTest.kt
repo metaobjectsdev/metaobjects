@@ -330,11 +330,11 @@ class KotlinReportTableGeneratorTest {
         assertTrue("    val revenue = long(\"revenue\").nullable()\n" in table, table)
         assertTrue("    val perSale = portableDecimal(\"perSale\", 38, 18).nullable()\n" in table, table)
         // The row data class: a non-null property has no `?` and no `= null` default.
-        assertTrue("  public val revenueOrZero: Long,\n" in row, row)
-        assertTrue("  public val smallestOrZero: Long,\n" in row, row)
-        assertTrue("  public val perSaleOrZero: BigDecimal,\n" in row, row)
-        assertTrue("  public val revenue: Long? = null,\n" in row, row)
-        assertTrue("  public val perSale: BigDecimal? = null,\n" in row, row)
+        assertTrue("    val revenueOrZero: Long,\n" in row, row)
+        assertTrue("    val smallestOrZero: Long,\n" in row, row)
+        assertTrue("    val perSaleOrZero: BigDecimal,\n" in row, row)
+        assertTrue("    val revenue: Long? = null,\n" in row, row)
+        assertTrue("    val perSale: BigDecimal? = null,\n" in row, row)
     }
 
     @Test
@@ -343,14 +343,14 @@ class KotlinReportTableGeneratorTest {
         // Product.id is the spine entity's primary key and carries no @required.
         val (spineTable, spineRow) = productRevenueFiles(productRevenue(""""@spine": "Sale.fkProduct",""", sum))
         assertTrue("    val productId = long(\"productId\")\n" in spineTable, spineTable)
-        assertTrue("  public val productId: Long,\n" in spineRow, spineRow)
+        assertTrue("    val productId: Long,\n" in spineRow, spineRow)
         // A count is non-null either way, and nothing else moved.
         assertTrue("    val sales = long(\"sales\")\n" in spineTable, spineTable)
         assertTrue("    val revenue = long(\"revenue\").nullable()\n" in spineTable, spineTable)
 
         val (plainTable, plainRow) = productRevenueFiles(productRevenue("", sum))
         assertTrue("    val productId = long(\"productId\").nullable()\n" in plainTable, plainTable)
-        assertTrue("  public val productId: Long? = null,\n" in plainRow, plainRow)
+        assertTrue("    val productId: Long? = null,\n" in plainRow, plainRow)
         assertTrue("    val sales = long(\"sales\")\n" in plainTable, plainTable)
     }
 

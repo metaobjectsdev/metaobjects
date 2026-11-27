@@ -1,8 +1,6 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.metadata.ktx.loadString
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.TypeSpec
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -15,10 +13,11 @@ import kotlin.test.assertTrue
  * <p>`docs/features/own-your-codegen.md` states that on Java and Kotlin "every generator
  * writes through one guard that refuses any existing file carrying no `GENERATED` marker,
  * so a hand-written file at a generated path is never clobbered." That was true of the
- * generators that hand-roll their bodies as strings and FALSE of the six that built a
- * KotlinPoet [FileSpec] — `FileSpec.writeTo(dir)` opens the output with
- * `Files.newOutputStream`'s defaults (CREATE, TRUNCATE_EXISTING, WRITE) and never looks at
- * what was there.
+ * generators that hand-rolled their bodies as strings and FALSE of the six that built a
+ * KotlinPoet `FileSpec` — `FileSpec.writeTo(dir)` opened the output with
+ * `Files.newOutputStream`'s defaults (CREATE, TRUNCATE_EXISTING, WRITE) and never looked at
+ * what was there. Those emitters now write through [KotlinWriter][com.metaobjects.generator.kotlin.writer.KotlinWriter]
+ * and the guard, like the rest of the port.
  *
  * <p>[KotlinEntityGenerator] used BOTH routes, which is why the false claim survived
  * review: its `MetaNetJson.kt` support file was guarded while `<Entity>.kt` — the file an
@@ -26,7 +25,7 @@ import kotlin.test.assertTrue
  *
  * <p>These tests assert the guarantee at RUNTIME rather than asserting that a particular
  * function is called, so they stay honest if the plumbing is refactored again. Each of the
- * KotlinPoet emitters is driven for real and checked on three things:
+ * emitters that once wrote through KotlinPoet is driven for real and checked on three things:
  *
  * <ol>
  *   <li>a second run REWRITES its own output — proving the emitted content actually carries
@@ -37,7 +36,7 @@ import kotlin.test.assertTrue
  *       clobbered.</li>
  * </ol>
  */
-class KotlinPoetWriteGuardTest {
+class KotlinWriteGuardTest {
 
     // === fixtures ==========================================================
 
@@ -81,7 +80,7 @@ class KotlinPoetWriteGuardTest {
       ] }
     }""".trimIndent()
 
-    // === the KotlinPoet write sites ========================================
+    // === the write sites that once went through KotlinPoet =================
 
     /**
      * One emitter, the path it writes, and how to run it. [relPath] is the file this case
@@ -117,7 +116,7 @@ class KotlinPoetWriteGuardTest {
     // === helpers ===========================================================
 
     private fun <T> withTempDir(block: (Path) -> T): T {
-        val dir = Files.createTempDirectory("kpoet-guard-")
+        val dir = Files.createTempDirectory("kwriter-guard-")
         try {
             return block(dir)
         } finally {
@@ -138,7 +137,7 @@ class KotlinPoetWriteGuardTest {
     // === the guarantees ====================================================
 
     @Test
-    fun `every KotlinPoet emitter marks its output, so a second run rewrites it`() {
+    fun `every emitter marks its output, so a second run rewrites it`() {
         // The trap this closes: guarding an emitter whose content carries NO marker makes the
         // first run write and every run after refuse — the artifact silently freezes while the
         // build stays green. Asserted by editing the file in a way that KEEPS the marker and
@@ -163,7 +162,7 @@ class KotlinPoetWriteGuardTest {
     @Test
     fun `deleting the marker takes ownership and the edit survives regeneration`() {
         // The whole point of the change: on this port there is no three-way merge and no hash
-        // manifest, so deleting the marker line IS the ownership gesture. Before the fix these
+        // manifest, so deleting the marker line IS the ownership gesture. Before the fix the
         // KotlinPoet paths ignored it and overwrote the file anyway.
         for (case in cases()) withTempDir { out ->
             case.emit(out)
@@ -192,41 +191,6 @@ class KotlinPoetWriteGuardTest {
             case.emit(out)
             assertEquals(mine, Files.readString(file),
                 "${case.label}: a marker-less file at a generated path must be left untouched.")
-        }
-    }
-
-    @Test
-    fun `the guarded route writes the same path and bytes KotlinPoet's own writeTo would`() {
-        // Guards the one thing that would show up in an adopter's diff. KotlinPoet resolves its
-        // output as `directory.resolve(relativePath)` and writes `toString()` as UTF-8; the
-        // guarded route uses the same two public members, so routing through the guard must
-        // change WHETHER a file is written and never WHAT is written.
-        val spec = FileSpec.builder("acme.demo", "Sample")
-            .addType(
-                TypeSpec.classBuilder("Sample")
-                    .addKdoc("GENERATED — do not hand-edit. Regenerated from metadata.\n")
-                    .build()
-            )
-            .build()
-
-        withTempDir { native ->
-            withTempDir { guarded ->
-                val nativePath = spec.writeTo(native)
-                KotlinPoetFileWriter.write(spec, guarded)
-
-                assertEquals(
-                    native.relativize(nativePath).toString().replace('\\', '/'),
-                    "acme/demo/Sample.kt",
-                    "KotlinPoet's own output path is the one the guarded route must reuse"
-                )
-                val guardedPath = guarded.resolve("acme/demo/Sample.kt")
-                assertTrue(Files.exists(guardedPath), "guarded route wrote no file at $guardedPath")
-                assertEquals(
-                    Files.readAllBytes(nativePath).toList(),
-                    Files.readAllBytes(guardedPath).toList(),
-                    "guarded output must be byte-identical to FileSpec.writeTo"
-                )
-            }
         }
     }
 }

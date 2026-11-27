@@ -47,7 +47,7 @@ Five module additions in 7.0.0 (none required; opt in per stack):
 | Module | When you need it |
 |---|---|
 | `metaobjects-codegen-spring` | Generate Spring REST controllers + DTOs + JPA repositories + filter allowlists from metadata |
-| `metaobjects-codegen-kotlin` | Generate idiomatic Kotlin (entity / Exposed table / Spring controller / payload / validator / stored-proc) on KotlinPoet |
+| `metaobjects-codegen-kotlin` | Generate idiomatic Kotlin (entity / Exposed table / Spring controller / payload / validator / stored-proc), laid out by `KotlinWriter` |
 | `metaobjects-render` | Mustache render + payload-VO codegen + drift-`verify` (the prompt-construction pillar) |
 | `metaobjects-metadata-ktx` | Kotlin facade over the Java metadata core |
 | `metaobjects-omdb-ktx` | Kotlin facade over OMDB |

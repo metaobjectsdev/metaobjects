@@ -4,17 +4,25 @@ package com.metaobjects.generator.kotlin
 // com.metaobjects.generator.kotlin when this generator is copied out via
 // `mvn metaobjects:eject` and its own package is renamed — an explicit import, not
 // same-package bare-name resolution, is what keeps the ejected copy compiling.
+import com.metaobjects.identity.PrimaryIdentity
+import com.metaobjects.config.MigrateSettings
+import com.metaobjects.config.WireFormat
+import com.metaobjects.generator.util.GeneratorUtil
 import com.metaobjects.generator.kotlin.ExposedApi
 import com.metaobjects.generator.kotlin.ExposedImports
+import com.metaobjects.generator.kotlin.Fr019SharedEnum
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
 import com.metaobjects.generator.kotlin.PackageMapping
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 import com.metaobjects.MetaData
+import com.metaobjects.database.ColumnNaming
 import com.metaobjects.database.CoreDBMetaDataProvider
 import com.metaobjects.database.IndexNaming
+import com.metaobjects.database.PhysicalNaming
 import com.metaobjects.MetaRoot
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MapField
@@ -36,10 +44,8 @@ import com.metaobjects.reporting.ReportReadModel
 import com.metaobjects.reporting.ReportShape
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
-import com.squareup.kotlinpoet.ClassName
 import java.io.OutputStream
 import java.io.PrintWriter
-import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
@@ -55,10 +61,8 @@ import com.metaobjects.generator.util.RestSurfaceGate
  * reports emit and which do not.
  *
  * <p>Exposed's `Column<T>` types are inferred by the Kotlin compiler from the initialiser
- * expressions (e.g., `val name = varchar("name", 100)`). KotlinPoet's [com.squareup.kotlinpoet.PropertySpec]
- * requires an explicit type, which would force `val name: Column<String> = ...` — verbose and
- * brittle. Rather than fight the API, this generator hand-rolls the file body as a string;
- * the syntactic surface is small (~20 lines per file) and matches the idiomatic Exposed style.
+ * expressions (e.g., `val name = varchar("name", 100)`), so the generated table object declares
+ * no column types: `val name = varchar("name", 100)`, the idiomatic Exposed style.
  *
  * <p>Args:
  * <ul>
@@ -66,22 +70,6 @@ import com.metaobjects.generator.util.RestSurfaceGate
  * </ul>
  */
 open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
-
-    /**
-     * The project's column-naming strategy for fields carrying no explicit `@column`,
-     * from the `columnNaming` generator arg
-     * (`<args><columnNaming>literal</columnNaming></args>` in the pom). Values match the
-     * cross-port vocabulary: `snake_case` (this port's default, and its historical
-     * behaviour), `literal`, `kebab-case`.
-     *
-     * It is CONFIG, not metadata — ADR-0023 does not apply. The same model must be able
-     * to drive a snake_case Postgres schema and a literal-column one, which is precisely
-     * why the strategy lives beside the generator rather than in the metadata, and why
-     * the byte-gated registry prose for `@column` describes it as the default *"via
-     * columnNamingStrategy"*.
-     */
-    protected fun columnNaming(): String =
-        getArg(KotlinGenUtil.ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
 
     /**
      * Task 6 — whether the table binding references `<Entity>Names.NAME` /
@@ -112,10 +100,29 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     protected fun exposedApi(): ExposedApi = ExposedApi.parse(getArg(ExposedApi.ARG_EXPOSED_API))
 
+    /**
+     * FR-019: where a `@provided` enum is referenced from, read from the same two generator args
+     * every generator that types an enum takes ([Fr019SharedEnum.ProvidedEnumConfig.fromArgs]).
+     */
+    private val providedEnums: Fr019SharedEnum.ProvidedEnumConfig
+        get() = Fr019SharedEnum.ProvidedEnumConfig.fromArgs(args)
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
+
+    /** ADR-0019 Amendment 2: the project's wire setting; only the shared decimal-wire file's content depends on it. */
+    private var wire: WireFormat = WireFormat.DEFAULT
 
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
+        wire = WireFormat.of(loader.root)
+        // ADR-0058 — the pom generator arg is REMOVED; refuse by name rather than silently
+        // ignoring a value that used to work. Column naming is read from the loaded root
+        // (com.metaobjects.database.PhysicalNaming) wherever a field or table name is
+        // resolved below — see the removed columnNaming() method's former call sites.
+        if (hasArg(KotlinGenUtil.ARG_COLUMN_NAMING)) {
+            throw GeneratorException(ColumnNaming.removedConfigurationMessage(
+                "the columnNaming generator arg in pom.xml", getArg(KotlinGenUtil.ARG_COLUMN_NAMING)))
+        }
         val outRoot = Paths.get(outDir.absolutePath)
 
         // Pass 1a: identity.reference decorations — per-entity field→FK target
@@ -157,20 +164,32 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // package sharing rationale as the other helpers.
         val packagesNeedingUuidStringHelper = sortedSetOf<String>()
 
+        // Packages that emit at least one table carrying a `field.uuid` or `field.decimal` column.
+        // Each gets ONE shared `MetaPortableColumnTypes.kt` (the engine-aware `Column<UUID>` and
+        // `Column<BigDecimal>` builders), emitted in pass 3e.
+        val packagesNeedingPortableHelper = sortedSetOf<String>()
+
+        // Packages that emit at least one table carrying a `field.duration` column. Each gets ONE
+        // shared `MetaDurationColumnType.kt` (the engine-aware `Column<Duration>` builders) plus the
+        // package's `MetaDurationWire.kt`, emitted in pass 3f.
+        val packagesNeedingDurationHelper = sortedSetOf<String>()
+        val packagesNeedingIntEnumArrayHelper = sortedSetOf<String>()
+
         // Pass 2: emit one Table per entity using its own metadata + the
         // inbound FKs accumulated in Pass 1.
         // FR-024 (ADR-0028): object.projection is emitted too — a projection with
         // an rdb view-kind source is queried through an Exposed Table exactly like
         // a view-kind entity was pre-FR-024 (read-only by construction; projections
         // carry no relationships/references, so passes 1+3 stay entity-only).
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
+            if (!isSelected(entity)) continue
             // FR-044: a report declares no fields, so it is emitted from its derived shape
             // rather than through the entity/projection path below.
             if (entity.subType == MetaObject.SUBTYPE_REPORT) {
                 emitReport(
                     entity, outRoot, loader,
                     packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
-                    packagesNeedingUuidStringHelper,
+                    packagesNeedingUuidStringHelper, packagesNeedingPortableHelper,
                 )
                 continue
             }
@@ -191,10 +210,16 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // owns only a read-only source (isWriteThrough() = false), so it stays on the single-
             // object path below.
             if (entity.subType == MetaObject.SUBTYPE_ENTITY && entity.isWriteThrough) {
+                if (entityNeedsDurationHelper(entity, loader)) {
+                    packagesNeedingDurationHelper += PackageMapping.splitFqn(entity.name).first
+                }
+                if (entityNeedsIntEnumArrayHelper(entity, loader)) {
+                    packagesNeedingIntEnumArrayHelper += PackageMapping.splitFqn(entity.name).first
+                }
                 emitWriteThrough(
                     entity, outRoot, loader, fkMap, refDecorationMap,
                     packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
-                    packagesNeedingUuidStringHelper,
+                    packagesNeedingUuidStringHelper, packagesNeedingPortableHelper,
                 )
                 continue
             }
@@ -231,7 +256,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val fkColumns = if (isViewKind(sourceRdb)) emptyList() else fkMap[entity.name].orEmpty()
             val refDecorations =
                 if (isViewKind(sourceRdb)) emptyMap() else refDecorationMap[entity.name].orEmpty()
-            val usedInstantTzHelper = emit(entity, sourceRdb, outRoot, loader, fkColumns, refDecorations)
+            // An entity's primary source is always writable (the loader refuses a read-only
+            // primary), so an entity reaching here emits a table, which stores no derived field.
+            val usedInstantTzHelper = emit(
+                entity, sourceRdb, outRoot, loader, fkColumns, refDecorations,
+                excludeDerivedFields = entity.subType == MetaObject.SUBTYPE_ENTITY,
+            )
             if (usedInstantTzHelper) {
                 packagesNeedingInstantTzHelper += PackageMapping.splitFqn(entity.name).first
             }
@@ -250,6 +280,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // so its package needs the shared MetaUuidStringColumnType support file.
             if (entityNeedsUuidStringHelper(entity, loader)) {
                 packagesNeedingUuidStringHelper += PackageMapping.splitFqn(entity.name).first
+            }
+            if (entityNeedsPortableHelper(entity, loader)) {
+                packagesNeedingPortableHelper += PackageMapping.splitFqn(entity.name).first
+            }
+            if (entityNeedsDurationHelper(entity, loader)) {
+                packagesNeedingDurationHelper += PackageMapping.splitFqn(entity.name).first
+            }
+            if (entityNeedsIntEnumArrayHelper(entity, loader)) {
+                packagesNeedingIntEnumArrayHelper += PackageMapping.splitFqn(entity.name).first
             }
         }
 
@@ -282,6 +321,22 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         for (pkg in packagesNeedingUuidStringHelper) {
             emitUuidStringSupportFile(pkg, outRoot)
         }
+
+        // Pass 3e: ONE shared `MetaPortableColumnTypes.kt` per package that has a `field.uuid` or
+        // `field.decimal` column.
+        for (pkg in packagesNeedingPortableHelper) {
+            emitPortableSupportFile(pkg, outRoot)
+        }
+
+        // Pass 3g: ONE shared `MetaIntEnumArrayColumnType.kt` per package that has an int-backed
+        // `field.enum` array column.
+        for (pkg in packagesNeedingIntEnumArrayHelper) {
+            emitSupportFile(pkg, outRoot, INT_ENUM_ARRAY_SUPPORT_FILE_NAME) { writeIntEnumArraySupport(it, exposedApi()) }
+        }
+        // Pass 3f: ONE shared `MetaDurationColumnType.kt` per package that has a `field.duration` column.
+        for (pkg in packagesNeedingDurationHelper) {
+            emitDurationSupportFile(pkg, outRoot)
+        }
     }
 
     /**
@@ -310,6 +365,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         packagesNeedingInetUriHelper: MutableSet<String>,
         packagesNeedingJacksonMapper: MutableSet<String>,
         packagesNeedingUuidStringHelper: MutableSet<String>,
+        packagesNeedingPortableHelper: MutableSet<String>,
     ) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val writeSource = KotlinGenUtil.writableRdbSource(entity)
@@ -342,6 +398,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (entityNeedsInetUriHelper(entity, loader)) packagesNeedingInetUriHelper += pkg
         if (entityNeedsJacksonMapper(entity, loader)) packagesNeedingJacksonMapper += pkg
         if (entityNeedsUuidStringHelper(entity, loader)) packagesNeedingUuidStringHelper += pkg
+        if (entityNeedsPortableHelper(entity, loader)) packagesNeedingPortableHelper += pkg
     }
 
     /**
@@ -384,6 +441,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         packagesNeedingInetUriHelper: MutableSet<String>,
         packagesNeedingJacksonMapper: MutableSet<String>,
         packagesNeedingUuidStringHelper: MutableSet<String>,
+        packagesNeedingPortableHelper: MutableSet<String>,
     ) {
         // Table A, from the one JVM predicate every REST-surface generator asks: a report
         // is served only when it is concrete and its read source is `@kind: view`.
@@ -398,7 +456,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val model = ReportReadModel.of(report)
         val pkg = PackageMapping.splitFqn(report.name).first
         reportPlans[model] = ReportTablePlan(
-            enumClasses = KotlinGenUtil.reportEnumClasses(shape),
+            enumClasses = KotlinGenUtil.reportEnumClasses(shape, providedEnums),
             unsizedDecimals = shape.fields()
                 .filter { it.typeSource == null && it.subType == DecimalField.SUBTYPE_DECIMAL }
                 .mapTo(HashSet()) { it.name },
@@ -411,6 +469,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (entityNeedsInetUriHelper(model, loader)) packagesNeedingInetUriHelper += pkg
         if (entityNeedsJacksonMapper(model, loader)) packagesNeedingJacksonMapper += pkg
         if (entityNeedsUuidStringHelper(model, loader)) packagesNeedingUuidStringHelper += pkg
+        if (entityNeedsPortableHelper(model, loader)) packagesNeedingPortableHelper += pkg
     }
 
     /**
@@ -420,7 +479,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * @property enumClasses derived enum field name → the generated enum class its column is typed by
      * @property unsizedDecimals derived decimal fields the shape gives no type source, so no precision
      */
-    private class ReportTablePlan(val enumClasses: Map<String, ClassName>, val unsizedDecimals: Set<String>)
+    private class ReportTablePlan(val enumClasses: Map<String, com.metaobjects.generator.kotlin.writer.KotlinClassName>, val unsizedDecimals: Set<String>)
 
     /**
      * The plan of the report being emitted, keyed by its read model for the duration of
@@ -504,8 +563,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * [KotlinTypeMapper.enumTypeName] for an entity or projection — the class
      * [KotlinEntityGenerator] emits for it — and [KotlinGenUtil.reportEnumClasses] for a report.
      */
-    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): ClassName? =
-        reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity)
+    private fun enumClassFor(field: MetaField<*>, entity: MetaObject): com.metaobjects.generator.kotlin.writer.KotlinClassName? =
+        reportPlans[entity]?.enumClasses?.get(field.name) ?: KotlinTypeMapper.enumTypeName(field, entity, providedEnums)
 
     /**
      * The Exposed column spec of a non-enum scalar [field] of [entity]: the type mapper's,
@@ -520,7 +579,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun scalarColumnSpec(entity: MetaObject, field: MetaField<*>, colExpr: String, api: ExposedApi): String {
         if (reportPlans[entity]?.unsizedDecimals?.contains(field.name) == true) {
-            return "decimal($colExpr, $REPORT_DECIMAL_PRECISION, $REPORT_DECIMAL_SCALE)"
+            return "${KotlinTypeMapper.EXPOSED_PORTABLE_DECIMAL_FN}($colExpr, $REPORT_DECIMAL_PRECISION, $REPORT_DECIMAL_SCALE)"
         }
         return KotlinTypeMapper.exposedColumnSpec(field, colExpr, api)
     }
@@ -538,7 +597,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (field !is ObjectField) continue
             if (readStorage(field) != STORAGE_FLATTENED) continue
             val ref = readObjectRef(field) ?: continue
-            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
             if (target.metaFields.any { KotlinTypeMapper.usesInetUriHelper(it) }) return true
         }
         return false
@@ -558,7 +617,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (readStorage(field) != STORAGE_FLATTENED) return true   // typed jsonb object column
                 // A flattened object.value sub-field can itself be a field.map (a jsonb Jackson column).
                 val ref = readObjectRef(field) ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 if (target.metaFields.any { it is MapField }) return true
             }
         }
@@ -573,6 +632,58 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * nested sub-field the same way, so there is no flattened surface to walk here). Mirrors
      * [entityNeedsInetUriHelper]'s direct-field walk.
      */
+    private fun entityNeedsPortableHelper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        if (entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesPortableHelper(it) }) return true
+        // A TPH base's table also carries every subtype's columns.
+        if (KotlinTphPlan.collectSubtypeFields(entity, loader).any { it !is ObjectField && KotlinTypeMapper.usesPortableHelper(it) }) return true
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
+            if (target.metaFields.any { KotlinTypeMapper.usesPortableHelper(it) }) return true
+        }
+        return false
+    }
+
+    /**
+     * True iff [entity]'s table carries a `field.duration` column: a direct field, a TPH subtype's
+     * column on the base's union table, or a flattened `object.value` sub-field. Mirrors
+     * [entityNeedsPortableHelper]'s walk.
+     */
+    private fun entityNeedsDurationHelper(entity: MetaObject, loader: MetaDataLoader): Boolean {
+        if (entity.metaFields.any { KotlinTypeMapper.usesDurationHelper(it) }) return true
+        if (KotlinTphPlan.collectSubtypeFields(entity, loader).any { KotlinTypeMapper.usesDurationHelper(it) }) return true
+        for (field in entity.metaFields) {
+            if (field !is ObjectField) continue
+            if (readStorage(field) != STORAGE_FLATTENED) continue
+            val ref = readObjectRef(field) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
+            if (target.metaFields.any { KotlinTypeMapper.usesDurationHelper(it) }) return true
+        }
+        return false
+    }
+
+    /**
+     * True iff [entity]'s table carries an int-backed `field.enum` array column: a direct field, or a
+     * TPH subtype's column on the base's union table. (An `object.value` is never flattened to an enum
+     * array.) Mirrors [entityNeedsDurationHelper]'s walk.
+     */
+    private fun entityNeedsIntEnumArrayHelper(entity: MetaObject, loader: MetaDataLoader): Boolean =
+        entity.metaFields.any { KotlinTypeMapper.isIntBackedEnumArray(it) } ||
+            KotlinTphPlan.collectSubtypeFields(entity, loader).any { KotlinTypeMapper.isIntBackedEnumArray(it) }
+
+    /**
+     * Emit the per-package `MetaDurationColumnType.kt` support file: the `internal` engine-aware
+     * `Column<java.time.Duration>` column types ([writeDurationSupport]) and, beside it, the
+     * package's `MetaDurationWire.kt` they format and parse through.
+     */
+    private fun emitDurationSupportFile(pkg: String, outRoot: Path) {
+        KotlinDurationWireEmitter.write(pkg, outRoot)
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, DURATION_SUPPORT_FILE_NAME) { writeDurationSupport(it, api) }
+    }
+
     private fun entityNeedsUuidStringHelper(entity: MetaObject, loader: MetaDataLoader): Boolean =
         entity.metaFields.any { it !is ObjectField && KotlinTypeMapper.usesUuidStringHelper(it) }
 
@@ -591,7 +702,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun emitJsonbMapperSupportFile(pkg: String, outRoot: Path) =
         // The jsonb block is fully-qualified (no imports needed).
-        emitSupportFile(pkg, outRoot, JSONB_MAPPER_SUPPORT_FILE_NAME, imports = "", block = JSONB_MAPPER_SUPPORT_BLOCK)
+        emitSupportFile(pkg, outRoot, JSONB_MAPPER_SUPPORT_FILE_NAME) { writeJsonbMapperSupport(it) }
 
     /**
      * Emit the per-package `MetaInetUriColumnType.kt` support file (ADR-0036/0037 Wave 3):
@@ -603,7 +714,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun emitInetUriSupportFile(pkg: String, outRoot: Path) {
         val api = exposedApi()
-        emitSupportFile(pkg, outRoot, INET_URI_SUPPORT_FILE_NAME, inetUriSupportFileImports(api), inetUriSupportBlock(api))
+        emitSupportFile(pkg, outRoot, INET_URI_SUPPORT_FILE_NAME) { writeInetUriSupport(it, api) }
     }
 
     /**
@@ -614,12 +725,16 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * column-builder extension the generated tables call. `internal` keeps it package+module-
      * private while every `*Table.kt` in the package shares the one declaration.
      */
+    private fun emitPortableSupportFile(pkg: String, outRoot: Path) {
+        // The decimal column type reads a SQLite double through the package's generated decimal wire.
+        KotlinDecimalWireEmitter.write(pkg, outRoot, wire)
+        val api = exposedApi()
+        emitSupportFile(pkg, outRoot, PORTABLE_SUPPORT_FILE_NAME) { writePortableSupport(it, api) }
+    }
+
     private fun emitUuidStringSupportFile(pkg: String, outRoot: Path) {
         val api = exposedApi()
-        emitSupportFile(
-            pkg, outRoot, UUID_STRING_SUPPORT_FILE_NAME,
-            uuidStringSupportFileImports(api), uuidStringSupportBlock(api),
-        )
+        emitSupportFile(pkg, outRoot, UUID_STRING_SUPPORT_FILE_NAME) { writeUuidStringSupport(it, api) }
     }
 
     /**
@@ -633,24 +748,20 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      */
     private fun emitInstantTzSupportFile(pkg: String, outRoot: Path) {
         val api = exposedApi()
-        emitSupportFile(pkg, outRoot, INSTANT_TZ_SUPPORT_FILE_NAME, instantTzSupportFileImports(api), instantTzSupportBlock(api))
+        emitSupportFile(pkg, outRoot, INSTANT_TZ_SUPPORT_FILE_NAME) { writeInstantTzSupport(it, api) }
     }
 
     /**
-     * Emit one `internal` per-package support file (`<fileName>.kt`): a package header (when the
-     * package is non-empty), optional import lines, then the declaration block. Shared by the
-     * jsonb-mapper / inet-uri / instant-tz emitters, which differ only in file name, imports, and
-     * block — the `internal` declarations let every `*Table.kt` in the package reuse one copy.
+     * Emit one `internal` per-package support file (`<fileName>.kt`): [write] records the imports
+     * and writes the declarations, and the writer lays out the package line and import block.
+     * Shared by every support-file emitter, which differ only in file name and contents — the
+     * `internal` declarations let every `*Table.kt` in the package reuse one copy.
      */
-    private fun emitSupportFile(pkg: String, outRoot: Path, fileName: String, imports: String, block: String) {
-        val body = buildString {
-            if (pkg.isNotEmpty()) append("package $pkg\n\n")
-            if (imports.isNotEmpty()) { append(imports); append("\n") }
-            append(block)
-            append("\n")
-        }
+    private fun emitSupportFile(pkg: String, outRoot: Path, fileName: String, write: (KotlinWriter) -> Unit) {
+        val w = KotlinWriter().packageName(pkg)
+        write(w)
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$fileName.kt")
-        GeneratedFileWriter.write(outFile, body)
+        GeneratedFileWriter.write(outFile, w.toString())
     }
 
     /**
@@ -682,9 +793,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // write `<Short>Table` and the read `<Short>View` — so the caller passes an explicit
         // object name (default: `tableObjectName(shortName)`, byte-identical for a vanilla entity).
         objectNameOverride: String? = null,
-        // #214: on the write table, DERIVED fields (`origin.*` children) are excluded — they are
-        // not stored on the writable table, only computed by the read view. Vanilla entities carry
-        // no derived fields, so the default `false` keeps their output byte-identical.
+        // #214: on an entity's table, DERIVED fields (`origin.*` children) are excluded — they are
+        // not stored on the writable table, only computed by a read view (when there is one).
         excludeDerivedFields: Boolean = false,
     ): Boolean {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
@@ -717,7 +827,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // and the artifact answers it by role; two sources in one role that DISAGREE are
         // refused when the artifact is built (KotlinGenUtil.sourcesOf), so a role key cannot
         // silently stand for the wrong name.
-        val names = if (bindsThroughNames(entity)) KotlinGenUtil.resolveObjectNames(entity, columnNaming()) else null
+        val names = if (bindsThroughNames(entity)) KotlinGenUtil.resolveObjectNames(entity) else null
         // The slot describing THIS source, and the only thing that decides whether the names
         // arm is taken at all. Null when the names generator is out of the run, or when the
         // source's @kind carries no physical-name alias — a future @kind with no alias
@@ -794,6 +904,19 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // view column, even when @generation=increment is declared on the primary
         // identity (a relic of the parent entity's declaration).
         val incrementPk = primary?.isIncrement == true && !isView && singlePrimaryFieldName != null
+        // #544: identity.primary @sequenceStart / @sequenceName. FORWARD-ONLY ruling: a database
+        // created through Exposed begins its key at the declared start; a changed start is a
+        // migration concern and Exposed output has no migration path, so there is nothing else to
+        // emit. ADR-0039: RESOLVING read, so an identity inherited through extends carries it.
+        val sequenceStart: Long? = if (incrementPk) primary?.let { id ->
+            if (id.hasMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_START))
+                (id.getMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_START).value as? Number)?.toLong() else null
+        } else null
+        val sequenceName: String? = if (incrementPk) primary?.let { id ->
+            if (id.hasMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_NAME))
+                id.getMetaAttr(PrimaryIdentity.ATTR_SEQUENCE_NAME).valueAsString?.takeIf { it.isNotEmpty() } else null
+        } else null
+        val declaresSequence = sequenceStart != null || sequenceName != null
         // R6 Plan 2a: a single-field uuid PK with @generation:uuid gets a server-side
         // gen_random_uuid() DEFAULT (the Postgres-side mint). Routed through the SAME
         // generation signal as increment — distinct only in the emitted column suffix.
@@ -811,7 +934,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val hasStringJsonbOpenBag = entity.metaFields.any { KotlinTypeMapper.isJsonbOpenBag(it) } ||
             entity.metaFields.any { f ->
                 f is ObjectField && readStorage(f) == STORAGE_FLATTENED &&
-                    (readObjectRef(f)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                    (readObjectRef(f)?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
                         ?.metaFields?.any { KotlinTypeMapper.isJsonbOpenBag(it) } ?: false)
             }
         // Object/map jsonb columns → the Jackson metaJsonbMapper codec (a same-package `internal`
@@ -839,7 +962,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field !is ObjectField) continue
                 if (readStorage(field) != STORAGE_FLATTENED) continue
                 val ref = readObjectRef(field) ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 if (target.metaFields.any { KotlinTypeMapper.usesInstantWithTimeZone(it) }) {
                     needsInstantTzHelper = true
                     break
@@ -877,7 +1000,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             if (field !is ObjectField) continue
             if (readStorage(field) != STORAGE_FLATTENED) continue
             val ref = readObjectRef(field) ?: continue
-            val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+            val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
             for (subField in target.metaFields) {
                 if (subField is EnumField) continue
                 // jsonb open bag → its `jsonb`/`Json` imports come via the jsonb-import decision (skip here).
@@ -898,8 +1021,8 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             fun consider(targetFqn: String?, targetTable: String?) {
                 if (targetFqn == null || targetTable == null) return
                 val targetPkg = PackageMapping.splitFqn(targetFqn).first
-                if (targetPkg.isNotEmpty() && targetPkg != pkg) {
-                    add("$targetPkg.$targetTable")
+                if (targetPkg != pkg) {
+                    add(if (targetPkg.isEmpty()) targetTable else "$targetPkg.$targetTable")
                 }
             }
             for (fk in fkColumns) consider(fk.targetFqn, fk.targetTable)
@@ -910,15 +1033,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // super declared in a DIFFERENT package (the FR-019 shared-enum collapse) resolves — via
         // KotlinTypeMapper.enumTypeName — to ONE enum class named for the super and generated in
         // the SUPER'S package, not this table's. The `enumerationByName(...)` column token below
-        // references that class by simple name only; unlike KotlinEntityGenerator's data class
-        // (KotlinPoet auto-imports the full ClassName it is handed), this generator hand-rolls its
-        // file body as a string, so a cross-package reference is unresolved without an explicit
-        // import here. Walks the same two enum-field surfaces the column-emit loops below use:
+        // references that class by simple name only; the column tokens are text, so a
+        // cross-package reference is unresolved without an explicit import here. Walks the same
+        // two enum-field surfaces the column-emit loops below use:
         // own fields, plus (TPH) the base's folded-in subtype-only fields. Same-package enums
         // (including this entity's own per-entity <EntityShort><FieldPascal> naming) contribute no
         // import, so a single-package model's output stays byte-identical.
         val crossPackageEnumImports = sortedSetOf<String>().apply {
-            fun consider(cn: ClassName?) {
+            fun consider(cn: com.metaobjects.generator.kotlin.writer.KotlinClassName?) {
                 if (cn != null && cn.packageName.isNotEmpty() && cn.packageName != pkg) {
                     add("${cn.packageName}.${cn.simpleName}")
                 }
@@ -927,58 +1049,55 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field is EnumField) consider(enumClassFor(field, entity))
             }
             for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
-                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity))
+                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity, providedEnums))
             }
         }
 
-        val source = buildString {
-            if (pkg.isNotEmpty()) {
-                append("package $pkg\n\n")
-            }
-            append("import ${ExposedImports.core(api, "Table")}\n")
-            if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
-                append("import ${ExposedImports.core(api, "ReferenceOption")}\n")
-            }
-            for (imp in columnFunctionImports) {
-                append("import $imp\n")
-            }
-            for (imp in crossPackageTableImports) {
-                append("import $imp\n")
-            }
-            for (imp in crossPackageEnumImports) {
-                append("import $imp\n")
-            }
-            if (needsJsonbExtensionImport) {
-                append("import ${ExposedImports.json(api, "jsonb")}\n")
-            }
-            // Only the open-bag `field.string @dbColumnType=jsonb` (JsonElement) uses kotlinx Json.
-            // Object/map jsonb columns use the same-package `metaJsonbMapper` (no import needed).
-            if (needsKotlinxJsonImport) {
-                append("import kotlinx.serialization.json.Json\n")
-            }
-            // R6 Plan 2a: the gen_random_uuid() server default uses CustomFunction +
-            // UUIDColumnType, which need explicit imports (neither is a Table member). Under
-            // 1.x the java.util.UUID-binding UUIDColumnType moved to core.java (issue #390) —
-            // uuid PK generation always needs java.util.UUID, never kotlin.uuid.Uuid, so this
-            // is unconditional on [ExposedApi], not gated by whether the column itself is a
-            // `field.uuid` vs a `@dbColumnType=uuid` string.
-            if (uuidGeneratedPk) {
-                append("import ${ExposedImports.core(api, "CustomFunction")}\n")
-                val uuidColumnTypeImport =
-                    if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
-                    else ExposedImports.core(api, "UUIDColumnType")
-                append("import $uuidColumnTypeImport\n")
-            }
-            // an instant (default) timestamp calls the `instantWithTimeZone(...)` extension
-            // from the package-shared MetaInstantWithTimeZoneColumnType.kt support file. That
-            // extension is `internal` + same-package, so the table file needs NO import for it
-            // and NO Instant/Column imports (the column's `Column<Instant>` type is inferred).
-            append("\n")
-            if (isView) {
-                append("/** READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly. */\n")
-            }
-            append("/** GENERATED — do not hand-edit. Regenerated from metadata. */\n")
-            append("object $tableObjectName : Table($qualifiedTableExpr) {\n")
+        val w = KotlinWriter().packageName(pkg)
+        w.use(ExposedImports.core(api, "Table"))
+        if (declaresSequence) w.use(ExposedImports.core(api, "Sequence"))
+        if (fkColumns.any { it.hasReferenceOption } || needsRefOptForDecor) {
+            w.use(ExposedImports.core(api, "ReferenceOption"))
+        }
+        for (imp in columnFunctionImports) {
+            w.use(imp)
+        }
+        for (imp in crossPackageTableImports) {
+            w.use(imp)
+        }
+        for (imp in crossPackageEnumImports) {
+            w.use(imp)
+        }
+        if (needsJsonbExtensionImport) {
+            w.use(ExposedImports.json(api, "jsonb"))
+        }
+        // Only the open-bag `field.string @dbColumnType=jsonb` (JsonElement) uses kotlinx Json.
+        // Object/map jsonb columns use the same-package `metaJsonbMapper` (no import needed).
+        if (needsKotlinxJsonImport) {
+            w.use("kotlinx.serialization.json.Json")
+        }
+        // R6 Plan 2a: the gen_random_uuid() server default uses CustomFunction +
+        // UUIDColumnType, which need explicit imports (neither is a Table member). Under
+        // 1.x the java.util.UUID-binding UUIDColumnType moved to core.java (issue #390) —
+        // uuid PK generation always needs java.util.UUID, never kotlin.uuid.Uuid, so this
+        // is unconditional on [ExposedApi], not gated by whether the column itself is a
+        // `field.uuid` vs a `@dbColumnType=uuid` string.
+        if (uuidGeneratedPk) {
+            w.use(ExposedImports.core(api, "CustomFunction"))
+            val uuidColumnTypeImport =
+                if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
+                else ExposedImports.core(api, "UUIDColumnType")
+            w.use(uuidColumnTypeImport)
+        }
+        // an instant (default) timestamp calls the `instantWithTimeZone(...)` extension
+        // from the package-shared MetaInstantWithTimeZoneColumnType.kt support file. That
+        // extension is `internal` + same-package, so the table file needs NO import for it
+        // and NO Instant/Column imports (the column's `Column<Instant>` type is inferred).
+        if (isView) {
+            w.doc("READ-ONLY VIEW — generated from view metadata; do not insert/update/delete directly.")
+        }
+        w.doc("GENERATED — do not hand-edit. Regenerated from metadata.")
+        w.block("object $tableObjectName : Table($qualifiedTableExpr) {") {
             // PK column(s) FIRST so a self-referential FK column (e.g.
             // `parentId = uuid(...).references(SelfTable.id)`) can reference the
             // PK `val id` — Kotlin object initializers run top-to-bottom, so a
@@ -993,7 +1112,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field is ObjectField || field is MapField) continue
                 // #214: on the WRITE table of a write-through entity, a DERIVED (origin.*) field
                 // has no physical column — it is computed by the read view — so it is excluded.
-                // No-op for a vanilla entity or the read view (excludeDerivedFields = false).
+                // No-op for a projection or the read view (excludeDerivedFields = false).
                 if (excludeDerivedFields && KotlinGenUtil.isDerivedField(field)) continue
                 val isPk = field.name in primaryFieldSet
                 // #195: an origin.aggregate @agg:any|all|collect view column is COALESCE-guaranteed
@@ -1026,6 +1145,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     scalarColumnSpec(entity, field, columnExprFor(field), api)
                 }
                 val withAuto = when {
+                    // #544: a declared start / name draws the key from an explicit Sequence, which
+                    // `SchemaUtils.create` creates `START WITH n`. The default name is Postgres's own
+                    // `<table>_<column>_seq`, which is also the sequence behind an identity column
+                    // the TypeScript migrate engine created, so the same code runs on both schemas.
+                    isPk && incrementPk && declaresSequence -> {
+                        val seq = sequenceName ?: "${tableName}_${KotlinGenUtil.resolveColumnName(field)}_seq"
+                        val start = if (sequenceStart != null) ", startWith = ${sequenceStart}L" else ""
+                        "$baseSpec.autoIncrement(Sequence(\"$seq\"$start))"
+                    }
                     isPk && incrementPk -> "$baseSpec.autoIncrement()"
                     // uuid PK + @generation:uuid → server-side gen_random_uuid() default.
                     isPk && uuidGeneratedPk -> "$baseSpec$GEN_RANDOM_UUID_DEFAULT_SUFFIX"
@@ -1041,7 +1169,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val decorated = if (decoration != null && decoration.emitsReference)
                     "$withAuto.references(${decoration.targetTable}.${decoration.targetPkProperty}${decoration.refSuffix})" else withAuto
                 val full = if (nullable) "$decorated.nullable()" else decorated
-                append("    val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $full\n")
+                w.line("val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $full")
             }
             // FR-017 TPH: a discriminator base's single table also carries every subtype-only
             // column, emitted NULLABLE (a row of another subtype stores null there, even when the
@@ -1064,17 +1192,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field, columnExprFor(field), api)
                 }
-                append("    val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $baseSpec.nullable()\n")
+                w.line("val ${KotlinNaming.safeColumnProperty(field.name, exposedApi())} = $baseSpec.nullable()")
             }
             for (oc in objectColumns) {
-                append("    val ${KotlinNaming.safeColumnProperty(oc.propertyName, exposedApi())} = ${oc.columnExpr}\n")
+                w.line("val ${KotlinNaming.safeColumnProperty(oc.propertyName, exposedApi())} = ${oc.columnExpr}")
             }
             for (fk in fkColumns) {
-                append("    val ${KotlinNaming.safeColumnProperty(fk.propertyName, exposedApi())} = ${fk.columnExpr}\n")
+                w.line("val ${KotlinNaming.safeColumnProperty(fk.propertyName, exposedApi())} = ${fk.columnExpr}")
             }
             if (primaryFieldNames.isNotEmpty()) {
                 val pkRefs = primaryFieldNames.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                append("\n    override val primaryKey = PrimaryKey($pkRefs)\n")
+                w.blank()
+                w.line("override val primaryKey = PrimaryKey($pkRefs)")
             }
             // Emit `init { uniqueIndex("<name>", col1, ...) }` for identity.secondary
             // and `init { index("<name>", false, col1, ...) }` for index.lookup, all
@@ -1087,28 +1216,35 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val lookupIndexes = if (isView) emptyList()
                 else entity.getChildren(LookupIndex::class.java, true)
                     .filter { it.fields.isNotEmpty() }
-            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty()) {
-                append("\n    init {\n")
+            val foreignKeyIndexes = if (isView) emptyList() else foreignKeyIndexes(entity, loader, tableName)
+            if (emittableSecondaries.isNotEmpty() || lookupIndexes.isNotEmpty() || foreignKeyIndexes.isNotEmpty()) {
+                w.blank()
+                w.block("init {") {
                 for (sec in emittableSecondaries) {
                     val cols = sec.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                    append("        uniqueIndex(${indexNameExpr(sec, shortName)}, $cols)\n")
+                    val options = indexOptions(sec)
+                    if (options.isEmpty()) w.line("uniqueIndex(${indexNameExpr(sec, shortName, MigrateSettings.of(entity).dialect)}, $cols)")
+                    else w.line("index(${indexNameExpr(sec, shortName, MigrateSettings.of(entity).dialect)}, true, $cols$options)")
                 }
                 for (idx in lookupIndexes) {
                     val cols = idx.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
-                    append("        index(${indexNameExpr(idx, shortName)}, false, $cols)\n")
+                    w.line("index(${indexNameExpr(idx, shortName, MigrateSettings.of(entity).dialect)}, false, $cols${indexOptions(idx)})")
                 }
-                append("    }\n")
+                for (ix in foreignKeyIndexes) {
+                    val cols = ix.fields.joinToString(", ") { KotlinNaming.safeColumnProperty(it, exposedApi()) }
+                    w.line("index(\"${KotlinGenUtil.kotlinStringLiteral(ix.name)}\", false, $cols)")
+                }
+                }
             }
-            append("}\n")
-            // NOTE: the instant (default, non-`@localTime`) support helper
-            // (MetaInstantWithTimeZoneColumnType + instantWithTimeZone extension) is NO LONGER
-            // inlined here. It is emitted ONCE PER PACKAGE as a shared internal
-            // MetaInstantWithTimeZoneColumnType.kt file (see emitInstantTzSupportFile), so
-            // multiple instant-timestamp tables in one package don't redeclare it.
         }
+        // NOTE: the instant (default, non-`@localTime`) support helper
+        // (MetaInstantWithTimeZoneColumnType + instantWithTimeZone extension) is NO LONGER
+        // inlined here. It is emitted ONCE PER PACKAGE as a shared internal
+        // MetaInstantWithTimeZoneColumnType.kt file (see emitInstantTzSupportFile), so
+        // multiple instant-timestamp tables in one package don't redeclare it.
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$tableObjectName.kt")
-        GeneratedFileWriter.write(outFile, source)
+        GeneratedFileWriter.write(outFile, w.toString())
         return needsInstantTzHelper
     }
 
@@ -1150,7 +1286,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * for longer. A second copy of a substitution rule is a second chance to miss a branch.
      */
     protected fun columnExpr(entity: MetaObject, f: MetaField<*>): String {
-        if (!bindsThroughNames(entity)) return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        if (!bindsThroughNames(entity)) return "\"${KotlinGenUtil.resolveColumnName(f)}\""
         // ADR-0039: metaFields is the RESOLVING accessor — an inherited field is a HIT here,
         // and the artifact of `entity` is where its constant is read from.
         if (entity.metaFields.any { it.name == f.name }) return ownColumnExpr(entity, f)
@@ -1159,7 +1295,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // a root-level abstract field, which no table loop can hand us; the literal is the
         // same last-resort fallback as running without the names generator.
         val declaring: MetaObject = f.declaringObject
-            ?: return "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+            ?: return "\"${KotlinGenUtil.resolveColumnName(f)}\""
         return "${namesObjectRef(entity, declaring)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
     }
 
@@ -1181,8 +1317,94 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * artifact re-exports it. No declaring-entity redirect is needed, unlike [columnExpr] —
      * the TPH fold folds a subtype's COLUMNS into the base's table, never its indexes.
      */
-    protected fun indexNameExpr(node: MetaData, shortName: String): String {
+    /**
+     * The Exposed index arguments for the vocabulary Exposed can express: `@using` as
+     * `indexType` (the access method; `btree` is the default and is left out, as migrate does)
+     * and `@where` as `filterCondition`, the predicate exactly as written. Empty when the index
+     * declares neither, so its call is unchanged. `@orders` and `@expr` have no Exposed form;
+     * docs/CONFORMANCE.md "Split coverage" records them.
+     */
+    private fun indexOptions(node: MetaData): String {
+        // ADR-0039: resolving — an index's attrs may be inherited via extends.
+        fun str(name: String): String? =
+            (if (node.hasMetaAttr(name)) node.getMetaAttr(name).value as? String else null)?.trim()?.takeIf { it.isNotEmpty() }
+        val out = StringBuilder()
+        str(com.metaobjects.identity.SecondaryIdentity.ATTR_USING)?.takeIf { it != "btree" }?.let {
+            out.append(", indexType = ").append("\"").append(KotlinGenUtil.kotlinStringLiteral(it)).append("\"")
+        }
+        str(com.metaobjects.identity.SecondaryIdentity.ATTR_WHERE)?.let {
+            val op = ExposedImports.core(exposedApi(), "Op")
+            val qb = ExposedImports.core(exposedApi(), "QueryBuilder")
+            out.append(", filterCondition = { object : $op<Boolean>() { override fun toQueryBuilder(queryBuilder: $qb) { ")
+                .append("queryBuilder.append(").append("\"").append(KotlinGenUtil.kotlinStringLiteral(it)).append("\"").append(") } } }")
+        }
+        return out.toString()
+    }
+
+    /**
+     * `migrate.foreignKeyIndexes` — the index `meta migrate` gives each enforced foreign key that
+     * nothing already leads with, so the table declares the index the database has under
+     * migrate's name (`<table>_<column>[_<column>…]_idx`, cut by [foreignKeyIndexName]). The rule is
+     * migrate's own (`uncoveredForeignKeyColumns` in migrate-ts): the primary key, a field's
+     * `@unique`, an `identity.secondary` and an `index.lookup` without `@expr` cover a foreign
+     * key whose columns they lead with, in any order; two foreign keys over one column set get one
+     * index; and one that leads a longer one shares the longer one's index. Empty unless the
+     * project sets the option, and under the `efcore` conventions or on MySQL
+     * ([MigrateSettings.indexesForeignKeys]). A TPH table is read whole: base and subtypes. The
+     * shared corpus fixtures/foreign-key-index-conformance/ pins this to migrate's answer.
+     */
+    protected fun foreignKeyIndexes(entity: MetaObject, loader: MetaDataLoader, tableName: String): List<ForeignKeyIndex> {
+        val settings = MigrateSettings.of(entity)
+        if (!settings.indexesForeignKeys()) return emptyList()
+        val members = listOf(entity) + KotlinTphPlan.planFor(entity, loader)?.subtypes.orEmpty().map { it.entity }
+        // ADR-0039: resolving — fields, identities, index nodes and @unique may be inherited.
+        fun field(owner: MetaObject, name: String): MetaField<*>? = owner.metaFields.firstOrNull { it.name == name }
+        fun columns(owner: MetaObject, names: List<String>): List<String>? =
+            names.map { n -> field(owner, n)?.let { KotlinGenUtil.resolveColumnName(it) } ?: return null }
+        fun attr(node: MetaData, name: String): String? =
+            (if (node.hasMetaAttr(name)) node.getMetaAttr(name).value?.toString() else null)?.trim()?.takeIf { it.isNotEmpty() }
+        fun leadsWith(prefix: List<String>, cols: List<String>): Boolean =
+            cols.isNotEmpty() && prefix.size >= cols.size && prefix.take(cols.size).all { it in cols.toSet() }
+
+        val existing = mutableListOf<List<String>>()
+        entity.getIdentities(true).firstOrNull { it.isPrimary }
+            ?.let { pk -> columns(entity, KotlinGenUtil.keyFields(entity, pk)) }
+            ?.takeIf { it.isNotEmpty() }?.let(existing::add)
+        for (m in members) {
+            for (f in m.metaFields) {
+                if (attr(f, MetaField.ATTR_UNIQUE)?.toBoolean() == true) existing.add(listOf(KotlinGenUtil.resolveColumnName(f)))
+            }
+            val nodes: List<Pair<MetaData, List<String>>> =
+                m.getIdentities(true).filter { it.isSecondary }.map { it to it.fields } +
+                    m.getChildren(LookupIndex::class.java, true).map { it to it.fields }
+            for ((node, names) in nodes) {
+                if (attr(node, com.metaobjects.identity.SecondaryIdentity.ATTR_EXPR) != null || names.isEmpty()) continue
+                columns(m, names)?.let(existing::add)
+            }
+        }
+
+        val seen = hashSetOf<String>()
+        val candidates = mutableListOf<Pair<List<String>, List<String>>>() // (columns, field names)
+        for (m in members) {
+            for (ref in m.getIdentities(true).filterIsInstance<ReferenceIdentity>().filter { it.isEnforced }) {
+                if (!seen.add(ref.fields.joinToString(","))) continue
+                val cols = columns(m, ref.fields)?.takeIf { it.isNotEmpty() } ?: continue
+                if (existing.any { leadsWith(it, cols) }) continue
+                if (candidates.any { it.first.size == cols.size && leadsWith(it.first, cols) }) continue
+                candidates.add(cols to ref.fields)
+            }
+        }
+        return candidates
+            .filter { (cols, _) -> candidates.none { (o, _) -> o.size > cols.size && leadsWith(o, cols) } }
+            .map { (cols, fields) -> ForeignKeyIndex(foreignKeyIndexName(tableName, cols, settings.dialect), cols, fields) }
+    }
+
+    protected fun indexNameExpr(node: MetaData, shortName: String, dialect: String?): String {
         val name = IndexNaming.resolve(node)
+        // Past Postgres's 63-byte limit migrate creates the index under the name Postgres stores,
+        // so the table spells that cut name; the names artifact keeps the declared one.
+        val stored = declaredIndexName(node, dialect)
+        if (stored != name) return "\"${KotlinGenUtil.kotlinStringLiteral(stored)}\""
         if (!useNames()) return "\"$name\""
         val member = "${KotlinNaming.namesMember(node.type)}_${KotlinNaming.namesMember(name)}_INDEX"
         return "${KotlinNaming.namesObjectName(shortName)}.$member"
@@ -1199,7 +1421,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val (_, shortName) = PackageMapping.splitFqn(entity.name)
         return if (bindsThroughNames(entity))
             "${KotlinNaming.namesObjectName(shortName)}.${KotlinNaming.namesMember(f.name)}_COLUMN"
-        else "\"${KotlinGenUtil.resolveColumnName(f, columnNaming())}\""
+        else "\"${KotlinGenUtil.resolveColumnName(f)}\""
     }
 
     /**
@@ -1281,16 +1503,15 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             val storage = readStorage(field)        // null → default to jsonb
             if (storage == STORAGE_FLATTENED) {
                 val ref = readObjectRef(field) ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
-                    // Physical column name: the parent's resolved column + "_" + the
-                    // sub-field's. Both halves go through resolveColumnName, so an explicit
-                    // `@column` on either wins — the same rule as the TS reference's
-                    // flattenObjectField (`resolveColumnName(field, strategy) + "_" + inner.name`).
+                    // Physical column name: core naming's flattened rule
+                    // (ColumnNaming.resolveFlattened) — the parent's @flattenedColumnPrefix
+                    // verbatim, else its resolved column + "_", then the sub-field's resolved
+                    // column — the same function migrate-ts names these columns with.
                     // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
-                    val colName = KotlinGenUtil.resolveColumnName(field, columnNaming()) + "_" +
-                        KotlinGenUtil.resolveColumnName(subField, columnNaming())
+                    val colName = ColumnNaming.resolveFlattened(field, subField)
                     // Task 6 — out of scope: this composite name belongs to neither a
                     // single field of `entity` nor of `target` — <Entity>Names has no
                     // constant for it. Always literal; useNames() does not reach here.
@@ -1317,7 +1538,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // field of either object.)
                 val colExpr = ownColumnExpr(entity, field)
                 val ref = readObjectRef(field)
-                val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+                val target = ref?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
                 val decode = if (target != null) {
                     // Fully-qualify the VO (Kotlin dotted form) so the emitted column needs no extra import.
                     val voFqn = PackageMapping.toKotlin(target.name)
@@ -1363,7 +1584,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * `kotlin.String`, `java.math.BigDecimal`); neither resolvable → `Any` (an untyped JSON bag).
      */
     private fun mapValueTypeFqn(field: MapField, loader: MetaDataLoader): String {
-        val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+        val target = readObjectRef(field)?.let { KotlinGenUtil.lookupCanonicalObject(loader, it) }
         if (target != null) return PackageMapping.toKotlin(target.name)
         return KotlinTypeMapper.mapValueScalarTypeName(field)?.toString() ?: "Any"
     }
@@ -1413,33 +1634,6 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         const val INSTANT_TZ_SUPPORT_FILE_NAME = "MetaInstantWithTimeZoneColumnType"
 
         /**
-         * Imports for the per-package [instantTzSupportBlock] support file, keyed by
-         * [ExposedApi] (issue #390 — V1's symbols fan out across `v1.core` /
-         * `v1.core.statements.api` / `v1.core.vendors` / `v1.javatime`). Kept here (rather
-         * than FQN-ing every reference inline) so the emitted support file reads idiomatically.
-         */
-        fun instantTzSupportFileImports(api: ExposedApi): String = if (api == ExposedApi.V1) """
-            |import java.time.Instant
-            |import ${ExposedImports.core(api, "Column")}
-            |import ${ExposedImports.core(api, "ColumnType")}
-            |import ${ExposedImports.core(api, "IDateColumnType")}
-            |import ${ExposedImports.core(api, "Table")}
-            |import ${ExposedImports.javatime(api, "JavaInstantColumnType")}
-            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
-            |import ${ExposedImports.statementsApi(api, "RowApi")}
-            |import ${ExposedImports.vendors(api, "currentDialect")}
-            |""".trimMargin() else """
-            |import java.time.Instant
-            |import org.jetbrains.exposed.sql.Column
-            |import org.jetbrains.exposed.sql.ColumnType
-            |import org.jetbrains.exposed.sql.IDateColumnType
-            |import org.jetbrains.exposed.sql.Table
-            |import org.jetbrains.exposed.sql.javatime.JavaInstantColumnType
-            |import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
-            |import org.jetbrains.exposed.sql.vendors.currentDialect
-            |""".trimMargin()
-
-        /**
          * Shared support body emitted ONCE PER PACKAGE (into [INSTANT_TZ_SUPPORT_FILE_NAME].kt)
          * for any package that has at least one instant (default, non-`@localTime`) column. Defines:
          *
@@ -1456,50 +1650,60 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * Both are declared `internal` (package + module-private) so EVERY `*Table.kt` in the
          * same package shares the ONE declaration — multiple instant-timestamp tables per
          * package no longer redeclare a top-level class/extension (the bug the prior per-file
-         * inline emission caused). Note: the `$` lines below have no Kotlin string templates,
-         * so this trimMargin block is emitted verbatim. The ONLY textual difference between
-         * [ExposedApi] versions is `readObject`'s row-accessor parameter type (issue #390 —
-         * `java.sql.ResultSet` under 0.x, `RowApi` under 1.x; see [instantTzSupportFileImports]
-         * for the matching import).
+         * inline emission caused). The ONLY textual difference between [ExposedApi] versions is
+         * `readObject`'s row-accessor parameter type (issue #390 — `java.sql.ResultSet` under
+         * 0.x, `RowApi` under 1.x), plus the `RowApi` import 1.x needs for it.
          */
-        fun instantTzSupportBlock(api: ExposedApi): String {
+        fun writeInstantTzSupport(w: KotlinWriter, api: ExposedApi) {
+            // Imports keyed by
+            // [ExposedApi] (issue #390 — V1's symbols fan out across `v1.core` /
+            // `v1.core.statements.api` / `v1.core.vendors` / `v1.javatime`). Kept here (rather
+            // than FQN-ing every reference inline) so the emitted support file reads idiomatically.
+            w.use("java.time.Instant")
+            for (name in listOf("Column", "ColumnType", "IDateColumnType", "Table")) w.use(ExposedImports.core(api, name))
+            w.use(ExposedImports.javatime(api, "JavaInstantColumnType"))
+            w.use(ExposedImports.statementsApi(api, "PreparedStatementApi"))
+            if (api == ExposedApi.V1) w.use(ExposedImports.statementsApi(api, "RowApi"))
+            w.use(ExposedImports.vendors(api, "currentDialect"))
             val readObjectParamType = if (api == ExposedApi.V1) "RowApi" else "java.sql.ResultSet"
-            return """
-            |/**
-            | * GENERATED — do not hand-edit.
-            | * Custom Exposed column type for instant (default, non-`@localTime`): a
-            | * `Column<java.time.Instant>` whose SQL DDL is `TIMESTAMP WITH TIME ZONE`.
-            | * Delegates all value/JDBC handling to Exposed's `JavaInstantColumnType` and
-            | * overrides only `sqlType()`, so the column type matches the `Instant` data-class
-            | * property (no Instant↔OffsetDateTime coercion) while staying timezone-aware.
-            | */
-            |internal class MetaInstantWithTimeZoneColumnType :
-            |    ColumnType<Instant>(),
-            |    IDateColumnType {
-            |    private val delegate = JavaInstantColumnType()
-            |    override val hasTimePart: Boolean get() = delegate.hasTimePart
-            |    override fun sqlType(): String =
-            |        currentDialect.dataTypeProvider.timestampWithTimeZoneType()
-            |    override fun valueFromDB(value: Any): Instant? = delegate.valueFromDB(value)
-            |    override fun notNullValueToDB(value: Instant): Any = delegate.notNullValueToDB(value)
-            |    override fun nonNullValueToString(value: Instant): String = delegate.nonNullValueToString(value)
-            |    override fun nonNullValueAsDefaultString(value: Instant): String =
-            |        delegate.nonNullValueAsDefaultString(value)
-            |    override fun readObject(rs: $readObjectParamType, index: Int): Any? = delegate.readObject(rs, index)
-            |    override fun setParameter(
-            |        stmt: PreparedStatementApi,
-            |        index: Int,
-            |        value: Any?,
-            |    ) = delegate.setParameter(stmt, index, value)
-            |}
-            |
-            |/**
-            | * Column builder for instant (default, non-`@localTime`): a `Column<Instant>` backed by
-            | * a `TIMESTAMP WITH TIME ZONE` Postgres column (see [MetaInstantWithTimeZoneColumnType]).
-            | */
-            |internal fun Table.instantWithTimeZone(name: String): Column<Instant> =
-            |    registerColumn(name, MetaInstantWithTimeZoneColumnType())
-            |""".trimMargin()
+            w.text(
+                """
+                /**
+                 * GENERATED — do not hand-edit.
+                 * Custom Exposed column type for instant (default, non-`@localTime`): a
+                 * `Column<java.time.Instant>` whose SQL DDL is `TIMESTAMP WITH TIME ZONE`.
+                 * Delegates all value/JDBC handling to Exposed's `JavaInstantColumnType` and
+                 * overrides only `sqlType()`, so the column type matches the `Instant` data-class
+                 * property (no Instant↔OffsetDateTime coercion) while staying timezone-aware.
+                 */
+                internal class MetaInstantWithTimeZoneColumnType :
+                    ColumnType<Instant>(),
+                    IDateColumnType {
+                    private val delegate = JavaInstantColumnType()
+                    override val hasTimePart: Boolean get() = delegate.hasTimePart
+                    override fun sqlType(): String =
+                        currentDialect.dataTypeProvider.timestampWithTimeZoneType()
+                    override fun valueFromDB(value: Any): Instant? = delegate.valueFromDB(value)
+                    override fun notNullValueToDB(value: Instant): Any = delegate.notNullValueToDB(value)
+                    override fun nonNullValueToString(value: Instant): String = delegate.nonNullValueToString(value)
+                    override fun nonNullValueAsDefaultString(value: Instant): String =
+                        delegate.nonNullValueAsDefaultString(value)
+                    override fun readObject(rs: $readObjectParamType, index: Int): Any? = delegate.readObject(rs, index)
+                    override fun setParameter(
+                        stmt: PreparedStatementApi,
+                        index: Int,
+                        value: Any?,
+                    ) = delegate.setParameter(stmt, index, value)
+                }
+
+                /**
+                 * Column builder for instant (default, non-`@localTime`): a `Column<Instant>` backed by
+                 * a `TIMESTAMP WITH TIME ZONE` Postgres column (see [MetaInstantWithTimeZoneColumnType]).
+                 */
+                internal fun Table.instantWithTimeZone(name: String): Column<Instant> =
+                    registerColumn(name, MetaInstantWithTimeZoneColumnType())
+                """
+            )
         }
 
         /**
@@ -1507,32 +1711,6 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * `field.inet` columns (ADR-0036/0037 Wave 3). One per package that has ≥1 such column.
          */
         const val INET_URI_SUPPORT_FILE_NAME = "MetaInetUriColumnType"
-
-        /**
-         * Imports for the per-package [inetUriSupportBlock] support file, keyed by [ExposedApi]
-         * (issue #390). V1 carries two EXTRA imports over the mechanical FQN fan-out:
-         * `JdbcPreparedStatementImpl` and `java.sql.Types`, both needed by
-         * `MetaInetColumnType.setParameter`'s raw-statement bind (see [inetUriSupportBlock]).
-         */
-        fun inetUriSupportFileImports(api: ExposedApi): String = if (api == ExposedApi.V1) """
-            |import java.net.InetAddress
-            |import java.net.URI
-            |import java.sql.Types
-            |import ${ExposedImports.core(api, "Column")}
-            |import ${ExposedImports.core(api, "ColumnType")}
-            |import ${ExposedImports.core(api, "Table")}
-            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
-            |import ${ExposedImports.vendors(api, "currentDialect")}
-            |import org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl
-            |""".trimMargin() else """
-            |import java.net.InetAddress
-            |import java.net.URI
-            |import org.jetbrains.exposed.sql.Column
-            |import org.jetbrains.exposed.sql.ColumnType
-            |import org.jetbrains.exposed.sql.Table
-            |import org.jetbrains.exposed.sql.statements.api.PreparedStatementApi
-            |import org.jetbrains.exposed.sql.vendors.currentDialect
-            |""".trimMargin()
 
         /**
          * Shared support body emitted ONCE PER PACKAGE (into [INET_URI_SUPPORT_FILE_NAME].kt)
@@ -1566,7 +1744,57 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * exact pattern that already round-trips for 0.x's reference harness and OMDB's JVM
          * `InetCodec`.
          */
-        fun inetUriSupportBlock(api: ExposedApi): String {
+        fun writeInetUriSupport(w: KotlinWriter, api: ExposedApi) {
+            // Imports keyed by [ExposedApi]
+            // (issue #390). V1 carries two EXTRA imports over the mechanical FQN fan-out:
+            // `JdbcPreparedStatementImpl` and `java.sql.Types`, both needed by
+            // `MetaInetColumnType.setParameter`'s raw-statement bind (see [writeInetUriSupport]).
+            w.use("java.net.InetAddress")
+            w.use("java.net.URI")
+            if (api == ExposedApi.V1) w.use("java.sql.Types")
+            for (name in listOf("Column", "ColumnType", "Table")) w.use(ExposedImports.core(api, name))
+            w.use(ExposedImports.statementsApi(api, "PreparedStatementApi"))
+            w.use(ExposedImports.vendors(api, "currentDialect"))
+            if (api == ExposedApi.V1) w.use("org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl")
+            w.text(
+                """
+                /**
+                 * GENERATED — do not hand-edit.
+                 * Custom Exposed column type for `field.uri`: a `Column<java.net.URI>` whose SQL DDL
+                 * is plain `text` (Postgres has no uri type). The native URI binding matches the data
+                 * class property; the value persists as its string form.
+                 */
+                internal class MetaUriColumnType : ColumnType<URI>() {
+                    override fun sqlType(): String = currentDialect.dataTypeProvider.textType()
+                    override fun valueFromDB(value: Any): URI = when (value) {
+                        is URI -> value
+                        else -> URI.create(value.toString())
+                    }
+                    override fun notNullValueToDB(value: URI): Any = value.toString()
+                    override fun nonNullValueToString(value: URI): String = "'${'$'}value'"
+                }
+
+                /** Column builder for `field.uri`: a `Column<java.net.URI>` over a `text` column. */
+                internal fun Table.uriColumn(name: String): Column<URI> =
+                    registerColumn(name, MetaUriColumnType())
+
+                /**
+                 * GENERATED — do not hand-edit.
+                 * Custom Exposed column type for `field.inet`: a `Column<java.net.InetAddress>` whose
+                 * SQL DDL is the Postgres-native `inet`. The native InetAddress binding matches the data
+                 * class property; the value binds/reads as its host-literal string.
+                 */
+                internal class MetaInetColumnType : ColumnType<InetAddress>() {
+                    override fun sqlType(): String = "inet"
+                    override fun valueFromDB(value: Any): InetAddress = when (value) {
+                        is InetAddress -> value
+                        else -> InetAddress.getByName(value.toString())
+                    }
+                    override fun notNullValueToDB(value: InetAddress): Any = value.hostAddress
+                    override fun nonNullValueToString(value: InetAddress): String = "'${'$'}{value.hostAddress}'"
+                    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+                """
+            )
             // `setParameter`'s `value` has ALREADY been through `notNullValueToDB` by the time
             // `fillParameters`'s default implementation calls here (confirmed by decompiling it:
             // it calls `columnType.valueToDB(value)` — which for a non-null value delegates to
@@ -1575,70 +1803,348 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // `InetAddress` — an `is InetAddress` check here is always false, on EITHER
             // [ExposedApi]. 0.x's `stmt[index] = value.hostAddress` therefore always falls to its
             // own `else super.setParameter(...)`, binding that string with NO JDBC type hint —
-            // the SAME latent defect [inetUriSupportBlock]'s doc above names (left untouched for
+            // the SAME latent defect [writeInetUriSupport]'s doc above names (left untouched for
             // exposedApi=0's byte-identical contract: this whole block is the ONE place this
             // generator's text differs by [ExposedApi], so the 0.x branch below reproduces the
             // ORIGINAL lines verbatim, comment included, rather than varying just the call). 1.x's
             // replacement checks nullness, not type, matching the reference harness's
             // `MetaInetStringColumnType` exactly — and REPLACES the two-line `if/else`, so it
             // carries its own trailing brace (no shared `else super.setParameter(...)` line below).
-            val inetSetParameterBlock = if (api == ExposedApi.V1) {
-                "        val raw = (stmt as JdbcPreparedStatementImpl).statement\n" +
-                    "        if (value == null) raw.setNull(index, Types.OTHER)\n" +
-                    "        else raw.setObject(index, value.toString(), Types.OTHER)\n" +
-                    "    }"
-            } else {
-                "        // Bind as a string and let the Postgres JDBC driver coerce it to the native\n" +
-                    "        // `inet` column. Anything else — a null for a nullable column above all —\n" +
-                    "        // goes to the base implementation, which knows how to bind it: `stmt[index]`\n" +
-                    "        // takes a non-null Any, so widening the local to Any? did not compile.\n" +
-                    "        if (value is InetAddress) stmt[index] = value.hostAddress\n" +
-                    "        else super.setParameter(stmt, index, value)\n" +
-                    "    }"
+            w.indented {
+                w.indented {
+                    if (api == ExposedApi.V1) {
+                        w.line("val raw = (stmt as JdbcPreparedStatementImpl).statement")
+                        w.line("if (value == null) raw.setNull(index, Types.OTHER)")
+                        w.line("else raw.setObject(index, value.toString(), Types.OTHER)")
+                    } else {
+                        w.line("// Bind as a string and let the Postgres JDBC driver coerce it to the native")
+                        w.line("// `inet` column. Anything else — a null for a nullable column above all —")
+                        w.line("// goes to the base implementation, which knows how to bind it: `stmt[index]`")
+                        w.line("// takes a non-null Any, so widening the local to Any? did not compile.")
+                        w.line("if (value is InetAddress) stmt[index] = value.hostAddress")
+                        w.line("else super.setParameter(stmt, index, value)")
+                    }
+                }
+                w.line("}")
             }
-            return """
-            |/**
-            | * GENERATED — do not hand-edit.
-            | * Custom Exposed column type for `field.uri`: a `Column<java.net.URI>` whose SQL DDL
-            | * is plain `text` (Postgres has no uri type). The native URI binding matches the data
-            | * class property; the value persists as its string form.
-            | */
-            |internal class MetaUriColumnType : ColumnType<URI>() {
-            |    override fun sqlType(): String = currentDialect.dataTypeProvider.textType()
-            |    override fun valueFromDB(value: Any): URI = when (value) {
-            |        is URI -> value
-            |        else -> URI.create(value.toString())
-            |    }
-            |    override fun notNullValueToDB(value: URI): Any = value.toString()
-            |    override fun nonNullValueToString(value: URI): String = "'${'$'}value'"
-            |}
-            |
-            |/** Column builder for `field.uri`: a `Column<java.net.URI>` over a `text` column. */
-            |internal fun Table.uriColumn(name: String): Column<URI> =
-            |    registerColumn(name, MetaUriColumnType())
-            |
-            |/**
-            | * GENERATED — do not hand-edit.
-            | * Custom Exposed column type for `field.inet`: a `Column<java.net.InetAddress>` whose
-            | * SQL DDL is the Postgres-native `inet`. The native InetAddress binding matches the data
-            | * class property; the value binds/reads as its host-literal string.
-            | */
-            |internal class MetaInetColumnType : ColumnType<InetAddress>() {
-            |    override fun sqlType(): String = "inet"
-            |    override fun valueFromDB(value: Any): InetAddress = when (value) {
-            |        is InetAddress -> value
-            |        else -> InetAddress.getByName(value.toString())
-            |    }
-            |    override fun notNullValueToDB(value: InetAddress): Any = value.hostAddress
-            |    override fun nonNullValueToString(value: InetAddress): String = "'${'$'}{value.hostAddress}'"
-            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
-            |${inetSetParameterBlock}
-            |}
-            |
-            |/** Column builder for `field.inet`: a `Column<java.net.InetAddress>` over an `inet` column. */
-            |internal fun Table.inetColumn(name: String): Column<InetAddress> =
-            |    registerColumn(name, MetaInetColumnType())
-            |""".trimMargin()
+            w.text(
+                """
+                }
+
+                /** Column builder for `field.inet`: a `Column<java.net.InetAddress>` over an `inet` column. */
+                internal fun Table.inetColumn(name: String): Column<InetAddress> =
+                    registerColumn(name, MetaInetColumnType())
+                """
+            )
+        }
+
+        /** File name (sans `.kt`) of the per-package support file for `field.duration` columns. */
+        const val DURATION_SUPPORT_FILE_NAME = "MetaDurationColumnType"
+
+        /**
+         * Shared support body for [DURATION_SUPPORT_FILE_NAME].kt — the `field.duration` columns:
+         *
+         *  - `MetaDurationColumnType` — a `Column<java.time.Duration>` over the Postgres-native
+         *    `INTERVAL`, and elsewhere a BIGINT count of microseconds (so filters and sorts order it). Postgres refuses a signed
+         *    ISO-8601 duration as interval input, so the value binds in the interval spelling
+         *    `[-]HH:MM:SS[.f]`, as text under a `CAST(? AS INTERVAL)` parameter marker (a bare
+         *    varchar parameter is refused where an interval goes). A read takes the
+         *    driver's value — pgjdbc's `PGInterval` on Postgres, the microsecond count elsewhere —
+         *    through `MetaDurationWire.fromStored`, which refuses an interval with a year or month part.
+         *  - `MetaDurationArrayColumnType` — an `isArray` duration: `INTERVAL[]` on Postgres, a JSON
+         *    text array of microsecond counts on MySQL and SQLite.
+         *
+         * The text differs by [ExposedApi] only in the array bind (and the imports).
+         */
+        fun writeDurationSupport(w: KotlinWriter, api: ExposedApi) {
+            // 1.x binds an array through the raw statement, so it imports the JDBC statement type.
+            w.use("java.time.Duration")
+            for (name in listOf("Column", "ColumnType", "Table")) w.use(ExposedImports.core(api, name))
+            w.use(ExposedImports.statementsApi(api, "PreparedStatementApi"))
+            w.use(ExposedImports.vendors(api, "currentDialect"))
+            if (api == ExposedApi.V1) w.use("org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl")
+            w.text(
+                """
+                private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
+
+                private fun isMySql(): Boolean = currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
+
+                /** The stored form of a duration: the interval spelling on Postgres, a 64-bit microsecond count elsewhere. */
+                private fun stored(value: Duration): Any =
+                    if (isPostgres()) MetaDurationWire.formatPostgres(value) else MetaDurationWire.toMicros(value)
+
+                /** A stored value: a microsecond count (SQLite, MySQL), or interval / ISO text. */
+                private fun durationOf(value: Any): Duration = when (value) {
+                    is Duration -> value
+                    is Number -> MetaDurationWire.fromMicros(value.toLong())
+                    else -> MetaDurationWire.fromStored(value.toString())
+                }
+
+                /**
+                 * GENERATED — do not hand-edit. A `java.time.Duration` column: native `INTERVAL` on Postgres, and
+                 * elsewhere a BIGINT count of microseconds, so a range filter and a sort order it as a number.
+                 */
+                internal class MetaDurationColumnType : ColumnType<Duration>() {
+                    override fun sqlType(): String = if (isPostgres()) "INTERVAL" else "BIGINT"
+                    override fun valueFromDB(value: Any): Duration = durationOf(value)
+                    override fun notNullValueToDB(value: Duration): Any = stored(value)
+                    override fun nonNullValueToString(value: Duration): String =
+                        if (isPostgres()) "'" + stored(value) + "'" else stored(value).toString()
+                    // The value binds as text; Postgres will not take a varchar where an interval goes, so the
+                    // marker casts it (an explicit cast from text to interval is always allowed).
+                    override fun parameterMarker(value: Duration?): String = if (isPostgres()) "CAST(? AS INTERVAL)" else "?"
+                }
+
+                /** Column builder for `field.duration`: a `Column<java.time.Duration>`. */
+                internal fun Table.durationColumn(name: String): Column<Duration> =
+                    registerColumn(name, MetaDurationColumnType())
+
+                /**
+                 * GENERATED — do not hand-edit. An `isArray` duration column: `INTERVAL[]` on Postgres, and elsewhere
+                 * a JSON text array of microsecond counts.
+                 */
+                internal class MetaDurationArrayColumnType : ColumnType<List<Duration>>() {
+                    private fun element(value: Any): Duration = durationOf(value)
+                    private fun json(value: List<Duration>): String = value.joinToString(",", "[", "]") { MetaDurationWire.toMicros(it).toString() }
+                    override fun sqlType(): String = if (isPostgres()) "INTERVAL[]" else if (isMySql()) "JSON" else "TEXT"
+                    override fun valueFromDB(value: Any): List<Duration> = when (value) {
+                        is java.sql.Array -> (value.array as Array<*>).map { element(it!!) }
+                        is Array<*> -> value.map { element(it!!) }
+                        is List<*> -> value.map { element(it!!) }
+                        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map {
+                            if (it.isIntegralNumber) MetaDurationWire.fromMicros(it.longValue()) else MetaDurationWire.fromNode(it)
+                        }
+                    }
+                    override fun notNullValueToDB(value: List<Duration>): Any =
+                        if (isPostgres()) value.map { MetaDurationWire.formatPostgres(it) }.toTypedArray<Any?>() else json(value)
+                    override fun nonNullValueToString(value: List<Duration>): String =
+                        if (isPostgres()) value.joinToString(",", "ARRAY[", "]::interval[]") { "'" + MetaDurationWire.formatPostgres(it) + "'" }
+                        else "'" + json(value) + "'"
+                    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+                        if (value is Array<*>) {
+                """
+            )
+            // 0.x binds a typed array by element-type name; 1.x wants an ArrayColumnType there, so it
+            // binds through the raw JDBC statement, as MetaDecimalArrayColumnType does.
+            writeArrayBind(w, api, "interval")
+            w.text(
+                """
+                        } else {
+                            super.setParameter(stmt, index, value)
+                        }
+                    }
+                }
+
+                /** Column builder for an `isArray` `field.duration`: a `Column<List<java.time.Duration>>`. */
+                internal fun Table.durationArrayColumn(name: String): Column<List<Duration>> =
+                    registerColumn(name, MetaDurationArrayColumnType())
+                """
+            )
+        }
+
+        /** File name (sans `.kt`) of the per-package support file for int-backed `field.enum` array columns. */
+        const val INT_ENUM_ARRAY_SUPPORT_FILE_NAME = "MetaIntEnumArrayColumnType"
+
+        /**
+         * Shared support body for [INT_ENUM_ARRAY_SUPPORT_FILE_NAME].kt: the column type of an int-backed
+         * `isArray` `field.enum`. 0.x binds a typed array by element-type name; 1.x wants an
+         * `ArrayColumnType` there, so it binds through the raw JDBC statement, as the other array types do.
+         */
+        fun writeIntEnumArraySupport(w: KotlinWriter, api: ExposedApi) {
+            for (name in listOf("Column", "ColumnType", "Table")) w.use(ExposedImports.core(api, name))
+            w.use(ExposedImports.statementsApi(api, "PreparedStatementApi"))
+            w.use(ExposedImports.vendors(api, "currentDialect"))
+            if (api == ExposedApi.V1) w.use("org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl")
+            w.text(
+                """
+                private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
+
+                private fun isMySql(): Boolean = currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
+
+                /**
+                 * GENERATED — do not hand-edit. An int-backed `isArray` `field.enum` column: each member is stored as
+                 * its declared integer, in a native `INTEGER[]` on Postgres and elsewhere (no array type) a JSON text
+                 * array of numbers. [toInt] and [fromInt] are the enum's symbol↔integer mapping, generated as `when`
+                 * expressions; an integer with no member fails the read rather than inventing one.
+                 */
+                internal class MetaIntEnumArrayColumnType<E : Any>(
+                    private val toInt: (E) -> Int,
+                    private val fromInt: (Int) -> E,
+                ) : ColumnType<List<E>>() {
+                    private fun json(value: List<E>): String = value.joinToString(",", "[", "]") { toInt(it).toString() }
+                    override fun sqlType(): String = if (isPostgres()) "INTEGER[]" else if (isMySql()) "JSON" else "TEXT"
+                    override fun valueFromDB(value: Any): List<E> = when (value) {
+                        is java.sql.Array -> (value.array as Array<*>).map { fromInt((it as Number).toInt()) }
+                        is Array<*> -> value.map { fromInt((it as Number).toInt()) }
+                        is List<*> -> value.map { fromInt((it as Number).toInt()) }
+                        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map { fromInt(it.intValue()) }
+                    }
+                    override fun notNullValueToDB(value: List<E>): Any =
+                        if (isPostgres()) value.map { toInt(it) }.toTypedArray<Any?>() else json(value)
+                    override fun nonNullValueToString(value: List<E>): String =
+                        if (isPostgres()) value.joinToString(",", "ARRAY[", "]::integer[]") { toInt(it).toString() } else "'" + json(value) + "'"
+                    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+                        if (value is Array<*>) {
+                """
+            )
+            writeArrayBind(w, api, "integer")
+            w.text(
+                """
+                        } else {
+                            super.setParameter(stmt, index, value)
+                        }
+                    }
+                }
+
+                /** Column builder for an int-backed `isArray` `field.enum`: a `Column<List<E>>`. */
+                internal fun <E : Any> Table.portableIntEnumArray(name: String, toInt: (E) -> Int, fromInt: (Int) -> E): Column<List<E>> =
+                    registerColumn(name, MetaIntEnumArrayColumnType(toInt, fromInt))
+                """
+            )
+        }
+
+        /** File name (sans `.kt`) of the per-package support file for `field.uuid` and `field.decimal` columns. */
+        const val PORTABLE_SUPPORT_FILE_NAME = "MetaPortableColumnTypes"
+
+        /**
+         * Shared support body for [PORTABLE_SUPPORT_FILE_NAME].kt. Exposed binds its `uuid()` as
+         * 16 raw bytes on MySQL and SQLite, whose schemas (and the other ports) store a uuid as
+         * 36-character text, so a filter on the column never matches; and it binds a decimal as a
+         * string on SQLite, which compares that text with a REAL as text. Each type delegates
+         * everything to Exposed's own column type and changes only the value it hands the driver,
+         * and only on the engine that needs it. Postgres is untouched.
+         */
+        fun writePortableSupport(w: KotlinWriter, api: ExposedApi) {
+            // Imports. 1.x's bare `UUIDColumnType` binds `kotlin.uuid.Uuid`, so
+            // the `java.util.UUID`-backed one comes from `core.java` (the substitution [writeUuidStringSupport] makes).
+            w.use("java.math.BigDecimal")
+            w.use("java.util.UUID")
+            for (name in listOf("Column", "ColumnType", "DecimalColumnType", "Table")) w.use(ExposedImports.core(api, name))
+            w.use(ExposedImports.statementsApi(api, "PreparedStatementApi"))
+            w.use(if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType") else ExposedImports.core(api, "UUIDColumnType"))
+            w.use(ExposedImports.vendors(api, "currentDialect"))
+            if (api == ExposedApi.V1) w.use("org.jetbrains.exposed.v1.jdbc.statements.jdbc.JdbcPreparedStatementImpl")
+            w.text(
+                """
+                private fun isPostgres(): Boolean = currentDialect.name.equals("postgresql", ignoreCase = true)
+
+                private fun isSqlite(): Boolean = currentDialect.name.equals("sqlite", ignoreCase = true)
+
+                /** GENERATED — do not hand-edit. A `java.util.UUID` column: native `uuid` on Postgres, text elsewhere. */
+                internal class MetaPortableUuidColumnType : ColumnType<UUID>() {
+                    private val delegate = UUIDColumnType()
+                    override fun sqlType(): String = delegate.sqlType()
+                    override fun valueFromDB(value: Any): UUID = requireNotNull(delegate.valueFromDB(value)) { "null uuid column value" }
+                    override fun notNullValueToDB(value: UUID): Any =
+                        if (isPostgres()) delegate.notNullValueToDB(value) else value.toString()
+                    override fun nonNullValueToString(value: UUID): String =
+                        if (isPostgres()) delegate.nonNullValueToString(value) else "'${'$'}value'"
+                }
+
+                /** Column builder for `field.uuid`: a `Column<java.util.UUID>`. */
+                internal fun Table.portableUuid(name: String): Column<UUID> =
+                    registerColumn(name, MetaPortableUuidColumnType())
+
+                /** GENERATED — do not hand-edit. A decimal column: the exact decimal everywhere but SQLite, which gets a REAL. */
+                internal class MetaPortableDecimalColumnType(precision: Int, scale: Int) : ColumnType<BigDecimal>() {
+                    private val delegate = DecimalColumnType(precision, scale)
+                    override fun sqlType(): String = delegate.sqlType()
+                    // ADR-0019 Amendment 1 (W4): SQLite stores a REAL, so a value is read at 15 significant
+                    // digits, which turns `sum(0.1, 0.2)` (0.30000000000000004) back into 0.3.
+                    override fun valueFromDB(value: Any): BigDecimal =
+                        if (isSqlite() && value is Number && value !is BigDecimal) {
+                            MetaDecimalWire.fromDouble15(value.toDouble())
+                        } else {
+                            delegate.valueFromDB(value)
+                        }
+                    override fun notNullValueToDB(value: BigDecimal): Any =
+                        if (isSqlite()) value.toDouble() else delegate.notNullValueToDB(value)
+                    override fun nonNullValueToString(value: BigDecimal): String = delegate.nonNullValueToString(value)
+                }
+
+                /** Column builder for `field.decimal`: a `Column<java.math.BigDecimal>`. */
+                internal fun Table.portableDecimal(name: String, precision: Int, scale: Int): Column<BigDecimal> =
+                    registerColumn(name, MetaPortableDecimalColumnType(precision, scale))
+
+                /**
+                 * GENERATED — do not hand-edit. A decimal column with no declared `@precision`: plain unbounded
+                 * `NUMERIC`, read exactly. Exposed's own `DecimalColumnType` would round every value to its scale
+                 * (HALF_EVEN) on read, so this type does not delegate the read to it.
+                 */
+                internal class MetaUnboundedDecimalColumnType : ColumnType<BigDecimal>() {
+                    override fun sqlType(): String = "NUMERIC"
+                    override fun valueFromDB(value: Any): BigDecimal = when {
+                        value is BigDecimal -> value
+                        value is Number && isSqlite() -> MetaDecimalWire.fromDouble15(value.toDouble())
+                        else -> BigDecimal(value.toString())
+                    }
+                    override fun notNullValueToDB(value: BigDecimal): Any =
+                        if (isSqlite()) value.toDouble() else value
+                    override fun nonNullValueToString(value: BigDecimal): String = value.toPlainString()
+                }
+
+                /** Column builder for a `field.decimal` with no `@precision`: a `Column<java.math.BigDecimal>`, unbounded. */
+                internal fun Table.portableDecimal(name: String): Column<BigDecimal> =
+                    registerColumn(name, MetaUnboundedDecimalColumnType())
+
+                /**
+                 * GENERATED — do not hand-edit. An `isArray` decimal column: a native `NUMERIC[]` on Postgres, and on
+                 * MySQL and SQLite (no array type) a JSON text array of canonical strings. Elements are read exactly.
+                 */
+                internal class MetaDecimalArrayColumnType : ColumnType<List<BigDecimal>>() {
+                    private fun isMySql(): Boolean = currentDialect.name.let { it.equals("mysql", ignoreCase = true) || it.equals("mariadb", ignoreCase = true) }
+                    private fun decimalOf(element: Any): BigDecimal = if (element is BigDecimal) element else BigDecimal(element.toString())
+                    private fun json(value: List<BigDecimal>): String = value.joinToString(",", "[", "]") { "\"" + MetaDecimalWire.format(it) + "\"" }
+                    override fun sqlType(): String = if (isPostgres()) "NUMERIC[]" else if (isMySql()) "JSON" else "TEXT"
+                    override fun valueFromDB(value: Any): List<BigDecimal> = when (value) {
+                        is java.sql.Array -> (value.array as Array<*>).map { decimalOf(it!!) }
+                        is Array<*> -> value.map { decimalOf(it!!) }
+                        is List<*> -> value.map { decimalOf(it!!) }
+                        else -> com.fasterxml.jackson.databind.ObjectMapper().readTree(value.toString()).map { MetaDecimalWire.fromNode(it) }
+                    }
+                    override fun notNullValueToDB(value: List<BigDecimal>): Any =
+                        if (isPostgres()) value.toTypedArray<Any?>() else json(value)
+                    override fun nonNullValueToString(value: List<BigDecimal>): String =
+                        if (isPostgres()) value.joinToString(",", "ARRAY[", "]::numeric[]") { it.toPlainString() } else "'" + json(value) + "'"
+                    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) {
+                        if (value is Array<*>) {
+                """
+            )
+            writeArrayBind(w, api, "numeric")
+            w.text(
+                """
+                        } else {
+                            super.setParameter(stmt, index, value)
+                        }
+                    }
+                }
+
+                /** Column builder for an `isArray` `field.decimal`: a `Column<List<java.math.BigDecimal>>`. */
+                internal fun Table.portableDecimalArray(name: String): Column<List<BigDecimal>> =
+                    registerColumn(name, MetaDecimalArrayColumnType())
+                """
+            )
+        }
+
+        /**
+         * The array branch of a support column type's `setParameter`, three levels in: 0.x binds a
+         * typed array by element-type name; 1.x wants an `ArrayColumnType` there, so it binds through
+         * the raw JDBC statement.
+         */
+        private fun writeArrayBind(w: KotlinWriter, api: ExposedApi, sqlElementType: String) {
+            w.indented {
+                w.indented {
+                    w.indented {
+                        w.line("@Suppress(\"UNCHECKED_CAST\")")
+                        if (api == ExposedApi.V1) {
+                            w.line("val raw = (stmt as JdbcPreparedStatementImpl).statement")
+                            w.line("raw.setArray(index, raw.connection.createArrayOf(\"$sqlElementType\", value as Array<Any?>))")
+                        } else {
+                            w.line("stmt.setArray(index, \"$sqlElementType\", value as Array<Any?>)")
+                        }
+                    }
+                }
+            }
         }
 
         /**
@@ -1646,27 +2152,6 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * @dbColumnType=uuid` column (R6 Plan 2b). One per package that has ≥1 such column.
          */
         const val UUID_STRING_SUPPORT_FILE_NAME = "MetaUuidStringColumnType"
-
-        /**
-         * Imports for the per-package [uuidStringSupportBlock] support file, keyed by
-         * [ExposedApi]. The delegate's FQN is the one textual difference between versions
-         * (issue #390 — 1.x's bare `UUIDColumnType` binds `kotlin.uuid.Uuid`; `javaUuid`'s
-         * `UUIDColumnType` is the java.util.UUID-backed replacement — the SAME substitution
-         * [KotlinTypeMapper.exposedColumnSpec] already makes for a native `field.uuid` column
-         * under 1.x).
-         */
-        fun uuidStringSupportFileImports(api: ExposedApi): String {
-            val uuidColumnTypeImport =
-                if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType")
-                else ExposedImports.core(api, "UUIDColumnType")
-            return """
-            |import ${ExposedImports.core(api, "Column")}
-            |import ${ExposedImports.core(api, "ColumnType")}
-            |import ${ExposedImports.core(api, "Table")}
-            |import $uuidColumnTypeImport
-            |import ${ExposedImports.statementsApi(api, "PreparedStatementApi")}
-            |""".trimMargin()
-        }
 
         /**
          * Shared support body emitted ONCE PER PACKAGE (into [UUID_STRING_SUPPORT_FILE_NAME].kt)
@@ -1698,34 +2183,47 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * `internal` so every `*Table.kt` in the package shares the one declaration (the same
          * multi-table-per-package redeclaration concern as the instant-tz / inet-uri helpers).
          */
-        fun uuidStringSupportBlock(api: ExposedApi): String = """
-            |/**
-            | * GENERATED — do not hand-edit.
-            | * Custom Exposed column type for `field.string @dbColumnType=uuid` (ADR-0037
-            | * physical-only escape hatch): a `Column<String>` persisted through the real
-            | * Postgres `uuid` type. Every SQL/JDBC concern is DELEGATED to Exposed's own
-            | * `java.util.UUID`-backed `UUIDColumnType` — this class converts ONLY at the
-            | * Kotlin-value boundary, so the generated entity/controller see a plain `String`
-            | * (matching every other MetaObjects port) while the column keeps its native uuid
-            | * physical type.
-            | */
-            |internal class MetaUuidStringColumnType : ColumnType<String>() {
-            |    private val delegate = UUIDColumnType()
-            |    override fun sqlType(): String = delegate.sqlType()
-            |    override fun valueFromDB(value: Any): String =
-            |        requireNotNull(delegate.valueFromDB(value)) { "null uuid column value" }.toString()
-            |    override fun notNullValueToDB(value: String): Any =
-            |        delegate.notNullValueToDB(java.util.UUID.fromString(value))
-            |    override fun nonNullValueToString(value: String): String =
-            |        delegate.nonNullValueToString(java.util.UUID.fromString(value))
-            |    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) =
-            |        delegate.setParameter(stmt, index, value)
-            |}
-            |
-            |/** Column builder for `field.string @dbColumnType=uuid`: a `Column<String>` over a native `uuid` column. */
-            |internal fun Table.uuidString(name: String): Column<String> =
-            |    registerColumn(name, MetaUuidStringColumnType())
-            |""".trimMargin()
+        fun writeUuidStringSupport(w: KotlinWriter, api: ExposedApi) {
+            // Imports keyed by
+            // [ExposedApi]. The delegate's FQN is the one textual difference between versions
+            // (issue #390 — 1.x's bare `UUIDColumnType` binds `kotlin.uuid.Uuid`; `javaUuid`'s
+            // `UUIDColumnType` is the java.util.UUID-backed replacement — the SAME substitution
+            // [KotlinTypeMapper.exposedColumnSpec] already makes for a native `field.uuid` column
+            // under 1.x).
+            for (name in listOf("Column", "ColumnType", "Table")) w.use(ExposedImports.core(api, name))
+            w.use(ExposedImports.statementsApi(api, "PreparedStatementApi"))
+            w.use(if (api == ExposedApi.V1) ExposedImports.javaUuid("UUIDColumnType") else ExposedImports.core(api, "UUIDColumnType"))
+            w.text(
+                """
+                /**
+                 * GENERATED — do not hand-edit.
+                 * Custom Exposed column type for `field.string @dbColumnType=uuid` (ADR-0037
+                 * physical-only escape hatch): a `Column<String>` persisted through the real
+                 * Postgres `uuid` type. Every SQL/JDBC concern is DELEGATED to Exposed's own
+                 * `java.util.UUID`-backed `UUIDColumnType` — this class converts ONLY at the
+                 * Kotlin-value boundary, so the generated entity/controller see a plain `String`
+                 * (matching every other MetaObjects port) while the column keeps its native uuid
+                 * physical type.
+                 */
+                internal class MetaUuidStringColumnType : ColumnType<String>() {
+                    private val delegate = UUIDColumnType()
+                    override fun sqlType(): String = delegate.sqlType()
+                    override fun valueFromDB(value: Any): String =
+                        requireNotNull(delegate.valueFromDB(value)) { "null uuid column value" }.toString()
+                    override fun notNullValueToDB(value: String): Any =
+                        delegate.notNullValueToDB(java.util.UUID.fromString(value))
+                    override fun nonNullValueToString(value: String): String =
+                        delegate.nonNullValueToString(java.util.UUID.fromString(value))
+                    override fun setParameter(stmt: PreparedStatementApi, index: Int, value: Any?) =
+                        delegate.setParameter(stmt, index, value)
+                }
+
+                /** Column builder for `field.string @dbColumnType=uuid`: a `Column<String>` over a native `uuid` column. */
+                internal fun Table.uuidString(name: String): Column<String> =
+                    registerColumn(name, MetaUuidStringColumnType())
+                """
+            )
+        }
 
         /**
          * File name (sans `.kt`) of the per-package support file holding the shared Jackson
@@ -1742,25 +2240,29 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
          * serialize as ISO-8601 strings (not epoch millis). `internal` → package+module-private,
          * shared by every `*Table.kt` in the package.
          */
-        val JSONB_MAPPER_SUPPORT_BLOCK: String = """
-            |/**
-            | * GENERATED — do not hand-edit.
-            | * Shared Jackson ObjectMapper backing the typed `field.object @storage:jsonb` and
-            | * `field.map` Exposed `jsonb()` columns in this package. Jackson (not kotlinx) is the
-            | * codec, so the generated entity/value data classes carry NO `@Serializable` and need
-            | * NO per-type serializer plumbing — every java.time / java.util / java.math / java.net
-            | * field a jsonb value object may carry round-trips through the kotlin + jsr310 modules
-            | * with no compiler plugin.
-            | *
-            | * Consumer classpath: jackson-databind, jackson-module-kotlin, jackson-datatype-jsr310.
-            | */
-            |internal val metaJsonbMapper: com.fasterxml.jackson.databind.ObjectMapper =
-            |    com.fasterxml.jackson.databind.json.JsonMapper.builder()
-            |        .addModule(com.fasterxml.jackson.module.kotlin.kotlinModule())
-            |        .addModule(com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
-            |        .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-            |        .build()
-            |""".trimMargin()
+        fun writeJsonbMapperSupport(w: KotlinWriter) {
+            w.text(
+                """
+                /**
+                 * GENERATED — do not hand-edit.
+                 * Shared Jackson ObjectMapper backing the typed `field.object @storage:jsonb` and
+                 * `field.map` Exposed `jsonb()` columns in this package. Jackson (not kotlinx) is the
+                 * codec, so the generated entity/value data classes carry NO `@Serializable` and need
+                 * NO per-type serializer plumbing — every java.time / java.util / java.math / java.net
+                 * field a jsonb value object may carry round-trips through the kotlin + jsr310 modules
+                 * with no compiler plugin.
+                 *
+                 * Consumer classpath: jackson-databind, jackson-module-kotlin, jackson-datatype-jsr310.
+                 */
+                internal val metaJsonbMapper: com.fasterxml.jackson.databind.ObjectMapper =
+                    com.fasterxml.jackson.databind.json.JsonMapper.builder()
+                        .addModule(com.fasterxml.jackson.module.kotlin.kotlinModule())
+                        .addModule(com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
+                        .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+                        .build()
+                """
+            )
+        }
     }
 
     // === FK column emission from relationship.composition ====================
@@ -1830,7 +2332,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // Use list-per-entity so the emit order is deterministic (insertion-ordered).
         val acc = linkedMapOf<String, MutableList<FkColumnSpec>>()
 
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // FR-017 TPH: a subtype shares its base's single table, so its INHERITED to-many
             // composition is already covered by the base's inverse FK — emitting one per subtype
@@ -1842,7 +2344,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (child.subType != CompositionRelationship.SUBTYPE_COMPOSITION) continue
 
                 val objectRef = child.objectRef ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, objectRef) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, objectRef) ?: continue
 
                 if (child.cardinality == MetaRelationship.CARDINALITY_MANY) {
                     // Inferred: FK belongs on `target`, pointing back at `entity`.
@@ -1904,7 +2406,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val targetTable = PackageMapping.splitFqn(storageTarget.name).second + "Table"
         val relShortName = rel.shortName ?: rel.name
         val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
-        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, PhysicalNaming.of(rel).columns())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
@@ -1938,7 +2440,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val ownerShort = PackageMapping.splitFqn(storageOwner.name).second
         val ownerTable = ownerShort + "Table"
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
-        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, PhysicalNaming.of(owner).columns())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
@@ -2018,7 +2520,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         loader: MetaDataLoader,
     ): Map<String, Map<String, RefDecoration>> {
         val acc = linkedMapOf<String, MutableMap<String, RefDecoration>>()
-        for (entity in loader.metaObjects) {
+        for (entity in GeneratorUtil.ownMetaObjects(loader)) {
             if (entity.subType != MetaObject.SUBTYPE_ENTITY) continue
             // ADR-0039: identity.reference children are inheritable — RESOLVE via
             // getIdentities(true); entity.children (own-only) would miss inherited FK refs.
@@ -2034,7 +2536,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 }
                 val fieldName = fields[0]
                 val targetEntityName = child.targetEntity ?: continue
-                val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetEntityName) ?: continue
+                val target = KotlinGenUtil.lookupCanonicalObject(loader, targetEntityName) ?: continue
                 // FW-3: `target` may be a TPH subtype (e.g. `@references: BridgeAuth`) or an
                 // abstract mid-level, neither of which has an Exposed Table of its own — its rows
                 // live in, and its primary key belongs to, the discriminator base's shared table.
@@ -2111,9 +2613,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // engine's resolveReferentialActions and the C# ReferentialActions port.
         val childSide = entity.relationships.firstOrNull { rel ->
             rel.through == null && rel.objectRef != null &&
-                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target &&
+                KotlinGenUtil.lookupCanonicalObject(loader, rel.objectRef) === target &&
                 RelationshipReferences.resolveRelationshipReference(
-                    entity, rel.shortName, rel.objectRef, rel.sourceRefField) === ref
+                    entity, rel.shortName, target, rel.sourceRefField) === ref
         }
         var rel = childSide
         // When the tier-3 satisfiability guard fires, the reverse relationship's
@@ -2170,7 +2672,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             .filterIsInstance<ReferenceIdentity>()
             .filter { r ->
                 r.isEnforced && r.targetEntity != null &&
-                    KotlinGenUtil.resolveObjectByShortOrFqn(loader, r.targetEntity) === target
+                    KotlinGenUtil.lookupCanonicalObject(loader, r.targetEntity) === target
             }
         if (enforcedRefsToTarget.singleOrNull() !== ref) return null
         // #368: fail closed on ambiguity rather than taking the first match — when more
@@ -2183,7 +2685,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // lives on [entity]. Mirrors the TS findReverseRelationship.
         return target.relationships.filter { rel ->
             rel.through == null && rel.objectRef != null &&
-                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === entity
+                KotlinGenUtil.lookupCanonicalObject(loader, rel.objectRef) === entity
         }.singleOrNull()
     }
 
@@ -2251,7 +2753,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
      * Exposed column spec for a `field.enum`.
      *
      * String-backed (the default) → `enumerationByName`: a VARCHAR column holding the
-     * member symbol. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
+     * member symbol when a length is configured, else `customEnumeration` over a TEXT column. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
      * column, with the declared symbol↔int mapping inlined as `when` expressions.
      *
      * The mapping is emitted INLINE rather than through a generated lookup-map support
@@ -2274,12 +2776,37 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)
-            ?: return "enumerationByName($colExpr, ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"
+        if (intMap == null) {
+            // rc.21: a @stringValueMap enum holds each member's stored string — a VARCHAR
+            // customEnumeration with the member <-> stored-string mapping inlined, as below.
+            val length = KotlinTypeMapper.enumVarcharLength(field)
+            val stored = readStringValueMap(field)
+                ?: return length?.let { "enumerationByName($colExpr, $it, $simple::class)" }
+                    // No length configured: `meta migrate` creates `text`, and `enumerationByName`
+                    // needs a length, so store the member name over a TEXT column instead.
+                    ?: "customEnumeration($colExpr, \"TEXT\", { v -> $simple.valueOf(v as String) }, { e -> e.name })"
+            val fromDb = stored.entries.joinToString("; ") { (sym, s) -> "${kotlinString(s)} -> $simple.$sym" }
+            val toDb = stored.entries.joinToString("; ") { (sym, s) -> "$simple.$sym -> ${kotlinString(s)}" }
+            val sqlType = if (length == null) "TEXT" else "VARCHAR($length)"
+            return "customEnumeration($colExpr, \"$sqlType\", " +
+                "{ v -> when (v as String) { $fromDb; " +
+                "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
+                "{ e -> when (e) { $toDb } })"
+        }
 
         // `; ` separates the branches: this is a one-line `when`, and space-separated
         // branches do not parse (`Foo.DRAFT 5 -> ...`).
         val fromDb = intMap.entries.joinToString("; ") { (sym, i) -> "$i -> $simple.$sym" }
         val toDb = intMap.entries.joinToString("; ") { (sym, i) -> "$simple.$sym -> $i" }
+        if (KotlinTypeMapper.isIntBackedEnumArray(field)) {
+            // An int-backed enum ARRAY: one integer[] column (a JSON text array of numbers where
+            // there is no array type) whose element codec is the same mapping as the scalar's.
+            // The scalar form would not type-check against the `List<E>` property, and it must
+            // never store the member symbols.
+            return "${KotlinTypeMapper.EXPOSED_PORTABLE_INT_ENUM_ARRAY_FN}<$simple>($colExpr, " +
+                "{ e -> when (e) { $toDb } }, " +
+                "{ i -> when (i) { $fromDb; else -> error(\"unmapped stored value \$i for $simple\") } })"
+        }
         // An int with no member is corrupt data the model does not describe: fail loudly
         // rather than substituting a member. The write side needs no `else` — it is
         // exhaustive over the enum by construction, since @intValueMap's keys are
@@ -2288,6 +2815,25 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             "{ v -> when ((v as Number).toInt()) { $fromDb; " +
             "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
             "{ e -> when (e) { $toDb } })"
+    }
+
+    private fun kotlinString(text: String): String =
+        "\"" + KotlinGenUtil.kotlinStringLiteral(text) + "\""
+
+    /** rc.21 — the declared member→stored-string map (`@stringValueMap`, resolving), or null. */
+    private fun readStringValueMap(field: EnumField): Map<String, String>? {
+        if (!field.hasMetaAttr(EnumField.ATTR_STRING_VALUE_MAP)) return null
+        val raw = runCatching { field.getMetaAttr(EnumField.ATTR_STRING_VALUE_MAP).value }.getOrNull()
+        val m = (raw as? Map<*, *>) ?: return null
+        // In @values order, so the emitted `when` is deterministic (a Properties map is unordered).
+        val out = LinkedHashMap<String, String>()
+        val members = (runCatching { field.getMetaAttr(EnumField.ATTR_VALUES).value }.getOrNull() as? List<*>)
+            ?.map { it.toString() } ?: emptyList()
+        for (member in members) {
+            val s = m[member] as? String ?: continue
+            out[member] = s
+        }
+        return out.ifEmpty { null }
     }
 
     /** The declared symbol→int map (`@intValueMap`), or null when the enum is string-backed. */
@@ -2317,4 +2863,47 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         PackageMapping.splitFqn(md.name).first.replace('.', '/')
     override fun getSingleOutputFilename(md: MetaObject): String =
         PackageMapping.splitFqn(md.name).second + "Table.kt"
+}
+
+/** One foreign-key index `migrate.foreignKeyIndexes` adds: its name, its columns and their fields. */
+data class ForeignKeyIndex(val name: String, val columns: List<String>, val fields: List<String>)
+
+/** Postgres's identifier limit in bytes; a longer name is stored cut to it. */
+private const val PG_IDENTIFIER_MAX_BYTES = 63
+
+/**
+ * `<table>_<column>[_<column>…]_idx`, migrate's name for a foreign key's index, cut by
+ * [storedIdentifier].
+ */
+fun foreignKeyIndexName(table: String, columns: List<String>, dialect: String?): String =
+    storedIdentifier("${table}_${columns.joinToString("_")}_idx", dialect)
+
+/**
+ * The database name of an `identity.secondary` or `index.lookup`: its declared name
+ * ([IndexNaming.resolve]), cut by [storedIdentifier]. The shared corpus
+ * fixtures/foreign-key-index-conformance/ (`declared.<dialect>.json`) pins it.
+ */
+fun declaredIndexName(node: MetaData, dialect: String?): String = storedIdentifier(IndexNaming.resolve(node), dialect)
+
+/**
+ * The name the database stores for [name], which is the name `meta migrate` creates and compares
+ * (migrate-ts `storedIdentifier`): on Postgres a name over 63 bytes is cut to its first 63 bytes on
+ * a character boundary. SQLite and D1 keep the whole name, and so does MySQL, where migrate writes
+ * no DDL and an over-long name is refused rather than cut.
+ */
+fun storedIdentifier(name: String, dialect: String?): String {
+    if (dialect == "sqlite" || dialect == "d1" || dialect == "mysql" || name.toByteArray(Charsets.UTF_8).size <= PG_IDENTIFIER_MAX_BYTES) return name
+    val out = StringBuilder()
+    var bytes = 0
+    var i = 0
+    while (i < name.length) {
+        val cp = name.codePointAt(i)
+        val ch = String(Character.toChars(cp))
+        val n = ch.toByteArray(Charsets.UTF_8).size
+        if (bytes + n > PG_IDENTIFIER_MAX_BYTES) break
+        out.append(ch)
+        bytes += n
+        i += Character.charCount(cp)
+    }
+    return out.toString()
 }

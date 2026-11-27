@@ -511,7 +511,7 @@ class KotlinApiModelBuilder(
             return if (field.isArrayType) "List<$simple>" else simple
         }
         val tn = if (forPayload) KotlinTypeMapper.payloadTypeName(field) else KotlinTypeMapper.kotlinTypeName(field)
-        val simple = (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
+        val simple = (tn as? com.metaobjects.generator.kotlin.writer.KotlinClassName)?.simpleName ?: tn.toString()
         return if (field.isArrayType) "List<$simple>" else simple
     }
 

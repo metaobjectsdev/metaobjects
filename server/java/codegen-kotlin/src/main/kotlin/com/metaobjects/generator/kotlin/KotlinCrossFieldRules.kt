@@ -27,7 +27,7 @@ import com.metaobjects.validator.ExactlyOneValidator
 import com.metaobjects.validator.MetaValidator
 import com.metaobjects.validator.PresentIffValidator
 import com.metaobjects.validator.RequiredWhenValidator
-import com.squareup.kotlinpoet.CodeBlock
+import com.metaobjects.generator.kotlin.writer.KotlinWriter
 
 /**
  * Entity-scoped cross-field validators (comparison / requiredWhen / presentIff / atLeastOne /
@@ -72,38 +72,34 @@ object KotlinCrossFieldRules {
     /** A value node (field, literal, coalesce) as a Kotlin expression compared as [kind], or null. */
     private fun conditionValue(
         node: Any?, kind: CompareKind, fields: Map<String, MetaField<*>>, ref: (MetaField<*>) -> String,
-    ): CodeBlock? {
+    ): String? {
         val n = node as? Map<*, *> ?: return null
         (n["field"] as? String)?.let { name ->
             val f = fields[name] ?: return null
             if (f.isArrayType) return null
             val r = ref(f)
             return when (kind) {
-                CompareKind.NUMBER -> CodeBlock.of("(%L?.let·{·java.math.BigDecimal(it.toString())·})", r)
-                CompareKind.DURATION -> CodeBlock.of("%L", r)
-                CompareKind.PLAIN -> CodeBlock.of("(%L?.toString())", r)
+                CompareKind.NUMBER -> "($r?.let { java.math.BigDecimal(it.toString()) })"
+                CompareKind.DURATION -> r
+                CompareKind.PLAIN -> "($r?.toString())"
             }
         }
         if (n.containsKey("value")) {
             val text = n["value"]?.toString() ?: return null
             return when (kind) {
-                CompareKind.NUMBER -> CodeBlock.of("java.math.BigDecimal(%S)", text)
+                CompareKind.NUMBER -> "java.math.BigDecimal(${KotlinWriter.str(text)})"
                 CompareKind.DURATION -> try {
                     val d = DurationWire.parse(text)
-                    CodeBlock.of("java.time.Duration.ofSeconds(%LL,·%LL)", d.seconds, d.nano)
+                    "java.time.Duration.ofSeconds(${d.seconds}L, ${d.nano}L)"
                 } catch (e: RuntimeException) {
                     null
                 }
-                CompareKind.PLAIN -> CodeBlock.of("%S", text)
+                CompareKind.PLAIN -> KotlinWriter.str(text)
             }
         }
         if (n["fn"] == "coalesce") {
             val args = (n["args"] as? Collection<*>).orEmpty().map { conditionValue(it, kind, fields, ref) ?: return null }
-            return CodeBlock.builder().apply {
-                add("listOf<Any?>(")
-                args.forEachIndexed { i, a -> if (i > 0) add(",·"); add("%L", a) }
-                add(").firstOrNull·{·it·!=·null·}")
-            }.build()
+            return args.joinToString(", ", "listOf<Any?>(", ").firstOrNull { it != null }")
         }
         return null
     }
@@ -111,7 +107,7 @@ object KotlinCrossFieldRules {
     /** A condition node as a Kotlin `Boolean?` expression (null = SQL unknown), or null when unresolvable. */
     private fun conditionExpr(
         node: Any?, fields: Map<String, MetaField<*>>, ref: (MetaField<*>) -> String,
-    ): CodeBlock? {
+    ): String? {
         val n = node as? Map<*, *> ?: return null
         val op = n["op"] as? String ?: return null
         val kop = when (op) {
@@ -123,28 +119,22 @@ object KotlinCrossFieldRules {
             val kind = compareKind(nodeField(n["left"], fields) ?: nodeField(n["right"], fields))
             val l = conditionValue(n["left"], kind, fields, ref) ?: return null
             val r = conditionValue(n["right"], kind, fields, ref) ?: return null
-            return CodeBlock.of(
-                "((%L)·as·Comparable<Any>?)?.let·{·l_·->·(%L)?.let·{·r_·->·l_.compareTo(r_)·$kop·0·}·}", l, r,
-            )
+            return "(($l) as Comparable<Any>?)?.let { l_ -> ($r)?.let { r_ -> l_.compareTo(r_) $kop 0 } }"
         }
         when (op) {
             "isNull", "isNotNull" -> {
                 val a = conditionValue(n["arg"], CompareKind.PLAIN, fields, ref) ?: return null
-                return CodeBlock.of("(%L·${if (op == "isNull") "==" else "!="}·null)", a)
+                return "($a ${if (op == "isNull") "==" else "!="} null)"
             }
             "not" -> {
                 val a = conditionExpr(n["arg"], fields, ref) ?: return null
-                return CodeBlock.of("(%L)?.not()", a)
+                return "($a)?.not()"
             }
             "and", "or" -> {
                 val args = (n["args"] as? Collection<*>).orEmpty().map { conditionExpr(it, fields, ref) ?: return null }
                 val decisive = if (op == "and") "false" else "true"
                 val other = if (op == "and") "true" else "false"
-                return CodeBlock.builder().apply {
-                    add("listOf<Boolean?>(")
-                    args.forEachIndexed { i, a -> if (i > 0) add(",·"); add("%L", a) }
-                    add(").let·{·v_·->·if·($decisive·in·v_)·$decisive·else·if·(null·in·v_)·null·else·$other·}")
-                }.build()
+                return args.joinToString(", ", "listOf<Boolean?>(", ").let { v_ -> if ($decisive in v_) $decisive else if (null in v_) null else $other }")
             }
         }
         return null
@@ -193,34 +183,31 @@ object KotlinCrossFieldRules {
         return nativeShape(l) == nativeShape(r)
     }
 
-    private fun comparison(l: MetaField<*>, r: MetaField<*>, op: String, kop: String, ref: (MetaField<*>) -> String): CodeBlock? {
+    private fun comparison(l: MetaField<*>, r: MetaField<*>, op: String, kop: String, ref: (MetaField<*>) -> String): String? {
         if (!comparable(l, r, op)) return null
         if (isNumericCross(l) && isNumericCross(r) && l.subType != r.subType) {
-            return CodeBlock.of("java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%L.toString())) $kop 0", ref(l), ref(r))
+            return "java.math.BigDecimal(${ref(l)}.toString()).compareTo(java.math.BigDecimal(${ref(r)}.toString())) $kop 0"
         }
         if (orderableCross(l)) {
-            return CodeBlock.of("(%L as Comparable<Any>).compareTo(%L) $kop 0", ref(l), ref(r))
+            return "(${ref(l)} as Comparable<Any>).compareTo(${ref(r)}) $kop 0"
         }
-        return CodeBlock.of("(%L %L %L)", ref(l), if (op == "eq") "==" else "!=", ref(r))
+        return "(${ref(l)} ${if (op == "eq") "==" else "!="} ${ref(r)})"
     }
 
     private fun crossAttr(v: MetaData, attr: String): String? =
         if (v.hasMetaAttr(attr)) v.getMetaAttr(attr).value?.toString() else null
 
     /** Kotlin boolean expression: does the gating property equal the @equals literal (null gate = false)? */
-    private fun crossEquals(w: MetaField<*>, wr: String, raw: String?): CodeBlock {
+    private fun crossEquals(w: MetaField<*>, wr: String, raw: String?): String {
         val s = raw ?: ""
         if (w is BooleanField) {
             val truthy = s == "true" || s == "1" || s == "TRUE"
-            return CodeBlock.of("(%L == %L)", wr, truthy)
+            return "($wr == $truthy)"
         }
         if (isNumericCross(w) && Regex("-?\\d+(\\.\\d+)?").matches(s)) {
-            return CodeBlock.of(
-                "(%L != null && java.math.BigDecimal(%L.toString()).compareTo(java.math.BigDecimal(%S)) == 0)",
-                wr, wr, s,
-            )
+            return "($wr != null && java.math.BigDecimal($wr.toString()).compareTo(java.math.BigDecimal(${KotlinWriter.str(s)})) == 0)"
         }
-        return CodeBlock.of("(%L?.toString() == %S)", wr, s)
+        return "($wr?.toString() == ${KotlinWriter.str(s)})"
     }
 
     /**
@@ -228,15 +215,15 @@ object KotlinCrossFieldRules {
      * in declaration order. [ref] renders a field reference: the bare property inside the data
      * class, or a body accessor / pinned literal in a controller that validates a different bean.
      */
-    fun rules(obj: MetaObject, ref: (MetaField<*>) -> String): List<Pair<MetaValidator, CodeBlock>> {
+    fun rules(obj: MetaObject, ref: (MetaField<*>) -> String): List<Pair<MetaValidator, String>> {
         val pk = obj.primaryIdentity
         val fields = obj.metaFields.filterNot { f ->
             f.isReadOnlyMutability || f.isDerived ||
                 (pk != null && pk.isAutoGenerated && pk.fields.contains(f.name))
         }.associateBy { it.name }
-        val out = mutableListOf<Pair<MetaValidator, CodeBlock>>()
+        val out = mutableListOf<Pair<MetaValidator, String>>()
         for (v in obj.getChildren(MetaValidator::class.java)) {
-            val expr: CodeBlock = when (v) {
+            val expr: String = when (v) {
                 is ComparisonValidator -> {
                     val l = fields[crossAttr(v, ComparisonValidator.ATTR_LEFT)] ?: continue
                     val r = fields[crossAttr(v, ComparisonValidator.ATTR_RIGHT)] ?: continue
@@ -247,15 +234,15 @@ object KotlinCrossFieldRules {
                     }
                     if (l.isArrayType || r.isArrayType) continue
                     val cmp = comparison(l, r, opName!!, op, ref) ?: continue
-                    CodeBlock.of("%L == null || %L == null || %L", ref(l), ref(r), cmp)
+                    "${ref(l)} == null || ${ref(r)} == null || $cmp"
                 }
                 is RequiredWhenValidator, is PresentIffValidator -> {
                     val t = fields[crossAttr(v, RequiredWhenValidator.ATTR_FIELD)] ?: continue
                     val w = fields[crossAttr(v, RequiredWhenValidator.ATTR_WHEN)] ?: continue
                     if (w.isArrayType) continue
                     val gate = crossEquals(w, ref(w), crossAttr(v, RequiredWhenValidator.ATTR_EQUALS))
-                    if (v is RequiredWhenValidator) CodeBlock.of("!%L || %L != null", gate, ref(t))
-                    else CodeBlock.of("(%L != null) == %L", ref(t), gate)
+                    if (v is RequiredWhenValidator) "!$gate || ${ref(t)} != null"
+                    else "(${ref(t)} != null) == $gate"
                 }
                 is AtLeastOneValidator, is ExactlyOneValidator -> {
                     // atLeastOne and exactlyOne both name @fields; they differ only in the count they allow.
@@ -267,15 +254,11 @@ object KotlinCrossFieldRules {
                         else -> listOf(raw.toString())
                     }
                     if (names.isEmpty() || names.any { it !in fields }) continue
-                    CodeBlock.builder().apply {
-                        if (v is AtLeastOneValidator) {
-                            names.forEachIndexed { i, n -> if (i > 0) add(" || "); add("%L != null", ref(fields.getValue(n))) }
-                        } else {
-                            add("listOf(")
-                            names.forEachIndexed { i, n -> if (i > 0) add(", "); add("%L", ref(fields.getValue(n))) }
-                            add(").count·{·it·!=·null·}·==·1")
-                        }
-                    }.build()
+                    if (v is AtLeastOneValidator) {
+                        names.joinToString(" || ") { n -> "${ref(fields.getValue(n))} != null" }
+                    } else {
+                        names.joinToString(", ", "listOf(", ").count { it != null } == 1") { n -> ref(fields.getValue(n)) }
+                    }
                 }
                 else -> continue
             }
@@ -283,7 +266,7 @@ object KotlinCrossFieldRules {
             // three-valued logic; FALSE and NULL (unknown) let the record through.
             if (v.hasMetaAttr(MetaValidator.ATTR_CONDITION)) {
                 val cond = conditionExpr(v.getMetaAttr(MetaValidator.ATTR_CONDITION).value, fields, ref) ?: continue
-                out.add(v to CodeBlock.of("(%L)·!=·true·||·(%L)", cond, expr))
+                out.add(v to "($cond) != true || ($expr)")
             } else {
                 out.add(v to expr)
             }

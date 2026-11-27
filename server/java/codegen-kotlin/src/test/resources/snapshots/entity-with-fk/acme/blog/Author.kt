@@ -1,46 +1,35 @@
 package acme.blog
 
-import com.fasterxml.jackson.`annotation`.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import jakarta.validation.constraints.Size
-import kotlin.Long
-import kotlin.String
-import kotlin.jvm.JvmStatic
 
-/**
- * GENERATED — do not hand-edit. Regenerated from metadata.
- */
+/** GENERATED — do not hand-edit. Regenerated from metadata. */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public data class Author(
-  public val id: Long? = null,
-  @field:Size(max = 100)
-  public val name: String? = null,
+data class Author(
+    val id: Long? = null,
+    @field:Size(max = 100)
+    val name: String? = null,
 ) {
-  /**
-   * Fluent builder — lets a JAVA caller set a subset of properties.
-   */
-  public class Builder {
-    private var id: Long? = null
+    /** Fluent builder — lets a JAVA caller set a subset of properties. */
+    class Builder {
+        private var id: Long? = null
+        private var name: String? = null
 
-    private var name: String? = null
+        fun id(v: Long?): Builder {
+            this.id = v
+            return this
+        }
 
-    public fun id(v: Long?): Builder {
-      this.id = v
-      return this
+        fun name(v: String?): Builder {
+            this.name = v
+            return this
+        }
+
+        fun build(): Author = Author(id = id, name = name)
     }
 
-    public fun name(v: String?): Builder {
-      this.name = v
-      return this
+    companion object {
+        @JvmStatic
+        fun builder(): Builder = Builder()
     }
-
-    public fun build(): Author = Author(
-      id = id,
-      name = name
-    )
-  }
-
-  public companion object {
-    @JvmStatic
-    public fun builder(): Builder = Builder()
-  }
 }
