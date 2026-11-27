@@ -37,7 +37,7 @@
             "type": "object",
             "required": ["from"],
             "additionalProperties": false,
-            "properties": { "from": { "type": "string", "minLength": 1 }, "to": { "type": "string" } }
+            "properties": { "from": { "type": "string", "minLength": 1 } }
           },
           "linkCheck": { "type": "boolean", "description": "Fail the run when a relative link in this entry's HTML pages lands on no file or anchor." }
         }

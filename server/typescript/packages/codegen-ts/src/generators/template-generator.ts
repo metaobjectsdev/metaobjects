@@ -29,7 +29,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
-import type { MetaRoot, MetaObject, DocsView } from "@metaobjectsdev/metadata";
+import { REQUIREMENT, type MetaRoot, type MetaObject, type DocsView } from "@metaobjectsdev/metadata";
 import { render, type Provider, type RenderFormat } from "@metaobjectsdev/render";
 import { findDanglingLinks } from "@metaobjectsdev/docs-site";
 import type { Generator, GenContext, EmittedFile, GeneratorFactory, RunOutputCheck } from "../generator.js";
@@ -58,10 +58,9 @@ export type TemplateFormat = RenderFormat;
 
 /** A directory of static files copied beside the pages, unchanged. */
 export interface TemplateAssets {
-  /** The directory, relative to the project root. Every file under it is copied. */
+  /** The directory, relative to the project root. Every file under it is copied under the
+   *  generator's `subDir`, at its path relative to this directory. */
   from: string;
-  /** Where the files land, under the generator's `subDir`. Default: the `subDir` itself. */
-  to?: string;
 }
 
 export interface TemplateWalkResult {
@@ -94,7 +93,9 @@ export interface TemplateGeneratorOpts {
    *  `perNode` and `perRequirement`, which read only `docsView`. */
   data?: TemplateData;
   /** `perNode` and `perRequirement` only: which kinds get a page. A pattern is
-   *  `<type>.<subType>`, `<type>.*` or `*`; a list matches any of its patterns. Default `*`. */
+   *  `<type>.<subType>`, `<type>.*` or `*`; a list matches any of its patterns. Default `*`.
+   *  In `perNode`, `*` does not select requirement nodes, because `perRequirement` owns their
+   *  pages; a pattern naming the requirement type (`requirement.*`) still selects them. */
   match?: string | readonly string[];
   /** A directory under the target the output paths are relative to, and the site root a
    *  docs-view page's `root` leads back to. Default: the target's own directory. */
@@ -103,8 +104,8 @@ export interface TemplateGeneratorOpts {
    *  Text files only: a file that is not UTF-8 is refused. */
   assets?: TemplateAssets;
   /** Check every relative link in this generator's pages once the whole run has rendered:
-   *  each must name a file the run emitted (or one already on disk) and, with `#anchor`, an
-   *  element carrying `id="anchor"` in it. A link that does not land fails the run, naming the
+   *  each must name a file the run emitted (or one already on disk that a full run does not
+   *  delete as no longer generated) and, with `#anchor`, an element carrying `id="anchor"` in it. A link that does not land fails the run, naming the
    *  page and the link. Requires `format: "html"`. */
   linkCheck?: boolean;
   /** Template reference. Resolved by the configured Provider chain — by
@@ -182,13 +183,14 @@ function viewScopeWalk(view: DocsView, scope: TemplateScope, pattern: string, ma
     outputPath,
   });
   if (scope === "perNode") {
+    const nonRequirement = match.filter((p) => p !== "*");
     return view.nodes
-      .filter((n) => matchesKind(match, n.type, n.subType))
+      .filter((n) => matchesKind(n.type === REQUIREMENT ? nonRequirement : match, n.type, n.subType))
       .map((n) => page(expandOutputPattern(pattern, { name: n.name, package: n.package, path: n.path }), { node: n }));
   }
   if (scope === "perRequirement") {
     return view.requirements
-      .filter((r) => matchesKind(match, "requirement", r.subType))
+      .filter((r) => matchesKind(match, REQUIREMENT, r.subType))
       .map((r) => page(expandOutputPattern(pattern, { name: r.name, package: r.package, path: r.path }), { requirement: r }));
   }
   if (scope === "perPackage") {
@@ -222,7 +224,6 @@ function assetFiles(name: string, assets: TemplateAssets, project: string, prefi
     // Reported below.
   }
   if (!isDir) throw new Error(`templateGenerator(${name}): the assets directory does not exist: ${assets.from}`);
-  const to = (assets.to ?? "").replace(/^\/+|\/+$/g, "");
   const decoder = new TextDecoder("utf-8", { fatal: true });
   return filesUnder(from).map((rel) => {
     let content: string;
@@ -231,7 +232,7 @@ function assetFiles(name: string, assets: TemplateAssets, project: string, prefi
     } catch {
       throw new Error(`templateGenerator(${name}): asset ${assets.from}/${rel} is not a UTF-8 text file; assets are copied as text`);
     }
-    return { path: prefix + (to === "" ? rel : `${to}/${rel}`), content };
+    return { path: prefix + rel, content };
   });
 }
 

@@ -276,6 +276,8 @@ template codegen, configured like any other entry. Two scopes walk it:
 
 - **`perNode`**: one file per top-level node of any type, filtered with `match`: a
   pattern `"<type>.<subType>"`, `"<type>.*"` or `"*"` (the default), or a list of them.
+  `"*"` skips requirement nodes, because `perRequirement` owns their pages; a pattern that
+  names the requirement type (`"requirement.*"`) still selects them.
 - **`perRequirement`**: one file per requirement at any depth, filtered the same way
   (`"requirement.functional"`).
 
@@ -290,17 +292,19 @@ Three more keys build a site:
 
 - **`subDir`**: the directory under the target the output paths, and `root`, are
   relative to.
-- **`assets`**: `{ "from": "<dir>", "to": "<dir>" }` copies every file under a project
-  directory beside the pages. Text files only; a file that is not UTF-8 is refused.
+- **`assets`**: `{ "from": "<dir>" }` copies every file under a project directory into
+  `subDir`, at its path relative to `from`. Text files only; a file that is not UTF-8 is
+  refused.
 - **`linkCheck: true`** (with `format: "html"`): once the whole run has rendered, every
   relative link in the entry's pages must name a file the run wrote (or one already on
-  disk) and, with `#anchor`, an element with that `id`. A link that lands on nothing fails
+  disk, unless it is a generated file a full run no longer produces and so deletes) and,
+  with `#anchor`, an element with that `id`. A link that lands on nothing fails
   the run, naming the page and the link, and nothing is written.
 
 ```json
 { "generators": [
   { "name": "site-index", "template": "index", "scope": "perModel", "data": "docsView", "subDir": "site",
-    "outputPattern": "index.html", "format": "html", "assets": { "from": "site-assets", "to": "assets" } },
+    "outputPattern": "index.html", "format": "html", "assets": { "from": "site-assets" } },
   { "name": "site-objects", "template": "object", "scope": "perNode", "match": "object.*", "subDir": "site",
     "outputPattern": "{path}", "format": "html", "linkCheck": true },
   { "name": "site-requirements", "template": "requirement", "scope": "perRequirement", "subDir": "site",

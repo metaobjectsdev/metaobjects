@@ -1489,12 +1489,12 @@ four `rules.*` and `verify.lifecycle.unreachable` settings, held to `fixtures/ru
 - **codegen-ts: the `template` generator renders the docs view.** Documentation pages are
   ordinary configured Mustache templates. Two new scopes walk the docs view: `perNode` (one file
   per top-level node of any type, filtered with `match`: `"<type>.<subType>"`, `"<type>.*"`, `"*"`
-  or a list) and `perRequirement` (one per requirement at any depth). `perModel` and `perPackage`
+  or a list; `"*"` skips requirement nodes, which `perRequirement` owns) and `perRequirement` (one per requirement at any depth). `perModel` and `perPackage`
   read the view with `data: "docsView"`; without it they keep the per-entity dictionary, so an
   existing spec renders the same bytes. `{path}` in `outputPattern` is the page the view gives a
   node or requirement, and every docs-view page gets `root`, the way back to the site root, so
   `{{root}}{{path}}` links from any page. `subDir` sets the directory the paths are relative to,
-  `assets: { from, to }` copies a directory of text files beside the pages, and `linkCheck: true`
+  `assets: { from }` copies a directory of text files into `subDir`, and `linkCheck: true`
   fails the run, writing nothing, when a relative link in an entry's HTML pages lands on no file or
   anchor. The same keys work in a JSON template spec (`template-spec.schema.json`).
   `Generator.checkRunOutput` is the hook that runs the check once every generator has rendered;

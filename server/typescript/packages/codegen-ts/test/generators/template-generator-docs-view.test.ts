@@ -63,15 +63,31 @@ describe("templateGenerator() over the docs view", () => {
     expect(existsSync(join(out, "model/acme/Address.html"))).toBe(false);
   });
 
-  test("match takes a list, and * matches every node type", async () => {
+  test("match takes a list, and * matches every node type except requirements", async () => {
     const provider = new InMemoryProvider({ node: "{{#node}}{{name}}{{/node}}" });
     const { out } = await gen([
       templateGenerator({ name: "a", template: "node", scope: "perNode", match: ["object.value", "requirement.*"], outputPattern: "a/{name}.txt", provider }),
       templateGenerator({ name: "b", template: "node", scope: "perNode", outputPattern: "b/{name}.txt", provider }),
+      templateGenerator({ name: "c", template: "node", scope: "perNode", match: ["*", "requirement.functional"], outputPattern: "c/{name}.txt", provider }),
     ]);
     expect(existsSync(join(out, "a/Address.txt")) && existsSync(join(out, "a/Buy.txt"))).toBe(true);
     expect(existsSync(join(out, "a/Customer.txt"))).toBe(false);
-    for (const n of ["Address", "Buy", "Customer"]) expect(existsSync(join(out, `b/${n}.txt`))).toBe(true);
+    for (const n of ["Address", "Customer"]) expect(existsSync(join(out, `b/${n}.txt`))).toBe(true);
+    expect(existsSync(join(out, "b/Buy.txt"))).toBe(false);
+    for (const n of ["Address", "Buy", "Customer"]) expect(existsSync(join(out, `c/${n}.txt`))).toBe(true);
+  });
+
+  test("a full site, perNode at the default match beside perRequirement, writes each page once", async () => {
+    const provider = new InMemoryProvider({
+      node: "{{#node}}node {{name}}{{/node}}",
+      req: "{{#requirement}}requirement {{name}}{{/requirement}}",
+    });
+    const { out } = await gen([
+      templateGenerator({ name: "n", template: "node", scope: "perNode", subDir: "site", outputPattern: "{path}", provider }),
+      templateGenerator({ name: "r", template: "req", scope: "perRequirement", subDir: "site", outputPattern: "{path}", provider }),
+    ]);
+    expect(readFileSync(join(out, "site/model/acme/Customer.html"), "utf8")).toBe("node Customer");
+    expect(readFileSync(join(out, "site/requirements/acme/Buy.html"), "utf8")).toBe("requirement Buy");
   });
 
   test("perRequirement renders each requirement; perModel and perPackage read the view on request", async () => {
@@ -107,17 +123,38 @@ describe("templateGenerator() over the docs view", () => {
     expect(existsSync(join(project, "out"))).toBe(false);
   });
 
+  test("a full run does not let a link land on a generated file it no longer produces", async () => {
+    const project = makeScratchDir("tmpl-view-");
+    scratch.push(project);
+    const out = join(project, "out");
+    const provider = new InMemoryProvider({ node: "{{#node}}{{name}}{{/node}}", index: `<a href="model/acme/Address.html">a</a>` });
+    const run = async (match: string[], generatorNames?: string[]) => runGen({
+      config: defineConfig({ outDir: out, extStyle: "none", dbImport: "~/db", dialect: "sqlite", generators: [
+        templateGenerator({ name: "n", template: "node", scope: "perNode", match, outputPattern: "{path}", format: "html", provider }),
+        templateGenerator({ name: "i", template: "index", scope: "perModel", data: "docsView", outputPattern: "index.html", format: "html", linkCheck: true, provider }),
+      ] }),
+      metadata: await load(),
+      projectRoot: project,
+      ...(generatorNames !== undefined && { generatorNames }),
+    });
+    await run(["object.*"]);
+    expect(existsSync(join(out, "model/acme/Address.html"))).toBe(true);
+    await expect(run(["object.entity"])).rejects.toThrow(/index\.html -> model\/acme\/Address\.html/);
+    expect(existsSync(join(out, "model/acme/Address.html"))).toBe(true);
+    await run(["object.entity"], ["i"]);
+  });
+
   test("the link check sees pages a later generator renders, and the copied assets", async () => {
     const provider = new InMemoryProvider({
       node: `{{#node}}<link href="{{root}}css/a.css"><a href="{{root}}index.html#top">i</a>{{/node}}`,
       index: `<h1 id="top">x</h1>`,
     });
     const { out } = await gen([
-      templateGenerator({ name: "n", template: "node", scope: "perNode", match: "object.entity", outputPattern: "{path}", format: "html", linkCheck: true, assets: { from: "static", to: "css" }, provider }),
+      templateGenerator({ name: "n", template: "node", scope: "perNode", match: "object.entity", outputPattern: "{path}", format: "html", linkCheck: true, assets: { from: "static" }, provider }),
       templateGenerator({ name: "i", template: "index", scope: "perModel", data: "docsView", outputPattern: "index.html", format: "html", provider }),
     ], (project) => {
-      mkdirSync(join(project, "static"));
-      writeFileSync(join(project, "static", "a.css"), "a {}\n");
+      mkdirSync(join(project, "static", "css"), { recursive: true });
+      writeFileSync(join(project, "static", "css", "a.css"), "a {}\n");
     });
     expect(readFileSync(join(out, "css/a.css"), "utf8")).toBe("a {}\n");
   });
@@ -154,11 +191,11 @@ describe("template-spec: the docs view keys", () => {
   test("parses data, match, subDir, assets and linkCheck", () => {
     const spec = parseTemplateSpec({ generators: [{
       name: "n", template: "t", scope: "perNode", outputPattern: "{path}", format: "html",
-      data: "docsView", match: ["object.*"], subDir: "site", assets: { from: "a", to: "b" }, linkCheck: true,
+      data: "docsView", match: ["object.*"], subDir: "site", assets: { from: "a" }, linkCheck: true,
     }] });
     expect(spec.generators[0]).toEqual({
       name: "n", template: "t", scope: "perNode", outputPattern: "{path}", format: "html",
-      data: "docsView", match: ["object.*"], subDir: "site", assets: { from: "a", to: "b" }, linkCheck: true,
+      data: "docsView", match: ["object.*"], subDir: "site", assets: { from: "a" }, linkCheck: true,
     });
   });
   test("refuses malformed values", () => {
@@ -166,6 +203,7 @@ describe("template-spec: the docs view keys", () => {
     expect(at({ data: "view" })).toThrow(/data must be one of entities \| docsView/);
     expect(at({ match: [] })).toThrow(/match must be/);
     expect(at({ assets: { to: "x" } })).toThrow(/assets must be/);
+    expect(at({ assets: { from: "a", to: "b" } })).toThrow(/assets must be \{ "from": "<dir>" \}/);
     expect(at({ linkCheck: "yes" })).toThrow(/linkCheck must be a boolean/);
   });
 });

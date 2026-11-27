@@ -86,10 +86,10 @@ export function parseTemplateSpec(json: unknown): TemplateSpecFile {
     }
     if (raw.assets !== undefined) {
       const a = raw.assets;
-      if (!isRecord(a) || typeof a.from !== "string" || a.from === "" || (a.to !== undefined && typeof a.to !== "string")) {
-        throw new Error(`${at}: assets must be { "from": "<dir>", "to"?: "<dir>" }`);
+      if (!isRecord(a) || typeof a.from !== "string" || a.from === "" || Object.keys(a).some((k) => k !== "from")) {
+        throw new Error(`${at}: assets must be { "from": "<dir>" }`);
       }
-      entry.assets = { from: a.from, ...(typeof a.to === "string" && { to: a.to }) };
+      entry.assets = { from: a.from };
     }
     if (raw.linkCheck !== undefined) {
       if (typeof raw.linkCheck !== "boolean") throw new Error(`${at}: linkCheck must be a boolean`);

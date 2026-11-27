@@ -1105,9 +1105,13 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // the generators after its own emitted; before the write, so a failed check writes nothing.
   if (checked.length > 0) {
     const byPath = new Map(emitted.map((f) => [f.fullPath, f.content]));
+    const swept = projectRoot !== undefined && opts.generatorNames === undefined && baseline !== "adopt" && !entityNarrowed
+      ? new Set(listGeneratedPaths(genStateDir).map((p) => resolve(projectRoot, p)))
+      : new Set<string>();
     const read = (fullPath: string): string | undefined => {
       const mine = byPath.get(fullPath);
       if (mine !== undefined) return mine;
+      if (swept.has(resolve(fullPath))) return undefined;
       try {
         return readFileSync(fullPath, "utf8");
       } catch {

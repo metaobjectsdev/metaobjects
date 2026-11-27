@@ -23,7 +23,7 @@ this corpus gates the *new* surface: the structural data dict, the scope names
 ## The `docs-view/` case
 
 `docs-view/` is a second case with its own `spec.json`, `metadata/` (every file, loaded
-together), `templates/`, `assets/` and `expected/`. Its entries read the **docs view**
+together), `templates/`, `site-assets/` and `expected/`. Its entries read the **docs view**
 (`docs/features/docs-view.md`) of the model alone: no verify payload, manifest or routes,
 so `sources` is all `false`. It gates:
 
@@ -32,7 +32,7 @@ so `sources` is all `false`. It gates:
 - `data: "docsView"` on `perModel` and `perPackage`;
 - `subDir` (the site under `site/`) and `root`, the way back to it, used by every link
   (`{{root}}{{path}}`) and by a Markdown entry outside the site (`briefs/`);
-- `assets` (`assets/` copied to `site/assets/`);
+- `assets` (`site-assets/assets/` copied to `site/assets/`);
 - `linkCheck`: every relative link in the checked entries lands on a file and an anchor,
   including links to pages a later entry renders.
 

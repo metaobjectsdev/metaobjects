@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { readdirSync, readFileSync, statSync, cpSync, existsSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, cpSync, rmSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
 import { runGen, defineConfig, parseTemplateSpec, templateSpecToGenerators } from "../../src/index.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
@@ -18,7 +18,7 @@ function walkFiles(dir: string, base = dir): string[] {
 }
 
 /** Run a case's spec.json over its metadata/ (every file, sorted by name) and compare with its
- *  expected/. The case's templates/ and, when present, assets/ are copied into a scratch
+ *  expected/. The case's templates/ and each entry's assets directory are copied into a scratch
  *  project, so runGen writes its .gen-state merge base there, never into the corpus. */
 async function runCase(caseDir: string): Promise<void> {
   const spec = parseTemplateSpec(JSON.parse(readFileSync(join(caseDir, "spec.json"), "utf8")));
@@ -30,7 +30,9 @@ async function runCase(caseDir: string): Promise<void> {
   const projectRoot = makeScratchDir("tmpl-conf-");
   const out = join(projectRoot, "out");
   cpSync(join(caseDir, "templates"), join(projectRoot, "templates"), { recursive: true });
-  if (existsSync(join(caseDir, "assets"))) cpSync(join(caseDir, "assets"), join(projectRoot, "assets"), { recursive: true });
+  for (const { assets } of spec.generators) {
+    if (assets !== undefined) cpSync(join(caseDir, assets.from), join(projectRoot, assets.from), { recursive: true });
+  }
   try {
     await runGen({
       config: defineConfig({

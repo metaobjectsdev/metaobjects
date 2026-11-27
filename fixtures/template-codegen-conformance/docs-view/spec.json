@@ -1,6 +1,6 @@
 {
   "generators": [
-    { "name": "site-index", "template": "index", "scope": "perModel", "data": "docsView", "subDir": "site", "outputPattern": "index.html", "format": "html", "linkCheck": true, "assets": { "from": "assets", "to": "assets" } },
+    { "name": "site-index", "template": "index", "scope": "perModel", "data": "docsView", "subDir": "site", "outputPattern": "index.html", "format": "html", "linkCheck": true, "assets": { "from": "site-assets" } },
     { "name": "site-packages", "template": "package", "scope": "perPackage", "data": "docsView", "subDir": "site", "outputPattern": "packages/{package}.html", "format": "html" },
     { "name": "site-objects", "template": "object", "scope": "perNode", "match": "object.*", "subDir": "site", "outputPattern": "{path}", "format": "html", "linkCheck": true },
     { "name": "site-requirements", "template": "requirement", "scope": "perRequirement", "subDir": "site", "outputPattern": "{path}", "format": "html", "linkCheck": true },
