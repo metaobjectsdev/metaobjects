@@ -222,7 +222,7 @@ placeholders are `{name}`, `{Name}` and `{package}` (whose `::` segments become 
 directories), and `{path}` for the docs-view scopes `perNode` and `perRequirement`
 ([templates over the docs view](../features/codegen-concepts.md#templates-over-the-docs-view-typescript));
 an unknown placeholder throws. Abstract objects are excluded from every
-scope.
+scope that reads the per-entity dictionary; the docs-view scopes include them.
 
 `scope` and `walk` are mutually exclusive — supply exactly one. Take a `scope` when one
 of the three walks fits; supply your own `walk` when it does not.

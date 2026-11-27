@@ -6,7 +6,7 @@ Every port runs `spec.json` (a list of `{ name, template, scope, outputPattern }
 generators) over `metadata/meta.shop.json`, resolving templates from `templates/`,
 and must produce output **byte-identical** to `expected/`.
 
-The corpus exercises all three built-in scopes:
+The root case exercises the three per-entity-dictionary scopes:
 
 - **`perEntity`** (`entity.mustache` → `<Name>.txt`) — the neutral per-entity data
   dict: fields (name/type/required/isArray/maxLength), and Order's `product`
