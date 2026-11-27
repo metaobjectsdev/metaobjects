@@ -155,7 +155,6 @@ async function buildInScratch(prefix: string, build: (outDir: string) => string[
   }
 }
 
-/** The routes the run mounts, as the api reference states them (`METHOD /path` per symbol). */
 /** A route the run mounts, keyed by its node's resolution key: the docs view's `routes` input. */
 interface RunRoute {
   node: string;
@@ -163,6 +162,7 @@ interface RunRoute {
   path: string;
 }
 
+/** The routes the run mounts, as the api reference states them (`METHOD /path` per symbol). */
 function runRoutes(ctx: GenContext): RunRoute[] {
   const routes: RunRoute[] = [];
   for (const unit of buildApiModelForRun(ctx).units) {

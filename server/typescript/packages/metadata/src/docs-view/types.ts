@@ -12,8 +12,8 @@ export const DOCS_VIEW_FORMAT = "metaobjects-docs-view/1";
 /** A pointer to a node of the view, or to a reference that did not resolve. */
 export interface DocsViewLink {
   /** What a page prints for the target: a top-level node's name, a requirement's title (else
-   *  its name), `<owner name>.<member path>` for a member. The text as written when
-   *  unresolved. */
+   *  its name), or for a member the owner's name followed by the member's id after the
+   *  owner's id (`Order.email`, `Order#3` with no name). The text as written when unresolved. */
   label: string;
   /** The target's id; "" when unresolved. */
   id: string;
@@ -63,7 +63,8 @@ export interface DocsViewReferrer {
 /** A requirement's `@implementedBy` link onto this node or one of its members. */
 export interface DocsViewClaim {
   requirement: DocsViewLink;
-  /** The dotted member path below the top-level node; "" for the whole node. */
+  /** The member's id after the top-level node's (`reference`, or `#3` with no name); "" for
+   *  the whole node. */
   member: string;
   status: string;
   level: number | null;
