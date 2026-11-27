@@ -39,16 +39,34 @@
       ],
       "diagnostics": [],
       "verdict": "clean"
+    },
+    {
+      "path": "Crm.Leads.Scoring",
+      "package": "acme::crm",
+      "qualifiedPath": "acme::crm::Crm.Leads.Scoring",
+      "subType": "functional",
+      "level": 5,
+      "status": "live",
+      "digest": "6990b1edf77a7367a183eb110b02e990d84cee610f9c9531d7062270bbe2d000",
+      "implementedBy": [
+        {
+          "ref": "Lead.score",
+          "resolves": true,
+          "target": "acme::crm::Lead.score"
+        }
+      ],
+      "diagnostics": [],
+      "verdict": "clean"
     }
   ],
   "requirementCounts": {
-    "total": 2,
-    "functional": 2,
+    "total": 3,
+    "functional": 3,
     "architectural": 0,
     "byStatus": [
       {
         "status": "live",
-        "count": 2
+        "count": 3
       }
     ],
     "undecided": 0,

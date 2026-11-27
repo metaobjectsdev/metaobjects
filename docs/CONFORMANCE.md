@@ -908,6 +908,9 @@ and a reply, and a five-level requirement tree that has a resolved member claim,
 planned claim and a live requirement nothing implements. `crm` adds a `provider.json`, a
 data-driven provider for vocabulary the core does not register (`page.list`, `block.table`,
 `capability.module`): its members and references must appear with no docs code that names them.
+It also pins three id rules: a page declared before the entity it shares a name with leaves the
+entity its claims, a reference and a claim naming an inherited member land on the owner's row,
+and a nameless member keeps its index in its label.
 
 **One port runs it:** TypeScript, in
 `server/typescript/packages/metadata/test/docs-view-conformance.test.ts` (the view) and

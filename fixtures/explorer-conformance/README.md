@@ -48,11 +48,18 @@ the builder nor any page names them.
 
 - The entity `Lead` and the page `Lead` share a package and a name: the entity keeps
   `acme::crm::Lead`, and the page is `acme::crm::Lead[page.list]`, on `Lead.page-list.html`.
+  The page is declared first, and the entity still holds every claim that names `Lead`.
 - The page's `@objectRef` and its blocks' `@objectRef` are resolved by the loader, so they are
   references (to `Lead` and `Account`) and both entities list the page in `referencedBy`. The
   blocks' `@columns` is not a reference attribute, so it stays text.
 - `Crm.Leads` claims `acme::tax::tax`, a `capability.module` in another package, and the claim
   resolves like any other.
+- `Lead` extends the abstract `Scored` and inherits `score`. The projection `AccountScore`
+  totals it with `@of: Lead.score`, and its child `Crm.Leads.Scoring` claims `Lead.score`: the
+  reference and the claim both land on Lead's own row (`Lead.html#m-score`), while the member's
+  `declaredOn` names `Scored`.
+- `AccountScore`'s `source.rdb` has no name and carries `@parameterRef`: the member is
+  `acme::crm::AccountScore#0`, labelled `AccountScore#0`.
 
 ## Regenerating
 

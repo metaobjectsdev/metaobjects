@@ -32,7 +32,7 @@ import {
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
 } from "../core/requirement/requirement-constants.js";
 import { effectiveRequirementPackage, resolveClaimTarget, resolveMember } from "../core/requirement/resolve-claim.js";
-import { effectivePackageOf, isRefBearingAttr, lookupCanonical, splitChildTail, topLevelNodeOf } from "../naming-refs.js";
+import { effectivePackageOf, isRefBearingAttr, splitChildTail } from "../naming-refs.js";
 import {
   DOCS_VIEW_FORMAT,
   type DocsView,
@@ -237,10 +237,8 @@ class Builder {
    *  loader bound. */
   refLink(owner: MetaData | undefined, value: string): DocsViewLink {
     if (owner === undefined) return unresolved(value);
-    const exact = value.includes(CHILD_REF_SEPARATOR) ? lookupCanonical(this.root, value) : undefined;
-    if (exact === undefined) return this.linkTo(owner, value);
-    if (topLevelNodeOf(exact) === owner) return this.linkTo(exact, value);
-    const row = this.byPlain.get(`${owner.resolutionKey()}${splitChildTail(value).tail}`);
+    const { tail } = splitChildTail(value);
+    const row = tail === "" ? undefined : this.byPlain.get(`${owner.resolutionKey()}${tail}`);
     return row !== undefined ? this.link(row) : this.linkTo(owner, value);
   }
 }

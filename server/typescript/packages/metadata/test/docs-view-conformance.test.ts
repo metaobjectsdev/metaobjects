@@ -154,9 +154,21 @@ describe("buildDocsView over the corpus", () => {
     expect(columns.values.map((x) => [x.text, x.link])).toEqual([["email", null], ["accountId", null]]);
     const account = v.nodes.find((n) => n.id === "acme::crm::Account")!;
     expect(account.referencedBy.map((r) => [r.attr, r.from.id])).toEqual([
+      ["via", "acme::crm::AccountScore"],
       ["references", "acme::crm::Lead"],
       ["objectRef", "acme::crm::Lead[page.list]"],
     ]);
+    // The page is declared before the entity it shares a name with; the entity keeps its claims.
+    const lead = v.nodes.find((n) => n.id === "acme::crm::Lead")!;
+    expect(lead.claims.map((c) => [c.requirement.id, c.member])).toEqual([["acme::crm::Crm.Leads", ""], ["acme::crm::Crm.Leads.Scoring", "score"]]);
+    expect(page.claims).toEqual([]);
+    // `@of` names `score`, which Lead inherits from Scored: it lands on Lead's own row.
+    const score = v.nodes.find((n) => n.id === "acme::crm::AccountScore")!;
+    const of = score.refs.find((r) => r.attr === "of")!;
+    expect([of.target.id, of.target.path]).toEqual(["acme::crm::Lead.score", "model/acme/crm/Lead.html#m-score"]);
+    // A nameless source keeps its index in its id and its label.
+    const source = score.refs.find((r) => r.attr === "parameterRef")!;
+    expect([source.via?.id, source.via?.label, source.target.id]).toEqual(["acme::crm::AccountScore#0", "AccountScore#0", "acme::crm::ScoreParams"]);
     const tax = v.nodes.find((n) => n.id === "acme::tax::tax")!;
     expect(tax.claims.map((c) => c.requirement.id)).toEqual(["acme::crm::Crm.Leads"]);
   });
