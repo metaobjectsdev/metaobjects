@@ -176,6 +176,13 @@ page with them, and writes your CSS and JS in place of its own. A project that e
 classic files; `meta gen` warns about it, and running `meta eject docs-site` again adds the
 explorer's files without touching the ones you own.
 
+The app calls `window.MO_THEME` each time it draws a page, and the packaged `explorer.js` sets it
+to the function that wires search, the theme toggle and the graphs. An `explorer.js` ejected
+from a 1.3.0 candidate predates that hook, so those controls do nothing in the app. Copy it again
+with `meta eject docs-site --force` and carry your edits into the new copy: the app also needs
+the copy's `window.MO_APP` hooks for links, the query string and listeners, so adding the one
+line is not enough.
+
 ## Drift and determinism
 
 The site prints no date and no build time, its graph layouts start from fixed positions, and

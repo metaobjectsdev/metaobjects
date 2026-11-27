@@ -22,6 +22,7 @@ stale or a port's copy differs from it.
 | `index.html` | The shell: loads the data, Cytoscape, the app and the theme | `server/typescript/packages/docs-site/app-src/index.html` |
 | `assets/explorer-app.js` | The app: the explorer's page code and templates, and the router around them, as one classic script | `app-src/main.ts`, `src/explorer/{core,pages,html,view-index}.ts`, `templates/explorer-*.mustache`, the Mustache renderer |
 | `assets/explorer.css`, `assets/explorer.js` | The theme (`meta eject docs-site` copies them; an owned copy replaces these in the written site) | `server/typescript/packages/docs-site/assets/` |
+| `assets/explorer-app.js` (inlined) | [mustache.js](https://github.com/janl/mustache.js) 4.2.0, MIT (its licence is the file's header) | the npm package `mustache@4.2.0`, through `@metaobjectsdev/render` |
 | `assets/cytoscape.min.js` | [Cytoscape.js](https://js.cytoscape.org/) 3.30.2, MIT (its licence is the file's header), so the graphs draw offline | vendored from the npm package `cytoscape@3.30.2`, `dist/cytoscape.min.js` |
 
 ## Where each port keeps its copy

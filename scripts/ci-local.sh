@@ -1511,7 +1511,6 @@ run_gates_offline() {
   if want gates; then step    "hosted assess prompt builds"      gate_assess_prompt;          fi
   if want gates; then step    "migration guides vs registry"     gate_migration_guides;       fi
   if want gates; then step    "python agent-context copy"        gate_python_agent_context_drift; fi
-  if want gates; then step_if bun "explorer app copies"          gate_explorer_app_drift;     fi
 }
 # Every gate below runs bun over workspace TypeScript, and on a FRESH CI checkout there is
 # no node_modules — so a bare `@metaobjectsdev/*` specifier either fails to resolve (what
@@ -1539,6 +1538,7 @@ run_gates_bun() {
   if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
   if want gates; then step_if bun "requirement harness"       gate_requirement_harness;    fi
   if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
+  if want gates; then step_if bun "explorer app copies"          gate_explorer_app_drift;     fi
 }
 run_drift_gates() {
   if want gates; then step_if bun "doc-template drift"           gate_doc_template_drift;     fi

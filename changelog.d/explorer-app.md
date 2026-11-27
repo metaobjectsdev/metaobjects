@@ -14,3 +14,8 @@
   the other ports' docs-site generators are still to write them. Generated-output change: the
   next `meta gen` replaces the explorer's pages with the app's files, and `meta verify
   --codegen` holds the new files to the model as before.
+  If you ejected the theme on a 1.3.0 candidate, your `codegen/docs-site/assets/explorer.js`
+  predates the app, which calls `window.MO_THEME` each time it draws a page: without that hook
+  search, the theme toggle and the graphs do nothing. Copy it again with `meta eject docs-site
+  --force` and carry your edits into the new copy (the app also needs its `window.MO_APP` link,
+  query and listener hooks, so adding the one line is not enough).

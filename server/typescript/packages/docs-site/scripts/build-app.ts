@@ -17,6 +17,21 @@ const REPO = resolve(PKG, "../../../..");
 const OUT = join(REPO, "explorer-app");
 const RENDER_SRC = resolve(PKG, "../render/src");
 
+// The bundle inlines mustache.js, whose MIT licence asks for its notice in every copy.
+const MUSTACHE_NOTICE = `/*!
+ * mustache.js, inlined in this bundle. The MIT License
+ *
+ * Copyright (c) 2009 Chris Wanstrath (Ruby)
+ * Copyright (c) 2010-2014 Jan Lehnardt (JavaScript)
+ * Copyright (c) 2010-2015 The mustache.js community
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */`;
+
 /** The bundle's files by path under `explorer-app/`. */
 export async function buildExplorerApp(): Promise<Map<string, string>> {
   const templates: Record<string, string> = {};
@@ -26,6 +41,7 @@ export async function buildExplorerApp(): Promise<Map<string, string>> {
     target: "browser",
     format: "iife",
     minify: true,
+    banner: MUSTACHE_NOTICE,
     // Bundle the workspace packages from their sources (the `bun` export condition), never from
     // a `dist/` that may be stale or missing.
     conditions: ["bun"],
