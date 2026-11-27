@@ -38,7 +38,7 @@ docs/
 │   ├── yaml-authoring.md
 │   ├── cli.md                       # CLI command matrix across all five ports
 │   ├── language-differences.md      # what differs by language: Node for the schema, list defaults, error bodies, names, data access
-│   ├── codegen-concepts.md          # declarative template-codegen scopes (perEntity/perPackage/perModel)
+│   ├── codegen-concepts.md          # declarative template-codegen scopes (perEntity/perPackage/perModel; TypeScript adds the docs-view scopes)
 │   ├── codegen-data-shapes.md       # the neutral template data dict shared cross-port
 │   ├── downstream-metadata-decisions.md # guidance for adopters extending the metamodel
 │   ├── semantic-modelling.md        # how to shape vocabulary of your own: type, subtype, generator and configuration

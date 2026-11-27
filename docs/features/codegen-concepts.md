@@ -245,8 +245,8 @@ pattern instead of hand-rolled grouping.
 ### Declarative template scopes
 
 A `templateGenerator` can take the scope walk declaratively instead of a hand-written
-`walk` — pass `scope` (`"perEntity" | "perPackage" | "perModel"`) plus an
-`outputPattern`, and the generator derives the neutral template data dict per unit and
+`walk` — pass `scope` (`"perEntity" | "perPackage" | "perModel"`; TypeScript also
+takes the docs-view scopes, below) plus an `outputPattern`, and the generator derives the neutral template data dict per unit and
 names each file via the pattern. `walk` and `scope` are mutually exclusive — provide
 exactly one. The `outputPattern` placeholders are `{name}`, `{Name}`, and `{package}`
 (an unknown placeholder throws); `{package}` resolves through `effectivePackage` and

@@ -249,5 +249,5 @@ Mermaid diagram):
 5. Document the new shape on this page under a new section.
 
 The `templateGenerator()` factory does the rest — no new generator scaffolding is
-needed. Take the built-in `scope` + `outputPattern` walk when one of the three scopes
+needed. Take the built-in `scope` + `outputPattern` walk when one of the scopes
 fits; supply your own `walk` only when it does not.
