@@ -32,7 +32,7 @@ import {
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
 } from "../core/requirement/requirement-constants.js";
 import { effectiveRequirementPackage, resolveClaimTarget, resolveMember } from "../core/requirement/resolve-claim.js";
-import { effectivePackageOf, isRefBearingAttr, lookupCanonical, topLevelNodeOf } from "../naming-refs.js";
+import { effectivePackageOf, isRefBearingAttr, lookupCanonical, splitChildTail, topLevelNodeOf } from "../naming-refs.js";
 import {
   DOCS_VIEW_FORMAT,
   type DocsView,
@@ -84,13 +84,13 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 /** The directory of a package's pages. A package segment is an identifier, so `-root` (for
  *  the empty package) cannot be one. */
-export function docsPackageDir(pkg: string): string {
+function docsPackageDir(pkg: string): string {
   return pkg === "" ? "-root" : pkg.split(PACKAGE_SEPARATOR).join("/");
 }
 
 /** A page's file stem: the name, unless it would take the package page's `index.html` (on a
  *  case-insensitive file system too). */
-export function docsPageStem(name: string): string {
+function docsPageStem(name: string): string {
   return name.toLowerCase() === "index" ? `${name}.node` : name;
 }
 
@@ -126,7 +126,8 @@ class Builder {
   readonly byId = new Map<string, Walked>();
   /** Each node instance at its canonical walk position. */
   readonly canonical = new Map<MetaData, Walked>();
-  /** Plain path → walked node (the first holder of a plain path). */
+  /** Plain path → walked node: the first holder of a plain path under a top-level node that
+   *  holds its plain id, whatever order the other nodes of that name are declared in. */
   readonly byPlain = new Map<string, Walked>();
   readonly requirements: Walked[] = [];
 
@@ -192,7 +193,7 @@ class Builder {
       if (w.direct === w) w.anchor = memberAnchor(md, index);
       this.walked.push(w);
       this.byId.set(id, w);
-      if (!this.byPlain.has(plain)) this.byPlain.set(plain, w);
+      if (w.top.id === w.top.plain && !this.byPlain.has(plain)) this.byPlain.set(plain, w);
       if (w.canonical) this.canonical.set(md, w);
       if (parent === undefined) this.tops.push(w);
       else parent.children.push(w);
@@ -222,7 +223,7 @@ class Builder {
         ? str(w.md.attr(DOC_ATTR_TITLE)) || w.md.name
         : w === w.top
           ? w.md.name
-          : `${w.top.md.name}.${w.id.slice(w.top.id.length + 1)}`;
+          : `${w.top.md.name}${w.id.slice(w.top.id.length)}`;
     return { label, id: w.id, path: w.path, kind: `${w.md.type}${TYPE_SUBTYPE_SEPARATOR}${w.md.subType}`, unresolved: false };
   }
 
@@ -231,14 +232,23 @@ class Builder {
     return w !== undefined ? this.link(w) : unresolved(text);
   }
 
-  /** The link a reference value lands on: the member its dotted tail names, else the owner the
+  /** The link a reference value lands on: the owner's row for the member its dotted tail
+   *  names (the owner's own row of an inherited member, as a claim lands), else the owner the
    *  loader bound. */
   refLink(owner: MetaData | undefined, value: string): DocsViewLink {
     if (owner === undefined) return unresolved(value);
     const exact = value.includes(CHILD_REF_SEPARATOR) ? lookupCanonical(this.root, value) : undefined;
-    const target = exact !== undefined && topLevelNodeOf(exact) === owner ? exact : owner;
-    return this.linkTo(target, value);
+    if (exact === undefined) return this.linkTo(owner, value);
+    if (topLevelNodeOf(exact) === owner) return this.linkTo(exact, value);
+    const row = this.byPlain.get(`${owner.resolutionKey()}${splitChildTail(value).tail}`);
+    return row !== undefined ? this.link(row) : this.linkTo(owner, value);
   }
+}
+
+/** A member's id after its top-level node's: `email`, `items.price`, or `#3` with no name. */
+function memberPath(w: Walked): string {
+  const rest = w.id.slice(w.top.id.length);
+  return rest.startsWith(CHILD_REF_SEPARATOR) ? rest.slice(CHILD_REF_SEPARATOR.length) : rest;
 }
 
 function qualified(id: string, md: MetaData): string {
@@ -397,7 +407,7 @@ export function buildDocsView(input: DocsViewInput): DocsView {
       targets.push(w);
       const claim: DocsViewClaim = {
         requirement: b.link(r),
-        member: w === w.top ? "" : w.id.slice(w.top.id.length + 1),
+        member: w === w.top ? "" : memberPath(w),
         status: str(req.status()),
         level: req.level() ?? null,
       };

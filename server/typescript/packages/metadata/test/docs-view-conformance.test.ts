@@ -4,8 +4,9 @@
 // view is held to the same files.
 //
 // A fixture may carry `provider.json`, a data-driven provider definition for vocabulary the
-// core does not register. Its references must come out linked with no change to the builder:
-// the view reads the loader's resolution, never a list of attribute names.
+// core does not register. A provider attribute comes out linked when the loader resolves it as
+// a reference (such as `@objectRef`), with no change to the builder: the view reads the
+// loader's resolution, never a list of attribute names of its own.
 //
 // Regenerate after a deliberate change: `UPDATE_DOCS_VIEW=1 bun test test/docs-view-conformance.test.ts`.
 import { describe, expect, test } from "bun:test";
@@ -189,6 +190,82 @@ describe("buildDocsView over the corpus", () => {
     expect(map.values[0]!.text).toBe(`{"ARCHIVED":9,"DRAFT":0,"PUBLISHED":5}`);
     // A list keeps its order: it is the declaration.
     expect(state.attrs.find((a) => a.name === "values")!.values.map((v) => v.text)).toEqual(["DRAFT", "PUBLISHED", "ARCHIVED"]);
+  });
+
+  test("a node named like an entity and declared before it leaves the entity its claims, files, routes and findings", async () => {
+    const req = { "@level": 1, "@status": "live", "@statement": "s", "@counterexample": "c" };
+    const model = {
+      "metadata.root": {
+        package: "acme::shop",
+        children: [
+          { "requirement.functional": { name: "Order", ...req, "@implementedBy": ["Order", "Order.email"], children: [
+            { "requirement.functional": { name: "email", ...req } },
+          ] } },
+          { "object.entity": { name: "Order", children: [{ "field.string": { name: "email" } }] } },
+        ],
+      },
+    };
+    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+    expect(loaded.errors.map(String)).toEqual([]);
+    const finding = { code: "WARN_REQUIREMENT_OBJECT_UNCLAIMED", node: "acme::shop::Order", path: "", severity: "warn", source: "", message: "" };
+    const v = buildDocsView({
+      root: loaded.root,
+      verify: { requirementLedger: [], requirements: { rows: [finding] } },
+      manifest: { "src/Order.ts": { generatedBy: "entity", sourceNode: "acme::shop::Order" } },
+      routes: [{ node: "acme::shop::Order", method: "get", path: "/orders" }],
+    });
+    const entity = v.nodes.find((n) => n.id === "acme::shop::Order")!;
+    expect(entity.type).toBe("object");
+    expect(entity.claims.map((c) => c.member)).toEqual(["", "email"]);
+    expect(entity.memberGroups[0]!.members[0]!.claims.map((c) => c.member)).toEqual(["email"]);
+    expect(entity.files).toEqual([{ generatedBy: "entity", paths: ["src/Order.ts"] }]);
+    expect(entity.routes).toEqual([{ method: "GET", path: "/orders" }]);
+    expect(entity.unclaimed).toBe(true);
+    const named = v.nodes.find((n) => n.id === "acme::shop::Order[requirement.functional]")!;
+    expect([named.claims, named.files, named.routes, named.unclaimed]).toEqual([[], [], [], false]);
+    expect(v.requirements[0]!.implementedBy.map((l) => l.target.path)).toEqual(["model/acme/shop/Order.html", "model/acme/shop/Order.html#m-email"]);
+    expect(v.advisories[0]!.subject?.id).toBe("acme::shop::Order");
+  });
+
+  test("a reference and a claim naming an inherited member land on the owner's row; extends names the declarer", async () => {
+    const model = {
+      "metadata.root": {
+        package: "acme::shop",
+        children: [
+          { "requirement.functional": { name: "Totals", "@level": 4, "@status": "live", "@statement": "s", "@counterexample": "c", "@implementedBy": ["Order.total"] } },
+          { "object.entity": { name: "Base", abstract: true, children: [
+            { "field.long": { name: "id" } },
+            { "field.long": { name: "total" } },
+            { "identity.primary": { name: "pk", "@fields": "id" } },
+          ] } },
+          { "object.entity": { name: "Order", extends: "Base", children: [] } },
+          { "object.entity": { name: "Customer", children: [
+            { "field.long": { name: "id" } },
+            { "relationship.association": { name: "orders", "@objectRef": "Order", "@cardinality": "many" } },
+            { "identity.primary": { name: "pk", "@fields": "id" } },
+          ] } },
+          { "object.value": { name: "Params", children: [{ "field.long": { name: "customerId" } }] } },
+          { "object.projection": { name: "CustomerTotals", children: [
+            { "source.rdb": { "@kind": "storedProc", "@storedProc": "p_totals", "@parameterRef": "Params" } },
+            { "field.long": { name: "sum", children: [
+              { "origin.aggregate": { "@agg": "sum", "@of": "Order.total", "@via": "Customer.orders" } },
+            ] } },
+          ] } },
+        ],
+      },
+    };
+    const loaded = await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(model))]);
+    expect(loaded.errors.map(String)).toEqual([]);
+    const v = buildDocsView({ root: loaded.root });
+    const totals = v.nodes.find((n) => n.id === "acme::shop::CustomerTotals")!;
+    const of = totals.refs.find((r) => r.attr === "of")!;
+    expect([of.target.id, of.target.path, of.target.label]).toEqual(["acme::shop::Order.total", "model/acme/shop/Order.html#m-total", "Order.total"]);
+    expect(v.requirements[0]!.implementedBy[0]!.target.path).toBe("model/acme/shop/Order.html#m-total");
+    const total = v.nodes.find((n) => n.id === "acme::shop::Order")!.memberGroups.flatMap((g) => g.members).find((m) => m.name === "total")!;
+    expect(total.declaredOn?.path).toBe("model/acme/shop/Base.html");
+    // A member with no name keeps its index in its label, as in its id.
+    const source = totals.refs.find((r) => r.attr === "parameterRef")!;
+    expect([source.via?.id, source.via?.label]).toEqual(["acme::shop::CustomerTotals#0", "CustomerTotals#0"]);
   });
 
   test("the same inputs give the same bytes", async () => {

@@ -68,10 +68,13 @@ interface DocsViewLink {
 }
 ```
 
-The `label` is a top-level node's name, a requirement's `@title` (else its name), or
-`<owner name>.<member path>` for a member. An unresolved link keeps the text as written in its
-`label`, so a page can print it without linking it. A link to an inherited member lands on the
-node that declares it, because a reference to that member resolves there.
+The `label` is a top-level node's name, a requirement's `@title` (else its name), or for a
+member the owner's name followed by the member's id after the owner's id: `Order.email`, or
+`Order#3` for a member with no name. An unresolved link keeps the text as written in its
+`label`, so a page can print it without linking it. A reference value or an `@implementedBy`
+claim that names a member the owner inherits (`Order.total`, with `total` declared on `Order`'s
+base) lands on the owner's own row for that member (`Order.html#m-total`). `extends` and a
+member's `declaredOn` name the node that declares it.
 
 ### Ids
 
@@ -85,6 +88,9 @@ node that declares it, because a reference to that member resolves there.
   `@implementedBy` such as `AuditEntry.id` resolves to. Each later one adds its type:
   `acme::shop::AuditEntry.id[identity.primary]`.
 - Two nodes that would still share an id make the builder throw, naming the id.
+- A name in an optional input (a file's `sourceNode`, a route's `node`, a finding's `node`) and a
+  claim name a node by its unqualified id, so they land on the node that holds that id, and on
+  its members, whatever order the nodes of that name are declared in.
 
 ### Pages and anchors
 
@@ -155,8 +161,8 @@ Attributes are the effective ones, inherited through `extends` included, sorted 
 order, so a map attribute such as `@intValueMap` reads the same from every port. A
 string gives one value and a list of strings gives one value per element. Any other value gives
 one, written as compact JSON. `link` is set only on an attribute the loader resolves as a
-reference. It points at the member the value's dotted tail names when there is one, otherwise
-at the node the loader bound. An attribute that merely spells a node's name is text: the view
+reference. It points at the owner's row for the member the value's dotted tail names when
+there is one (inherited or not), otherwise at the node the loader bound. An attribute that merely spells a node's name is text: the view
 never matches names itself.
 
 ### Members
@@ -197,8 +203,8 @@ interface DocsViewClaim { requirement: DocsViewLink; member: string; status: str
 ```
 
 A claim is one resolved `@implementedBy` link. It is listed on the top-level node and on every
-member down to the one it names. `member` is the dotted path below the top-level node, or `""`
-when the claim is on the node itself.
+member down to the one it names. `member` is the member's id after the top-level node's
+(`reference`, or `#3` for a member with no name), or `""` when the claim is on the node itself.
 
 ### `requirements`
 
