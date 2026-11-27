@@ -97,6 +97,11 @@ it. The field names are a byte-gated **cross-port contract** (the
 `fixtures/template-codegen-conformance/` corpus locks them) — change them only via
 the spec.
 
+The `perNode` and `perRequirement` scopes, and `data: "docsView"` on `perModel` and
+`perPackage`, feed the **docs view** instead ([docs-view.md](docs-view.md)), the same facts
+the documentation pages read, pinned by `fixtures/template-codegen-conformance/docs-view/`
+([codegen-concepts.md](codegen-concepts.md#templates-over-the-docs-view-typescript)).
+
 ```ts
 interface FieldTemplateData {
   name: string;

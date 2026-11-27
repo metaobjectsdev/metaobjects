@@ -1,0 +1,42 @@
+<!doctype html>
+<link rel="stylesheet" href="../../../assets/css/site.css">
+<p><a href="../../../index.html">Home</a></p>
+
+<h1>Order</h1>
+<p class="kind">object.entity</p>
+<p>A placed order &amp; its &lt;total&gt;.</p>
+<p>Extends <a href="../../../model/acme/shop/BaseEntity.html">BaseEntity</a></p>
+<h2>field (3)</h2>
+<table>
+<tr id="m-id"><td>id</td><td>long</td><td>from <a href="../../../model/acme/shop/BaseEntity.html">BaseEntity</a></td></tr>
+<tr id="m-customerId"><td>customerId</td><td>long</td><td></td></tr>
+<tr id="m-reference"><td>reference</td><td>string</td><td></td></tr>
+</table>
+<h2>identity (2)</h2>
+<table>
+<tr id="m-identity-pk"><td>pk</td><td>primary</td><td>from <a href="../../../model/acme/shop/BaseEntity.html">BaseEntity</a></td></tr>
+<tr id="m-identity-customerRef"><td>customerRef</td><td>reference</td><td></td></tr>
+</table>
+<h2>source (1)</h2>
+<table>
+<tr id="m-source-2"><td></td><td>rdb</td><td></td></tr>
+</table>
+<h2>relationship (1)</h2>
+<table>
+<tr id="m-relationship-customer"><td>customer</td><td>association</td><td></td></tr>
+</table>
+<h2>References</h2>
+<ul>
+<li>extends: <a href="../../../model/acme/shop/BaseEntity.html">BaseEntity</a></li>
+<li>references on <a href="../../../model/acme/shop/Order.html#m-identity-customerRef">Order.customerRef</a>: <a href="../../../model/acme/shop/Customer.html">Customer</a></li>
+<li>objectRef on <a href="../../../model/acme/shop/Order.html#m-relationship-customer">Order.customer</a>: <a href="../../../model/acme/shop/Customer.html">Customer</a></li>
+</ul>
+<h2>Referenced by</h2>
+<ul>
+<li><a href="../../../model/acme/billing/Invoice.html">Invoice</a> (objectRef)</li>
+</ul>
+<h2>Claimed by</h2>
+<ul>
+<li><a href="../../../requirements/acme/shop/Shop.Recorded.html">Recorded</a> live</li>
+<li><a href="../../../requirements/acme/shop/Shop.Recorded.html">Recorded</a> live, on reference</li>
+</ul>

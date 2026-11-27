@@ -3,9 +3,10 @@
 // (SP-1 §4); a JSON Schema (template-spec.schema.json) sits beside it.
 import { ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
 import type { Generator } from "../generator.js";
-import { templateGenerator, type TemplateScope } from "../generators/template-generator.js";
+import { templateGenerator, type TemplateAssets, type TemplateData, type TemplateScope } from "../generators/template-generator.js";
 
-const SCOPES = ["perEntity", "perPackage", "perModel"] as const satisfies readonly TemplateScope[];
+const SCOPES = ["perEntity", "perPackage", "perModel", "perNode", "perRequirement"] as const satisfies readonly TemplateScope[];
+const DATA = ["entities", "docsView"] as const satisfies readonly TemplateData[];
 const FORMATS = Object.keys(ESCAPERS) as readonly RenderFormat[];
 
 export interface TemplateSpecEntry {
@@ -15,6 +16,16 @@ export interface TemplateSpecEntry {
   outputPattern: string;
   format?: RenderFormat;
   target?: string;
+  /** What the template reads: `entities` (the per-entity dictionary) or `docsView`. */
+  data?: TemplateData;
+  /** perNode / perRequirement: `<type>.<subType>`, `<type>.*` or `*`, or a list of them. */
+  match?: string | string[];
+  /** The directory under the target the output paths, and a page's `root`, are relative to. */
+  subDir?: string;
+  /** A directory of static text files, relative to the project, copied under `subDir`. */
+  assets?: TemplateAssets;
+  /** Fail the run when a relative link in this entry's HTML pages lands on nothing. */
+  linkCheck?: boolean;
 }
 export interface TemplateSpecFile { generators: TemplateSpecEntry[]; }
 
@@ -55,6 +66,35 @@ export function parseTemplateSpec(json: unknown): TemplateSpecFile {
       entry.format = raw.format as RenderFormat;
     }
     if (typeof raw.target === "string") entry.target = raw.target;
+    const at = `template-spec generators[${i}]`;
+    if (raw.data !== undefined) {
+      if (!DATA.includes(raw.data as TemplateData)) {
+        throw new Error(`${at}: data must be one of ${DATA.join(" | ")}, got '${String(raw.data)}'`);
+      }
+      entry.data = raw.data as TemplateData;
+    }
+    if (raw.match !== undefined) {
+      const list = Array.isArray(raw.match) ? raw.match : [raw.match];
+      if (list.length === 0 || !list.every((m): m is string => typeof m === "string" && m !== "")) {
+        throw new Error(`${at}: match must be a non-empty string or a non-empty list of them`);
+      }
+      entry.match = Array.isArray(raw.match) ? list : list[0]!;
+    }
+    if (raw.subDir !== undefined) {
+      if (typeof raw.subDir !== "string") throw new Error(`${at}: subDir must be a string`);
+      entry.subDir = raw.subDir;
+    }
+    if (raw.assets !== undefined) {
+      const a = raw.assets;
+      if (!isRecord(a) || typeof a.from !== "string" || a.from === "" || (a.to !== undefined && typeof a.to !== "string")) {
+        throw new Error(`${at}: assets must be { "from": "<dir>", "to"?: "<dir>" }`);
+      }
+      entry.assets = { from: a.from, ...(typeof a.to === "string" && { to: a.to }) };
+    }
+    if (raw.linkCheck !== undefined) {
+      if (typeof raw.linkCheck !== "boolean") throw new Error(`${at}: linkCheck must be a boolean`);
+      entry.linkCheck = raw.linkCheck;
+    }
     return entry;
   });
   return { generators };
@@ -70,6 +110,11 @@ export function templateSpecToGenerators(spec: TemplateSpecFile): Generator[] {
       outputPattern: e.outputPattern,
       ...(e.format !== undefined ? { format: e.format } : {}),
       ...(e.target !== undefined ? { target: e.target } : {}),
+      ...(e.data !== undefined && { data: e.data }),
+      ...(e.match !== undefined && { match: e.match }),
+      ...(e.subDir !== undefined && { subDir: e.subDir }),
+      ...(e.assets !== undefined && { assets: e.assets }),
+      ...(e.linkCheck !== undefined && { linkCheck: e.linkCheck }),
     }),
   );
 }

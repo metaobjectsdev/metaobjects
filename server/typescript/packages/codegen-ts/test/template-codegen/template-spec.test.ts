@@ -53,7 +53,7 @@ describe("schema ↔ parser drift", () => {
   test("schema enumerates the same scopes the parser accepts", () => {
     const scopeEnum = (schema as { properties: { generators: { items: { properties: { scope: { enum: string[] } } } } } })
       .properties.generators.items.properties.scope.enum;
-    expect(scopeEnum).toEqual(["perEntity", "perPackage", "perModel"]);
+    expect(scopeEnum).toEqual(["perEntity", "perPackage", "perModel", "perNode", "perRequirement"]);
   });
   test("schema enumerates the same formats the parser accepts", () => {
     const formatEnum = (schema as { properties: { generators: { items: { properties: { format: { enum: string[] } } } } } })

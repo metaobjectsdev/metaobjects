@@ -267,6 +267,56 @@ templateGenerator({
 });
 ```
 
+#### Templates over the docs view (TypeScript)
+
+A template can also read the **docs view** ([docs-view.md](docs-view.md)): every top-level
+node of every type, its effective attributes, members, references both ways, the
+requirements that claim it, and the requirement tree. Documentation is then ordinary
+template codegen, configured like any other entry. Two scopes walk it:
+
+- **`perNode`**: one file per top-level node of any type, filtered with `match`: a
+  pattern `"<type>.<subType>"`, `"<type>.*"` or `"*"` (the default), or a list of them.
+- **`perRequirement`**: one file per requirement at any depth, filtered the same way
+  (`"requirement.functional"`).
+
+`perModel` and `perPackage` read the view when the entry says `data: "docsView"`;
+without it they keep the per-entity dictionary above, so an existing spec is unchanged.
+A docs-view page's data is the whole view, plus the unit (`node`, `requirement` or
+`package`) and `root`, the way from the page back to the site root. `{path}` in the
+`outputPattern` is the page the view gives a node or requirement, so a link is
+`<a href="{{root}}{{path}}">` and lands whichever page it is written from.
+
+Three more keys build a site:
+
+- **`subDir`**: the directory under the target the output paths, and `root`, are
+  relative to.
+- **`assets`**: `{ "from": "<dir>", "to": "<dir>" }` copies every file under a project
+  directory beside the pages. Text files only; a file that is not UTF-8 is refused.
+- **`linkCheck: true`** (with `format: "html"`): once the whole run has rendered, every
+  relative link in the entry's pages must name a file the run wrote (or one already on
+  disk) and, with `#anchor`, an element with that `id`. A link that lands on nothing fails
+  the run, naming the page and the link, and nothing is written.
+
+```json
+{ "generators": [
+  { "name": "site-index", "template": "index", "scope": "perModel", "data": "docsView", "subDir": "site",
+    "outputPattern": "index.html", "format": "html", "assets": { "from": "site-assets", "to": "assets" } },
+  { "name": "site-objects", "template": "object", "scope": "perNode", "match": "object.*", "subDir": "site",
+    "outputPattern": "{path}", "format": "html", "linkCheck": true },
+  { "name": "site-requirements", "template": "requirement", "scope": "perRequirement", "subDir": "site",
+    "outputPattern": "{path}", "format": "html", "linkCheck": true }
+] }
+```
+
+The view is built from the model the run loaded, the requirement ledger `meta gen`
+computed and the files and routes the rest of the run produced, so an entry that reads it
+runs after the other generators. Templates should stay inside the subset every port's
+engine renders alike: the view supplies counts and booleans, so a template never needs
+`.length`, a number's truth or a dotted name shadowed inside a loop. TypeScript runs these
+scopes today, gated by `fixtures/template-codegen-conformance/docs-view/`; the other ports
+take them on with their own docs view. The model explorer (`docsSiteFile()`) is not built
+this way yet.
+
 The same declarative surface is available on the **JVM (Java + Kotlin)** via
 `TemplateScopeGenerator` (`com.metaobjects.generator.template`), a Maven-wirable
 generator over the byte-equivalent render engine. Wire it as a standard
