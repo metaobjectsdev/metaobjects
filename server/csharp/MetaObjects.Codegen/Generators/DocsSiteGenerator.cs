@@ -66,8 +66,9 @@ public sealed class DocsSiteGenerator : IGenerator
         var verify = VerifyFile is null ? null : ReadJson(Abs(VerifyFile));
         var routes = RoutesFile is null ? null : ReadJson(Abs(RoutesFile));
         var genState = ctx.Config.GenStateDir ?? (known is null ? null : Path.Combine(project, DefaultGenStateDir));
-        IReadOnlyDictionary<string, HashManifest.Provenance>? files = ctx.GeneratedFiles
-            ?? (genState is not null && HashManifest.Exists(genState) ? HashManifest.LoadProvenance(genState) : null);
+        IReadOnlyDictionary<string, HashManifest.Provenance>? files = ctx.GeneratedFiles is { } run
+            ? (run.Count > 0 ? run : null)
+            : genState is not null && HashManifest.Exists(genState) ? HashManifest.LoadProvenance(genState) : null;
         var view = DocsView.Build(ctx.Root, verify, files is null ? null : ProvenanceJson(files), routes);
 
         var owned = Path.Combine(project, OwnedDocsSiteDir);

@@ -150,6 +150,7 @@ TWO_TARGETS = "targets:\n" + APP + DOCS
 DOCS_FIRST = "targets:\n" + DOCS + APP
 WITH_NAMES = "targets:\n  app:\n    outDir: gen\n    generators: [entity, names, docs-site]\n"
 WITHOUT_NAMES = "targets:\n  app:\n    outDir: gen\n    generators: [entity, docs-site]\n"
+DOCS_ONLY = "targets:\n  app:\n    outDir: gen\n    generators: [docs-site]\n"
 SAME_GENERATOR = (
     "targets:\n  app1:\n    outDir: gen1\n    generators: [entity, docs-site]\n    entities: [Order]\n"
     "  app2:\n    outDir: gen2\n    generators: [entity]\n    entities: [Telemetry]\n"
@@ -165,11 +166,12 @@ SAME_GENERATOR = (
         (TWO_TARGETS, "docs", "outputLayout: package\n" + TWO_TARGETS, [], "gen/"),
         (WITH_NAMES, "gen", WITHOUT_NAMES, [], "gen/"),
         (SAME_GENERATOR, "gen1", None, ["--target", "app1"], "gen2/"),
+        (WITHOUT_NAMES, "gen", DOCS_ONLY, [], None),
     ],
-    ids=["one", "two", "docs-first", "removed-file", "removed-generator", "same-generator"],
+    ids=["one", "two", "docs-first", "removed-file", "removed-generator", "same-generator", "docs-alone"],
 )
 def test_the_drift_gate_renders_what_gen_wrote(
-    config: str, site: str, then: str | None, args: list[str], owner: str,
+    config: str, site: str, then: str | None, args: list[str], owner: str | None,
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from metaobjects.cli import main
@@ -201,10 +203,14 @@ def test_the_drift_gate_renders_what_gen_wrote(
     view = json.loads(first)
     listed = [p for n in view["nodes"] for g in n["files"] for p in g["paths"]]
     missing = [p for p in listed if not (project / p).is_file()]
-    assert listed and not missing, f"listed files that do not exist: {missing}"
-    node = next(n for n in view["nodes"] if n["name"] == "Telemetry")
-    paths = [p for g in node["files"] if g["generatedBy"] == "entity" for p in g["paths"]]
-    assert paths and all(p.startswith(owner) for p in paths)
+    assert not missing, f"listed files that do not exist: {missing}"
+    if owner is None:
+        assert listed == [] and view["sources"]["files"] is False
+    else:
+        assert listed
+        node = next(n for n in view["nodes"] if n["name"] == "Telemetry")
+        paths = [p for g in node["files"] if g["generatedBy"] == "entity" for p in g["paths"]]
+        assert paths and all(p.startswith(owner) for p in paths)
     assert '"title":"shop"' in (project / site / "site" / "explorer-model.js").read_text(encoding="utf-8")
 
     assert main(["gen", "--force", *args]) == 0

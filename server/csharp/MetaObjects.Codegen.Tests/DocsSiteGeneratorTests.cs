@@ -124,6 +124,21 @@ public sealed class DocsSiteGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void A_site_generated_alone_lists_no_files_and_says_so()
+    {
+        var root = ShopProject();
+        var config = Config() with { SweepOrphans = true };
+        CodegenRunner.Run(config, root, [new EntityGenerator(), new DocsSiteGenerator()]);
+        IReadOnlyList<IGenerator> suite = [new DocsSiteGenerator()];
+        CodegenRunner.Run(config, root, suite);
+        var view = (JsonObject)JsonNode.Parse(Site(ExplorerSite.ViewFile))!;
+        Assert.False(view["sources"]!["files"]!.GetValue<bool>());
+        Assert.Empty(view["nodes"]!.AsArray().SelectMany(n => n!["files"]!.AsArray()));
+        var drift = CodegenDrift.Compute(config, root, suite);
+        Assert.True(drift.Clean, string.Join("\n", drift.Lines));
+    }
+
+    [Fact]
     public void An_owned_theme_and_template_replace_the_shipped_ones()
     {
         var root = ShopProject();

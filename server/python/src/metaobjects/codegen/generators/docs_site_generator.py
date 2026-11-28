@@ -220,10 +220,13 @@ class DocsSiteGenerator:
     @staticmethod
     def _provenance(ctx: GenContext) -> dict[str, Any] | None:
         """``path -> { generatedBy, sourceNode }`` as the docs view reads it. In a run, the
-        runner's list (this run's files, after the committed ones it does not render); with an
-        empty list or outside a run, what the committed hash manifest records. ``None`` with neither."""
+        runner's list (this run's files, after the committed ones its orphan sweep leaves alone),
+        and ``None`` when that list is empty; outside a run, what the committed hash manifest
+        records. ``None`` with no manifest."""
         out: dict[str, Any] = {}
-        if ctx.run_provenance:
+        if ctx.run_provenance is not None:
+            if not ctx.run_provenance:
+                return None
             for path, (by, node) in ctx.run_provenance.items():
                 if node is not None:
                     out[path] = {"generatedBy": by, "sourceNode": node}
