@@ -1,0 +1,509 @@
+{
+  "rows": [
+    {
+      "typeSubType": "api.base",
+      "description": "Registry anchor for the declared API surface (ADR-0030, ADR-0054): not authorable. The `api` subtype axis is the interaction model, never the protocol; protocol lives in `binding.*` on each operation.",
+      "page": "types/api.md#apibase"
+    },
+    {
+      "typeSubType": "api.operational",
+      "description": "A named, packaged request/response surface whose children are operations (ADR-0030). It is a wire contract: two of them (`v1`, `v2`) may declare the same operation side by side. The code behind it is one service per metadata package, whose surface is the package's operations (ADR-0067). Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "page": "types/api.md#apioperational"
+    },
+    {
+      "typeSubType": "attr.base",
+      "description": "Abstract base attribute — the polymorphic/unconstrained value-type marker. Stores its value type-preserved (never stringified), accepting any type; used for an untyped attr (e.g. a field's @default, whose value-type follows the owning field's subtype). Not authored directly: a `attr.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/attr.md#attrbase"
+    },
+    {
+      "typeSubType": "attr.boolean",
+      "description": "A boolean-valued metadata attribute. Coerces to and validates as true/false.",
+      "page": "types/attr.md#attrboolean"
+    },
+    {
+      "typeSubType": "attr.class",
+      "description": "A class-/type-reference-valued metadata attribute. String-backed (a fully-qualified class or type name) used by binding facets.",
+      "page": "types/attr.md#attrclass"
+    },
+    {
+      "typeSubType": "attr.double",
+      "description": "A double-precision floating-point-valued metadata attribute. Coerces to and validates as a number.",
+      "page": "types/attr.md#attrdouble"
+    },
+    {
+      "typeSubType": "attr.expression",
+      "description": "A structured expression tree (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce, case, now). Backs origin.computed; a filter object embeds canonically. A { field } ref names one of the projection's own fields (a passthrough, joined or not, an origin.first or another origin.computed — never an aggregate, never itself), else a field of the base entity (rc.19 computed-over-joined). { case: [ { when, then }, ... ], else? } is a searched CASE (each when boolean); with operand: <expr> it is a simple CASE (each when a value compared with operand by equality); every then/else shares one type. { now: \"<ISO-8601 duration>\", startOf? } is the current instant shifted by the duration (rc.19 now), its kind (date, local or instant timestamp) taken from the field it is compared with. rc.21: a { field } ref may also name a scalar origin.aggregate of the projection (read on the grouped row; such a value is not filterable) or, on a projection, a PATH of to-one hops from the base and a field of the entity reached ('customerId.regionId'), joined but not output. { fn } takes a closed, typed set: coalesce, greatest, least, nullif (arguments of one type), lower, upper, btrim (string[, chars]), splitPart (string, delimiter, int), concat (scalars; NULL reads as empty), concatWs (separator, scalars), substring (string, start[, length]), replace (string, from, to), left and right (string, int), length (string to int). { cast: <expr>, as: <field subtype>, dbColumnType? } converts to string, int, long, double, float, decimal, boolean, date, timestamp or uuid, optionally with a text @dbColumnType spelling for a string; an enum casts to an integer only when stored as one (@intValueMap). A cross-field validator's @condition (a CHECK) takes only fields, literals, comparisons, null tests, and/or/not and coalesce. Arithmetic is #159.",
+      "page": "types/attr.md#attrexpression"
+    },
+    {
+      "typeSubType": "attr.filter",
+      "description": "A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse).",
+      "page": "types/attr.md#attrfilter"
+    },
+    {
+      "typeSubType": "attr.int",
+      "description": "A 32-bit-integer-valued metadata attribute. Coerces to and validates as a number.",
+      "page": "types/attr.md#attrint"
+    },
+    {
+      "typeSubType": "attr.intMap",
+      "description": "An object-shaped attribute whose values are all integers (e.g. field.enum's @intValueMap: {memberSymbol: int}). Generic shape check only; a consumer field type layers its own semantic rules (key-set membership, uniqueness) in its own content-rule validation.",
+      "page": "types/attr.md#attrintmap"
+    },
+    {
+      "typeSubType": "attr.long",
+      "description": "A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number.",
+      "page": "types/attr.md#attrlong"
+    },
+    {
+      "typeSubType": "attr.properties",
+      "description": "A key/value map attribute (a bag of arbitrary author-supplied properties). Object-shaped value; the registered escape hatch for author-supplied properties (exempt from the strict-attr check, ADR-0023).",
+      "page": "types/attr.md#attrproperties"
+    },
+    {
+      "typeSubType": "attr.string",
+      "description": "A string-valued metadata attribute. Coerces to and validates as text; the default value-type for inline @-syntax attrs (array-of-string is the same subtype with isArray).",
+      "page": "types/attr.md#attrstring"
+    },
+    {
+      "typeSubType": "binding.base",
+      "description": "Registry anchor for protocol bindings (ADR-0030, ADR-0054): not authorable.",
+      "page": "types/binding.md#bindingbase"
+    },
+    {
+      "typeSubType": "binding.rest",
+      "description": "The HTTP method and path of an operation, declared only to override the derived ones. A query is `GET`, a command `POST`; the path is `/<collection>/{id}/<operation-kebab>` for an operation with a target key and `/<collection>/<operation-kebab>` without one. Most models never write it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "page": "types/binding.md#bindingrest"
+    },
+    {
+      "typeSubType": "dimension.attribute",
+      "description": "A named group-by attribute of the entity that declares it (FR-044). Groups report rows by a column value as-is. @of names Entity.field: the owning entity, or the @via terminal. @via may follow only to-one hops, so grouping by a related row's column can never multiply the measured rows.",
+      "page": "types/dimension.md#dimensionattribute"
+    },
+    {
+      "typeSubType": "dimension.time",
+      "description": "A named time dimension (FR-044): groups report rows by a date or timestamp column truncated to a grain. @of names a field.date or field.timestamp. Weeks start on Monday (ISO-8601) in every lowering. A report names it as 'dimension:grain' and the derived report field is <dimension><Grain> (e.g. purchasedAtDay).",
+      "page": "types/dimension.md#dimensiontime"
+    },
+    {
+      "typeSubType": "field.base",
+      "description": "Abstract base field — the shared root subtype that concrete field subtypes specialize. Carries the attrs common to every field but binds no concrete data type of its own (falls back to string). Not authored directly: a `field.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/field.md#fieldbase"
+    },
+    {
+      "typeSubType": "field.boolean",
+      "description": "True/false flag. Binds to the native boolean type; DB column is BOOLEAN.",
+      "page": "types/field.md#fieldboolean"
+    },
+    {
+      "typeSubType": "field.currency",
+      "description": "Stores money as integer minor units (cents). Binds to long; the client formats via @currency/@locale. Float arithmetic for money is forbidden.",
+      "page": "types/field.md#fieldcurrency"
+    },
+    {
+      "typeSubType": "field.date",
+      "description": "Calendar date (no time-of-day). Binds to the native date/temporal type; DB column is DATE.",
+      "page": "types/field.md#fielddate"
+    },
+    {
+      "typeSubType": "field.decimal",
+      "description": "Precision-exact decimal (use @precision/@scale). Native TS binding is string (lossless); DB column is NUMERIC(p,s); the wire form is a string. Classified DATA_TYPE_STRING so an exact decimal is never silently rounded through a double.",
+      "page": "types/field.md#fielddecimal"
+    },
+    {
+      "typeSubType": "field.double",
+      "description": "Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/number type; DB column is DOUBLE PRECISION. Not for money — use field.currency or field.decimal.",
+      "page": "types/field.md#fielddouble"
+    },
+    {
+      "typeSubType": "field.duration",
+      "description": "A fixed-length span of time: days, hours, minutes and seconds (ADR-0036/0037 — a concept with a native type + behavior). Binds to TS string (TS has no native duration type); other ports bind to their native type (C# System.TimeSpan, Java and Kotlin java.time.Duration, Python datetime.timedelta). DB column is the Postgres-native interval type; SQLite, D1 and MySQL store a 64-bit integer count of microseconds, which orders and compares as the span does. The wire form is an ISO-8601 duration: every port writes [-]PT[nH][nM][n[.f]S] (hours never folded into days, as many fractional digits as its native type holds, zero is PT0S) and reads that form plus leading week and day counts (nW, exactly 7 days; nD, exactly 24 hours) and a fraction of any length, truncated toward zero. Years and months are refused: a calendar span is not a fixed length. Justified in ADR-0023 Amendment 1.",
+      "page": "types/field.md#fieldduration"
+    },
+    {
+      "typeSubType": "field.enum",
+      "description": "String-backed enumeration constrained to a closed set of member symbols (@values). Each member is its own stored string, unless @stringValueMap gives it another (or @intValueMap an integer).",
+      "page": "types/field.md#fieldenum"
+    },
+    {
+      "typeSubType": "field.float",
+      "description": "Single-precision floating point. Binds to the native double/number type (TS has no distinct float); DB column is REAL. Not for money.",
+      "page": "types/field.md#fieldfloat"
+    },
+    {
+      "typeSubType": "field.inet",
+      "description": "An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IPv4-or-IPv6 literal validator (a Zod regex union in TS — z.string().ip() was removed in Zod 4 — native IP-type parsing in the other ports); add @lenient to bind a plain string with no validator. v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4\\|ipv6 value-constraint.",
+      "page": "types/field.md#fieldinet"
+    },
+    {
+      "typeSubType": "field.int",
+      "description": "32-bit signed integer. Binds to the native int type; DB column is INTEGER.",
+      "page": "types/field.md#fieldint"
+    },
+    {
+      "typeSubType": "field.long",
+      "description": "64-bit signed integer. Binds to the native long/bigint type; DB column is BIGINT.",
+      "page": "types/field.md#fieldlong"
+    },
+    {
+      "typeSubType": "field.map",
+      "description": "An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb column. Keys are always strings (the JSON object constraint); the value type is set by @valueType (a scalar field subtype) or @objectRef (a value-object).",
+      "page": "types/field.md#fieldmap"
+    },
+    {
+      "typeSubType": "field.object",
+      "description": "A nested structured value (set @objectRef to the target object). Storage is governed by @storage: flattened (prefixed columns), jsonb (single jsonb column, supports isArray), or subdocument (document-store hint).",
+      "page": "types/field.md#fieldobject"
+    },
+    {
+      "typeSubType": "field.string",
+      "description": "Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT (use @maxLength for VARCHAR(n)).",
+      "page": "types/field.md#fieldstring"
+    },
+    {
+      "typeSubType": "field.time",
+      "description": "Time-of-day (no calendar date). Binds to the native date/temporal type; DB column is TIME.",
+      "page": "types/field.md#fieldtime"
+    },
+    {
+      "typeSubType": "field.timestamp",
+      "description": "Date + time-of-day instant (optionally with timezone). Binds to the native date/temporal type; DB column is TIMESTAMP(TZ). Pair with @autoSet for created/updated stamping.",
+      "page": "types/field.md#fieldtimestamp"
+    },
+    {
+      "typeSubType": "field.uri",
+      "description": "A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native URI type, same as field.uuid); other ports bind to their native URI type (Java java.net.URI, C# System.Uri, Python urllib.parse, Kotlin java.net.URI) and parse scheme/authority/path. DB column is text (Postgres has no uri type). Codegen emits a URL/URI validator (TS Zod z.string().url()). v1 ships WITHOUT @kind — the native type subsumes url/urn; @kind is reserved for a later url\\|urn value-constraint.",
+      "page": "types/field.md#fielduri"
+    },
+    {
+      "typeSubType": "field.uuid",
+      "description": "Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-validation) — binds to TS string (no native UUID type); DB column is Postgres-native uuid.",
+      "page": "types/field.md#fielduuid"
+    },
+    {
+      "typeSubType": "identity.primary",
+      "description": "The primary key — one per entity; @fields names its column(s), @generation the value strategy.",
+      "page": "types/identity.md#identityprimary"
+    },
+    {
+      "typeSubType": "identity.reference",
+      "description": "A foreign-key reference to another entity (@references target; @enforce toggles a physical FK).",
+      "page": "types/identity.md#identityreference"
+    },
+    {
+      "typeSubType": "identity.secondary",
+      "description": "A secondary unique index on one or more fields. Always enforces uniqueness — use index.lookup for non-unique query-performance indexes.",
+      "page": "types/identity.md#identitysecondary"
+    },
+    {
+      "typeSubType": "index.lookup",
+      "description": "A non-unique lookup index on one or more fields. Use for query-performance indexes that do NOT enforce uniqueness — declare identity.secondary for unique constraints instead.",
+      "page": "types/index.md#indexlookup"
+    },
+    {
+      "typeSubType": "layout.base",
+      "description": "Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs. Not authored directly: a `layout.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/layout.md#layoutbase"
+    },
+    {
+      "typeSubType": "layout.dataGrid",
+      "description": "A metadata-driven data grid attached to an object: declares the displayed columns, page size, default sort, and an optional preset filter the generated grid renders.",
+      "page": "types/layout.md#layoutdatagrid"
+    },
+    {
+      "typeSubType": "measure.aggregate",
+      "description": "A named aggregate over the declaring entity's own rows (FR-044). @agg count without @distinct counts rows; with @distinct it counts distinct values of @of (a list in @of is a distinct count of the tuple). Unlike origin.aggregate, count is NOT distinct by default: a measure aggregates its own rows and dimensions reach only to-one paths, so no join inflates it.",
+      "page": "types/measure.md#measureaggregate"
+    },
+    {
+      "typeSubType": "measure.derived",
+      "description": "A named arithmetic expression (FR-044 R13) over measures of the same entity and the report's numeric attribute dimensions, typed decimal. @expr is FR-037 R5's first arithmetic wave: add, subtract, multiply and divide, each of two operands. divide lowers as a ratio does, so a zero divisor yields null. A report listing a derived measure that reads a dimension must list that dimension.",
+      "page": "types/measure.md#measurederived"
+    },
+    {
+      "typeSubType": "measure.ratio",
+      "description": "A named quotient of two numeric measure.aggregate siblings (FR-044), lowered as numerator / NULLIF(denominator, 0) and typed decimal. A zero denominator yields null.",
+      "page": "types/measure.md#measureratio"
+    },
+    {
+      "typeSubType": "metadata.root",
+      "description": "Root metadata document",
+      "page": "types/metadata.md#metadataroot"
+    },
+    {
+      "typeSubType": "object.base",
+      "description": "Abstract object base — the shared root subtype that concrete object subtypes (entity/value/projection) specialize. Declares the structural children common to EVERY object subtype (the intersection: field/identity/validator/layout/source); subtype-specific children (relationship, template) and attrs (discriminator) ride their own subtypes. Has no runtime semantics of its own; not authored directly. A `object.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/object.md#objectbase"
+    },
+    {
+      "typeSubType": "object.entity",
+      "description": "An object that owns its data: own identity, writable sources, and lifecycle. The default object subtype — a bare `object:` key resolves to entity. May co-locate templates (template.prompt and friends) with the owning entity.",
+      "page": "types/object.md#objectentity"
+    },
+    {
+      "typeSubType": "object.projection",
+      "description": "A derived read-only representation of entities. Its fields are extends-bound / origin-derived / self-declared-under-external-assembly, all read-only at the subtype level. Identity is optional and MUST extend an entity identity; sources are restricted to read-only @kinds. The declared field set IS the exposure (inclusive, fail-closed).",
+      "page": "types/object.md#objectprojection"
+    },
+    {
+      "typeSubType": "object.report",
+      "description": "A declared report (FR-044): a fixed combination of dimensions and measures of ONE entity (@from), compiled to a read-only view. One row per distinct dimension tuple; no dimensions means exactly one row. Fields are DERIVED, not declared: one per dimension (a time dimension's field is <dimension><Grain>, e.g. purchasedAtDay) and one per measure. Every measure must belong to @from (two fact tables are two reports). @filter and @segment scope rows before grouping and combine by AND. Read-only: no writes, no get-by-id.",
+      "page": "types/object.md#objectreport"
+    },
+    {
+      "typeSubType": "object.value",
+      "description": "A value object — pure shape with NO identity and NO source, ever. Constructed (by caller / embedding), never populated from a store. May `extends` an entity's fields to reuse shape. Equality is by content.",
+      "page": "types/object.md#objectvalue"
+    },
+    {
+      "typeSubType": "operation.base",
+      "description": "Registry anchor for the attributes every operation shares (ADR-0054): not authorable.",
+      "page": "types/operation.md#operationbase"
+    },
+    {
+      "typeSubType": "operation.command",
+      "description": "A named operation that changes state. Takes an `object.value` (ADR-0030). Its body is hand-written. The contract (ADR-0066) is that a generated shell around it loads the row, checks the permission and the current state, runs the body, and makes the guarded update in one transaction. No shell is generated yet: this vocabulary is registered, loaded and checked, and nothing is generated from it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "page": "types/operation.md#operationcommand"
+    },
+    {
+      "typeSubType": "operation.query",
+      "description": "A named operation that reads. Returns an `object.projection` (or an entity or value). It changes nothing. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "page": "types/operation.md#operationquery"
+    },
+    {
+      "typeSubType": "origin.aggregate",
+      "description": "A value reduced from the related row-set reached along a relationship path (@via) from the base entity: count/sum/avg/min/max over a column (@of); any/all predicate quantifiers over a @filter; or collect (an array rollup — of the @of column, or of the carrying field.object's declared @objectRef value object when @of is omitted).",
+      "page": "types/origin.md#originaggregate"
+    },
+    {
+      "typeSubType": "origin.base",
+      "description": "Abstract base origin — the shared root subtype for field-level provenance. A field carrying any origin.* is derived ⇒ read-only wherever it lives. The base carries no attrs of its own; concrete subtypes add their provenance attrs. Not authored directly: a `origin.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/origin.md#originbase"
+    },
+    {
+      "typeSubType": "origin.computed",
+      "description": "A row-level value computed from the base entity's own fields via a structured expression tree (@expr). No related rows, no @via. Read-only; the expression's inferred type must equal the field's declared subType.",
+      "page": "types/origin.md#origincomputed"
+    },
+    {
+      "typeSubType": "origin.first",
+      "description": "The single related row selected by @orderBy along @via, projecting its @of column (argmax then project). Latest = @orderBy desc. Read-only; empty related set (after @filter) → null, so the field must not be @required.",
+      "page": "types/origin.md#originfirst"
+    },
+    {
+      "typeSubType": "origin.function",
+      "description": "A value computed by a database function the project owns (rc.21): @function names it, @schema its schema (absent: public), and @args the fields passed to it, in order. On an entity an argument is one of its fields; on a projection, one of its own fields (not an aggregate) or a field of its base entity. @params declares each argument's type and @returns the result's: an argument must have its parameter's type (cast it through an origin.computed field otherwise), @returns must be the carrying field's subtype, and the view casts the call to the field's full column type (the one its table column would have: length or @dbColumnType spelling, precision and scale, a local or zoned timestamp), so the call is checked, never free SQL. The signature is a declaration: meta verify --db reads the function from pg_proc and fails on a parameter or return type that differs. MetaObjects never creates the function: it is owned SQL, created before the view. Declared on an entity, it is entity-derived: a projection reaching the entity reads it like any derived field. Postgres only; the SQLite view emitter refuses it.",
+      "page": "types/origin.md#originfunction"
+    },
+    {
+      "typeSubType": "origin.passthrough",
+      "description": "A cross-entity field reference: this projection field passes a source entity's value straight through (@from), optionally reached via a relationship path (@via).",
+      "page": "types/origin.md#originpassthrough"
+    },
+    {
+      "typeSubType": "relationship.aggregation",
+      "description": "A shared/independent containment — the parent groups the target but does not own its lifecycle (default @onDelete set-null).",
+      "page": "types/relationship.md#relationshipaggregation"
+    },
+    {
+      "typeSubType": "relationship.association",
+      "description": "A plain reference to another entity — no ownership; the target has an independent lifecycle (default @onDelete restrict).",
+      "page": "types/relationship.md#relationshipassociation"
+    },
+    {
+      "typeSubType": "relationship.base",
+      "description": "Abstract relationship base — shared shape for the concrete association/aggregation/composition subtypes; not authored directly. A `relationship.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED): this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/relationship.md#relationshipbase"
+    },
+    {
+      "typeSubType": "relationship.composition",
+      "description": "An owned containment — the parent owns the target's lifecycle; deleting the parent deletes the children (default @onDelete cascade).",
+      "page": "types/relationship.md#relationshipcomposition"
+    },
+    {
+      "typeSubType": "requirement.architectural",
+      "description": "How the system is built, applied uniformly across the model. Its check is UNIVERSALITY, the opposite polarity to a functional requirement. What `meta verify` enforces is that a live or partial policy is applied at all — one claiming nothing is an error — not that each node it claims complies. Flat by default and object-independent; it may optionally sit in a levelled tree when a quality taxonomy is being used to organise non-functional requirements.",
+      "page": "types/requirement.md#requirementarchitectural"
+    },
+    {
+      "typeSubType": "requirement.functional",
+      "description": "What the product does for a user, stated as one violable claim. Its check is EXISTENCE, run by `meta verify`: a live or partial claim with no implementing node anywhere in its subtree is a warning, and a named node that no longer exists is an error. Hierarchy is nesting — an L1 solution contains its L2 segments, which contain L3 services, and so on down to the levels that reference the model.",
+      "page": "types/requirement.md#requirementfunctional"
+    },
+    {
+      "typeSubType": "segment.filter",
+      "description": "A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.",
+      "page": "types/segment.md#segmentfilter"
+    },
+    {
+      "typeSubType": "source.base",
+      "description": "Abstract base source — the shared root subtype for declaring where an object's data lives (Project E). The base carries no attrs of its own; the concrete paradigm subtype (rdb) carries the physical-storage attrs, which are contributed by the db domain provider. Not authored directly: a `source.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/source.md#sourcebase"
+    },
+    {
+      "typeSubType": "source.rdb",
+      "description": "The relational-database paradigm source (ADR-0007): binds an object to a physical relational object. Its physical name is the @table attr (not the structural `name`), and read-only-ness is DERIVED from @kind — table is writable; view, materializedView, storedProc, and tableFunction are read-only. The @table/@kind/@role/@schema/@parameterRef attrs are contributed by the db domain provider, not by core-types.",
+      "page": "types/source.md#sourcerdb"
+    },
+    {
+      "typeSubType": "template.base",
+      "description": "Abstract base template — the shared root subtype for the fourth pillar (FR-004, ADR-0011). A template is a typed payload bound to either a rendered text artifact (prompt/output) or a tool-call envelope. The base carries no attrs of its own; concrete subtypes add their reference + governance attrs. Not authored directly: a `template.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/template.md#templatebase"
+    },
+    {
+      "typeSubType": "template.output",
+      "description": "An output / serialization template (FR-004): every rendered artifact other than an LLM prompt — a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs and the @kind + email part-refs. OUTBOUND ONLY (ADR-0052) — it renders, and generates no parser.",
+      "page": "types/template.md#templateoutput"
+    },
+    {
+      "typeSubType": "template.prompt",
+      "description": "An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef. A prompt declaring @responseRef also owns the INBOUND half (ADR-0052): the parser-on-receipt, the FR-010 response-format fragment (@promptStyle), and the reply syntax (@responseFormat).",
+      "page": "types/template.md#templateprompt"
+    },
+    {
+      "typeSubType": "template.toolcall",
+      "description": "A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has NO renderable text body — the body IS the structured output schema resolved via @payloadRef. This is why toolcall is its own subtype rather than template.output + @toolName. Does NOT inherit the generic attrs.",
+      "page": "types/template.md#templatetoolcall"
+    },
+    {
+      "typeSubType": "transition.action",
+      "description": "An allowed move between two values of a `field.enum`, made by an operation (ADR-0066). A `field.enum` with at least one is a lifecycle, named after the field. Its states are the enum's @values, its initial state the enum's @default, its terminal states the members no transition leaves; none of them has vocabulary of its own. Each transition is held to become a guarded update (`... WHERE id = ? AND <field> IN (@from) [AND @condition]`), its own command when no declared operation claims it, its own permission point and its own wire error. No shell is generated yet: nothing is generated from this vocabulary, and the loader and `verify` only check it. Experimental since 1.3.0: the shape may change in a MINOR, including removals and renames (docs/compatibility-policy.md).",
+      "page": "types/transition.md#transitionaction"
+    },
+    {
+      "typeSubType": "transition.base",
+      "description": "Registry anchor for the attributes every lifecycle move shares (ADR-0054): not authorable.",
+      "page": "types/transition.md#transitionbase"
+    },
+    {
+      "typeSubType": "validator.array",
+      "description": "Bounds the element count of an array-valued field via @min/@max.",
+      "page": "types/validator.md#validatorarray"
+    },
+    {
+      "typeSubType": "validator.atLeastOne",
+      "description": "Cardinality of presence: at least one of the named fields (@fields) must be present (NOT NULL). Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*).",
+      "page": "types/validator.md#validatoratleastone"
+    },
+    {
+      "typeSubType": "validator.base",
+      "description": "Abstract base validator — the shared root subtype concrete validators specialize. Carries the @min/@max bounds attrs but enforces no rule of its own. Not authored directly: a `validator.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/validator.md#validatorbase"
+    },
+    {
+      "typeSubType": "validator.comparison",
+      "description": "Cross-field ordering: requires two sibling fields of the owning entity stand in a relational order (@left @op @right), e.g. current_hp <= max_hp or expires_at > created_at. Entity-scoped; references fields by name. Backends derive the rule (CHECK constraint, cross-field assertion) — no raw expression is stored.",
+      "page": "types/validator.md#validatorcomparison"
+    },
+    {
+      "typeSubType": "validator.exactlyOne",
+      "description": "Cardinality of presence: exactly one of the named fields (@fields) is present (NOT NULL), and the others are null. Entity-scoped; references fields by name (same @fields-by-name pattern as identity.*). Justified in ADR-0023 Amendment 1.",
+      "page": "types/validator.md#validatorexactlyone"
+    },
+    {
+      "typeSubType": "validator.length",
+      "description": "Bounds string length / collection size via @min/@max.",
+      "page": "types/validator.md#validatorlength"
+    },
+    {
+      "typeSubType": "validator.numeric",
+      "description": "Bounds a numeric value's magnitude via @min/@max.",
+      "page": "types/validator.md#validatornumeric"
+    },
+    {
+      "typeSubType": "validator.presentIff",
+      "description": "Biconditional presence: the target field (@field) is present (NOT NULL) if and only if the gating field (@when) equals @equals. Models paired flag/companion-column invariants, e.g. used_at present iff is_used=true. Entity-scoped; references fields by name.",
+      "page": "types/validator.md#validatorpresentiff"
+    },
+    {
+      "typeSubType": "validator.regex",
+      "description": "Requires the value match a regular expression (@pattern).",
+      "page": "types/validator.md#validatorregex"
+    },
+    {
+      "typeSubType": "validator.required",
+      "description": "Fails when the value is null (NOT NULL). Equivalent to @required on the owning field: on a non-array string, generated wire-tier input validation also rejects the empty string by default unless an explicit validator.length @min: 0 opts back to presence-only.",
+      "page": "types/validator.md#validatorrequired"
+    },
+    {
+      "typeSubType": "validator.requiredWhen",
+      "description": "One-directional conditional presence: when the gating field (@when) equals @equals, the target field (@field) must be present (NOT NULL); otherwise @field is unconstrained. Mirrors JSON Schema dependentRequired / Rails validates_presence_of :x, if:. Entity-scoped; references fields by name.",
+      "page": "types/validator.md#validatorrequiredwhen"
+    },
+    {
+      "typeSubType": "view.base",
+      "description": "Abstract view base — the shared root subtype for field-level UI/render hints. A view declares how a field's value is rendered or edited; the base carries no attrs of its own. Not authored directly: a `view.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "page": "types/view.md#viewbase"
+    },
+    {
+      "typeSubType": "view.checkbox",
+      "description": "Checkbox selection control.",
+      "page": "types/view.md#viewcheckbox"
+    },
+    {
+      "typeSubType": "view.currency",
+      "description": "Currency display formatting (locale-aware via @locale).",
+      "page": "types/view.md#viewcurrency"
+    },
+    {
+      "typeSubType": "view.date",
+      "description": "Date picker / date display.",
+      "page": "types/view.md#viewdate"
+    },
+    {
+      "typeSubType": "view.dropdown",
+      "description": "Single-select dropdown control.",
+      "page": "types/view.md#viewdropdown"
+    },
+    {
+      "typeSubType": "view.hidden",
+      "description": "Not rendered; carried but not shown.",
+      "page": "types/view.md#viewhidden"
+    },
+    {
+      "typeSubType": "view.hotlink",
+      "description": "Renders the value as a clickable link.",
+      "page": "types/view.md#viewhotlink"
+    },
+    {
+      "typeSubType": "view.image",
+      "description": "Image upload/display control; the field stores an opaque storage key (field.string).",
+      "page": "types/view.md#viewimage"
+    },
+    {
+      "typeSubType": "view.month",
+      "description": "Month picker / month display.",
+      "page": "types/view.md#viewmonth"
+    },
+    {
+      "typeSubType": "view.number",
+      "description": "Numeric input control.",
+      "page": "types/view.md#viewnumber"
+    },
+    {
+      "typeSubType": "view.password",
+      "description": "Masked input for sensitive values.",
+      "page": "types/view.md#viewpassword"
+    },
+    {
+      "typeSubType": "view.radio",
+      "description": "Radio-button selection control.",
+      "page": "types/view.md#viewradio"
+    },
+    {
+      "typeSubType": "view.text",
+      "description": "Single-line text input/display.",
+      "page": "types/view.md#viewtext"
+    },
+    {
+      "typeSubType": "view.textarea",
+      "description": "Multi-line text area.",
+      "page": "types/view.md#viewtextarea"
+    },
+    {
+      "typeSubType": "view.web",
+      "description": "Abstract base for web-rendered views.",
+      "page": "types/view.md#viewweb"
+    }
+  ]
+}

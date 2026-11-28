@@ -46,6 +46,7 @@ from metaobjects.codegen.generators.render_helper_generator import (
     render_helper_generator,
 )
 from metaobjects.codegen.generators.report_export_generator import report_export_generator
+from metaobjects.codegen.generators.metamodel_docs_generator import metamodel_docs_generator
 from metaobjects.codegen.generators.requirements_generator import requirements_generator
 from metaobjects.codegen.generators.requirement_tests_generator import (
     requirement_tests_generator,
@@ -346,6 +347,8 @@ _API_DOCS_RUNTIME: tuple[str, ...] = (
 #: The requirements pages' builders (rows, page data, TOON cells) and the model-only schema page's.
 _DOCS_REQUIREMENTS = "docs_requirements"
 _DOCS_SCHEMA = "docs_schema"
+#: The metamodel reference pages' builder.
+_DOCS_METAMODEL = "docs_metamodel"
 
 #: Stable name -> GeneratorEntry. The 12 native generators whose manifest `ports`
 #: include `python` (ADR-0021 D3). Set equality, tier AND layer are conformance-tested
@@ -531,6 +534,22 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         factory=requirements_generator,
         source=requirements_generator,
         runtime=(_DOCS_REQUIREMENTS,),
+    ),
+    "metamodel-docs": GeneratorEntry(
+        name="metamodel-docs",
+        description=(
+            "The reference of the built-in metamodel: INDEX.md, providers.md and one types/<family>.md "
+            "per type family, every type, subtype and attribute this build registers, by provider "
+            "(shared Mustache templates). Reads no model objects."
+        ),
+        tier="neutral",
+        layer="docs",
+        factory=lambda ctx: metamodel_docs_generator(template_root=ctx.template_root, **ctx.options),
+        source=metamodel_docs_generator,
+        runtime=(_DOCS_METAMODEL,),
+        options=(
+            GeneratorOption("subDir", "string", description="The directory under the target the pages land in (default metamodel)."),
+        ),
     ),
     "agent-docs": GeneratorEntry(
         name="agent-docs",

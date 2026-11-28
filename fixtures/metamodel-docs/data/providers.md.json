@@ -1,0 +1,633 @@
+{
+  "providers": [
+    {
+      "id": "metaobjects-core-types",
+      "hasDescription": true,
+      "description": "Core metaobjects metamodel types and subtypes.",
+      "hasOwns": true,
+      "owns": "`attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.duration`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `index.lookup`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.exactlyOne`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.checkbox`, `view.currency`, `view.date`, `view.dropdown`, `view.hidden`, `view.hotlink`, `view.image`, `view.month`, `view.number`, `view.password`, `view.radio`, `view.text`, `view.textarea`, `view.web`",
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "field.base",
+          "attrs": "`@default`, `@mutability`, `@required`, `@unique`"
+        },
+        {
+          "typeSubType": "field.currency",
+          "attrs": "`@currency`"
+        },
+        {
+          "typeSubType": "field.decimal",
+          "attrs": "`@precision`, `@scale`"
+        },
+        {
+          "typeSubType": "field.enum",
+          "attrs": "`@intValueMap`, `@maxLength`, `@provided`, `@stringValueMap`, `@values`"
+        },
+        {
+          "typeSubType": "field.inet",
+          "attrs": "`@lenient`"
+        },
+        {
+          "typeSubType": "field.map",
+          "attrs": "`@objectRef`, `@valueType`"
+        },
+        {
+          "typeSubType": "field.object",
+          "attrs": "`@objectRef`"
+        },
+        {
+          "typeSubType": "field.string",
+          "attrs": "`@maxLength`, `@stringFormat`"
+        },
+        {
+          "typeSubType": "field.uri",
+          "attrs": "`@lenient`"
+        },
+        {
+          "typeSubType": "identity.primary",
+          "attrs": "`@fields`, `@generation`"
+        },
+        {
+          "typeSubType": "identity.reference",
+          "attrs": "`@enforce`, `@fields`, `@references`"
+        },
+        {
+          "typeSubType": "identity.secondary",
+          "attrs": "`@fields`"
+        },
+        {
+          "typeSubType": "index.lookup",
+          "attrs": "`@fields`"
+        },
+        {
+          "typeSubType": "object.base",
+          "attrs": "`@object`, `@objectAdapter`"
+        },
+        {
+          "typeSubType": "object.entity",
+          "attrs": "`@collectionName`, `@discriminator`, `@discriminatorValue`"
+        },
+        {
+          "typeSubType": "object.projection",
+          "attrs": "`@collectionName`, `@filter`"
+        },
+        {
+          "typeSubType": "origin.aggregate",
+          "attrs": "`@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@via`"
+        },
+        {
+          "typeSubType": "origin.computed",
+          "attrs": "`@expr`"
+        },
+        {
+          "typeSubType": "origin.first",
+          "attrs": "`@filter`, `@of`, `@orderBy`, `@via`"
+        },
+        {
+          "typeSubType": "origin.passthrough",
+          "attrs": "`@convert`, `@from`, `@via`"
+        },
+        {
+          "typeSubType": "relationship.aggregation",
+          "attrs": "`@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`"
+        },
+        {
+          "typeSubType": "relationship.association",
+          "attrs": "`@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`"
+        },
+        {
+          "typeSubType": "relationship.base",
+          "attrs": "`@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`"
+        },
+        {
+          "typeSubType": "relationship.composition",
+          "attrs": "`@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`"
+        },
+        {
+          "typeSubType": "template.output",
+          "attrs": "`@format`, `@htmlBodyRef`, `@kind`, `@maxChars`, `@owner`, `@payloadRef`, `@requiredTags`, `@since`, `@subjectRef`, `@textBodyRef`, `@textRef`"
+        },
+        {
+          "typeSubType": "template.prompt",
+          "attrs": "`@format`, `@maxChars`, `@maxTokens`, `@model`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredSlots`, `@requiredTags`, `@responseFormat`, `@responseRef`, `@since`, `@textRef`"
+        },
+        {
+          "typeSubType": "template.toolcall",
+          "attrs": "`@maxTokens`, `@owner`, `@payloadRef`, `@since`, `@toolName`"
+        },
+        {
+          "typeSubType": "validator.array",
+          "attrs": "`@max`, `@min`"
+        },
+        {
+          "typeSubType": "validator.atLeastOne",
+          "attrs": "`@condition`, `@fields`"
+        },
+        {
+          "typeSubType": "validator.base",
+          "attrs": "`@max`, `@min`"
+        },
+        {
+          "typeSubType": "validator.comparison",
+          "attrs": "`@condition`, `@left`, `@op`, `@right`"
+        },
+        {
+          "typeSubType": "validator.exactlyOne",
+          "attrs": "`@condition`, `@fields`"
+        },
+        {
+          "typeSubType": "validator.length",
+          "attrs": "`@max`, `@min`"
+        },
+        {
+          "typeSubType": "validator.numeric",
+          "attrs": "`@max`, `@min`"
+        },
+        {
+          "typeSubType": "validator.presentIff",
+          "attrs": "`@condition`, `@equals`, `@field`, `@when`"
+        },
+        {
+          "typeSubType": "validator.regex",
+          "attrs": "`@max`, `@min`, `@pattern`"
+        },
+        {
+          "typeSubType": "validator.requiredWhen",
+          "attrs": "`@condition`, `@equals`, `@field`, `@when`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-db",
+      "hasDescription": true,
+      "description": "DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @storage on field.object, @autoSet on temporal fields, @table/@kind/@role/@schema on source.rdb.",
+      "hasOwns": false,
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "field.base",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.boolean",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.currency",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.date",
+          "attrs": "`@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.decimal",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.double",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.duration",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.enum",
+          "attrs": "`@column`, `@constraintName`, `@db.indexed`, `@dbCheck`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.float",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.inet",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.int",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.long",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.map",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.object",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`, `@flattenedColumnPrefix`, `@storage`"
+        },
+        {
+          "typeSubType": "field.string",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.time",
+          "attrs": "`@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.timestamp",
+          "attrs": "`@autoSet`, `@column`, `@db.indexed`, `@dbColumnType`, `@localTime`"
+        },
+        {
+          "typeSubType": "field.uri",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "field.uuid",
+          "attrs": "`@column`, `@db.indexed`, `@dbColumnType`"
+        },
+        {
+          "typeSubType": "identity.primary",
+          "attrs": "`@sequenceName`, `@sequenceStart`"
+        },
+        {
+          "typeSubType": "identity.reference",
+          "attrs": "`@constraintName`, `@onDelete`, `@onUpdate`"
+        },
+        {
+          "typeSubType": "identity.secondary",
+          "attrs": "`@expr`, `@orders`, `@using`, `@where`"
+        },
+        {
+          "typeSubType": "index.lookup",
+          "attrs": "`@expr`, `@orders`, `@using`, `@where`"
+        },
+        {
+          "typeSubType": "source.rdb",
+          "attrs": "`@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@sql`, `@table`, `@unmanaged`, `@view`"
+        },
+        {
+          "typeSubType": "validator.atLeastOne",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        },
+        {
+          "typeSubType": "validator.comparison",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        },
+        {
+          "typeSubType": "validator.exactlyOne",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        },
+        {
+          "typeSubType": "validator.length",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        },
+        {
+          "typeSubType": "validator.numeric",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        },
+        {
+          "typeSubType": "validator.presentIff",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        },
+        {
+          "typeSubType": "validator.regex",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        },
+        {
+          "typeSubType": "validator.requiredWhen",
+          "attrs": "`@constraintName`, `@dbCheck`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-documentation",
+      "hasDescription": true,
+      "description": "Universal documentation common attrs (description / title / notes / deprecated / replacedBy / seeAlso / aliases) accepted on every metatype.",
+      "hasOwns": false,
+      "hasUniversal": true,
+      "universal": "`@aliases`, `@deprecated`, `@description`, `@notes`, `@replacedBy`, `@seeAlso`, `@summary`, `@title`",
+      "hasContributes": false,
+      "contributes": []
+    },
+    {
+      "id": "metaobjects-prompt",
+      "hasDescription": true,
+      "description": "Prompt / AI + serialization domain — @xmlText / @example / @instruction field markers on every field subtype, the @enumAlias/@enumDoc/@coerceDefault/@normalize tolerant-extract overlays on field.enum, and the object-level @normalize default on object.value.",
+      "hasOwns": false,
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "field.base",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.boolean",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.currency",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.date",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.decimal",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.double",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.duration",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.enum",
+          "attrs": "`@coerceDefault`, `@enumAlias`, `@enumDoc`, `@example`, `@instruction`, `@normalize`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.float",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.inet",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.int",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.long",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.map",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.object",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.string",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.time",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.timestamp",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.uri",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "field.uuid",
+          "attrs": "`@example`, `@instruction`, `@xmlText`"
+        },
+        {
+          "typeSubType": "object.value",
+          "attrs": "`@normalize`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-reporting",
+      "hasDescription": true,
+      "description": "Reporting (FR-044): object.report, dimension / measure / segment on an entity, and @segment on origin.aggregate and origin.first.",
+      "hasOwns": true,
+      "owns": "`dimension.attribute`, `dimension.time`, `measure.aggregate`, `measure.derived`, `measure.ratio`, `object.report`, `segment.filter`",
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "dimension.attribute",
+          "attrs": "`@of`, `@via`"
+        },
+        {
+          "typeSubType": "dimension.time",
+          "attrs": "`@grains`, `@of`, `@via`"
+        },
+        {
+          "typeSubType": "measure.aggregate",
+          "attrs": "`@agg`, `@default`, `@distinct`, `@filter`, `@of`, `@segment`"
+        },
+        {
+          "typeSubType": "measure.derived",
+          "attrs": "`@expr`"
+        },
+        {
+          "typeSubType": "measure.ratio",
+          "attrs": "`@default`, `@denominator`, `@numerator`"
+        },
+        {
+          "typeSubType": "object.report",
+          "attrs": "`@collectionName`, `@dimensions`, `@filter`, `@from`, `@measures`, `@segment`, `@spine`"
+        },
+        {
+          "typeSubType": "origin.aggregate",
+          "attrs": "`@segment`"
+        },
+        {
+          "typeSubType": "origin.first",
+          "attrs": "`@segment`"
+        },
+        {
+          "typeSubType": "segment.filter",
+          "attrs": "`@filter`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-requirements",
+      "hasDescription": true,
+      "description": "Requirements: requirement.functional and requirement.architectural, declared at the document root and checked by meta verify.",
+      "hasOwns": true,
+      "owns": "`requirement.architectural`, `requirement.functional`",
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "requirement.architectural",
+          "attrs": "`@counterexample`, `@disposition`, `@implementedBy`, `@level`, `@statement`, `@status`, `@supersededBy`, `@trackedBy`"
+        },
+        {
+          "typeSubType": "requirement.functional",
+          "attrs": "`@counterexample`, `@disposition`, `@implementedBy`, `@level`, `@statement`, `@status`, `@supersededBy`, `@trackedBy`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-rules",
+      "hasDescription": true,
+      "description": "Business rules (ADR-0066, experimental): the declared API surface (api / operation / binding) and lifecycle moves (transition on a field.enum).",
+      "hasOwns": true,
+      "owns": "`api.base`, `api.operational`, `binding.base`, `binding.rest`, `operation.base`, `operation.command`, `operation.query`, `transition.action`, `transition.base`",
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "binding.rest",
+          "attrs": "`@method`, `@path`"
+        },
+        {
+          "typeSubType": "operation.base",
+          "attrs": "`@inputRef`, `@objectRef`, `@outputRef`, `@permission`, `@public`"
+        },
+        {
+          "typeSubType": "operation.command",
+          "attrs": "`@errors`, `@transitions`"
+        },
+        {
+          "typeSubType": "operation.query",
+          "attrs": "`@many`"
+        },
+        {
+          "typeSubType": "transition.action",
+          "attrs": "`@condition`, `@from`, `@to`"
+        },
+        {
+          "typeSubType": "transition.base",
+          "attrs": "`@permission`, `@public`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-ui",
+      "hasDescription": true,
+      "description": "UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder field markers driving generated CRUD filter + sort allowlists (Project D).",
+      "hasOwns": false,
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "field.base",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.boolean",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.currency",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.date",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.decimal",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.double",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.duration",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.enum",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.float",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.inet",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.int",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.long",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.map",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.object",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.string",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.time",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.timestamp",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.uri",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "field.uuid",
+          "attrs": "`@filterable`, `@formExclude`, `@sortable`, `@sortableDefaultOrder`"
+        },
+        {
+          "typeSubType": "layout.dataGrid",
+          "attrs": "`@columns`, `@defaultSortField`, `@defaultSortOrder`, `@filter`, `@filterable`, `@pageSize`"
+        },
+        {
+          "typeSubType": "view.currency",
+          "attrs": "`@locale`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-ui-web",
+      "hasDescription": true,
+      "description": "Web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Every port applies this provider and loads them strictly; only TypeScript acts on them so far.",
+      "hasOwns": false,
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "view.image",
+          "attrs": "`@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`"
+        },
+        {
+          "typeSubType": "view.textarea",
+          "attrs": "`@rows`"
+        }
+      ]
+    },
+    {
+      "id": "metaobjects-view-expressions",
+      "hasDescription": true,
+      "description": "View expressions (rc.21): origin.function plus the projection @union / @unionAll / @grain / @grainOrdinal attributes.",
+      "hasOwns": true,
+      "owns": "`origin.function`",
+      "hasUniversal": false,
+      "hasContributes": true,
+      "contributes": [
+        {
+          "typeSubType": "object.projection",
+          "attrs": "`@grain`, `@grainOrdinal`, `@union`, `@unionAll`"
+        },
+        {
+          "typeSubType": "origin.function",
+          "attrs": "`@args`, `@function`, `@params`, `@returns`, `@schema`"
+        }
+      ]
+    }
+  ]
+}

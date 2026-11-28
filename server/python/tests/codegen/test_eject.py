@@ -106,6 +106,28 @@ def test_owned_copy_unchanged_generates_identical_output(tmp_path: Path, monkeyp
     assert a and a == b
 
 
+def test_an_ejected_metamodel_docs_copy_honours_its_sub_dir_option(tmp_path: Path, monkeypatch) -> None:
+    """The documented `subDir` option moves the pages for the owned copy exactly as it does
+    for the packaged generator; an owned copy that ignored it would still write `metamodel/`."""
+    packaged = tmp_path / "packaged"
+    packaged.mkdir()
+    _project(packaged, '{name: metamodel-docs, options: {subDir: ref}}')
+    monkeypatch.chdir(packaged)
+    assert main(["gen"]) == 0
+
+    owned = tmp_path / "owned"
+    owned.mkdir()
+    _project(owned, '{name: "codegen.generators.metamodel_docs:metamodel_docs_generator", options: {subDir: ref}}')
+    monkeypatch.chdir(owned)
+    assert main(["eject", "metamodel-docs"]) == 0
+    assert main(["gen"]) == 0
+
+    a = {p.relative_to(packaged / "gen"): p.read_bytes() for p in (packaged / "gen").rglob("*.md")}
+    b = {p.relative_to(owned / "gen"): p.read_bytes() for p in (owned / "gen").rglob("*.md")}
+    assert Path("ref/INDEX.md") in b and not (owned / "gen" / "metamodel").exists()
+    assert a == b
+
+
 def test_edited_owned_copy_drives_gen_and_verify(tmp_path: Path, monkeypatch) -> None:
     _project(tmp_path, "codegen.generators.entity:entity_model")
     monkeypatch.chdir(tmp_path)

@@ -12,22 +12,28 @@
 //                them without this file; eject it only to change them.
 // emits:         into the `docs` target, under `metamodel/` (or `subDir`): INDEX.md,
 //                providers.md and one `types/<family>.md` per type family.
-// customize:     the output directory and which pages are kept (`generate`). The pages are
-//                rendered by `renderCoreMetamodelDocs` from `@metaobjectsdev/metadata`, the
-//                metamodel package, which is core and not handed over.
+// customize:     the output directory and which pages are kept (`generate`). Each page's
+//                data comes from `coreMetamodelDocsPages` in `@metaobjectsdev/metadata`, the
+//                metamodel package, which is core and not handed over; the page layout is a
+//                shared Mustache template (`metamodel/index.md`, `metamodel/providers.md`,
+//                `metamodel/type-page.md`), and a same-named file under your `templates/`
+//                directory wins over the shipped one.
 // composes-with: nothing: it reads the registry, not the model.
 //
 // HOW IT RUNS. Like every generator: list it in `generators` in metaobjects.config.ts, with
 // a `docs` target declared, and `meta gen` writes the pages (`meta verify --codegen` checks
 // them).
 
-import { composeRegistry, coreProviders, renderCoreMetamodelDocs } from "@metaobjectsdev/metadata";
+import { coreMetamodelDocsPages } from "@metaobjectsdev/metadata";
 import {
   type EmittedFile,
   type Generator,
   type GeneratorFactory,
   DOCS_TARGET_NAME,
+  docsTemplateRoot,
+  projectProvider,
 } from "@metaobjectsdev/codegen-ts/engine";
+import { renderDocPage } from "../render-engine/doc-page.js";
 
 /** The pages land here, under the target. */
 const DEFAULT_METAMODEL_DIR = "metamodel";
@@ -37,6 +43,11 @@ export interface MetamodelDocsFileOpts {
   subDir?: string;
   /** Named output target. Default `"docs"`, which `targets` must declare. */
   target?: string;
+  /**
+   * The directory whose `templates/` overrides a page: a `templates/metamodel/<page>.mustache`
+   * there wins over the shipped one. Resolved against the project root; default the project root.
+   */
+  templates?: string;
 }
 
 export const metamodelDocsFile = function metamodelDocsFile(opts?: MetamodelDocsFileOpts): Generator {
@@ -45,12 +56,14 @@ export const metamodelDocsFile = function metamodelDocsFile(opts?: MetamodelDocs
   return {
     name: "metamodel-docs",
     target: opts?.target ?? DOCS_TARGET_NAME,
-    generate() {
+    generate(ctx) {
+      const provider = projectProvider(docsTemplateRoot(ctx, opts?.templates));
       const files: EmittedFile[] = [];
-      // OWNED: which pages are written, and where. The registry of the core providers is the
-      // whole input.
-      for (const [path, content] of renderCoreMetamodelDocs(composeRegistry(coreProviders))) {
-        files.push({ path: `${prefix}${path}`, content });
+      // OWNED: which pages are written, and where. The vocabulary of the core providers is
+      // the whole input.
+      for (const page of coreMetamodelDocsPages()) {
+        const path = `${prefix}${page.path}`;
+        files.push({ path, content: renderDocPage(page.template, page.data, provider, path) });
       }
       return files;
     },

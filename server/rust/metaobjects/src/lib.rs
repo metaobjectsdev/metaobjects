@@ -13,6 +13,7 @@ pub mod json;
 pub mod library;
 pub mod loader;
 pub mod manifest;
+pub mod metamodel_docs;
 pub mod naming;
 pub mod node;
 pub mod parser;

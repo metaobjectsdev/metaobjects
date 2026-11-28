@@ -31,6 +31,8 @@ pub mod generator_list;
 pub mod hashes;
 pub mod inbound;
 pub mod layers;
+pub mod metamodel_docs;
+pub mod metamodel_templates;
 pub mod names;
 pub mod output_parser;
 pub mod output_prompt;
@@ -53,6 +55,7 @@ pub use engine::{
 };
 pub use entity::EntityGenerator;
 pub use generator::{EmittedFile, GenContext, GenError, Generator};
+pub use metamodel_docs::MetamodelDocsGenerator;
 /// The prompt render crate the `render-helper` generator checks templates with, so an owned
 /// copy of it names `metaobjects_codegen::render` and needs no dependency of its own.
 pub use metaobjects_render as render;
@@ -78,5 +81,6 @@ pub fn shipped_generators() -> Vec<Box<dyn Generator>> {
         Box::new(RenderHelperGenerator),
         Box::new(OutputParserGenerator),
         Box::new(OutputPromptGenerator),
+        Box::new(MetamodelDocsGenerator),
     ]
 }

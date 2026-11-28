@@ -44,7 +44,7 @@
     <p class="reference-breadcrumb"><a href="/reference/">Metamodel reference</a></p>
 <!-- @generated — DO NOT EDIT.
      Metamodel reference for the `index` type family — each subtype's composed attributes, allowed children, and cardinality.
-     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) --><h1>Metamodel — <code>index</code> types</h1>
+     Regenerate with your port's gen command (the metamodel-docs generator) --><h1>Metamodel — <code>index</code> types</h1>
 <p>Each section below is one <code>index.&lt;subType&gt;</code>. The <strong>Attributes</strong> table lists
 the subtype&#39;s own + concern-contributed attributes (provider-tagged); universal
 documentation attributes are omitted here (see <a href="../providers.html">providers.md</a>).
@@ -52,6 +52,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>index.lookup</h3>
 <p>A non-unique lookup index on one or more fields. Use for query-performance indexes that do NOT enforce uniqueness — declare identity.secondary for unique constraints instead.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>When to use:</strong> You need a DB index for query performance (fast lookups/sorts) but NOT uniqueness enforcement. @fields names the indexed columns; the db provider adds @orders / @expr / @where / @using for physical tuning.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -81,7 +82,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-core-types</td>
 <td>The field name(s) this index covers. Required UNLESS @expr is present — an index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX.</td>
 </tr>
 <tr>

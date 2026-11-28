@@ -15,8 +15,8 @@ use std::path::PathBuf;
 use common::{
     Scratch, assert_builds, assert_formatted, assert_pinned, cargo, generated_workspace, run_probe,
 };
-use metaobjects_codegen::generator_list::{GENERATOR_LIST_FILE, scaffold};
-use metaobjects_codegen::{RunOptions, run, shipped_generators};
+use metaobjects_codegen::generator_list::GENERATOR_LIST_FILE;
+use metaobjects_codegen::{RunOptions, run};
 
 const KEYS: &str = r#"{ "metadata.root": { "package": "keys", "children": [
   { "object.entity": { "name": "Country", "children": [
@@ -38,14 +38,14 @@ const KEYS: &str = r#"{ "metadata.root": { "package": "keys", "children": [
 
 fn project(tag: &str, model: &str) -> Scratch {
     let p = Scratch::project(tag, &[("metaobjects/meta.keys.json", model)]);
-    p.write(GENERATOR_LIST_FILE, &scaffold(true));
+    p.write(GENERATOR_LIST_FILE, &common::crate_generator_list());
     p
 }
 
 fn gen_run(p: &Scratch) -> Result<(), String> {
     let mut opts = RunOptions::new(p.path());
     opts.out_dir = PathBuf::from("generated");
-    run(&opts, &shipped_generators())
+    run(&opts, &common::crate_generators())
         .map(|_| ())
         .map_err(|e| e.to_string())
 }

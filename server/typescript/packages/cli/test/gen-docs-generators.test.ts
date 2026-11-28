@@ -247,12 +247,14 @@ describe("meta gen writes the documentation the list declares", () => {
     const root = project({ config: base(`["entity", docsSiteFile()]`) });
     expect(await run(["gen", "--cwd", root])).toBe(0);
     const site = join(root, "docs", "generated", "site");
-    // The explorer is the default site: its main page, the data every page reads, a page per object.
+    // The explorer is the default site, as one browser app: its shell, the app, and the data it
+    // draws every page from. It writes no page of its own.
     const index = readFileSync(join(site, "index.html"), "utf8");
     expect(index).toContain('content="metaobjects docs-site explorer"');
-    // No date in the footer: the pages depend on the model alone.
-    expect(index).toContain("by the metaobjects <code>docs-site</code> generator. Static");
-    expect(existsSync(join(site, "model", "app", "Talk.html"))).toBe(true);
+    expect(index).toContain('<script src="assets/explorer-app.js"></script>');
+    expect(existsSync(join(site, "explorer-model.js"))).toBe(true);
+    expect(existsSync(join(site, "explorer-stamp.js"))).toBe(true);
+    expect(existsSync(join(site, "model", "app", "Talk.html"))).toBe(false);
     // It runs after the entity generator, so the files that run wrote are traced to their node.
     const view = JSON.parse(readFileSync(join(site, "explorer.json"), "utf8")) as { nodes: { id: string; files: { paths: string[] }[] }[] };
     expect(view.nodes.find((x) => x.id === "app::Talk")?.files.flatMap((g) => g.paths)).toEqual(

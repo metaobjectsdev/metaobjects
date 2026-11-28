@@ -292,7 +292,7 @@ it yourself.
 | `api-docs` | which units get a page, where a page lands, whether the index and the agent form (`AGENT-API.md`) are written | the model of the generated API (`buildApiModelForRun`, which also reads the run: layout, `apiPrefix`, whether Hono routes are wired) and its renderers (`renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`) |
 | `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two page builders (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
 | `agent-docs` | which of the three pages are written and where | the three page builders (`agent-schema-page`, which also walks the model for the column-to-field map, lineage, relationships and enums; `agent-ui-page`; `agent-requirements-page`) |
-| `metamodel-docs` | where the pages land | nothing: the pages are rendered by `@metaobjectsdev/metadata`, which is core |
+| `metamodel-docs` | which pages are written and where they land | the page render call (`renderDocPage`); each page's data comes from `coreMetamodelDocsPages` in `@metaobjectsdev/metadata`, which is core, and its layout from the shared `metamodel/*.mustache` templates |
 
 The page templates themselves (the Mustache files the docs generators render) stay in the
 package. To change the wording of a model page you need no eject: put a file of the same
@@ -324,12 +324,11 @@ That writes the Mustache templates to `codegen/docs-site/templates/` and the CSS
 packaged one. The site prints no date, so its pages depend on the model alone and
 `meta verify --codegen` can check them; `docsSiteFile({ stamp })` adds footer text.
 
-The explorer loads one file from jsDelivr, Cytoscape.js, for its graphs. The classic page
-chrome loads daisyUI, Tailwind's browser build, Mermaid and svg-pan-zoom from jsDelivr, so a
-classic site opened offline renders unstyled and its diagrams do not work.
-`docsSiteFile({ assetBase: "/vendor/npm" })` replaces that base for either site; serving the
-files from it is on you. The files and how to fetch them are in the `@metaobjectsdev/docs-site` README,
-"Offline use".
+The explorer ships its graph libraries with the site, so it works offline. The classic page
+chrome loads its CSS and JS from jsDelivr, so a classic site opened offline renders unstyled and
+its diagrams do not work. `docsSiteFile({ assetBase: "/vendor/npm" })` replaces that base for
+the classic site and for a static explorer; serving the files from it is on you. The files and
+how to fetch them are in the `@metaobjectsdev/docs-site` README, "Offline use".
 
 ### The ER diagram comes from `docsFile()`
 

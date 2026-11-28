@@ -52,7 +52,7 @@ export {
 } from "./constraint-errors.js";
 
 // UI-1 — metadata API contract for the browser read-model.
-export { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson } from "./meta-endpoint.js";
+export { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson, META_DOCS_ROUTE_PATH, metaDocsJson, type MetaDocsOptions } from "./meta-endpoint.js";
 
 // The REST standard's list handling, parsed into a port-neutral form before any query library
 // sees it (fixtures/list-query-conformance/): every mount and a hand-written transport share it.

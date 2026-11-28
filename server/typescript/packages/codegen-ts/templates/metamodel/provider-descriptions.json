@@ -1,0 +1,12 @@
+{
+  "metaobjects-core-types": "Core metaobjects metamodel types and subtypes.",
+  "metaobjects-db": "DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @storage on field.object, @autoSet on temporal fields, @table/@kind/@role/@schema on source.rdb.",
+  "metaobjects-documentation": "Universal documentation common attrs (description / title / notes / deprecated / replacedBy / seeAlso / aliases) accepted on every metatype.",
+  "metaobjects-prompt": "Prompt / AI + serialization domain — @xmlText / @example / @instruction field markers on every field subtype, the @enumAlias/@enumDoc/@coerceDefault/@normalize tolerant-extract overlays on field.enum, and the object-level @normalize default on object.value.",
+  "metaobjects-reporting": "Reporting (FR-044): object.report, dimension / measure / segment on an entity, and @segment on origin.aggregate and origin.first.",
+  "metaobjects-requirements": "Requirements: requirement.functional and requirement.architectural, declared at the document root and checked by meta verify.",
+  "metaobjects-rules": "Business rules (ADR-0066, experimental): the declared API surface (api / operation / binding) and lifecycle moves (transition on a field.enum).",
+  "metaobjects-ui": "UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder field markers driving generated CRUD filter + sort allowlists (Project D).",
+  "metaobjects-ui-web": "Web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Every port applies this provider and loads them strictly; only TypeScript acts on them so far.",
+  "metaobjects-view-expressions": "View expressions (rc.21): origin.function plus the projection @union / @unionAll / @grain / @grainOrdinal attributes."
+}

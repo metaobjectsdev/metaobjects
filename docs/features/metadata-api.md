@@ -164,6 +164,70 @@ entity names, field names, types, validators, layouts — never row data, but
 it is still a disclosure surface and should sit behind whatever
 authentication or authorization the rest of the API uses.
 
+## The docs view endpoint (`GET /_meta/docs`)
+
+Beside `/_meta` sits a second route that serves the same loaded model as its
+[docs view](docs-view.md), the document the model explorer reads. Pointed at it,
+the explorer shows what a running application has actually loaded, and follows
+it: open the explorer with `index.html?source=<url of the route>` (see
+[explorer-site.md](explorer-site.md#a-running-application)).
+
+```
+GET {apiPrefix}/_meta/docs  →  200 application/json
+```
+
+This is a cross-port contract, like `/_meta`:
+
+| Part | Contract |
+| --- | --- |
+| Path | `{apiPrefix}/_meta/docs`; the suffix is not configurable |
+| Body | the docs view of the loaded model, built from the model alone (no verify payload, no generation manifest), written as the port's docs view serializer writes it: the same bytes every port writes for the same model, held by [`fixtures/explorer-conformance/model-alone/`](../../fixtures/explorer-conformance/model-alone/). A host that knows its routes may pass them in, and they appear on each node |
+| `ETag` | optional: a port should send one, and it changes whenever the body does. Its value is the port's choice; a client compares it, never parses it |
+| `If-None-Match` | optional: a port that sends an `ETag` should answer a request naming the current tag (or `*`) with `304` and no body. A client must not depend on the `304`: the explorer compares bodies |
+| `Cache-Control` | `no-cache`: a cache revalidates every read, since the model changes when the application restarts on a new one |
+| Cross-origin | none by default. The host may opt in to an `Access-Control-Allow-Origin` value (with `Access-Control-Expose-Headers: ETag` when it sends one), which the explorer needs when it is opened from `file://` (origin `null`) or another host |
+
+The view is built on the first read and kept: the model is immutable after load.
+
+The route serves the model the application loaded, and it never re-reads the metadata files.
+The runtime does not watch them and has no reload hook. An edit to a model file on disk does
+not appear in the route until the application loads it again: regenerate, then restart the
+application, or run it under a watcher that restarts it. Reloading is the host's job. An
+explorer open on the route picks up the restarted application's model by itself, within about
+a second. To follow model edits on disk without a running application, open the generated
+site's own files instead: its live view follows each `meta gen`
+([explorer-site.md](explorer-site.md#the-live-view)).
+
+Exposure is the same as `/_meta`'s: opt-in, nothing mounts it implicitly, and the
+host guards it with the middleware the rest of the API uses. It publishes the
+shape of the model and the requirements that claim it, never row data.
+
+TypeScript ships the mounts; the framework-free pieces are
+`META_DOCS_ROUTE_PATH` and `metaDocsJson(root, { routes })` from
+`@metaobjectsdev/runtime-ts`.
+
+```ts
+import { mountMetaDocsRoute } from "@metaobjectsdev/runtime-ts/fastify";
+
+app.register(async (s) => {
+  s.addHook("preHandler", requireAuth);
+  // allowOrigin only if the explorer is opened from another origin, such as file://
+  mountMetaDocsRoute({ fastify: s, root, prefix: "/api", allowOrigin: "null" });
+});
+```
+
+```ts
+import { META_DOCS_ROUTE_PATH } from "@metaobjectsdev/runtime-ts";
+import { mountMetaDocsRouteHono } from "@metaobjectsdev/runtime-ts/hono";
+
+app.use(`/api${META_DOCS_ROUTE_PATH}`, requireAuth);
+mountMetaDocsRouteHono({ app, root, prefix: "/api" });
+```
+
+C#, Java, Kotlin, Python and Rust serve the route once each has its docs view
+builder, with the body that builder writes; their `/_meta` sections above show
+where each mounts it.
+
 ## Browser consumption
 
 `@metaobjectsdev/runtime-web` turns a fetched `/_meta` document into the same
@@ -200,9 +264,10 @@ consumer's own application code imports things.
 
 ## What's deferred
 
-Per-entity `/_meta` routes, and ETag / cache-control / versioning, are real
-questions but are not needed to build a runtime grid and are deliberately
-left open rather than answered speculatively. If a large effective payload
+Per-entity `/_meta` routes, and ETag / cache-control / versioning on `/_meta`
+itself (the docs view route above may send an ETag), are real questions but are not
+needed to build a runtime grid and are deliberately left open rather than
+answered speculatively. If a large effective payload
 turns out to matter in practice, a per-entity route is the planned answer —
 not a raw (non-effective) variant of this one.
 

@@ -26,7 +26,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # (`<group>/<file>`) resolve identically from the bundled copy. Adding a new
 # group here is the ONLY edit needed — the byte-identity gate + embed generator
 # discover groups by globbing templates/*/, so they stay in lockstep.
-TEMPLATE_GROUPS=(docs api requirements agent)
+TEMPLATE_GROUPS=(docs api requirements agent metamodel)
 
 # Per-consumer bundled-copy ROOT (the consumer's own templates/ dir). Each group
 # is copied under <root>/<group>.
@@ -37,7 +37,16 @@ DEST_ROOTS=(
 # Consumers that bundle only some groups: the Python port ships the requirements and agent
 # pages (its docs generators), not the TypeScript-only docs and api templates.
 PYTHON_DEST_ROOT="${REPO_ROOT}/server/python/src/metaobjects/render/bundled_templates"
-PYTHON_GROUPS=(requirements agent)
+PYTHON_GROUPS=(requirements agent metamodel)
+
+# The metamodel reference pages (the metamodel-docs generator) render in every port, so
+# the metamodel group also ships in the C#, JVM (Java and Kotlin) and Rust packages. The
+# group carries one data file beside its templates, provider-descriptions.json.
+METAMODEL_EXTRA_DESTS=(
+  "${REPO_ROOT}/server/csharp/MetaObjects.Codegen/Templates/metamodel"
+  "${REPO_ROOT}/server/java/codegen-base/src/main/resources/metaobjects/templates/metamodel"
+  "${REPO_ROOT}/server/rust/metaobjects-codegen/templates/metamodel"
+)
 
 for group in "${TEMPLATE_GROUPS[@]}"; do
   src_dir="${REPO_ROOT}/templates/${group}"
@@ -47,10 +56,11 @@ for group in "${TEMPLATE_GROUPS[@]}"; do
   fi
 
   shopt -s nullglob
-  src_files=("${src_dir}"/*.mustache)
+  templates=("${src_dir}"/*.mustache)
+  src_files=("${templates[@]}" "${src_dir}"/*.json)
   shopt -u nullglob
 
-  if [[ ${#src_files[@]} -eq 0 ]]; then
+  if [[ ${#templates[@]} -eq 0 ]]; then
     echo "error: no *.mustache templates found under ${src_dir}" >&2
     exit 1
   fi
@@ -63,6 +73,16 @@ for group in "${TEMPLATE_GROUPS[@]}"; do
       echo "synced: ${src} -> ${dest}/$(basename "${src}")"
     done
   done
+
+  if [[ "${group}" == "metamodel" ]]; then
+    for dest in "${METAMODEL_EXTRA_DESTS[@]}"; do
+      mkdir -p "${dest}"
+      for src in "${src_files[@]}"; do
+        cp "${src}" "${dest}/$(basename "${src}")"
+        echo "synced: ${src} -> ${dest}/$(basename "${src}")"
+      done
+    done
+  fi
 
   for py_group in "${PYTHON_GROUPS[@]}"; do
     if [[ "${py_group}" == "${group}" ]]; then

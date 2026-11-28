@@ -35,7 +35,7 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
 | Report shapes | `metaobjects::report_shape::report_shape` derives an `object.report`'s fields (FR-044 Table B, with Table C's `required`): each dimension and measure, its subtype, and the `@of` field it takes its type from. It byte-matches `fixtures/persistence-conformance/report-shapes.json`, as every port does. |
-| Code generation (`cargo meta`) | The run engine, eleven generators (`entity`, `rules-names`, `contract-types`, `repository`, `service`, `service-routes`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
+| Code generation (`cargo meta`) | The run engine, twelve generators (`entity`, `rules-names`, `contract-types`, `repository`, `service`, `service-routes`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`, and the opt-in `metamodel-docs`, the metamodel reference pages rendered from the shared Mustache set), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
 
 ## The command: `cargo meta`
 
@@ -78,10 +78,11 @@ one, and no eject is needed:
 The file takes that one key: a layer is only a generator, so there are no layer settings. An entry is a
 name, or `{"name": "<generator>", "options": {...}}` for a generator that takes options; the
 generator's `configure` reads them and refuses a key it does not know (`ERR_UNKNOWN_GENERATOR_OPTION`,
-naming the options it takes). The shipped generators take none, so any option given to one fails the
-run, also a run `--generators` narrows to other generators. A project with no such file runs every
-generator but `service-routes`, which runs only when it is listed: an HTTP server is a choice the
-project makes, not a default. A generator that leaves the list has its files removed
+naming the options it takes). Of the shipped generators only `metamodel-docs` takes one (`subDir`), so
+any other option fails the run, also a run `--generators` narrows to other generators. A project with
+no such file runs every generator but `service-routes` and `metamodel-docs`, which run only when they
+are listed: an HTTP server is a choice the project makes, not a default, and so are the metamodel
+reference pages. A generator that leaves the list has its files removed
 on the next `gen` (a file somebody edited is refused by name instead), and the run fails, naming the
 file, for a name nothing offers, a duplicate, an unknown key, or a generator listed without one it
 builds on (`client`, `render-helper` and `output-parser` need `entity`; `commands` needs `entity` and `client`; each layer needs the one beneath it, up to `service-routes`, which needs `service`). `cargo meta gen --list` shows each generator

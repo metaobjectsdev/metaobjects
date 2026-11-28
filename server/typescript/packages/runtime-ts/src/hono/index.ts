@@ -409,7 +409,10 @@ export { EXPORT_FORMATS, type ExportFormat, type ReportExportSpec } from "../dri
 // ---------------------------------------------------------------------------
 
 import type { MetaData } from "@metaobjectsdev/metadata";
-import { META_ROUTE_PATH, META_CONTENT_TYPE, metaJson } from "../meta-endpoint.js";
+import {
+  META_ROUTE_PATH, META_CONTENT_TYPE, metaJson,
+  META_DOCS_ROUTE_PATH, metaDocsJson, metaDocsEtag, metaDocsHeaders, etagMatches, type MetaDocsOptions,
+} from "../meta-endpoint.js";
 
 export interface HonoMetaRouteOptions {
   app: AnyHono;
@@ -429,4 +432,34 @@ export function mountMetaRouteHono(opts: HonoMetaRouteOptions): void {
   opts.app.get(path, guardRoute((c) =>
     c.body(metaJson(opts.root), 200, { "content-type": META_CONTENT_TYPE }),
   ));
+}
+
+export interface HonoMetaDocsRouteOptions extends MetaDocsOptions {
+  app: AnyHono;
+  root: MetaData;
+  prefix?: string;
+  /** Sent as `Access-Control-Allow-Origin`; see the Fastify twin. Omit for same-origin only. */
+  allowOrigin?: string;
+}
+
+/**
+ * Mount `GET {prefix}/_meta/docs` on Hono: the loaded model's docs view, which the model
+ * explorer app reads and follows. Same contract, caching, ETag and opt-in caveat as the
+ * Fastify twin; guard the path with middleware before calling this:
+ *
+ *     app.use(`/api${META_DOCS_ROUTE_PATH}`, requireAuth);
+ *     mountMetaDocsRouteHono({ app, root, prefix: "/api" });
+ */
+export function mountMetaDocsRouteHono(opts: HonoMetaDocsRouteOptions): void {
+  const path = `${opts.prefix ?? ""}${META_DOCS_ROUTE_PATH}`;
+  let cached: { body: string; etag: string } | undefined;
+  opts.app.get(path, guardRoute((c) => {
+    if (cached === undefined) {
+      const body = metaDocsJson(opts.root, opts);
+      cached = { body, etag: metaDocsEtag(body) };
+    }
+    const headers = metaDocsHeaders(cached.etag, opts.allowOrigin);
+    if (etagMatches(c.req.header("if-none-match"), cached.etag)) return c.body(null, 304, headers);
+    return c.body(cached.body, 200, headers);
+  }));
 }

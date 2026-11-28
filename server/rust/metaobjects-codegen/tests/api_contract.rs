@@ -19,7 +19,7 @@ use common::{
     Scratch, assert_builds, assert_formatted, assert_pinned, cargo, generate_all,
     generated_workspace, target_dir,
 };
-use metaobjects_codegen::generator_list::{GENERATOR_LIST_FILE, scaffold};
+use metaobjects_codegen::generator_list::GENERATOR_LIST_FILE;
 use saphyr::{LoadableYamlNode, Scalar, Yaml};
 use serde_json::Value;
 
@@ -647,7 +647,10 @@ fn run_corpus(c: &Corpus) {
         ));
     }
     // The transport is opt-in: the project lists it, as `cargo meta init --transport` does.
-    files.push((GENERATOR_LIST_FILE.to_string(), scaffold(true)));
+    files.push((
+        GENERATOR_LIST_FILE.to_string(),
+        common::crate_generator_list(),
+    ));
     let files: Vec<(&str, &str)> = files
         .iter()
         .map(|(p, t)| (p.as_str(), t.as_str()))

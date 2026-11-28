@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "acme::library",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            { "field.uuid": { "name": "id" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Author",
+          "extends": "BaseEntity",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } },
+            { "source.rdb": { "name": "db", "@table": "authors" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Book",
+          "extends": "BaseEntity",
+          "children": [
+            { "field.string": { "name": "title", "@required": true } },
+            { "field.uuid": { "name": "authorId" } },
+            { "identity.reference": { "name": "authorRef", "@fields": ["authorId"], "@references": "Author" } },
+            { "source.rdb": { "name": "db", "@table": "books" } }
+          ]
+        }
+      }
+    ]
+  }
+}

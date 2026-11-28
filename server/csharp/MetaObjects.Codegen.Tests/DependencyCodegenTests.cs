@@ -20,7 +20,9 @@ public sealed class DependencyCodegenTests : IDisposable
 
     // render-helper needs a template root for its drift gate; template is a primitive configured by its caller.
     // shared-model publishes the files its options name and writes no code; a bare fixture names none.
-    private static readonly string[] Excluded = ["render-helper", "template", "shared-model"];
+    // metamodel-docs documents the built-in vocabulary, not the model, so it reads no node at all
+    // (its pages name vocabulary words such as "address" that the imported fixture also uses).
+    private static readonly string[] Excluded = ["render-helper", "template", "shared-model", "metamodel-docs"];
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 

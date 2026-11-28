@@ -1,6 +1,6 @@
 <!-- @generated — DO NOT EDIT.
      Metamodel reference for the `index` type family — each subtype's composed attributes, allowed children, and cardinality.
-     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
+     Regenerate with your port's gen command (the metamodel-docs generator) -->
 
 # Metamodel — `index` types
 
@@ -14,6 +14,8 @@ documentation attributes are omitted here (see [providers.md](../providers.md)).
 
 A non-unique lookup index on one or more fields. Use for query-performance indexes that do NOT enforce uniqueness — declare identity.secondary for unique constraints instead.
 
+**Owning provider:** metaobjects-core-types
+
 **When to use:** You need a DB index for query performance (fast lookups/sorts) but NOT uniqueness enforcement. @fields names the indexed columns; the db provider adds @orders / @expr / @where / @using for physical tuning.
 
 **Attributes**
@@ -21,7 +23,7 @@ A non-unique lookup index on one or more fields. Use for query-performance index
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@expr` | string | no |  |  | metaobjects-db | Raw key EXPRESSION for a functional/expression index (e.g. "lower(email)"). Used INSTEAD of @fields — the index key is the expression rather than plain columns. RDB-physical — contributed by the db provider. |
-| `@fields` | string[] | no |  |  | — | The field name(s) this index covers. Required UNLESS @expr is present — an index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX. |
+| `@fields` | string[] | no |  |  | metaobjects-core-types | The field name(s) this index covers. Required UNLESS @expr is present — an index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX. |
 | `@orders` | string[] | no |  | `asc`, `desc` | metaobjects-db | Physical index-key sort direction, positional to @fields ('asc' \| 'desc'). Omit for all-ascending (the default); a shorter array leaves trailing keys ascending. Drives DESC-ordered index keys (e.g. a recency index on a timestamp). RDB-physical — contributed by the db provider. |
 | `@using` | string | no |  |  | metaobjects-db | Index access method (e.g. "gin", "gist", "hash"); default "btree" (not rendered). Pair with @expr for e.g. a GIN index over an array/jsonb expression. RDB-physical — contributed by the db provider. |
 | `@where` | string | no |  |  | metaobjects-db | Partial-index predicate (raw SQL, e.g. "delivered_at IS NULL"). When set, the index covers only rows matching the predicate — smaller and cheaper for queries that always filter on it. Absent = a full index over every row. RDB-physical — contributed by the db provider. |
