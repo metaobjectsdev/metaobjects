@@ -13,7 +13,6 @@ same-named template under its templates directory.
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
 from metaobjects.core_types import core_providers
@@ -33,7 +32,8 @@ DEFAULT_SUB_DIR = "metamodel"
 
 def _provider_descriptions() -> dict[str, str]:
     """The bundled ``metamodel/provider-descriptions.json``."""
-    return json.loads((BUNDLED_TEMPLATES_DIR / PROVIDER_DESCRIPTIONS_REF).read_text(encoding="utf-8"))
+    descriptions: dict[str, str] = json.loads((BUNDLED_TEMPLATES_DIR / PROVIDER_DESCRIPTIONS_REF).read_text(encoding="utf-8"))
+    return descriptions
 
 
 class MetamodelDocsGenerator:
@@ -65,11 +65,7 @@ class MetamodelDocsGenerator:
         ]
 
 
-def metamodel_docs_generator(ctx: Any) -> Generator:
+def metamodel_docs_generator(template_root: str | None = None, sub_dir: str = DEFAULT_SUB_DIR) -> Generator:
     """The registry's ``source=``, and so the symbol an ejected copy is wired by. It takes the
-    build context and reads the templates directory the run resolved and the entry's options."""
-    options = getattr(ctx, "options", None) or {}
-    return MetamodelDocsGenerator(
-        template_root=getattr(ctx, "template_root", None),
-        sub_dir=str(options.get("sub_dir", DEFAULT_SUB_DIR)),
-    )
+    templates directory the run resolved and the entry's ``subDir`` option as ``sub_dir``."""
+    return MetamodelDocsGenerator(template_root=template_root, sub_dir=sub_dir)

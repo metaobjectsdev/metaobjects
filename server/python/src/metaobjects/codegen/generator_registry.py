@@ -544,7 +544,7 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         ),
         tier="neutral",
         layer="docs",
-        factory=metamodel_docs_generator,
+        factory=lambda ctx: metamodel_docs_generator(template_root=ctx.template_root, **ctx.options),
         source=metamodel_docs_generator,
         runtime=(_DOCS_METAMODEL,),
         options=(
