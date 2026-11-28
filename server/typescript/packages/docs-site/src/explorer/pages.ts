@@ -81,7 +81,7 @@ import {
   REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK,
   REQUIREMENT_SUBTYPE_ARCHITECTURAL,
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
-} from "@metaobjectsdev/metadata";
+} from "@metaobjectsdev/metadata/constants";
 import type { DocsViewAttrValue, DocsViewLink } from "@metaobjectsdev/metadata";
 import type { PageNode, ReqEntry, ViewIndex } from "./view-index.js";
 import { STATUSES } from "./view-index.js";

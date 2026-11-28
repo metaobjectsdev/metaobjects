@@ -51,6 +51,7 @@ scripts/*             | ALL             | CI scripts and tooling, this map inclu
 .github/*             | ALL             | the hosted workflows that call the scripts
 agent-context/*       | ALL             | bundled into the TypeScript packages and checked by cross-port gates
 agent-context-shipped/* | ALL           | the static agent files every port's package embeds, built from agent-context/
+explorer-app/*        | ts-fast ts-unit | the model explorer app, built from the TypeScript docs-site package; the gates lane holds every port's copy to it
 docs/*                | ALL             | port tests read it: Java walks every page for <generators> blocks and reads docs/ports, TypeScript and Python read the recipes and docs/features pages, so a page edit is not prose-only
 README.md             | NONE            | root prose; the gates lane checks its claims, examples and test references
 CHANGELOG.md          | NONE            | root prose, same gates

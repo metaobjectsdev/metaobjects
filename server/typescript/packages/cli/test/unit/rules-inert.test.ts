@@ -27,6 +27,7 @@ import { pathToFileURL } from "node:url";
 import { loadUris, TYPE_API, type DocsView, type MetaRoot } from "@metaobjectsdev/metadata";
 import { runGen, buildProjectionViews, type Generator, type MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildExpectedSchema } from "@metaobjectsdev/migrate-ts";
+import { docsSiteFile } from "@metaobjectsdev/codegen-ts/generators";
 import { composeCatalog } from "../../src/lib/catalog.js";
 
 // test/unit → cli → packages → typescript → server → repo root
@@ -175,8 +176,9 @@ describe("ADR-0066 the business-rules vocabulary is inert in every generator and
   }
 
   test("docs-site differs by exactly the new nodes: the data payload and the API's own page", async () => {
-    const expected = await emit(withoutRules, [catalog[DOCS_SITE]!.factory()]);
-    const actual = await emit(withRules, [catalog[DOCS_SITE]!.factory()]);
+    // The static export, so each page is a file the diff can name; the app draws the same pages.
+    const expected = await emit(withoutRules, [docsSiteFile({ output: "static" })]);
+    const actual = await emit(withRules, [docsSiteFile({ output: "static" })]);
     expect(expected["<threw>"]).toBeUndefined();
     // Every top-level node gets an explorer page, so the declared API (`Purchasing`) adds its
     // own; no page the model already had goes away. The value objects its operations name in

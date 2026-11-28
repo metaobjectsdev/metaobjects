@@ -1122,6 +1122,21 @@ gate_doc_template_drift() {
 gate_python_agent_context_drift() {
   diff -r -x README.md agent-context-shipped server/python/src/metaobjects/agent_context/shipped
 }
+# The explorer app (explorer-app/) must be what its TypeScript sources build, and every port's
+# copy must equal it (scripts/sync-explorer-app.sh refreshes the copies).
+gate_explorer_app_drift() {
+  bun server/typescript/packages/docs-site/scripts/build-app.ts --check || return 1
+  local copy rc=0
+  # Keep this list in step with the dests in scripts/sync-explorer-app.sh.
+  for copy in \
+    server/typescript/packages/docs-site/app \
+    server/python/src/metaobjects/documentation/explorer_app \
+    server/java/codegen-base/src/main/resources/metaobjects/explorer-app \
+    server/csharp/MetaObjects.Codegen/ExplorerApp; do
+    diff -r -x README.md explorer-app "$copy" || { echo "  stale copy: $copy (run scripts/sync-explorer-app.sh)"; rc=1; }
+  done
+  return $rc
+}
 gate_embedded_library_drift() {
   bun run scripts/generate-embedded-library.ts \
     && git diff --exit-code -- server/typescript/packages/metadata/src/library/embedded-library.generated.ts
@@ -1523,6 +1538,7 @@ run_gates_bun() {
   if want gates; then step_if bun "metamodel scaffolder"      gate_scaffold_metamodel;     fi
   if want gates; then step_if bun "requirement harness"       gate_requirement_harness;    fi
   if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
+  if want gates; then step_if bun "explorer app copies"          gate_explorer_app_drift;     fi
 }
 run_drift_gates() {
   if want gates; then step_if bun "doc-template drift"           gate_doc_template_drift;     fi

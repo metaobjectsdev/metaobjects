@@ -1,11 +1,24 @@
 // The model explorer's scripts: search, the theme toggle, and the three graphs (the model map,
-// an object page's one-hop mini-map, the trace). They read window.MO_EXPLORER, which
-// assets/explorer-data.js sets from explorer.json; nothing here derives a model fact.
+// an object page's one-hop mini-map, the trace). They read window.MO_EXPLORER, which the
+// explorer app computes from the docs view (or, on a static export, assets/explorer-data.js
+// sets); nothing here derives a model fact.
 // `meta eject docs-site` copies this file to codegen/docs-site/assets/.
+//
+// On a static page this runs once, as it loads. In the explorer app (window.MO_APP is set) it
+// runs again for every page the app draws, and the app supplies four things a page would
+// otherwise take from its own URL: link targets, the query string, writing the query string
+// back, and document listeners the app drops when the reader leaves the page.
 (function () {
   "use strict";
+  function run() {
+  var APP = window.MO_APP || null;
   var D = window.MO_EXPLORER || { nodes: [], edges: [], slices: {}, features: [], reqs: [], generated: {}, search: [] };
   var ROOT = document.body.getAttribute("data-root") || "";
+  var query = function () { return APP ? APP.search() : location.search; };
+  var setQuery = function (search) { if (APP) APP.replaceQuery(search); else history.replaceState(null, "", search ? location.pathname + search : location.pathname); };
+  var listen = function (type, f) { if (APP) APP.listen(type, f); else document.addEventListener(type, f); };
+  // A graph the app draws is destroyed when the reader leaves its page.
+  var graph = function (opts) { var c = cytoscape(opts); if (APP) APP.onLeave(function () { if (!c.destroyed()) c.destroy(); }); return c; };
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var css = function (v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); };
@@ -16,7 +29,7 @@
   D.nodes.forEach(function (n) { byId[n.id] = n; });
   var reqById = {};
   D.reqs.forEach(function (r) { reqById[r.id] = r; });
-  var href = function (rel) { return ROOT + rel; };
+  var href = function (rel) { return APP ? APP.href(rel) : ROOT + rel; };
   var redraw = [];
 
   // ── Theme ───────────────────────────────────────────────────────────────
@@ -36,7 +49,8 @@
   // full-text index answers instead.
   var q = $("#q"), res = $("#results"), pagefind = null, pagefindTried = false, sel = -1;
   function loadPagefind() {
-    if (pagefindTried || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
+    // The app draws its own pages; a Pagefind index (of a static export) would link out of it.
+    if (APP || pagefindTried || !/^https?:$/.test(location.protocol)) return Promise.resolve(null);
     pagefindTried = true;
     // Pagefind takes its base URL from where pagefind.js loads, so loading it from ROOT makes every
     // result URL carry the path the site is served under (a sub-path included).
@@ -82,15 +96,15 @@
         location.href = links[Math.max(0, sel)].href;
       } else if (e.key === "Escape") { res.style.display = "none"; q.blur(); }
     });
-    document.addEventListener("click", function (e) { if (!$("#search").contains(e.target)) res.style.display = "none"; });
-    document.addEventListener("keydown", function (e) {
+    listen("click", function (e) { if (!$("#search").contains(e.target)) res.style.display = "none"; });
+    listen("keydown", function (e) {
       if (e.key === "/" && document.activeElement !== q && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); q.focus(); }
     });
   }
 
   if (typeof window.cytoscape !== "function") {
     document.querySelectorAll(".graph").forEach(function (g) {
-      g.innerHTML = '<div class="note" style="margin:12px">The graph library did not load (it comes from the site\'s <code>assetBase</code>). Every node still has its own page.</div>';
+      g.innerHTML = '<div class="note" style="margin:12px">The graph library did not load. Every node still has its own page.</div>';
     });
     return;
   }
@@ -148,11 +162,80 @@
   var cyEl = $("#cy");
   if (cyEl) {
     var cy = null;
-    var params = new URLSearchParams(location.search);
+    var params = new URLSearchParams(query());
     var sliceSel = $("#slice"), colourSel = $("#colour");
     if (params.get("slice") && sliceSel.querySelector('option[value="' + CSS.escape(params.get("slice")) + '"]')) sliceSel.value = params.get("slice");
     if (params.get("colour") && colourSel.querySelector('option[value="' + CSS.escape(params.get("colour")) + '"]')) colourSel.value = params.get("colour");
     var focus = params.get("focus");
+    // The 3D mode: the same nodes and edges as the flat map, drawn by 3d-force-graph, which the
+    // page loads only when a reader switches to it. An owned map template without the toggle
+    // simply has no 3D mode.
+    var dimSel = $("#dim"), g3dEl = $("#g3d"), g3d = null, g3dLast = null;
+    if (!dimSel || !g3dEl) dimSel = null;
+    else if (params.get("view") === "3d") dimSel.value = "3d";
+    var drop3d = function () {
+      if (g3d) { g3d.pauseAnimation(); g3d._destructor(); g3d = null; }
+      if (g3dEl) g3dEl.innerHTML = "";
+    };
+    var fit3d = function () { if (g3d) g3d.width(g3dEl.clientWidth).height(g3dEl.clientHeight); };
+    window.addEventListener("resize", fit3d);
+    if (APP) APP.onLeave(function () { window.removeEventListener("resize", fit3d); drop3d(); });
+    var load3d = function (done) {
+      if (typeof window.ForceGraph3D === "function") return done();
+      var s = document.createElement("script");
+      s.src = g3dEl.getAttribute("data-src");
+      s.onload = s.onerror = function () { s.remove(); done(); };
+      document.head.appendChild(s);
+    };
+    var draw3d = function (nodes, edges, inSlice, mode) {
+      drop3d();
+      g3dEl.innerHTML = '<div class="sub" style="margin:12px">Loading the 3D view…</div>';
+      load3d(function () {
+        // The reader may have left the page, or switched back, while the library loaded.
+        if (!g3dEl.isConnected || dimSel.value !== "3d") return;
+        if (typeof window.ForceGraph3D !== "function") {
+          g3dEl.innerHTML = '<div class="note" style="margin:12px">The 3D library did not load. The 2D map and every node page still work.</div>';
+          return;
+        }
+        g3dEl.innerHTML = "";
+        var muted = css("--retired-soft");
+        var data = {
+          nodes: nodes.map(function (n) {
+            return { id: n.id, name: n.name, pkg: n.pkg, col: inSlice && !inSlice[n.id] ? muted : fill(n, mode), val: 1 + Math.min(20, n.fields / 3 + n.claims / 2) };
+          }),
+          links: edges.map(function (e) { return { source: e.s, target: e.t, label: e.v || e.k }; }),
+        };
+        g3d = window.ForceGraph3D()(g3dEl)
+          .width(g3dEl.clientWidth).height(g3dEl.clientHeight)
+          .backgroundColor(css("--panel") || "#ffffff")
+          .nodeLabel(function (n) { return esc(n.name) + " · " + esc(n.pkg); })
+          .nodeColor(function (n) { return n.col; })
+          .nodeVal(function (n) { return n.val; })
+          .nodeOpacity(0.95)
+          .linkLabel(function (l) { return esc(l.label); })
+          .linkColor(function () { return css("--muted"); })
+          .linkOpacity(0.45)
+          .linkDirectionalArrowLength(3).linkDirectionalArrowRelPos(1)
+          // One click shows the side panel, as a tap does on the flat map; a second click on
+          // the same node opens its page, as a double tap does.
+          .onNodeClick(function (n) {
+            var now = Date.now();
+            if (g3dLast && g3dLast.id === n.id && now - g3dLast.t < 450) {
+              var node = byId[n.id];
+              if (node) location.href = href(node.href);
+              g3dLast = null;
+              return;
+            }
+            g3dLast = { id: n.id, t: now };
+            showPanel(n.id);
+          })
+          .graphData(data);
+        // The drawn graph, for a script that drives the page (a test finds a node's position).
+        g3dEl.moGraph = g3d;
+        g3dEl.setAttribute("data-nodes", String(data.nodes.length));
+        g3dEl.setAttribute("data-links", String(data.links.length));
+      });
+    };
     var promptSet = function () {
       var s = {};
       D.nodes.forEach(function (n) { if (n.kind === "prompt" || n.kind === "template") s[n.id] = 1; });
@@ -179,12 +262,29 @@
         if (!ids[e.s] || !ids[e.t] || (!showExt && e.k === "extends")) return;
         els.push({ data: { id: "e" + i, source: e.s, target: e.t, label: e.v || e.k, ext: e.k === "extends" ? 1 : 0, faded: inSlice && !(inSlice[e.s] && inSlice[e.t]) ? 1 : 0 } });
       });
+      var three = dimSel !== null && dimSel.value === "3d";
+      cyEl.hidden = three;
+      if (g3dEl) g3dEl.hidden = !three;
+      var qs3 = new URLSearchParams(query());
+      if (three) qs3.set("view", "3d"); else qs3.delete("view");
+      if (three) {
+        if (cy) { cy.destroy(); cy = null; }
+        draw3d(nodes, D.edges.filter(function (e) { return ids[e.s] && ids[e.t] && (showExt || e.k !== "extends"); }), inSlice, mode);
+        var sliceReq3 = slice.indexOf("requirement:") === 0 ? reqById[slice.slice("requirement:".length)] : null;
+        if (sliceReq3) $("#panel").innerHTML = slicePanel(sliceReq3, D.slices[slice] || []);
+        if (focus && byId[focus]) { showPanel(focus); focus = null; }
+        if (slice) qs3.set("slice", slice); else qs3.delete("slice");
+        qs3.set("colour", mode);
+        setQuery("?" + qs3.toString());
+        return;
+      }
+      drop3d();
       seedGrid(els);
       var pan = cy && !relayout ? { pos: {} } : null;
       if (pan) cy.nodes().forEach(function (n) { pan.pos[n.id()] = n.position(); });
       if (cy) cy.destroy();
       var keep = pan && els.every(function (el) { return el.data.source || pan.pos[el.data.id]; });
-      cy = cytoscape({
+      cy = graph({
         container: cyEl, elements: els, wheelSensitivity: 0.3, maxZoom: 1.5, style: baseStyle(),
         layout: keep ? { name: "preset", positions: function (n) { return pan.pos[n.id()]; }, fit: true, padding: 20 } : COSE,
       });
@@ -193,13 +293,17 @@
       var sliceReq = slice.indexOf("requirement:") === 0 ? reqById[slice.slice("requirement:".length)] : null;
       if (sliceReq) $("#panel").innerHTML = slicePanel(sliceReq, D.slices[slice] || []);
       if (focus && byId[focus] && cy.getElementById(focus).length) { cy.getElementById(focus).select(); showPanel(focus); focus = null; }
-      var u = new URL(location.href);
-      if (slice) u.searchParams.set("slice", slice); else u.searchParams.delete("slice");
-      u.searchParams.set("colour", mode);
-      history.replaceState(null, "", u.search ? u.pathname + u.search : u.pathname);
+      var qs = qs3;
+      if (slice) qs.set("slice", slice); else qs.delete("slice");
+      qs.set("colour", mode);
+      setQuery("?" + qs.toString());
     };
     ["#slice", "#colour", "#hideOut", "#showValues", "#showExt"].forEach(function (s) { $(s).onchange = function () { build(false); }; });
-    $("#relayout").onclick = function () { if (cy) cy.layout(Object.assign({}, COSE, { randomize: true })).run(); };
+    if (dimSel) dimSel.onchange = function () { build(true); };
+    $("#relayout").onclick = function () {
+      if (cy) cy.layout(Object.assign({}, COSE, { randomize: true })).run();
+      if (g3d) g3d.d3ReheatSimulation();
+    };
     redraw.push(function () { build(false); });
     build(true);
   }
@@ -241,7 +345,7 @@
         return { data: { id: id, label: n.name, col: fill(n, D.hasClaims ? "status" : "kind"), me: id === me ? 1 : 0, ring: n.unclaimed, shape: shape(n) } };
       }).concat(es.map(function (e, i) { return { data: { id: "m" + i, source: e.s, target: e.t, label: e.v || e.k } }; }));
       mini.innerHTML = "";
-      var c = cytoscape({
+      var c = graph({
         container: mini, elements: els, maxZoom: 1.3,
         style: [
           { selector: "node", style: { "background-color": "data(col)", label: "data(label)", shape: "data(shape)", "font-size": 10, color: css("--ink"), "text-valign": "bottom", "text-margin-y": 2, width: 18, height: 18, "border-width": 1, "border-color": css("--line") } },
@@ -260,7 +364,7 @@
   // ── S8: the trace ───────────────────────────────────────────────────────
   var tr = $("#cytrace"), tstart = $("#tstart");
   if (tr && tstart) {
-    var p2 = new URLSearchParams(location.search).get("start");
+    var p2 = new URLSearchParams(query()).get("start");
     if (p2 && reqById[p2]) tstart.value = p2;
     var drawTrace = function () {
       var r0 = reqById[tstart.value];
@@ -293,7 +397,7 @@
       var pos = {};
       cols.forEach(function (c, ci) { c.forEach(function (id, i) { pos[id] = { x: ci * 260, y: (i - c.length / 2) * 26 }; }); });
       tr.innerHTML = "";
-      var c = cytoscape({
+      var c = graph({
         container: tr, elements: els, wheelSensitivity: 0.3, maxZoom: 1.6,
         style: [
           { selector: "node", style: { "background-color": "data(col)", label: "data(label)", shape: "data(shape)", "font-size": 11, color: css("--ink"), "text-halign": "right", "text-valign": "center", "text-margin-x": 6, width: 12, height: 12 } },
@@ -306,10 +410,13 @@
       c.on("tap", "node", function (ev) { var go = ev.target.data("go"); if (go) location.href = href(go); });
     };
     tstart.onchange = function () {
-      var u = new URL(location.href); u.searchParams.set("start", tstart.value); history.replaceState(null, "", u.pathname + u.search);
+      var qs = new URLSearchParams(query()); qs.set("start", tstart.value); setQuery("?" + qs.toString());
       drawTrace();
     };
     redraw.push(drawTrace);
     drawTrace();
   }
+  }
+  window.MO_THEME = run;
+  if (!window.MO_APP) run();
 })();

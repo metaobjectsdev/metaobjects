@@ -44,3 +44,10 @@ export function checkLinks(outDir: string, pages: string[]): string[] {
     }
   });
 }
+
+/** {@link findDanglingLinks} over pages held in memory, keyed by site-relative path (the explorer
+ *  app, which writes no pages). `files` names the other files the site ships, which a link may
+ *  name but whose ids are not checked. */
+export function checkLinksInMemory(pages: ReadonlyMap<string, string>, files: ReadonlySet<string> = new Set()): string[] {
+  return findDanglingLinks([...pages.keys()], (p) => pages.get(p) ?? (files.has(p) ? "" : undefined));
+}
