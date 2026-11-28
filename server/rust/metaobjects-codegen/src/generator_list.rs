@@ -11,7 +11,7 @@
 //! An entry is a generator's name, or `{"name": "...", "options": {...}}` to construct it with
 //! options: they reach the generator through [`crate::Generator::configure`], and a generator
 //! refuses an option it does not take, so a misspelt one fails the run instead of being
-//! ignored. The shipped generators take none yet. The list carries no layer or set settings,
+//! ignored. Of the shipped generators only `metamodel-docs` takes one (`subDir`). The list carries no layer or set settings,
 //! because a layer is only a generator. A project with no such file runs every generator its host
 //! offers but the opt-in ones (the `service-routes` transport, which brings a web framework into
 //! the build, and `metamodel-docs`, which writes reference pages no project asked for), which is
