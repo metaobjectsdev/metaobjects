@@ -144,15 +144,24 @@ def test_generator_falls_back_to_the_committed_manifest(tmp_path: Path) -> None:
 
 
 ONE_TARGET = "targets:\n  app:\n    outDir: gen\n    generators: [docs-site, entity]\n"
-TWO_TARGETS = (
-    "targets:\n  app:\n    outDir: gen\n    generators: [entity]\n"
-    "  docs:\n    outDir: docs\n    generators: [docs-site]\n"
+APP = "  app:\n    outDir: gen\n    generators: [entity]\n"
+DOCS = "  docs:\n    outDir: docs\n    generators: [docs-site]\n"
+TWO_TARGETS = "targets:\n" + APP + DOCS
+DOCS_FIRST = "targets:\n" + DOCS + APP
+
+
+@pytest.mark.parametrize(
+    "config,site,then",
+    [
+        (ONE_TARGET, "gen", None),
+        (TWO_TARGETS, "docs", None),
+        (DOCS_FIRST, "docs", None),
+        (TWO_TARGETS, "docs", "outputLayout: package\n" + TWO_TARGETS),
+    ],
+    ids=["one", "two", "docs-first", "removed-file"],
 )
-
-
-@pytest.mark.parametrize("config,site", [(ONE_TARGET, "gen"), (TWO_TARGETS, "docs")], ids=["one", "two"])
 def test_the_drift_gate_renders_what_gen_wrote(
-    config: str, site: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    config: str, site: str, then: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from metaobjects.cli import main
 
@@ -166,6 +175,11 @@ def test_the_drift_gate_renders_what_gen_wrote(
     monkeypatch.chdir(project)
 
     assert main(["gen"]) == 0
+    if then is not None:
+        before = set((project / "gen").rglob("*.py"))
+        (project / "metaobjects.config.yaml").write_text(then, encoding="utf-8")
+        assert main(["gen"]) == 0
+        assert set((project / "gen").rglob("*.py")) != before
     view_file = project / site / "site" / "explorer.json"
     first = view_file.read_text(encoding="utf-8")
     node = next(n for n in json.loads(first)["nodes"] if n["name"] == "Telemetry")

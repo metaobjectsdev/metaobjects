@@ -13,7 +13,7 @@ from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.reporting.report_read_model import report_read_model
 from metaobjects.shared.base_types import TYPE_OBJECT
 from .collection_name_collision import assert_no_collection_name_collisions
-from .config import GenConfig
+from .config import GenConfig, PlanRecord
 from .constants import generated_package_init
 from .generator import GenContext, Generator
 from .import_path import OUTPUT_LAYOUT_PACKAGE
@@ -91,19 +91,19 @@ def _run_provenance(
     suite: set[str],
     narrowed: bool,
 ) -> dict[str, tuple[str, str | None]]:
-    """What the generators that ran before this one emitted, keyed as the manifest keys it,
-    after the committed manifest's files this run does not render: those of a generator not in
-    this run and, when ``--entities`` narrows the run, every recorded file. A file a generator of
-    this run no longer emits is not carried, so the list never names a file the run removes."""
-    carried: dict[str, tuple[str, str | None]] = {}
+    """What the generators that ran before this one emitted, in this run and in the earlier runs
+    of its plan, keyed as the manifest keys it, after the committed manifest's files the plan does
+    not render: those of a generator that ran nowhere in the plan and, when ``--entities`` narrows
+    the run, every recorded file. A file a generator of the plan no longer emits is not carried,
+    so the list never names a file the run removes."""
+    plan = config.plan or PlanRecord()
+    ran = suite | plan.generators
     committed = config.committed_gen_state_dir()
-    if config.manifest is not None:
-        recorded = config.manifest.recorded_provenance()
-    else:
-        recorded = read_recorded_provenance(committed) if committed is not None else {}
-    for path, (by, node) in recorded.items():
-        if narrowed or by not in suite:
-            carried[path] = (by, node)
+    recorded = read_recorded_provenance(committed) if committed is not None else {}
+    carried: dict[str, tuple[str, str | None]] = {
+        path: prov for path, prov in recorded.items() if narrowed or prov[0] not in ran
+    }
+    carried.update(plan.files)
     for full, (_c, by) in emitted.items():
         carried[_manifest_key(config, full)] = (_stable_name(by), sources.get(full))
     return carried
@@ -271,6 +271,12 @@ def run_gen(
             emitted[full] = (f.content, gen.name)
             if f.source_node is not None:
                 sources[full] = f.source_node
+    if config.plan is not None:
+        config.plan.generators.update(_stable_name(g.name) for g in generators)
+        config.plan.files.update(
+            (_manifest_key(config, full), (_stable_name(by), sources.get(full)))
+            for full, (_c, by) in emitted.items()
+        )
 
     if config.output_layout == OUTPUT_LAYOUT_PACKAGE:
         assert_importable_package_tree(

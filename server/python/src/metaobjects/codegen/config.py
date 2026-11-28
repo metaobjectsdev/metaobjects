@@ -22,6 +22,17 @@ class CaptureKeys:
 
 
 @dataclass
+class PlanRecord:
+    """What the runs of one plan (``gen``'s targets, or ``verify --codegen``'s render of them)
+    have emitted so far, keyed as the manifest keys it, and the stable names of the generators
+    that ran. A generator reading the run's output lists these over the committed files of
+    generators that did not run."""
+
+    files: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+    generators: set[str] = field(default_factory=set)
+
+
+@dataclass
 class GenConfig:
     out_dir: str
     # Where the codegen hash manifest lives (``<gen_state_dir>/.hashes/``, one file per
@@ -95,6 +106,7 @@ class GenConfig:
     # with disk in memory, so it creates no temp tree.
     sink: dict[str, str] | None = None
     capture_keys: CaptureKeys | None = None
+    plan: PlanRecord | None = None
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
 

@@ -111,7 +111,7 @@ from metaobjects.requirement_check import (
     scan_requirements,
     summarise_requirements,
 )
-from metaobjects.codegen.config import DEFAULT_API_PREFIX, CaptureKeys, GenConfig
+from metaobjects.codegen.config import DEFAULT_API_PREFIX, CaptureKeys, GenConfig, PlanRecord
 from metaobjects.codegen.overwrite_policy import (
     STATUS_SKIPPED,
     STATUS_UNCHANGED,
@@ -1067,6 +1067,7 @@ def _run_suite(
     manifest: HashManifest | None = None,
     sink: dict[str, str] | None = None,
     capture_keys: CaptureKeys | None = None,
+    plan: PlanRecord | None = None,
 ) -> list[tuple[str, str]]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -1123,6 +1124,7 @@ def _run_suite(
         manifest=manifest,
         sink=sink,
         capture_keys=capture_keys,
+        plan=plan,
     )
     # No default suite — see NO_GENERATORS_SELECTED. A caller that names none gets a
     # usage error and an empty out dir, never a shape this CLI picked.
@@ -1883,6 +1885,13 @@ def _run_plan(
 ) -> tuple[list[str], list[str]]:
     from metaobjects.render.renderer import RenderError
 
+    # A target holding a generator that reads the run's output runs after every other target,
+    # so it lists the whole plan's files whatever the declared order (the stable sort keeps it).
+    record = PlanRecord()
+    plan = sorted(
+        plan,
+        key=lambda p: any(getattr(g, "reads_run_output", False) for g in (*p[1], *p[2])),
+    )
     for t, gens, spec_gens, overwrite in plan:
         if not gens and not spec_gens:
             print(f"target '{t.name}' declares no generators; nothing written")
@@ -1901,6 +1910,7 @@ def _run_plan(
                     api_prefix=config.api_prefix, output_layout=config.output_layout,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
                     manifest=session, sink=sink, entity_scope=t.entities, capture_keys=capture,
+                    plan=record,
                 )
             if spec_gens:
                 results = results + _run_suite(
@@ -1909,7 +1919,7 @@ def _run_plan(
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
                     select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
                     output_layout=config.output_layout, manifest=session, sink=sink,
-                    entity_scope=t.entities, capture_keys=capture,
+                    entity_scope=t.entities, capture_keys=capture, plan=record,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
