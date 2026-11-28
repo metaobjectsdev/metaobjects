@@ -101,3 +101,12 @@ Then review the diff: every changed line is a change to what a docs page can sho
   committed `verify.json`, and a fresh shop payload still builds `shop/expected.json`.
 - `server/typescript/packages/runtime-ts/test/meta-docs-route.test.ts`: the docs view route
   serves `model-alone/expected.json` for that case's model.
+- `server/java/metadata/src/test/java/com/metaobjects/docsview/DocsViewConformanceTest.java`:
+  the JVM builder reproduces every case. It applies `provider.json` as a test provider, every
+  type a plain node.
+- `server/java/codegen-base/src/test/java/com/metaobjects/docs/explorer/ExplorerSiteTest.java`
+  and `server/java/codegen-kotlin/src/test/kotlin/com/metaobjects/generator/kotlin/KotlinDocsSiteConformanceTest.kt`:
+  the Java and Kotlin `docs-site` generators write every case's `explorer.json`, reading
+  `hashes.json` as the gen-state manifest.
+- `server/java/metadata/src/test/java/com/metaobjects/io/json/MetaDocsEndpointTest.java`: the
+  JVM docs view route body is `model-alone/expected.json`.

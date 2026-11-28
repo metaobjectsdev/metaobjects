@@ -224,9 +224,42 @@ app.use(`/api${META_DOCS_ROUTE_PATH}`, requireAuth);
 mountMetaDocsRouteHono({ app, root, prefix: "/api" });
 ```
 
-C#, Java, Kotlin, Python and Rust serve the route once each has its docs view
-builder, with the body that builder writes; their `/_meta` sections above show
-where each mounts it.
+Java and Kotlin ship the helper and leave the mount to the host, as for `/_meta`:
+`MetaEndpoint.META_DOCS_ROUTE_PATH`, `MetaEndpoint.metaDocsJson(root)` and
+`MetaEndpoint.docs(root)`, which builds the view once and carries its ETag
+(`metaDocsEtag`, the value TypeScript's mounts send) and the `If-None-Match` check.
+
+```java
+// MetaDocsController.java
+import com.metaobjects.io.json.MetaEndpoint;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class MetaDocsController {
+  // root: the MetaRoot this app loaded. Built once: the model does not change after load.
+  private final MetaEndpoint.Docs docs = MetaEndpoint.docs(root);
+
+  @GetMapping("/api" + MetaEndpoint.META_DOCS_ROUTE_PATH)
+  public ResponseEntity<String> docs(@RequestHeader(value = "If-None-Match", required = false) String tag) {
+    ResponseEntity.BodyBuilder res = (docs.matches(tag) ? ResponseEntity.status(HttpStatus.NOT_MODIFIED) : ResponseEntity.ok())
+        .eTag(docs.etag()).cacheControl(CacheControl.noCache());
+    return docs.matches(tag) ? res.build() : res.contentType(MediaType.APPLICATION_JSON).body(docs.body());
+  }
+}
+```
+
+Kotlin calls the same symbols through `metadata-ktx`. To let the explorer read the route from
+`file://`, add `Access-Control-Allow-Origin: null` and `Access-Control-Expose-Headers: ETag` to
+that response, or use Spring's CORS configuration.
+
+C#, Python and Rust serve the route once each has its docs view builder, with the
+body that builder writes; their `/_meta` sections above show where each mounts it.
 
 ## Browser consumption
 

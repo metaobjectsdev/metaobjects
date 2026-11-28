@@ -193,8 +193,7 @@ public final class EjectSupport {
             // registry's factory closure constructs them, so the FQN is the class it builds
             // (calling it must not throw — the registry's own contract). The ejectable resource
             // is named after the class's simple name, e.g. "KotlinNamesGenerator.kt".
-            String classname = info.getEjectResourcePath() == null ? null
-                    : info.getFactory().invoke().getClass().getName();
+            String classname = info.getFactory().invoke().getClass().getName();
             out.add(new Entry(Port.KOTLIN, info.getName(), classname, info.getDescription(),
                     info.getEjectResourcePath(), List.of(), null, info.getEjectWith()));
         }

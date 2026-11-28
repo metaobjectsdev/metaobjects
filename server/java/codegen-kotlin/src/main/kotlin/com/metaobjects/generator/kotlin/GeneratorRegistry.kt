@@ -19,6 +19,7 @@
 
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.generator.DocsSiteGenerator
 import com.metaobjects.generator.Generator
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.generator.kotlin.apidocs.DocsPaths
@@ -311,6 +312,17 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         layer = GeneratorLayer.DOCS,
         factory = ::KotlinMetamodelDocsGenerator,
         ejectResourcePath = ejectPath("KotlinMetamodelDocsGenerator"),
+    ),
+    // Exempt from eject (registry.json): the site builder is engine, and the site is language-neutral,
+    // so Kotlin runs the JVM DocsSiteGenerator itself and writes the same bytes as Java.
+    "docs-site" to GeneratorInfo(
+        name = "docs-site",
+        description = "The model explorer: one browser app over the project's docs view (explorer.json), with " +
+            "the requirement tree, the model map, a page per object, prompt and requirement, the coverage matrix " +
+            "and the generated files the hash manifest records. Needs no Node.",
+        tier = GeneratorTier.NEUTRAL,
+        layer = GeneratorLayer.DOCS,
+        factory = ::DocsSiteGenerator,
     ),
     "report-export" to GeneratorInfo(
         name = "report-export",

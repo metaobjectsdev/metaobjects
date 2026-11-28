@@ -497,6 +497,13 @@ public final class GeneratorRegistry {
                     + "by provider, rendered from the shared templates/metamodel/ Mustache set "
                     + "(INDEX.md, providers.md, one types/<family>.md per type family). Reads no model objects.",
                 Tier.NEUTRAL, Layer.DOCS, ejectPath(MetamodelDocsGenerator.class));
+        // Exempt from eject (registry.json): the site builder is engine; what a project changes is the
+        // explorer's theme, which it owns under codegen/docs-site/ and this generator reads from there.
+        register(m, "docs-site", DocsSiteGenerator.class.getName(),
+                "The model explorer: one browser app over the project's docs view (explorer.json), with "
+                    + "the requirement tree, the model map, a page per object, prompt and requirement, the "
+                    + "coverage matrix and the generated files the hash manifest records. Needs no Node.",
+                Tier.NEUTRAL, Layer.DOCS);
         register(m, "plantuml", PLANTUML_GENERATOR,
                 "PlantUML class diagram of the object model.", Tier.NATIVE, Layer.DOCS,
                 EJECT_RESOURCE_ROOT + "PlantUMLGenerator.java", List.of(), null, List.of(PLANTUML_WRITER));

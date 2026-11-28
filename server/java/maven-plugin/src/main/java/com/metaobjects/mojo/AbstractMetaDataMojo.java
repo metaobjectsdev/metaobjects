@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.agentcontext.AgentContextScaffold;
+import com.metaobjects.generator.DocsSiteGenerator;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.ProjectClassLoaderAware;
@@ -946,6 +947,9 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         Map<String,String> allargs = mergeArgs(globals, g.getArgs());
         // Maven's project version, as a default a generator's own `version` arg overrides.
         if ( project != null && project.getVersion() != null ) allargs.putIfAbsent(SharedModelGenerator.ARG_VERSION, project.getVersion());
+        // The module directory, as a default: docs-site resolves its project-relative inputs (the
+        // hash manifest, the owned theme, prompts, the verify payload) against it.
+        if ( project != null && project.getBasedir() != null ) allargs.putIfAbsent(DocsSiteGenerator.ARG_PROJECT_ROOT, project.getBasedir().getAbsolutePath());
 
         // Dump the args to debug
         getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");
