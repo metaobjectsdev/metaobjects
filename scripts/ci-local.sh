@@ -983,9 +983,12 @@ gate_rust_example() {
 # The crates are publishable (ADR-0065 Amendment 3), so a change that would make `cargo publish`
 # refuse them fails here, not on the day somebody publishes: package all three, build each
 # from its packaged copy, and stop short of uploading. --allow-dirty because this checks the
-# packaging, not the working tree; nothing is uploaded, ever, by this gate.
+# packaging, not the working tree; nothing is uploaded, ever, by this gate. Stale unpacked
+# copies of our own crates are cleared first: cargo reuses them for the same version and would
+# verify against old source (scripts/rust-clear-stale-publish-sources.sh says how).
 gate_rust_publish_dry_run() {
-  cargo publish --dry-run --workspace --locked --allow-dirty
+  "$ROOT/scripts/rust-clear-stale-publish-sources.sh" "$PWD" \
+    && cargo publish --dry-run --workspace --locked --allow-dirty
 }
 # Load time per phase and per validation pass on the 20x fitness model. Record only:
 # it prints a table and never fails on a number, so a slowdown is read in the log and
