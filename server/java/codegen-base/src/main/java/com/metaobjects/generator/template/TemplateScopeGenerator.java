@@ -83,7 +83,7 @@ public class TemplateScopeGenerator extends GeneratorBase {
                 // SQL, markdown, CSV, anything — and that content carries no obligation to
                 // include the `GENERATED` marker. It is still recorded in the hash manifest, so
                 // unchanged bytes are not rewritten and a hand edit is refused by name.
-                com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(target, f.content());
+                com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(target, f.content(), f.sourceNode());
             } catch (IOException e) {
                 throw new GeneratorException(
                     "Failed to write template-codegen output [" + target + "]: " + e.getMessage(), e);

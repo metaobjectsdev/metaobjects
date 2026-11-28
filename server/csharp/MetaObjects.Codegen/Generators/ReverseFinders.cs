@@ -182,6 +182,6 @@ public static class ReverseFinderBuilder
                 }
             }
         }
-        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{queriesCls}.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{queriesCls}.g.cs"), w.ToString()) { SourceNode = entity.ResolutionKey() };
     }
 }

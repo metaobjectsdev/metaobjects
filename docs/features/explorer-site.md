@@ -72,7 +72,7 @@ same model and inputs: every port that builds the docs view is held to
 |---|---|---|---|
 | TypeScript | `docsSiteFile()` (`meta gen`) | `output: "app"` (default) or `"static"`; `site: "classic"` for the earlier site | The model, the requirement ledger, the files and routes this run wrote and mounts |
 | Java | `com.metaobjects.generator.DocsSiteGenerator` (`mvn metaobjects:generate`), no Node | The app only | The model, the files the committed hash manifest records per node, and a `verify --format json` payload when you name one (`verifyFile`) |
-| Kotlin | the same JVM `DocsSiteGenerator`, through `codegen-kotlin`'s registry | The app only | As Java |
+| Kotlin | the same JVM `DocsSiteGenerator`, through `codegen-kotlin`'s registry | The app only | As Java; the Kotlin generators do not record provenance in the manifest yet, so their files are not listed |
 | C#, Python, Rust | not yet | | |
 
 On the JVM, wire it like any other generator, with its own output directory:
@@ -303,6 +303,8 @@ a dangling link. `createExplorer` (the page table both outputs draw from) and
 - The static export and the classic site outside TypeScript.
 - "Hand-written code that imports it": the site reads no import graph, so the object pages say
   it was not scanned.
+- Generated-file provenance from the Kotlin and Rust generators (see
+  [explorer-data.md](explorer-data.md)), so for those ports the generated-file lists are empty.
 
 ## Verified by
 

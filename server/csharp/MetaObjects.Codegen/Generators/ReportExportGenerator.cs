@@ -83,7 +83,7 @@ public class ReportExportGenerator : IGenerator
 
         yield return new EmittedFile("ReportExportWriter.g.cs", SharedWriter(ctx, HasDurationColumn(served))) { WholeModel = true };
         foreach (var report in served)
-            yield return new EmittedFile(OutputPaths.Of(report, ctx, CSharpNaming.Pascal(report.Name) + "Export.g.cs"), ReportModule(report, ctx));
+            yield return new EmittedFile(OutputPaths.Of(report, ctx, CSharpNaming.Pascal(report.Name) + "Export.g.cs"), ReportModule(report, ctx)) { SourceNode = report.ResolutionKey() };
     }
 
     protected static string Literal(bool b) => b ? "true" : "false";

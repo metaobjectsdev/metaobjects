@@ -163,7 +163,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), entity);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
@@ -216,7 +216,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), entity);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for " + noun + " " + entity.getName() + ": " + e, e);
@@ -301,7 +301,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), base);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing TPH " + repoName + ".java for entity " + base.getName() + ": " + e, e);

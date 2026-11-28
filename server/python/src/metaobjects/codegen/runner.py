@@ -194,6 +194,8 @@ def run_gen(
 
     claims = NameClaims()  # one registry per run, shared by every generator
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
+    # full_path -> the resolution key of the node the file was rendered from, when it was.
+    sources: dict[str, str] = {}
     for gen in generators:
         ctx = GenContext(
             entities=safe,
@@ -214,6 +216,8 @@ def run_gen(
                     f"{emitted[full][1]!r} and {gen.name!r}."
                 )
             emitted[full] = (f.content, gen.name)
+            if f.source_node is not None:
+                sources[full] = f.source_node
 
     if config.output_layout == OUTPUT_LAYOUT_PACKAGE:
         assert_importable_package_tree(
@@ -263,7 +267,7 @@ def run_gen(
     with manifest_batch(config.gen_state_dir):
         try:
             _write_all(
-                config, emitted, merge_strategy, session, result, refused, adopted
+                config, emitted, sources, merge_strategy, session, result, refused, adopted
             )
         finally:
             if own_session and session is not None:
@@ -274,6 +278,7 @@ def run_gen(
 def _write_all(
     config: GenConfig,
     emitted: dict[str, tuple[str, str]],
+    sources: dict[str, str],
     merge_strategy: str,
     session: HashManifest | None,
     result: RunGenResult,
@@ -325,6 +330,11 @@ def _write_all(
             manifest=None if outside else session,
         )
         result.files.append((full, status))
+        # Which node each recorded file came from, beside its hash (the docs view's files).
+        # Only with a real project root, as codegen-ts: the entry is keyed by the same key
+        # the write used, and the session's save applies it to entries that hold a hash.
+        if session is not None and not outside and config.project_root:
+            session.note_provenance(key, by, sources.get(full))
         if status == STATUS_OVERWROTE_EDIT:
             result.warnings.append(
                 f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"

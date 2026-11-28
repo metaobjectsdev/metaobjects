@@ -176,6 +176,73 @@ def test_gen_on_a_multi_package_model_writes_one_manifest_per_package(tmp_path: 
     assert len(keys) == len(set(keys))
 
 
+def _seed_files(state: Path, files: dict[str, dict[str, object]]) -> Path:
+    directory = state / ".hashes"
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, entries in files.items():
+        (directory / name).write_text(json.dumps(entries, indent=2) + "\n")
+    return directory
+
+
+def _snapshot(directory: Path) -> dict[str, tuple[bytes, int]]:
+    return {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in sorted(directory.glob("*.json"))}
+
+
+def _provenance_records() -> dict[str, tuple[str, str | None]]:
+    return {r["path"]: (r["generatedBy"], r.get("sourceNode")) for r in VECTORS["provenance"]["records"]}
+
+
+def _assert_provenance_after(directory: Path) -> None:
+    vector = VECTORS["provenance"]
+    assert manifest_files(directory.parent) == vector["afterFiles"]
+    assert (directory / vector["goldenFile"]).read_text() == vector["goldenText"]
+
+
+def test_provenance_vectors_through_a_run_session(tmp_path: Path) -> None:
+    # The write loop records through the session, whose one save carries the provenance.
+    state = _state(tmp_path)
+    directory = _seed_files(state, VECTORS["provenance"]["beforeFiles"])
+    set_placement_objects(str(state), OBJECTS)
+    session = HashManifest(str(state))
+    for path, (by, node) in _provenance_records().items():
+        session.note_provenance(path, by, node)
+    assert session.save()
+    _assert_provenance_after(directory)
+
+    before = _snapshot(directory)
+    again = HashManifest(str(state))
+    for path, (by, node) in _provenance_records().items():
+        again.note_provenance(path, by, node)
+    assert not again.save(), "nothing changed, so nothing is written"
+    assert _snapshot(directory) == before
+
+
+def test_gen_records_the_generator_and_node_of_each_per_entity_file(tmp_path: Path) -> None:
+    meta = tmp_path / "metaobjects"
+    meta.mkdir()
+    (meta / "meta.shop.json").write_text(json.dumps({"metadata.root": {
+        "package": "acme::shop",
+        "children": [{"object.entity": {"name": "Order", "children": [
+            {"field.long": {"name": "id"}}, {"field.string": {"name": "title"}}]}}],
+    }}))
+    out = tmp_path / "gen"
+    argv = as_config(["gen", "--generators", GEN_SUITE, str(meta), "--out", str(out)])
+    assert main(argv) == 0
+    state = tmp_path / ".metaobjects" / ".gen-state"
+    entries = read_manifest(state)
+    model = entries["gen/Order.py"]
+    assert isinstance(model, dict)
+    assert list(model) == ["hash", "generatedBy", "sourceNode"]
+    assert (model["generatedBy"], model["sourceNode"]) == ("entity-model", "acme::shop::Order")
+    # A file of no one node (a package __init__) stays a plain hash.
+    inits = [v for k, v in entries.items() if k.endswith("__init__.py")]
+    assert inits and all(isinstance(v, str) for v in inits)
+
+    before = _snapshot(state / ".hashes")
+    assert main(argv) == 0
+    assert _snapshot(state / ".hashes") == before, "a regeneration that changes nothing writes nothing"
+
+
 @pytest.mark.parametrize(
     ("before", "after"),
     [

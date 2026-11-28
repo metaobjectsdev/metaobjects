@@ -16,7 +16,8 @@ bash scripts/sync-explorer-app.sh                                       # refres
 The `explorer app copies` step of `scripts/ci-local.sh --only gates` fails when this directory is
 stale or a port's copy differs from it.
 
-The bundle is minified, and minified output depends on the Bun version, so `build-app.ts` runs
+The bundle is minified for whitespace and syntax only. Identifiers keep their names, because
+Bun's short names are not stable between builds. Minified output depends on the Bun version, so `build-app.ts` runs
 only on the Bun the workflows pin (`EXPLORER_APP_BUN` in the script, currently 1.3.14). Any other
 Bun stops with an error that names the required version.
 

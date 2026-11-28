@@ -402,7 +402,7 @@ public class RoutesGenerator : PerEntityGenerator
         WriteOmitResultClass(w, p.Credentials.Count > 0 || (p.HasItem && M2mTargetHasCredentials([entity], ctx.Root, ctx.Config)));
         w.Close("}");
 
-        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{p.Cls}Routes.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{p.Cls}Routes.g.cs"), w.ToString()) { SourceNode = entity.ResolutionKey() };
     }
 
     /// <summary>
@@ -799,7 +799,7 @@ public class RoutesGenerator : PerEntityGenerator
         WriteOmitResultClass(w, p.BaseCredentials.Count > 0 || (p.HasItem && M2mTargetHasCredentials(p.Hierarchy, ctx.Root, ctx.Config)));
         w.Close("}");
 
-        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(baseEntity, ctx, $"{baseCls}Routes.g.cs"), w.ToString()) { SourceNode = baseEntity.ResolutionKey() };
     }
 
     /// <summary>The polymorphic list, <c>GET /&lt;base&gt;</c>: the union of all subtypes, each row carrying its discriminator.</summary>

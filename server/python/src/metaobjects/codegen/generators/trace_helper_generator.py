@@ -372,6 +372,7 @@ class TraceHelperGenerator:
                         entity.resolution_key(),
                     ),
                     content=ruff_format(content),
+                    source_node=entity.resolution_key(),
                 )
             )
         return files

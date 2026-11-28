@@ -299,7 +299,39 @@ def _load_hashes(gen_state_dir: str) -> dict[str, str]:
     return hashes
 
 
-def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
+#: What produced one generated file: ``(generated_by, source_node)``. ``source_node`` is
+#: the ``resolution_key()`` of the node it was rendered from, ``None`` for a file rendered
+#: from the whole model or a whole package. Mirrors codegen-ts's ``GeneratedProvenance``.
+Provenance = tuple[str, "str | None"]
+
+#: The manifest fields provenance owns. Every other field on an entry (``hash``, and the
+#: JVM's ``generator`` / ``outputDir`` owner, ADR-0060) is kept as it is.
+_PROVENANCE_FIELDS = ("generatedBy", "sourceNode")
+
+
+def _with_provenance(existing: object, digest: str, prov: Provenance) -> object:
+    """The entry for a path recorded with ``digest`` that ``prov`` produced.
+
+    A path with a source node becomes ``{ "hash", <other fields>, "generatedBy",
+    "sourceNode" }``; one without keeps (or returns to) the plain ``"<hash>"``, so a file
+    rendered from the whole model adds nothing to the committed manifest. ``generatedBy`` is
+    deliberately not the JVM's ``generator`` field: that one is an ownership claim the
+    orphan sweep acts on.
+    """
+    rest: dict[str, object] = {}
+    if isinstance(existing, dict):
+        rest = {k: v for k, v in existing.items() if k != "hash" and k not in _PROVENANCE_FIELDS}
+    generated_by, source_node = prov
+    if source_node is not None:
+        return {"hash": digest, **rest, "generatedBy": generated_by, "sourceNode": source_node}
+    return {"hash": digest, **rest} if rest else digest
+
+
+def _save_hashes(
+    gen_state_dir: str,
+    hashes: dict[str, str],
+    provenance: dict[str, Provenance] | None = None,
+) -> None:
     raw = _read_raw(gen_state_dir)
     # Keys SORTED, because these files are committed. Insertion order would make the
     # diff — and any merge conflict between two people who both regenerated — depend
@@ -307,7 +339,9 @@ def _save_hashes(gen_state_dir: str, hashes: dict[str, str]) -> None:
     ordered: dict[str, object] = {}
     for k in sorted(hashes):
         existing = raw.get(k)
-        if isinstance(existing, dict):
+        if provenance is not None and k in provenance:
+            ordered[k] = _with_provenance(existing, hashes[k], provenance[k])
+        elif isinstance(existing, dict):
             ordered[k] = {**existing, "hash": hashes[k]}
         else:
             ordered[k] = hashes[k]
@@ -405,6 +439,9 @@ class HashManifest:
     def __init__(self, gen_state_dir: str) -> None:
         self.gen_state_dir = gen_state_dir
         self.hashes: dict[str, str] = _load_hashes(gen_state_dir)
+        #: Which generator and node produced each path this session recorded, applied to
+        #: the entries on :meth:`save`.
+        self.provenance: dict[str, Provenance] = {}
         # A legacy manifest is migrated by the next write run, even when nothing else changed.
         self.dirty = os.path.exists(_manifest_path(gen_state_dir))
 
@@ -430,11 +467,23 @@ class HashManifest:
             if self.hashes.pop(legacy_rel_path, None) is not None:
                 self.dirty = True
 
+    def note_provenance(self, rel_path: str, generated_by: str, source_node: str | None) -> None:
+        """Record which generator, and which node, produced ``rel_path`` (written on save)."""
+        self.provenance[rel_path] = (generated_by, source_node)
+
+    def _provenance_changes(self) -> bool:
+        raw = _read_raw(self.gen_state_dir)
+        return any(
+            _with_provenance(raw.get(k), self.hashes[k], prov) != raw.get(k)
+            for k, prov in self.provenance.items()
+            if k in self.hashes
+        )
+
     def save(self) -> bool:
         """Write the manifest if anything changed. Returns whether it wrote."""
-        if not self.dirty:
+        if not self.dirty and not (self.provenance and self._provenance_changes()):
             return False
-        _save_hashes(self.gen_state_dir, self.hashes)
+        _save_hashes(self.gen_state_dir, self.hashes, self.provenance)
         self.dirty = False
         return True
 

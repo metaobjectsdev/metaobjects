@@ -94,10 +94,12 @@ comes from the `node` field. The structured payload is TypeScript-only, as the r
 
 ### Node provenance in the manifest
 
-Each generated file now records the metadata node it was rendered from. A generator built with
-`perEntity` sets this automatically. An `EmittedFile` can also name its node directly with
-`sourceNode`, which is a node resolution key such as `acme::shop::Order`. `meta gen` then
-writes that file's manifest entry in object form:
+Each generated file now records the metadata node it was rendered from, in TypeScript, C#,
+Java and Python. A per-object generator sets this automatically (TypeScript `perEntity`, C#
+`PerEntityGenerator`, Python `per_entity`, and the shared writer the Java generators use). A
+generated file can also name its node directly (`sourceNode` on a TypeScript `EmittedFile`,
+`SourceNode` in C#, `source_node` in Python), as a node resolution key such as
+`acme::shop::Order`. A write run then writes that file's manifest entry in object form:
 
 ```json
 {
@@ -116,8 +118,11 @@ manifest reader takes `hash` from either form.
 
 The provenance field is named `generatedBy`, not `generator`. In a Java or Kotlin module's
 manifest, `generator` means that generator owns the file (ADR-0060), and the orphan sweep acts
-on that ownership. TypeScript does not make that claim. TypeScript is the only port that writes
-provenance today, and the JVM rewrites its manifest without these fields.
+on that ownership, so a JVM entry carries both: `{ "hash", "generator", "outputDir",
+"generatedBy", "sourceNode" }`. The four ports that write provenance write the same entry for the
+same records; the shared vector `provenance` in
+[`fixtures/codegen-skip-conformance/manifests.json`](../../fixtures/codegen-skip-conformance/manifests.json)
+holds TypeScript, C#, Java and Python to it. Kotlin and Rust write no provenance yet.
 
 ## Building it by hand
 
@@ -151,8 +156,8 @@ malformed leaves its part of the view empty.
 
 - **`usage`**: which hand-written modules import a generated module. The design marks it
   optional, and nothing builds it yet.
-- **Provenance from the JVM, Python and C# generators.** Their manifests have no `sourceNode`
-  yet, so for those ports a node lists no files.
+- **Provenance from the Kotlin and Rust generators.** Their manifest entries have no
+  `sourceNode` yet, so for those ports a node lists no files.
 - **The docs view in the other ports.** TypeScript builds it today; the corpus is what the
   other ports will be held to.
 

@@ -173,7 +173,9 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
                 String handEdits = param != null ? param.validatedHandEdits() : GeneratorParam.HAND_EDITS_KEEP;
                 HashManifest.Owner owner = genStateDir != null && param != null ? ownerOf(param) : null;
                 if (owner != null) runOwners.add(owner);
-                run.attributeTo( gen.getClass().getSimpleName(), handEdits, owner );
+                String generatedBy = param != null && param.getClassname() != null
+                        ? RequiresCheck.generatorName(param.getClassname()) : gen.getClass().getSimpleName();
+                run.attributeTo( gen.getClass().getSimpleName(), handEdits, owner, generatedBy );
                 gen.execute( loader );
 
                 if (genStateDir != null && param != null) {

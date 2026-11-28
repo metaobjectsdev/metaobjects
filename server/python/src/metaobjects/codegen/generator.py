@@ -16,6 +16,13 @@ class EmittedFile:
     path: str            # relative to GenConfig.out_dir
     content: str         # final, formatted Python source
     generated_by: str = ""  # set by the runner from Generator.name
+    #: The ``resolution_key()`` of the metadata node this file was rendered from
+    #: (``acme::shop::Order``), recorded beside the file's hash in the manifest under
+    #: ``.gen-state/.hashes/``. ``per_entity`` sets it for you; a generator rendering one
+    #: file from one node by other means sets it itself. ``None`` for a file rendered from
+    #: the whole model or a whole package (a barrel, a docs index). Mirrors codegen-ts's
+    #: ``EmittedFile.sourceNode``.
+    source_node: str | None = None
 
 
 #: The default api-surface subdirectory (the cross-port contract's ``api/python``).
@@ -140,7 +147,14 @@ def per_entity(
             if not ctx.matches(e) or not ctx.is_selected(e):
                 continue
             r = fn(e, ctx)
-            out.extend(r if isinstance(r, list) else [r])
+            # Each file names the object it was rendered from, unless the generator said
+            # otherwise, so every per-entity generator (owned copies included) records its
+            # provenance without a line of its own.
+            key = e.resolution_key()
+            for f in r if isinstance(r, list) else [r]:
+                if f.source_node is None:
+                    f.source_node = key
+                out.append(f)
         return out
 
     return run

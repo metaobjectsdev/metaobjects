@@ -841,7 +841,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     protected void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, SpringJavaWriter w) {
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(typeName + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), entity);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + typeName + ".java for entity " + entity.getName() + ": " + e, e);

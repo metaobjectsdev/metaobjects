@@ -255,7 +255,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(helperClass + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), template);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + helperClass + ".java for template " + template.getName() + ": " + e, e);

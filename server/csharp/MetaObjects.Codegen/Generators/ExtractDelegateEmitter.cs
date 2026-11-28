@@ -168,7 +168,7 @@ public static class ExtractDelegateEmitter
             foreach (var f in Fr010FieldMapping.Fields(vo))
                 w.Line($"public {NestedMirrorType(f, root, config, ns)} {f.Name} {{ get; init; }}");
         }
-        return new EmittedFile(OutputPaths.Of(vo, config, $"{name}.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(vo, config, $"{name}.g.cs"), w.ToString()) { SourceNode = vo.ResolutionKey() };
     }
 
     // =========================================================================

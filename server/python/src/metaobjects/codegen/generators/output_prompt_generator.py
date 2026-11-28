@@ -158,6 +158,7 @@ class OutputPromptGenerator:
                         f"{_snake_case(tmpl.name)}_response_format", tmpl.resolution_key(),
                     ),
                     content=content,
+                    source_node=tmpl.resolution_key(),
                 )
             )
         return files

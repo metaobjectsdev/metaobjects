@@ -1,5 +1,6 @@
 package com.metaobjects.generator.util;
 
+import com.metaobjects.MetaData;
 import com.metaobjects.generator.GeneratorException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -143,6 +144,12 @@ public final class GeneratedFileWriter {
         private String current = "(unattributed generator)";
         private String currentHandEdits = HAND_EDITS_KEEP;
         private HashManifest.Owner currentOwner;
+        // What the generator is called in the manifest's provenance, and what each recorded path was
+        // rendered from. The map starts as what the manifest already says, so an unchanged run is clean.
+        private String currentGeneratedBy = current;
+        private Map<String, HashManifest.Provenance> provenance;
+        // The node the write in progress was rendered from; null for a whole-model file.
+        private String currentSourceNode;
 
         // Manifest configuration — unset (null genStateDir/projectRoot) means "no manifest
         // for this run", which keeps every write on the legacy marker-only rule. Set once,
@@ -194,9 +201,20 @@ public final class GeneratedFileWriter {
          * Called once per generator by the runner, before that generator executes.
          */
         public Run attributeTo(String generatorName, String handEdits, HashManifest.Owner owner) {
+            return attributeTo(generatorName, handEdits, owner, generatorName);
+        }
+
+        /**
+         * {@link #attributeTo(String, String, HashManifest.Owner)} that also names the generator as
+         * the manifest's {@code generatedBy} provenance field says it (its stable registry name, e.g.
+         * {@code dto}); the other overloads use {@code generatorName}.
+         */
+        public Run attributeTo(String generatorName, String handEdits, HashManifest.Owner owner,
+                               String generatedBy) {
             this.current = generatorName;
             this.currentHandEdits = handEdits;
             this.currentOwner = owner;
+            this.currentGeneratedBy = generatedBy;
             return this;
         }
 
@@ -212,6 +230,7 @@ public final class GeneratedFileWriter {
             this.projectRoot = projectRoot;
             this.hashes = HashManifest.load(genStateDir);
             this.owners = HashManifest.loadOwners(genStateDir);
+            this.provenance = HashManifest.loadProvenance(genStateDir);
             // A run that finds the pre-1.3.0 single manifest always saves, so it is migrated.
             this.dirty = HashManifest.hasLegacy(genStateDir);
             return this;
@@ -234,7 +253,7 @@ public final class GeneratedFileWriter {
          *  calls it for whatever is still unwritten. */
         public void flush() {
             if (!dirty) return;
-            HashManifest.save(genStateDir, hashes, owners, placement);
+            HashManifest.save(genStateDir, hashes, owners, placement, provenance);
             dirty = false;
         }
 
@@ -242,6 +261,16 @@ public final class GeneratedFileWriter {
             if (!hash.equals(hashes.put(key, hash))) dirty = true;
             HashManifest.Owner previous = currentOwner == null ? owners.remove(key) : owners.put(key, currentOwner);
             if (!Objects.equals(previous, currentOwner)) dirty = true;
+            // Provenance: the generator, and the node when this file was rendered from one. A file
+            // with no node, written by a generator the manifest names nothing for, stays plain.
+            HashManifest.Provenance now = new HashManifest.Provenance(currentGeneratedBy, currentSourceNode);
+            HashManifest.Provenance before = provenance.get(key);
+            if (currentSourceNode != null) {
+                if (!now.equals(provenance.put(key, now))) dirty = true;
+            } else if (before != null && before.sourceNode() != null) {
+                provenance.put(key, now);   // returns the entry to the plain form
+                dirty = true;
+            }
         }
 
         /** The files written, left in place, or adopted this run — the orphan sweep's
@@ -414,6 +443,48 @@ public final class GeneratedFileWriter {
      */
     public static Outcome writeUnmarked(Path outFile, String content) throws IOException {
         return write(outFile, content, true);
+    }
+
+    /**
+     * {@link #write(Path, String)} for a file rendered from one metadata node: the manifest entry
+     * also names that node's resolution key ({@code pkg::Name}) as {@code sourceNode}, and the
+     * generator as {@code generatedBy}. A file rendered from the whole model (a barrel, a names
+     * index) uses the overload without a node and carries no {@code sourceNode}.
+     */
+    public static Outcome write(Path outFile, String content, MetaData sourceNode) throws IOException {
+        return writeFrom(sourceNode == null ? null : resolutionKey(sourceNode), outFile, content, false);
+    }
+
+    /** {@link #write(Path, String, MetaData)} for a caller that holds the node's resolution key, not the node. */
+    public static Outcome write(Path outFile, String content, String sourceNodeKey) throws IOException {
+        return writeFrom(sourceNodeKey, outFile, content, false);
+    }
+
+    /** {@link #writeUnmarked(Path, String)} for a file rendered from one metadata node. */
+    public static Outcome writeUnmarked(Path outFile, String content, MetaData sourceNode) throws IOException {
+        return writeFrom(sourceNode == null ? null : resolutionKey(sourceNode), outFile, content, true);
+    }
+
+    /** {@link #writeUnmarked(Path, String, MetaData)} for a caller that holds the node's resolution key, not the node. */
+    public static Outcome writeUnmarked(Path outFile, String content, String sourceNodeKey) throws IOException {
+        return writeFrom(sourceNodeKey, outFile, content, true);
+    }
+
+    private static Outcome writeFrom(String sourceNodeKey, Path outFile, String content, boolean unmarked)
+            throws IOException {
+        Run run = ACTIVE_RUN.get();
+        if (run == null || sourceNodeKey == null) return write(outFile, content, unmarked);
+        run.currentSourceNode = sourceNodeKey;
+        try {
+            return write(outFile, content, unmarked);
+        } finally {
+            run.currentSourceNode = null;
+        }
+    }
+
+    /** The node's resolution key as every port writes it: {@code pkg::Name}, or the bare name with no package. */
+    public static String resolutionKey(MetaData node) {
+        return node.getName();
     }
 
     /** {@link #writeUnmarked(Path, String)} for UTF-8 bytes already encoded. */

@@ -154,7 +154,7 @@ public class ExtractorCodeGenerator extends GeneratorBase {
         // Guarded like every other generator on this port: writeHeader emits the GENERATED
         // marker, so our own output is still overwritten freely while a hand-written extractor
         // at this path is refused.
-        GeneratedFileWriter.write(src.toPath(), w.toString());
+        GeneratedFileWriter.write(src.toPath(), w.toString(), resolutionKey);
     }
 
     /** Write the package declaration and the class JavaDoc. */
