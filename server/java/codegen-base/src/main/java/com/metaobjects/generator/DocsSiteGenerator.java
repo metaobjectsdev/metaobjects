@@ -69,8 +69,9 @@ public class DocsSiteGenerator extends FileEmittingGenerator {
 
     /**
      * The owned theme, the prompts directory and the verify payload are read beside the model
-     * (ADR-0064): editing one regenerates. The hash manifest is not an input: the files the site
-     * lists are the ones this run generates, which follow from the model and these inputs.
+     * (ADR-0064): editing one regenerates. The hash manifest is not an input here: the files the
+     * site lists are this run's and the manifest's, and the whole-run skip already re-runs when
+     * the manifest gains, loses or changes a file.
      */
     @Override
     public List<String> extraInputs() {

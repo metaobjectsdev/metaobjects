@@ -620,8 +620,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     /**
-     * Whether the stored fingerprint matches the one just computed and the files the last run
-     * wrote are all still there. With {@code checkHashes}, each file the manifest records must
+     * Whether the stored fingerprint matches the one just computed and the manifest records
+     * exactly the files the last run left, each still on disk as it left it. With {@code checkHashes}, each file the manifest records must
      * also still hash to its record (what a local {@code verify} needs).
      */
     protected boolean fingerprintMatches(Path genStateDir, boolean checkHashes) {
@@ -633,10 +633,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             all.addAll(extraInputsOf(stored.get().extras()));
             if ( !GenFingerprint.fold(all).equals(stored.get().key()) ) return false;
             Path root = project.getBasedir().toPath();
+            Map<String, String> manifest = HashManifest.load(genStateDir);
+            if ( !manifest.keySet().equals(stored.get().outputs().keySet()) ) return false;
             // Amendment A: every recorded file must still hash to what the last run left on
             // disk. A hand edit therefore makes gen render, and a hand edit that gen merged and
             // kept does not. Verify also wants each file to match the manifest record.
-            for ( Map.Entry<String, String> e : HashManifest.load(genStateDir).entrySet() ) {
+            for ( Map.Entry<String, String> e : manifest.entrySet() ) {
                 Path file = root.resolve(e.getKey());
                 if ( !Files.isRegularFile(file) ) return false;
                 String onDisk = HashManifest.contentHash(Files.readString(file, StandardCharsets.UTF_8));
