@@ -237,6 +237,13 @@ public class GeneratedProvenanceTest {
         mojo.execute();
 
         // The oracle is the hash manifest the same run saved: the Order files it records.
+        assertSiteListsOrderFilesTheManifestRecords();
+
+        // A full verify renders the site again, in memory, and finds it as committed.
+        verifyInFull(mojo.project, gens);
+    }
+
+    private void assertSiteListsOrderFilesTheManifestRecords() throws Exception {
         JsonObject expected = new JsonObject();
         for (String key : JsonParser.parseString(Files.readString(
                 module.resolve(".metaobjects/.gen-state/.hashes/acme.shop.json"))).getAsJsonObject().keySet()) {
@@ -256,10 +263,11 @@ public class GeneratedProvenanceTest {
             listed.getAsJsonArray(by).forEach(p -> got.add(p.getAsString()));
             assertEquals(by, want, got);
         }
+    }
 
-        // A full verify renders the site again, in memory, and finds it as committed.
+    private void verifyInFull(MavenProject project, List<GeneratorParam> gens) throws Exception {
         MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
-        verify.project = mojo.project;
+        verify.project = project;
         verify.setLoader(LoaderParam.builder("per-package")
                 .withClassname("com.metaobjects.loader.MetaDataLoader")
                 .withSourceDir(module.resolve("metaobjects").toString())
@@ -268,5 +276,21 @@ public class GeneratedProvenanceTest {
         verify.setGlobals(java.util.Collections.emptyMap());
         verify.setFull(true);
         verify.execute();
+    }
+
+    @Test
+    public void aDocsSiteExecutionOfItsOwnListsTheFilesAnotherExecutionGenerated() throws Exception {
+        generate().execute();
+
+        // A second execution of the module, sharing its manifest, runs docs-site alone.
+        MetaDataGeneratorMojo docs = generate();
+        List<GeneratorParam> gens = new ArrayList<>(List.of(
+                GeneratorParam.builder(com.metaobjects.generator.DocsSiteGenerator.class.getName())
+                        .withArg("outputDir", module.resolve("docs").toString()).withArg("title", "Shop").build()));
+        docs.setGenerators(gens);
+        docs.execute();
+
+        assertSiteListsOrderFilesTheManifestRecords();
+        verifyInFull(docs.project, gens);
     }
 }

@@ -20,6 +20,7 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.generator.util.HashManifest;
+import com.metaobjects.generator.util.OrphanSweep;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
 import org.apache.maven.execution.MavenSession;
@@ -840,6 +841,37 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         return new GenFingerprint.Input("config", name, GenFingerprint.sha256(value));
     }
 
+
+    /**
+     * The committed files a run of this execution lists beside its own: every manifest entry its
+     * orphan sweep leaves alone ({@link OrphanSweep#isCandidate}), such as another execution's, or
+     * every entry when {@code narrowed}, since a narrowed run sweeps nothing. The generate and
+     * verify goals both read it, so they list the same files.
+     */
+    protected Map<String, HashManifest.Provenance> committedFilesBeside(Path genStateDir, Path projectRoot,
+                                                                        boolean narrowed) {
+        Map<String, HashManifest.Provenance> provenance = HashManifest.loadProvenance(genStateDir);
+        if (narrowed) return provenance;
+        Map<String, HashManifest.Owner> owners = HashManifest.loadOwners(genStateDir);
+        Set<HashManifest.Owner> runOwners = new HashSet<>();
+        List<Path> runDirs = new ArrayList<>();
+        for (GeneratorParam g : getGenerators() != null ? getGenerators() : List.<GeneratorParam>of()) {
+            HashManifest.Owner owner = ownerOf(g);
+            if (owner != null) runOwners.add(owner);
+            String dir = mergeAndOverwriteArgs(g).get(GeneratorBase.ARG_OUTPUTDIR);
+            if (dir != null) runDirs.add(Path.of(dir).toAbsolutePath().normalize());
+        }
+        Path root = projectRoot.toAbsolutePath().normalize();
+        Map<String, HashManifest.Provenance> out = new LinkedHashMap<>();
+        for (Map.Entry<String, HashManifest.Provenance> e : provenance.entrySet()) {
+            Path file = root.resolve(e.getKey()).normalize();
+            boolean inRunDir = runDirs.stream().anyMatch(file::startsWith);
+            if (!OrphanSweep.isCandidate(owners.get(e.getKey()), inRunDir, runOwners, this::configuredOwners)) {
+                out.put(e.getKey(), e.getValue());
+            }
+        }
+        return out;
+    }
 
     /** The order a run executes {@code generators} in, as indices: declaration order, with every
      *  generator that reads the run's output ({@link Generator#readsRunOutput}) after every other. */

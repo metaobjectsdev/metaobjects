@@ -155,7 +155,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             if (genStateDir != null) {
                 run.configureManifest(genStateDir, projectRoot);
                 run.placeBy(placementOf(loader));
-                if (selected != null) run.carryCommittedFiles();
+                run.carryCommittedFiles(committedFilesBeside(genStateDir, projectRoot, selected != null));
             }
 
             // Every output dir THIS EXECUTION's generators write to, with the handEdits

@@ -28,8 +28,9 @@ import java.util.Set;
  * write the same bytes.
  *
  * <p>It builds the docs view from the model this run loaded ({@link DocsView#build}), lists the
- * files this run generated for each node ({@code generatedBy} and {@code sourceNode}, from the open
- * {@link GeneratedFileWriter.Run}), and writes the app, its data script, its stamp and
+ * files generated for each node ({@code generatedBy} and {@code sourceNode}, from the open
+ * {@link GeneratedFileWriter.Run}: this run's, and the committed ones the runner carried in for the
+ * module's other executions), and writes the app, its data script, its stamp and
  * {@code explorer.json} through {@link ExplorerSite}. The runner runs it after every other
  * generator ({@link #readsRunOutput}), so a write run and {@code metaobjects:verify} list the same
  * files. With no run open (a test or an embedder driving it alone) it lists what the hash manifest

@@ -189,17 +189,18 @@ public final class GeneratedFileWriter {
 
         /**
          * The files this run has generated so far, {@code path → provenance}, keyed as the manifest
-         * keys them; {@code null} when the run has no project root to key them by. A narrowed run
-         * also lists what the committed manifest records ({@link #carryCommittedFiles}).
+         * keys them, after the committed files the runner carried in ({@link #carryCommittedFiles});
+         * {@code null} when the run has no project root to key them by.
          */
         public Map<String, HashManifest.Provenance> generatedFiles() {
             return projectRoot == null ? null : Collections.unmodifiableMap(generated);
         }
 
-        /** List the committed manifest's files beside this run's, for a run that renders only some
-         *  objects. Called by the runner after {@link #configureManifest}. */
-        public Run carryCommittedFiles() {
-            if (provenance != null) generated.putAll(provenance);
+        /** List {@code committed} (manifest files another execution, or the objects a narrowed run
+         *  does not render, account for) beside this run's. Called by the runner before any
+         *  generator runs; a file this run records replaces its committed entry. */
+        public Run carryCommittedFiles(Map<String, HashManifest.Provenance> committed) {
+            generated.putAll(committed);
             return this;
         }
 

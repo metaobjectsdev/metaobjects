@@ -71,7 +71,7 @@ same model and inputs: every port that builds the docs view is held to
 | Port | Generator | The app | Inputs it reads |
 |---|---|---|---|
 | TypeScript | `docsSiteFile()` (`meta gen`) | `output: "app"` (default) or `"static"`; `site: "classic"` for the earlier site | The model, the requirement ledger, the files and routes this run wrote and mounts |
-| Java | `com.metaobjects.generator.DocsSiteGenerator` (`mvn metaobjects:generate`), no Node | The app only | The model, the files the same run generated per node, and a `verify --format json` payload when you name one (`verifyFile`) |
+| Java | `com.metaobjects.generator.DocsSiteGenerator` (`mvn metaobjects:generate`), no Node | The app only | The model, the files generated per node (this execution's, and what the committed hash manifest records for the module's other executions), and a `verify --format json` payload when you name one (`verifyFile`) |
 | Kotlin | the same JVM `DocsSiteGenerator`, through `codegen-kotlin`'s registry | The app only | As Java; the Kotlin generators do not record provenance in the manifest yet, so their files are not listed |
 | C#, Python, Rust | not yet | | |
 
@@ -90,7 +90,8 @@ It writes `docs/generated/site/`. The JVM build has no requirement gate of its o
 `verifyFile` the requirement tree shows each claim but no verdict. The generator is not told the
 routes the Spring controllers mount, so no node lists its REST routes unless you name them in
 `routesFile` (`[{ node, method, path }]`, `node` a resolution key). The generated-file lists are the
-files the same run generated: the run builds the site after every other generator, so
+files this execution generated, beside what the committed hash manifest records for the module's
+other `<execution>`s: the execution builds the site after every other generator it runs, so
 `metaobjects:verify` renders the same lists the write run wrote. The other args are in
 [the Java port's generator table](../ports/java.md#generators).
 

@@ -700,6 +700,8 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 Map<Path, Path> realDirByRendered = new LinkedHashMap<>();
                 for (GenTarget t : targets) realDirByRendered.put(t.tempDir, t.realDir);
                 capture.keyCapturesAs(projectRoot, realDirByRendered);
+                capture.carryCommittedFiles(committedFilesBeside(
+                        projectRoot.resolve(".metaobjects").resolve(".gen-state"), projectRoot, false));
             }
             for (int i : runOrder(generatorImpls)) {
                 Generator gen = generatorImpls.get(i);
