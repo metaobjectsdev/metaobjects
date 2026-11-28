@@ -119,8 +119,8 @@ manifest reader takes `hash` from either form.
 The provenance field is named `generatedBy`, not `generator`. In a Java or Kotlin module's
 manifest, `generator` means that generator owns the file (ADR-0060), and the orphan sweep acts
 on that ownership, so a JVM entry carries both: `{ "hash", "generator", "outputDir",
-"generatedBy", "sourceNode" }`. Every port writes the same entry for the same records; the shared
-vector `provenance` in
+"generatedBy", "sourceNode" }`. The four ports that write provenance write the same entry for the
+same records; the shared vector `provenance` in
 [`fixtures/codegen-skip-conformance/manifests.json`](../../fixtures/codegen-skip-conformance/manifests.json)
 holds TypeScript, C#, Java and Python to it. Kotlin and Rust write no provenance yet.
 
