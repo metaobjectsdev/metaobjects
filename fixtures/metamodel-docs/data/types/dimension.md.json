@@ -1,0 +1,84 @@
+{
+  "family": "dimension",
+  "sections": [
+    {
+      "typeSubType": "dimension.attribute",
+      "description": "A named group-by attribute of the entity that declares it (FR-044). Groups report rows by a column value as-is. @of names Entity.field: the owning entity, or the @via terminal. @via may follow only to-one hops, so grouping by a related row's column can never multiply the measured rows.",
+      "hasOwner": true,
+      "owner": "metaobjects-reporting",
+      "hasImplementedIn": false,
+      "hasRules": false,
+      "hasWhenToUse": true,
+      "whenToUse": "A column a dashboard groups by: product, status, region. Declare it once on the fact entity and reference it by name from reports.",
+      "hasExample": false,
+      "hasAttrs": true,
+      "attrs": [
+        {
+          "name": "of",
+          "type": "string",
+          "required": "yes",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-reporting",
+          "description": "Dotted Entity.field reference naming the grouped column (e.g. 'Purchase.programId', or 'Program.title' with @via). Entity.field.member names a member of a value object stored with @storage: flattened (e.g. 'Payment.amount.currency'), which has a column of its own."
+        },
+        {
+          "name": "via",
+          "type": "string",
+          "required": "no",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-reporting",
+          "description": "Optional dotted to-one relationship path from the owning entity to the entity @of names (e.g. 'Purchase.program'). Every hop must be @cardinality: one or an identity.reference."
+        }
+      ],
+      "hasChildren": false,
+      "children": [],
+      "hasParents": false
+    },
+    {
+      "typeSubType": "dimension.time",
+      "description": "A named time dimension (FR-044): groups report rows by a date or timestamp column truncated to a grain. @of names a field.date or field.timestamp. Weeks start on Monday (ISO-8601) in every lowering. A report names it as 'dimension:grain' and the derived report field is <dimension><Grain> (e.g. purchasedAtDay).",
+      "hasOwner": true,
+      "owner": "metaobjects-reporting",
+      "hasImplementedIn": false,
+      "hasRules": false,
+      "hasWhenToUse": true,
+      "whenToUse": "Per-day, per-week or per-month series on a dashboard.",
+      "hasExample": false,
+      "hasAttrs": true,
+      "attrs": [
+        {
+          "name": "grains",
+          "type": "string[]",
+          "required": "yes",
+          "default": "",
+          "allowed": "`hour`, `day`, `week`, `month`, `quarter`, `year`",
+          "provider": "metaobjects-reporting",
+          "description": "The grains this dimension supports. Weeks start Monday (ISO-8601). 'hour' is refused on a field.date."
+        },
+        {
+          "name": "of",
+          "type": "string",
+          "required": "yes",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-reporting",
+          "description": "Dotted Entity.field reference naming the date or timestamp column, or Entity.field.member for a member of a flattened value object."
+        },
+        {
+          "name": "via",
+          "type": "string",
+          "required": "no",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-reporting",
+          "description": "Optional dotted to-one relationship path, as on dimension.attribute."
+        }
+      ],
+      "hasChildren": false,
+      "children": [],
+      "hasParents": false
+    }
+  ]
+}

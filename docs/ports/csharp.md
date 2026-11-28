@@ -360,6 +360,11 @@ a project whose `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen` tha
 prints a warning naming the line to change. See
 [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).
 
+**The metamodel reference.** The `metamodel-docs` generator writes the metamodel vocabulary
+reference (`metamodel/INDEX.md`, `providers.md`, `types/<family>.md`) from the shared
+`templates/metamodel/` Mustache set; a `metamodel/<page>.mustache` under its `TemplateRoot`
+overrides a shipped page.
+
 **Generators write through a code writer.** `MetaObjects.Codegen.Writer.CsWriter` is where a
 generator's layout lives (ADR-0063): it owns the indent, the braces, the `using` lines and the
 blank lines, so a generator states what the file says and not how many spaces it takes. Every

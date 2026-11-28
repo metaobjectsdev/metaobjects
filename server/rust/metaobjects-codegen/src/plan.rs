@@ -2099,3 +2099,7 @@ fn strongly_connected(adjacency: &[Vec<usize>]) -> Vec<usize> {
     }
     s.component
 }
+
+// The shipped Mustache templates of the `metamodel-docs` generator, reached through the
+// engine surface so an owned copy of that generator reads them without a path into this crate.
+pub use crate::metamodel_templates::{shipped_provider_descriptions, shipped_template};

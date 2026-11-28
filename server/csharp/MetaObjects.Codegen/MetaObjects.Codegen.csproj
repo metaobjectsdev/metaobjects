@@ -54,6 +54,7 @@
     <EmbeddedResource Include="Generators/SharedModelGenerator.cs" />
     <EmbeddedResource Include="Generators/ReportExportGenerator.cs" />
     <EmbeddedResource Include="Generators/ApiDocsGenerator.cs" />
+    <EmbeddedResource Include="Generators/MetamodelDocsGenerator.cs" />
     <!-- Emitters handed over with the generators above (their `Companions`). -->
     <EmbeddedResource Include="Generators/ExtractDelegateEmitter.cs" />
     <EmbeddedResource Include="Generators/Fr010FieldMapping.cs" />
@@ -67,6 +68,10 @@
     <EmbeddedResource Include="ApiDocs/CSharpApiModelBuilder.cs" />
     <EmbeddedResource Include="ApiDocs/CSharpApiDocsRenderer.cs" />
     <EmbeddedResource Include="ApiDocs/DocsPaths.cs" />
+  </ItemGroup>
+  <!-- The shared metamodel-docs templates (synced from templates/metamodel/ by scripts/sync-doc-templates.sh). -->
+  <ItemGroup>
+    <EmbeddedResource Include="Templates/metamodel/*" LogicalName="MetaObjects.Codegen.Templates.metamodel.%(Filename)%(Extension)" />
   </ItemGroup>
   <!--
     The HELPER RUNTIME (HelperRuntime.cs): the MetaObjects.AspNetCore files generated routes import.

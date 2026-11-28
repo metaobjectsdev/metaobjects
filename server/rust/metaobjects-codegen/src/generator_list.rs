@@ -11,10 +11,11 @@
 //! An entry is a generator's name, or `{"name": "...", "options": {...}}` to construct it with
 //! options: they reach the generator through [`crate::Generator::configure`], and a generator
 //! refuses an option it does not take, so a misspelt one fails the run instead of being
-//! ignored. The shipped generators take none yet. The list carries no layer or set settings,
+//! ignored. Of the shipped generators only `metamodel-docs` takes one (`subDir`). The list carries no layer or set settings,
 //! because a layer is only a generator. A project with no such file runs every generator its host
 //! offers but the opt-in ones (the `service-routes` transport, which brings a web framework into
-//! the build), which is what a project did before the file existed. A list may leave a generator
+//! the build, and `metamodel-docs`, which writes reference pages no project asked for), which is
+//! what a project did before the file existed. A list may leave a generator
 //! out; generated files of a generator that left the list are swept like those of any
 //! generator that stops emitting them (an edited one is refused by name).
 //!
@@ -239,7 +240,11 @@ mod tests {
         let all = names(&parse(&scaffold(true)).unwrap());
         assert_eq!(all, s(&shipped_names()));
         assert!(check(&all, &shipped_names()).is_ok());
-        assert!(!runs_unlisted("service-routes") && runs_unlisted("entity"));
+        assert!(
+            !runs_unlisted("service-routes")
+                && !runs_unlisted("metamodel-docs")
+                && runs_unlisted("entity")
+        );
     }
 
     #[test]
@@ -301,7 +306,7 @@ mod tests {
         let e = check(&s(&["entity", "nope"]), &available).unwrap_err();
         assert!(
             e.contains("\"nope\"")
-                && e.contains("available: entity, rules-names, contract-types, repository, service, service-routes, client, commands, render-helper, output-parser, output-prompt"),
+                && e.contains("available: entity, rules-names, contract-types, repository, service, service-routes, client, commands, render-helper, output-parser, output-prompt, metamodel-docs"),
             "{e}"
         );
         let e = check(&s(&["client"]), &available).unwrap_err();

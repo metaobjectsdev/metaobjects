@@ -12,6 +12,7 @@ import com.metaobjects.generator.apidocs.JavaApiModel;
 import com.metaobjects.generator.apidocs.JavaApiModelBuilder;
 import com.metaobjects.generator.apidocs.JavaFieldShapes;
 import com.metaobjects.generator.apidocs.UnitExample;
+import com.metaobjects.generator.MetamodelDocsGenerator;
 import com.metaobjects.generator.direct.metadata.ai.MetaDataAIDocumentationGenerator;
 import com.metaobjects.generator.direct.metadata.ai.MetaDataAIDocumentationWriter;
 import com.metaobjects.generator.direct.metadata.file.json.MetaDataFileJsonSchemaGenerator;
@@ -491,6 +492,11 @@ public final class GeneratorRegistry {
                 "Per-entity/template SDK API reference (generated-code API; human + agent forms).",
                 Tier.NATIVE, Layer.DOCS, ejectPath(JavaApiDocsGenerator.class), List.of(), null,
                 API_DOCS_EMIT, API_DOCS_TEMPLATES);
+        register(m, "metamodel-docs", MetamodelDocsGenerator.class.getName(),
+                "Reference of the built-in metamodel: every type, subtype and attribute the build registers, "
+                    + "by provider, rendered from the shared templates/metamodel/ Mustache set "
+                    + "(INDEX.md, providers.md, one types/<family>.md per type family). Reads no model objects.",
+                Tier.NEUTRAL, Layer.DOCS, ejectPath(MetamodelDocsGenerator.class));
         register(m, "plantuml", PLANTUML_GENERATOR,
                 "PlantUML class diagram of the object model.", Tier.NATIVE, Layer.DOCS,
                 EJECT_RESOURCE_ROOT + "PlantUMLGenerator.java", List.of(), null, List.of(PLANTUML_WRITER));

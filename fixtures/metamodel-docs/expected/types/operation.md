@@ -1,6 +1,6 @@
 <!-- @generated — DO NOT EDIT.
      Metamodel reference for the `operation` type family — each subtype's composed attributes, allowed children, and cardinality.
-     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
+     Regenerate with your port's gen command (the metamodel-docs generator) -->
 
 # Metamodel — `operation` types
 

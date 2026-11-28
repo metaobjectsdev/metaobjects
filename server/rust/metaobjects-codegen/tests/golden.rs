@@ -10,9 +10,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use common::{Scratch, shop_files};
+use metaobjects_codegen::EntityGenerator;
 use metaobjects_codegen::generator::{GenContext, Generator};
 use metaobjects_codegen::project::load_project;
-use metaobjects_codegen::{EntityGenerator, shipped_generators};
 
 fn golden_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/golden/shop")
@@ -28,7 +28,7 @@ fn generate(files: &[(&str, &str)]) -> BTreeMap<String, String> {
         collection: &loaded.collection,
         reference_nodes: &loaded.reference_nodes,
     };
-    shipped_generators()
+    common::crate_generators()
         .iter()
         .flat_map(|g| {
             g.generate(&ctx)

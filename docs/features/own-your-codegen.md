@@ -292,7 +292,7 @@ it yourself.
 | `api-docs` | which units get a page, where a page lands, whether the index and the agent form (`AGENT-API.md`) are written | the model of the generated API (`buildApiModelForRun`, which also reads the run: layout, `apiPrefix`, whether Hono routes are wired) and its renderers (`renderEntityApiPage`, `renderApiIndex`, `renderAgentApi`) |
 | `requirements` | which files the ledger becomes and where they land (`requirements.md`, `requirements.toon`); a project with no `requirement.*` node gets none | the two page builders (`requirements-markdown`, `requirements-toon`) and the projection they read (`requirements-view`) |
 | `agent-docs` | which of the three pages are written and where | the three page builders (`agent-schema-page`, which also walks the model for the column-to-field map, lineage, relationships and enums; `agent-ui-page`; `agent-requirements-page`) |
-| `metamodel-docs` | where the pages land | nothing: the pages are rendered by `@metaobjectsdev/metadata`, which is core |
+| `metamodel-docs` | which pages are written and where they land | the page render call (`renderDocPage`); each page's data comes from `coreMetamodelDocsPages` in `@metaobjectsdev/metadata`, which is core, and its layout from the shared `metamodel/*.mustache` templates |
 
 The page templates themselves (the Mustache files the docs generators render) stay in the
 package. To change the wording of a model page you need no eject: put a file of the same
