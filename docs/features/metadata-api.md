@@ -189,6 +189,15 @@ This is a cross-port contract, like `/_meta`:
 
 The view is built on the first read and kept: the model is immutable after load.
 
+The route serves the model the application loaded, and it never re-reads the metadata files.
+The runtime does not watch them and has no reload hook. An edit to a model file on disk does
+not appear in the route until the application loads it again: regenerate, then restart the
+application, or run it under a watcher that restarts it. Reloading is the host's job. An
+explorer open on the route picks up the restarted application's model by itself, within about
+a second. To follow model edits on disk without a running application, open the generated
+site's own files instead: its live view follows each `meta gen`
+([explorer-site.md](explorer-site.md#the-live-view)).
+
 Exposure is the same as `/_meta`'s: opt-in, nothing mounts it implicitly, and the
 host guards it with the middleware the rest of the API uses. It publishes the
 shape of the model and the requirements that claim it, never row data.

@@ -98,6 +98,13 @@ open page follows it. While the application is down the page stays as it was and
 the corner says the route cannot be read. The title is the generated site's, else the
 application's host.
 
+The route serves the model the application loaded, and it never re-reads the metadata files:
+an edit on disk does not reach it while the application runs. To see a model edit, regenerate
+and restart the application (or run it under a watcher that restarts it). Reloading the
+application is the host's job; the open page picks up the restarted application's model by
+itself. To follow edits on disk with no application running, open the site without `source`
+and use [the live view](#the-live-view).
+
 A running application's view is built from the model alone, so it has no gate verdicts and no
 generated-file lists, and prompt text comes from the generated site's `explorer-model.js` when
 it is there. Opened from `file://`, the app is a page of origin `null`, so the route has to
