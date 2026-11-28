@@ -22,7 +22,10 @@ public sealed class DependencyCodegenTests : IDisposable
     // shared-model publishes the files its options name and writes no code; a bare fixture names none.
     // metamodel-docs documents the built-in vocabulary, not the model, so it reads no node at all
     // (its pages name vocabulary words such as "address" that the imported fixture also uses).
-    private static readonly string[] Excluded = ["render-helper", "template", "shared-model", "metamodel-docs"];
+    // docs-site documents the WHOLE loaded model, imported packages included (the docs view marks
+    // each node's package; fixtures/explorer-conformance/ pins that), so naming an imported node is
+    // its contract, not a leak.
+    private static readonly string[] Excluded = ["render-helper", "template", "shared-model", "metamodel-docs", "docs-site"];
 
     public void Dispose() { try { Directory.Delete(_tmp, recursive: true); } catch { } }
 

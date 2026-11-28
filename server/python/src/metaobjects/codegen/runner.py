@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -13,11 +14,12 @@ from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_REPORT
 from metaobjects.meta.core.reporting.report_read_model import report_read_model
 from metaobjects.shared.base_types import TYPE_OBJECT
 from .collection_name_collision import assert_no_collection_name_collisions
-from .config import GenConfig
+from .config import GenConfig, PlanRecord
 from .constants import generated_package_init
 from .generator import GenContext, Generator
 from .import_path import OUTPUT_LAYOUT_PACKAGE
 from .name_claims import NameClaims, assert_importable_package_tree
+from .orphan_sweep import in_sweep_scope
 from .instance_artifacts import is_served_report
 from .overwrite_policy import (
     STATUS_OVERWROTE_EDIT,
@@ -26,6 +28,7 @@ from .overwrite_policy import (
     has_hash_manifest,
     manifest_batch,
     objects_of_root,
+    read_recorded_provenance,
     set_placement_objects,
 )
 
@@ -71,6 +74,46 @@ def _warn_collector(name: str, sink: list[str]) -> Callable[[str], None]:
         sink.append(f"[{name}] {msg}")
 
     return warn
+
+
+def _manifest_key(config: GenConfig, full: str) -> str:
+    """The key the hash manifest records ``full`` under (see ``_write_all``); a capture run's
+    file is keyed at the real output directory it stands in for."""
+    if config.capture_keys is not None:
+        full = os.path.join(config.capture_keys.out_dir, os.path.relpath(full, config.out_dir))
+    if config.project_root:
+        return os.path.relpath(os.path.realpath(full), config.project_root).replace(os.sep, "/")
+    return os.path.relpath(full, config.out_dir).replace(os.sep, "/")
+
+
+def _run_provenance(
+    config: GenConfig,
+    emitted: dict[str, tuple[str, str]],
+    sources: dict[str, str],
+) -> dict[str, tuple[str, str | None]]:
+    """What the generators that ran before this one emitted, in this run and in the earlier runs
+    of its plan, keyed as the manifest keys it, after the committed manifest's files the plan's
+    orphan sweep leaves alone. A recorded file inside the sweep is either emitted again (and so
+    listed) or deleted, so the list never names a file the run removes."""
+    plan = config.plan or PlanRecord()
+    committed = config.committed_gen_state_dir()
+    recorded = read_recorded_provenance(committed) if committed is not None else {}
+    project = Path(config.project_root).resolve() if config.project_root else None
+    carried: dict[str, tuple[str, str | None]] = {
+        path: prov for path, prov in recorded.items()
+        if project is None or not in_sweep_scope((project / path).resolve(), plan.swept)
+    }
+    carried.update(plan.files)
+    for full, (_c, by) in emitted.items():
+        carried[_manifest_key(config, full)] = (_stable_name(by), sources.get(full))
+    return carried
+
+
+def _stable_name(generator_name: str) -> str:
+    """What the manifest's ``generatedBy`` calls a generator: its stable registry name."""
+    from .generator_registry import stable_name_of  # the registry imports the generators
+
+    return stable_name_of(generator_name)
 
 
 def run_gen(
@@ -196,7 +239,11 @@ def run_gen(
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
     # full_path -> the resolution key of the node the file was rendered from, when it was.
     sources: dict[str, str] = {}
-    for gen in generators:
+    # A generator that reads the run's output runs after every other one, so it sees all of it
+    # (the stable sort keeps the declared order among the rest).
+    ordered = sorted(generators, key=lambda g: bool(getattr(g, "reads_run_output", False)))
+    for gen in ordered:
+        reads_output = bool(getattr(gen, "reads_run_output", False))
         ctx = GenContext(
             entities=safe,
             loaded_root=metadata,
@@ -207,6 +254,9 @@ def run_gen(
             in_ledger=in_ledger,
             claims=claims,
             selected=is_selected if narrowed else None,
+            run_provenance=(
+                _run_provenance(config, emitted, sources) if reads_output else None
+            ),
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)
@@ -218,6 +268,11 @@ def run_gen(
             emitted[full] = (f.content, gen.name)
             if f.source_node is not None:
                 sources[full] = f.source_node
+    if config.plan is not None:
+        config.plan.files.update(
+            (_manifest_key(config, full), (_stable_name(by), sources.get(full)))
+            for full, (_c, by) in emitted.items()
+        )
 
     if config.output_layout == OUTPUT_LAYOUT_PACKAGE:
         assert_importable_package_tree(
@@ -334,7 +389,7 @@ def _write_all(
         # Only with a real project root, as codegen-ts: the entry is keyed by the same key
         # the write used, and the session's save applies it to entries that hold a hash.
         if session is not None and not outside and config.project_root:
-            session.note_provenance(key, by, sources.get(full))
+            session.note_provenance(key, _stable_name(by), sources.get(full))
         if status == STATUS_OVERWROTE_EDIT:
             result.warnings.append(
                 f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"

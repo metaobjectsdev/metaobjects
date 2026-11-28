@@ -14,6 +14,7 @@ Runs through ``run_gen`` — the path ``metaobjects gen`` takes.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -88,7 +89,28 @@ def test_the_with_model_really_carries_the_vocabulary() -> None:
     assert entity_transitions(request) == []
 
 
-@pytest.mark.parametrize("entry", list_generators(), ids=lambda e: e.name)
+#: The explorer documents every node, so a declared API and each transition are more nodes in it:
+#: held to its own test below (only the model-derived files move), not to byte equality.
+DOCS_SITE = "docs-site"
+MODEL_FILES = {"site/explorer.json", "site/explorer-model.js", "site/explorer-stamp.js"}
+
+
+def _inert_generators() -> list[GeneratorEntry]:
+    return [e for e in list_generators() if e.name != DOCS_SITE]
+
+
+def test_docs_site_differs_only_in_the_model_derived_files(tmp_path: Path) -> None:
+    entry = next(e for e in list_generators() if e.name == DOCS_SITE)
+    without = _emit("without", [entry], tmp_path / "a")
+    with_ = _emit("with", [entry], tmp_path / "b")
+    assert THREW not in without, without.get(THREW)
+    assert set(without) == set(with_)
+    assert {k for k in without if without[k] != with_[k]} == MODEL_FILES
+    nodes = lambda files: len(json.loads(files["site/explorer.json"])["nodes"])  # noqa: E731
+    assert nodes(with_) > nodes(without)
+
+
+@pytest.mark.parametrize("entry", _inert_generators(), ids=lambda e: e.name)
 def test_generator_emits_the_same_files_with_and_without_rules_nodes(
     entry: GeneratorEntry, tmp_path: Path
 ) -> None:
@@ -101,7 +123,7 @@ def test_generator_emits_the_same_files_with_and_without_rules_nodes(
 
 def test_every_runnable_generator_in_one_run_emits_the_same_files(tmp_path: Path) -> None:
     runnable = [
-        e for i, e in enumerate(list_generators())
+        e for i, e in enumerate(_inert_generators())
         if THREW not in _emit("without", [e], tmp_path / f"probe-{i}")
     ]
     expected = _emit("without", runnable, tmp_path / "a")
@@ -133,7 +155,7 @@ def test_exactly_these_generators_cannot_run_from_a_bare_model(tmp_path: Path) -
     # Pinned so a generator that starts throwing cannot drop out of the comparison silently;
     # the list may only shrink.
     threw = sorted(
-        e.name for i, e in enumerate(list_generators())
+        e.name for i, e in enumerate(_inert_generators())
         if THREW in _emit("without", [e], tmp_path / f"probe-{i}")
     )
     assert threw == []

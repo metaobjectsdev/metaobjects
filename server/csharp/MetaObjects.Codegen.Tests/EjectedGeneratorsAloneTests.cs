@@ -94,6 +94,7 @@ public class EjectedGeneratorsAloneTests
     internal static readonly IReadOnlyDictionary<string, string> NotEjectable = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         ["template"] = "the Mustache primitive has no emit logic of its own to own (ADR-0034 Amendment 3, ruled again for 1.1.0)",
+        ["docs-site"] = "the site builder is engine: a project owns the explorer's theme and page templates under codegen/docs-site/, which the generator reads (ADR-0034 Amendment 9, restating Amendment 8, ruling 3)",
     };
 
     // The SDK generates these for every project that sets <ImplicitUsings>enable</ImplicitUsings>, which the

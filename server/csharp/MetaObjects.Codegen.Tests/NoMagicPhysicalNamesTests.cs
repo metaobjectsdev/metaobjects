@@ -396,10 +396,12 @@ public class NoMagicPhysicalNamesTests
     /// says what replaces it: the whole registry, so a NEW generator is covered the day it
     /// is registered instead of the day someone remembers this list.</para>
     /// <para><c>render-helper</c> needs a <c>--template-root</c> and <c>template</c> is a
-    /// primitive with no default walk; neither can emit here.</para>
+    /// primitive with no default walk; neither can emit here. <c>docs-site</c> writes the model
+    /// explorer's data, which shows each field's physical column as documentation: it is data the
+    /// page displays, not code that could reference a constant.</para>
     /// </remarks>
     private static readonly IReadOnlyList<string> GeneratorNames =
-        [.. GeneratorRegistry.Entries.Keys.Where(n => n is not ("render-helper" or "template" or "shared-model"))];
+        [.. GeneratorRegistry.Entries.Keys.Where(n => n is not ("render-helper" or "template" or "shared-model" or "docs-site"))];
 
     /// <summary>Run the generator suite over the fixture.</summary>
     private static IReadOnlyList<EmittedFile> Generate()

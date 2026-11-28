@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 
@@ -9,6 +10,27 @@ from .overwrite_policy import HashManifest
 
 #: What generated routers mount under when no ``apiPrefix`` is configured.
 DEFAULT_API_PREFIX = "/api"
+
+
+@dataclass(frozen=True)
+class CaptureKeys:
+    """How a run that writes nothing (``verify --codegen``) keys what it renders, so it renders
+    what ``gen`` writes: each file at the real ``out_dir`` it stands in for, and the files it
+    does not render carried from the committed manifest under ``gen_state_dir``, read only."""
+
+    out_dir: str
+    gen_state_dir: str | None
+
+
+@dataclass
+class PlanRecord:
+    """What the runs of one plan (``gen``'s targets, or ``verify --codegen``'s render of them)
+    have emitted so far, keyed as the manifest keys it, and the scope of the orphan sweep that
+    follows the plan (``orphan_sweep.sweep_scope``; empty when it sweeps nothing). A generator
+    reading the run's output lists these over the committed files the sweep leaves alone."""
+
+    files: dict[str, tuple[str, str | None]] = field(default_factory=dict)
+    swept: list[tuple[Path, list[Path]]] = field(default_factory=list)
 
 
 @dataclass
@@ -84,8 +106,16 @@ class GenConfig:
     # ``{path: content}`` instead. ``verify --codegen`` renders into it and compares the bytes
     # with disk in memory, so it creates no temp tree.
     sink: dict[str, str] | None = None
+    capture_keys: CaptureKeys | None = None
+    plan: PlanRecord | None = None
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
+
+    def committed_gen_state_dir(self) -> str | None:
+        """Where the committed manifest is read from: the run's gen-state dir, or a capture run's."""
+        if self.gen_state_dir is not None:
+            return self.gen_state_dir
+        return self.capture_keys.gen_state_dir if self.capture_keys is not None else None
 
     def __post_init__(self) -> None:
         """Refuse a value this port cannot honour, instead of accepting it and ignoring it.

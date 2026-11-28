@@ -40,8 +40,8 @@ def test_gen_list_prints_all_and_exits_zero(capsys, tmp_path: Path) -> None:
     # Every registered stable name appears in the listing.
     for name in GENERATOR_REGISTRY:
         assert name in out, f"--list omitted {name!r}"
-    # Exactly the 17 registered names (`metamodel-docs` joined in MO-130; `requirements` and `agent-docs` joined in G-PY-1; ADR-0056 removed `payload`; FR-023 added `shared-model`)
-    assert len(GENERATOR_REGISTRY) == 17
+    # Exactly the 18 registered names (`docs-site` joined in MO-130; `metamodel-docs` joined in MO-130; `requirements` and `agent-docs` joined in G-PY-1; ADR-0056 removed `payload`; FR-023 added `shared-model`)
+    assert len(GENERATOR_REGISTRY) == 18
     assert "payload" not in GENERATOR_REGISTRY
     # A template-tier generator says it needs the entity generator's models.
     assert "output-parser — " in out

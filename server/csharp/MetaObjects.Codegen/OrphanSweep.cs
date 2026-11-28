@@ -111,6 +111,24 @@ public static class OrphanSweep
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(dir)) + Path.DirectorySeparatorChar,
             StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Each directory a sweep over <paramref name="dirs"/> walks, as a full path, with its label
+    /// and the swept directories nested in it, whose files it leaves alone.</summary>
+    internal static List<(string Dir, string Label, List<string> Nested)> Scope(IReadOnlyList<(string Dir, string Label)> dirs)
+    {
+        var distinct = dirs.DistinctBy(d => Path.GetFullPath(d.Dir)).ToList();
+        var all = distinct.Select(d => Path.GetFullPath(d.Dir)).ToList();
+        return distinct.Select(d =>
+        {
+            var full = Path.GetFullPath(d.Dir);
+            return (full, d.Label, all.Where(o => o != full && IsUnder(o, full)).ToList());
+        }).ToList();
+    }
+
+    /// <summary>Whether a sweep over <paramref name="scope"/> removes <paramref name="path"/> when no
+    /// generator of the run emits it.</summary>
+    internal static bool InScope(string path, IReadOnlyList<(string Dir, string Label, List<string> Nested)> scope) =>
+        scope.Any(s => IsUnder(path, s.Dir) && !s.Nested.Any(n => IsUnder(path, n)));
+
     /// <summary>
     /// Delete the untouched files under <paramref name="dirs"/> that the manifest records and
     /// <paramref name="emitted"/> (absolute paths this run produced, refused ones included) does
@@ -144,12 +162,8 @@ public static class OrphanSweep
         var forget = new HashSet<string>(StringComparer.Ordinal);
         var root = Path.GetFullPath(projectRoot);
 
-        var distinct = dirs.DistinctBy(d => Path.GetFullPath(d.Dir)).ToList();
-        var all = distinct.Select(d => Path.GetFullPath(d.Dir)).ToList();
-        foreach (var (dir, label) in distinct)
+        foreach (var (full, label, nested) in Scope(dirs))
         {
-            var full = Path.GetFullPath(dir);
-            var nested = all.Where(o => o != full && IsUnder(o, full)).ToList();
             var prefix = KeyFor(root, full);
             if (prefix is null) continue; // nothing outside the project is ours to delete
             var overwrite = overwriteDirs?.Contains(full) == true;

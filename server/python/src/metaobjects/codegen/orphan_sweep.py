@@ -71,6 +71,21 @@ def _walk(out_dir: Path, nested: list[Path] | None = None) -> list[Path]:
     return files
 
 
+def sweep_scope(
+    out_dirs: list[str], exclude_nested: frozenset[str] = frozenset()
+) -> list[tuple[Path, list[Path]]]:
+    """Each directory a sweep over ``out_dirs`` walks, with the output directories nested in it
+    (swept ones and ``exclude_nested``), whose files it leaves alone."""
+    resolved = list(dict.fromkeys(Path(out).resolve() for out in out_dirs))
+    every_dir = set(resolved) | {Path(out).resolve() for out in exclude_nested}
+    return [(o, [n for n in every_dir if n != o and n.is_relative_to(o)]) for o in resolved]
+
+
+def in_sweep_scope(path: Path, scope: list[tuple[Path, list[Path]]]) -> bool:
+    """Whether a sweep over ``scope`` removes ``path`` when no generator of the run emits it."""
+    return any(path.is_relative_to(out) and not _under(path, nested) for out, nested in scope)
+
+
 def _remove_empty_parents(path: Path, out_dirs: list[Path]) -> None:
     """After deleting *path*, remove the subpackage directories it leaves empty (the package
     output layout puts files in ``acme/alpha/``), never an output directory itself."""
@@ -113,10 +128,9 @@ def sweep_orphans(
     emitted_real = {os.path.realpath(p) for p in emitted}
     forget: set[str] = set()
 
-    resolved = list(dict.fromkeys(Path(out).resolve() for out in out_dirs))
-    every_dir = set(resolved) | {Path(out).resolve() for out in exclude_nested}
-    for out_path in resolved:
-        nested = [o for o in every_dir if o != out_path and o.is_relative_to(out_path)]
+    scope = sweep_scope(out_dirs, exclude_nested)
+    resolved = [out for out, _nested in scope]
+    for out_path, nested in scope:
         # The out dir relative to the project: the prefix that turns an out-dir-relative
         # name into a manifest key. Both sides resolved, as `cli._out_prefix` does.
         prefix = os.path.relpath(out_path, root)

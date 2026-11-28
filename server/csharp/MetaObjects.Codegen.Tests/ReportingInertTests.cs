@@ -85,7 +85,7 @@ public class ReportingInertTests
     public static TheoryData<string> GeneratorNames()
     {
         var data = new TheoryData<string>();
-        foreach (var name in GeneratorRegistry.Entries.Keys.Where(n => n != SharedModelTestSupport.Name)) data.Add(name);
+        foreach (var name in GeneratorRegistry.Entries.Keys.Where(n => n != SharedModelTestSupport.Name && n != "docs-site")) data.Add(name);
         return data;
     }
 
@@ -325,8 +325,9 @@ public class ReportingInertTests
     [Fact]
     public void Every_runnable_generator_in_one_run_emits_the_same_files()
     {
+        // docs-site is held by Docs_site_changes_only_its_data_files_for_a_report below.
         var runnable = GeneratorRegistry.Entries
-            .Where(e => !Emit(Load("without"), [Build(e.Value)]).ContainsKey("<threw>"))
+            .Where(e => e.Key != "docs-site" && !Emit(Load("without"), [Build(e.Value)]).ContainsKey("<threw>"))
             .ToList();
         var generators = runnable.Select(e => Build(e.Value)).ToList();
         var expected = Emit(Load("without"), generators);
@@ -337,10 +338,29 @@ public class ReportingInertTests
         AssertSameExceptTheReportRow(expected, actual, runnable.Select(e => e.Key).ToList());
     }
 
+    /// <summary>
+    /// docs-site documents every node the model declares, a report included, by design; the report
+    /// reaches only its data files (the docs view, the model script and the stamp), never the app.
+    /// </summary>
+    [Fact]
+    public void Docs_site_changes_only_its_data_files_for_a_report()
+    {
+        var entry = GeneratorRegistry.Get("docs-site")!;
+        var expected = Emit(Load("without"), [Build(entry)]);
+        var actual = Emit(Load("with"), [Build(entry)]);
+        Assert.False(actual.ContainsKey("<threw>"), actual.GetValueOrDefault("<threw>"));
+        Assert.Equal(expected.Keys.ToList(), actual.Keys.ToList());
+        var changed = expected.Keys.Where(k => expected[k] != actual[k]).Select(k => k.Replace('\\', '/')).ToList();
+        Assert.Equal(["site/explorer-model.js", "site/explorer-stamp.js", "site/explorer.json"], changed);
+    }
+
     [Fact]
     public void A_report_reaches_no_tier_but_its_row_its_mapping_its_allowlist_and_its_routes()
     {
-        var files = Emit(Load("with"), GeneratorRegistry.Entries.Values.Where(e => e.Name != SharedModelTestSupport.Name).Select(Build).ToList());
+        // docs-site documents every node the model declares, a report included, by design: it is held
+        // to the docs view corpus (fixtures/explorer-conformance/) instead.
+        var files = Emit(Load("with"), GeneratorRegistry.Entries.Values
+            .Where(e => e.Name != SharedModelTestSupport.Name && e.Name != "docs-site").Select(Build).ToList());
         Assert.False(files.ContainsKey("<threw>"), files.GetValueOrDefault("<threw>"));
 
         // The view-backed report: its row, its allowlist and its routes file; nothing in the

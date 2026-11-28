@@ -30,6 +30,7 @@ from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.project_config import DEFAULT_REQUIREMENT_WITNESS_MODULE, ApiDocsConfig
 from metaobjects.codegen.generators.agent_docs_generator import agent_docs_generator
 from metaobjects.codegen.generators.api_docs_generator import api_docs_generator
+from metaobjects.codegen.generators.docs_site_generator import docs_site_generator
 from metaobjects.codegen.generators.entity_model import entity_model, model_import_closure
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
 from metaobjects.codegen.generators.filter_allowlist_generator import (
@@ -563,12 +564,55 @@ GENERATOR_REGISTRY: dict[str, GeneratorEntry] = {
         source=agent_docs_generator,
         runtime=(_DOCS_REQUIREMENTS, _DOCS_SCHEMA),
     ),
+    "docs-site": GeneratorEntry(
+        name="docs-site",
+        description=(
+            "The model explorer: one browser app over the project's docs view (the app, its data "
+            "script, its stamp and explorer.json under site/), written with no Node on the path. "
+            "A project that owns the theme (codegen/docs-site/) has it used in place of the packaged one."
+        ),
+        tier="neutral",
+        layer="docs",
+        factory=lambda ctx: docs_site_generator(**ctx.options),
+        # Not ejectable: the site builder is engine (ADR-0034 Amendment 9); what an adopter owns
+        # is the theme under codegen/docs-site/.
+        source=None,
+        options=(
+            GeneratorOption("subDir", "string", description="The directory under the target the site lands in (default site; empty writes at the target's root)."),
+            GeneratorOption("title", "string", description="The project's name as the header prints it (default: the project directory's name)."),
+            GeneratorOption("stamp", "string", description="Footer text (default none, so the site depends on the model alone)."),
+            GeneratorOption("prompts", "string", description="A directory, relative to the project, holding prompt .mustache sources outside the metadata directories and templates/."),
+            GeneratorOption("verifyFile", "string", description="A `verify --format json` payload, relative to the project, whose requirement rows the explorer shows."),
+            GeneratorOption("routesFile", "string", description="The routes the application mounts, [{ node, method, path }], relative to the project."),
+        ),
+    ),
 }
 
 
 def list_generators() -> list[GeneratorEntry]:
     """All registry entries, sorted by stable name."""
     return sorted(GENERATOR_REGISTRY.values(), key=lambda e: e.name)
+
+
+_STABLE_BY_NAME: dict[str, str] | None = None
+
+
+def stable_name_of(generator_name: str) -> str:
+    """The stable registry name of the generator whose ``name`` is ``generator_name``, as the
+    hash manifest's ``generatedBy`` provenance names it in every port (``filter-allowlist``,
+    not the ``filter-allowlist-generator`` its ``name`` answers). An ejected copy keeps the name
+    it was copied with, so it maps too; a name the registry does not know (a project's own
+    generator, a template entry) is returned as it is."""
+    global _STABLE_BY_NAME
+    if _STABLE_BY_NAME is None:
+        mapping: dict[str, str] = {}
+        for key, entry in GENERATOR_REGISTRY.items():
+            try:
+                mapping.setdefault(entry.factory(GeneratorBuildContext()).name, key)
+            except Exception:  # noqa: BLE001 - an entry that needs options has no default name to map
+                continue
+        _STABLE_BY_NAME = mapping
+    return _STABLE_BY_NAME.get(generator_name, generator_name)
 
 
 def get_generator(name: str) -> GeneratorEntry | None:

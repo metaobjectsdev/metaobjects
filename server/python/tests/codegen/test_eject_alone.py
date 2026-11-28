@@ -224,6 +224,9 @@ def test_every_generator_module_is_a_registry_entry_or_a_model_walk() -> None:
     registered = {e.source_module for e in GENERATOR_REGISTRY.values() if e.source_module}
     # The primitive: exempt, it has no emit logic of its own.
     registered |= {f"{package}.template_generator"}
+    # Exempt too: the site builder is engine (ADR-0034 Amendment 9), an adopter owns the theme
+    # under codegen/docs-site/ rather than a copy of the generator.
+    registered |= {f"{package}.docs_site_generator"}
     walks = {m for m in contract.EngineSurface().engine if m.startswith(f"{package}.")}
     on_disk = {f"{package}.{p.stem}" for p in (CODEGEN / "generators").glob("*.py")
                if p.stem != "__init__"}

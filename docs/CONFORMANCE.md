@@ -73,7 +73,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — | — |
 | [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) (ADR-0063 — the code writer generators write through) | 88 cases (31 core + 10 TypeScript + 9 Java + 12 Kotlin + 6 C# + 12 Python + 8 Rust) | ✓ (the first writer; core and TypeScript dialect) | ✓ (core and Java dialect; `JavaWriter` in `codegen-base`) | ✓ (core and Kotlin dialect; `KotlinWriter` in `codegen-kotlin`) | ✓ (core and C# dialect) | ✓ (core and Python dialect) | ✓ (core and Rust dialect) |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 22 cases (17 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — | — |
-| [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the docs view: a loaded project + the verify payload, manifest and routes in, one `explorer.json` out) | 3 cases (`shop`, `crm`, `model-alone`) | ✓ | ✓ (`DocsView`, and the `docs-site` generator end to end) | ✓ (the JVM builder, through `codegen-kotlin`'s `docs-site`) | — | — | — |
+| [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the docs view: a loaded project + the verify payload, manifest and routes in, one `explorer.json` out) | 3 cases (`shop`, `crm`, `model-alone`) | ✓ | ✓ (`DocsView`, and the `docs-site` generator end to end) | ✓ (the JVM builder, through `codegen-kotlin`'s `docs-site`) | ✓ (`MetaObjects.DocsView`, and the `docs-site` generator end to end) | ✓ (`metaobjects.docs_view`, and the `docs-site` generator end to end) | — |
 
 **Rust (ADR-0065)** joined the table with its service stack. Its ledgers (the metamodel
 corpus's `server/rust/metaobjects/tests/conformance-expected-failures.json`, empty; the YAML
@@ -915,6 +915,8 @@ its `expected.json` is the body the running application's `GET {apiPrefix}/_meta
 Java (`metadata`'s `DocsViewConformanceTest`, and `codegen-base`'s `ExplorerSiteTest` through the
 generator) and Kotlin (`KotlinDocsSiteConformanceTest`, through its registry's `docs-site`) build
 every case byte for byte; the JVM has one builder, which Kotlin calls rather than re-implements.
+C# (`MetaObjects.DocsView`, through `DocsSiteGenerator` and `MetaEndpoint.MetaDocs`) and Python
+(`metaobjects.docs_view`, through `docs-site` and `meta_docs`) build every case byte for byte too.
 
 **TypeScript runs it** in
 `server/typescript/packages/metadata/test/docs-view-conformance.test.ts` (the view) and

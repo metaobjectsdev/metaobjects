@@ -111,7 +111,7 @@ from metaobjects.requirement_check import (
     scan_requirements,
     summarise_requirements,
 )
-from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
+from metaobjects.codegen.config import DEFAULT_API_PREFIX, CaptureKeys, GenConfig, PlanRecord
 from metaobjects.codegen.overwrite_policy import (
     STATUS_SKIPPED,
     STATUS_UNCHANGED,
@@ -162,7 +162,7 @@ from metaobjects.codegen.generator_registry import (
     unsatisfied_requires,
 )
 from metaobjects.codegen.project_import import import_project_symbol
-from metaobjects.codegen.orphan_sweep import refused_orphan_message, sweep_orphans
+from metaobjects.codegen.orphan_sweep import refused_orphan_message, sweep_orphans, sweep_scope
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generators.render_helper_generator import (
@@ -1066,6 +1066,8 @@ def _run_suite(
     entity_scope: list[str] | None = None,
     manifest: HashManifest | None = None,
     sink: dict[str, str] | None = None,
+    capture_keys: CaptureKeys | None = None,
+    plan: PlanRecord | None = None,
 ) -> list[tuple[str, str]]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -1121,6 +1123,8 @@ def _run_suite(
         overwrite_hand_edits=overwrite_hand_edits,
         manifest=manifest,
         sink=sink,
+        capture_keys=capture_keys,
+        plan=plan,
     )
     # No default suite — see NO_GENERATORS_SELECTED. A caller that names none gets a
     # usage error and an empty out dir, never a shape this CLI picked.
@@ -1717,6 +1721,7 @@ def _run_gen_targets(
     emitted_out: set[str] | None = None,
     skip_info: skip.SkipRunInfo | None = None,
     sink: dict[str, str] | None = None,
+    capture_for: Callable[[str], CaptureKeys] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
 
@@ -1842,6 +1847,17 @@ def _run_gen_targets(
         skip_info.extra_entries = skip.extras_entries(
             Path(project_root or "."), skip_info.extras)
 
+    # The scope of the orphan sweep `gen` runs after this plan, in the real output directories
+    # (a verify render's slots stand in for them): the committed files a generator reading the
+    # run's output still lists are those it leaves alone.
+    real_dir = (lambda d: capture_for(d).out_dir) if capture_for is not None else (lambda d: d)
+    narrowed = selection is not None or any(t.run_selection is not None for t, *_ in plan)
+    swept = [] if narrowed or baseline == "adopt" else _sweep_dirs(
+        config, {t.name for t, *_ in plan},
+        {real_dir(config.out_dir_for(t)) for t, gens, spec_gens, _o in plan if gens or spec_gens},
+    )
+    record = PlanRecord(swept=sweep_scope(swept, frozenset(config.out_dir_for(t) for t in config.targets)))
+
     # ONE manifest session for the whole run (ADR-0064 decision 1), saved once at the end
     # and only when an entry changed.
     session = HashManifest(gen_state_dir) if gen_state_dir is not None else None
@@ -1849,7 +1865,7 @@ def _run_gen_targets(
         return _run_plan(
             config, plan, root, seen, all_written, errors, session, template_root,
             gen_state_dir, project_root, baseline, refused_out, select, column_naming,
-            targeted_out, overwrite_paths_out, emitted_out, sink, in_ledger,
+            targeted_out, overwrite_paths_out, emitted_out, record, sink, in_ledger, capture_for,
         )
     finally:
         if session is not None:
@@ -1874,11 +1890,19 @@ def _run_plan(
     targeted_out: set[str] | None,
     overwrite_paths_out: set[str] | None,
     emitted_out: set[str] | None,
+    record: PlanRecord,
     sink: dict[str, str] | None = None,
     in_ledger: Callable[[str], bool] | None = None,
+    capture_for: Callable[[str], CaptureKeys] | None = None,
 ) -> tuple[list[str], list[str]]:
     from metaobjects.render.renderer import RenderError
 
+    # A target holding a generator that reads the run's output runs after every other target,
+    # so it lists the whole plan's files whatever the declared order (the stable sort keeps it).
+    plan = sorted(
+        plan,
+        key=lambda p: any(getattr(g, "reads_run_output", False) for g in (*p[1], *p[2])),
+    )
     for t, gens, spec_gens, overwrite in plan:
         if not gens and not spec_gens:
             print(f"target '{t.name}' declares no generators; nothing written")
@@ -1886,6 +1910,7 @@ def _run_plan(
         out_dir = config.out_dir_for(t)
         if targeted_out is not None:
             targeted_out.add(out_dir)
+        capture = capture_for(out_dir) if capture_for is not None else None
         results: list[tuple[str, str]] = []
         try:
             if gens:
@@ -1895,7 +1920,8 @@ def _run_plan(
                     refused_out=refused_out, select=select, in_ledger=in_ledger,
                     api_prefix=config.api_prefix, output_layout=config.output_layout,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
-                    manifest=session, sink=sink, entity_scope=t.entities,
+                    manifest=session, sink=sink, entity_scope=t.entities, capture_keys=capture,
+                    plan=record,
                 )
             if spec_gens:
                 results = results + _run_suite(
@@ -1904,7 +1930,7 @@ def _run_plan(
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
                     select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
                     output_layout=config.output_layout, manifest=session, sink=sink,
-                    entity_scope=t.entities,
+                    entity_scope=t.entities, capture_keys=capture, plan=record,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -2294,11 +2320,7 @@ def _sweep_orphans_after_gen(
     """
     if baseline == "adopt":
         return []
-    ran = {t.name for t in targets}
-    out_dirs = sorted(
-        out for out in targeted
-        if all(t.name in ran for t in config.targets if config.out_dir_for(t) == out)
-    )
+    out_dirs = _sweep_dirs(config, {t.name for t in targets}, targeted)
     configured = frozenset(config.out_dir_for(t) for t in config.targets)
     narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
     if narrowed:
@@ -2327,6 +2349,15 @@ def _sweep_orphans_after_gen(
         if refused_out is not None:
             refused_out.extend(result.refused)
     return result.removed
+
+
+def _sweep_dirs(config: ProjectConfig, ran: set[str], targeted: set[str]) -> list[str]:
+    """The output directories a run of the targets named ``ran`` sweeps: each of ``targeted``
+    (written into by a declared entry) whose every writing target ran."""
+    return sorted(
+        out for out in targeted
+        if all(t.name in ran for t in config.targets if config.out_dir_for(t) == out)
+    )
 
 
 def _overwrites_hand_edits(config: ProjectConfig, out_dir: str) -> bool:
@@ -2628,6 +2659,13 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         remapped = [
             dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
         ]
+        # Each slot keys its files at the real outDir it stands in for, against the real
+        # project, carrying what it does not render from the committed manifest (read only):
+        # what a generator reading the run's output (docs-site) lists is then what gen listed.
+        real_for = {str(Path(slot).resolve()): real for real, slot in temp_for.items()}
+
+        def capture_for(slot: str) -> CaptureKeys:
+            return CaptureKeys(real_for[slot], gen_state_dir_for(config.metadata_dir()))
 
         # The exact gen pipeline, rendered into the in-memory sink — verify rejects exactly
         # what gen rejects (incl. the cross-target duplicate-output-path guard).
@@ -2645,6 +2683,8 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             # R31: the `names` generator's constants are strategy-dependent, so the regen
             # must use the strategy `gen` wrote with, or every constant reads as drift.
             column_naming=naming,
+            project_root=str(project_root_for(config.metadata_dir())),
+            capture_for=capture_for,
         )
         _written, errors = _run_gen_targets(
             config, remapped, root, selection=selection, targeted_out=targeted,
@@ -2656,6 +2696,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
             for real in temp_for:
                 declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
+                real_for[str(Path(declared_for[real]).resolve())] = real
             _written, errors = _run_gen_targets(
                 config,
                 [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])

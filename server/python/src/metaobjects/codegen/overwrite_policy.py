@@ -282,6 +282,16 @@ def _read_manifest_file(gen_state_dir: str) -> dict[str, object]:
     return _read_union(gen_state_dir)[0]
 
 
+def read_recorded_provenance(gen_state_dir: str) -> dict[str, tuple[str, str]]:
+    """``path -> (generatedBy, sourceNode)`` for every committed entry that names its node."""
+    out: dict[str, tuple[str, str]] = {}
+    for path, entry in _read_union(gen_state_dir)[0].items():
+        if isinstance(entry, dict) and isinstance(entry.get("sourceNode"), str):
+            by = entry.get("generatedBy", "")
+            out[path] = (by if isinstance(by, str) else "", entry["sourceNode"])
+    return out
+
+
 def _entry_hash(value: object) -> str | None:
     if isinstance(value, str):
         return value

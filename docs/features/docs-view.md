@@ -13,11 +13,12 @@ writes the same bytes for the same model, and the shared corpus
 [`fixtures/explorer-conformance/`](../../fixtures/explorer-conformance/) holds them to that.
 
 TypeScript builds it today, and so do Java and Kotlin (one JVM builder, `DocsView` in
-`metadata`). `buildDocsView` and `serializeDocsView` are exported from `@metaobjectsdev/metadata`,
-and `docsSiteFile()` writes the result as the site's `explorer.json` (see
-[explorer-site.md](explorer-site.md)). C#, Python and Rust will build it as their own step of the same
-plan ([explorer-data.md](explorer-data.md#not-built-yet)). The explorer pages still render their
-HTML in TypeScript; the JVM copies the app and writes the same `explorer.json`.
+`metadata`), C# (`MetaObjects.DocsView`) and Python (`metaobjects.docs_view`). `buildDocsView` and
+`serializeDocsView` are exported from `@metaobjectsdev/metadata`, and `docsSiteFile()` writes the
+result as the site's `explorer.json` (see [explorer-site.md](explorer-site.md)). Rust will build
+it as its own step of the same plan ([explorer-data.md](explorer-data.md#not-built-yet)). The
+explorer pages still render their HTML in TypeScript; the JVM, C# and Python copy the app and
+write the same `explorer.json`.
 
 A page of your own is a template over the view: the TypeScript `template` generator renders it
 with the `perNode` and `perRequirement` scopes (and `data: "docsView"` on `perModel` and
