@@ -20,6 +20,7 @@ from .import_path import OUTPUT_LAYOUT_PACKAGE
 from .name_claims import NameClaims, assert_importable_package_tree
 from .instance_artifacts import is_served_report
 from .overwrite_policy import (
+    _read_union,
     STATUS_OVERWROTE_EDIT,
     HashManifest,
     decide_and_write,
@@ -71,6 +72,45 @@ def _warn_collector(name: str, sink: list[str]) -> Callable[[str], None]:
         sink.append(f"[{name}] {msg}")
 
     return warn
+
+
+def _manifest_key(config: GenConfig, full: str) -> str:
+    """The key the hash manifest records ``full`` under (see ``_write_all``)."""
+    if config.project_root:
+        return os.path.relpath(os.path.realpath(full), config.project_root).replace(os.sep, "/")
+    return os.path.relpath(full, config.out_dir).replace(os.sep, "/")
+
+
+def _run_provenance(
+    config: GenConfig,
+    emitted: dict[str, tuple[str, str]],
+    sources: dict[str, str],
+    suite: set[str],
+    narrowed: bool,
+) -> dict[str, tuple[str, str | None]]:
+    """What the generators that ran before this one emitted, keyed as the manifest keys it,
+    after the committed manifest's files this run does not render: those of a generator not in
+    this run and, when ``--entities`` narrows the run, every recorded file. A file a generator of
+    this run no longer emits is not carried, so the list never names a file the run removes."""
+    carried: dict[str, tuple[str, str | None]] = {}
+    if config.gen_state_dir is not None:
+        raw, _where = _read_union(config.gen_state_dir)
+        for path, entry in raw.items():
+            if not isinstance(entry, dict) or not isinstance(entry.get("sourceNode"), str):
+                continue
+            by = entry.get("generatedBy", "")
+            if narrowed or by not in suite:
+                carried[path] = (by if isinstance(by, str) else "", entry["sourceNode"])
+    for full, (_c, by) in emitted.items():
+        carried[_manifest_key(config, full)] = (_stable_name(by), sources.get(full))
+    return carried
+
+
+def _stable_name(generator_name: str) -> str:
+    """What the manifest's ``generatedBy`` calls a generator: its stable registry name."""
+    from .generator_registry import stable_name_of  # the registry imports the generators
+
+    return stable_name_of(generator_name)
 
 
 def run_gen(
@@ -196,7 +236,11 @@ def run_gen(
     emitted: dict[str, tuple[str, str]] = {}  # full_path -> (content, generated_by)
     # full_path -> the resolution key of the node the file was rendered from, when it was.
     sources: dict[str, str] = {}
-    for gen in generators:
+    # A generator that reads the run's output runs after every other one, so it sees all of it
+    # (the stable sort keeps the declared order among the rest).
+    ordered = sorted(generators, key=lambda g: bool(getattr(g, "reads_run_output", False)))
+    for gen in ordered:
+        reads_output = bool(getattr(gen, "reads_run_output", False))
         ctx = GenContext(
             entities=safe,
             loaded_root=metadata,
@@ -207,6 +251,12 @@ def run_gen(
             in_ledger=in_ledger,
             claims=claims,
             selected=is_selected if narrowed else None,
+            run_provenance=(
+                _run_provenance(
+                    config, emitted, sources, {_stable_name(g.name) for g in generators}, narrowed
+                )
+                if reads_output else None
+            ),
         )
         for f in gen.generate(ctx):
             full = os.path.join(config.out_dir, f.path)
@@ -334,7 +384,7 @@ def _write_all(
         # Only with a real project root, as codegen-ts: the entry is keyed by the same key
         # the write used, and the session's save applies it to entries that hold a hash.
         if session is not None and not outside and config.project_root:
-            session.note_provenance(key, by, sources.get(full))
+            session.note_provenance(key, _stable_name(by), sources.get(full))
         if status == STATUS_OVERWROTE_EDIT:
             result.warnings.append(
                 f"overwrote hand-edited {rel} with fresh output (handEdits: overwrite on {by})"

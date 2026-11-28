@@ -116,7 +116,8 @@ A file rendered from the whole model or a whole package keeps the plain `"<path>
 form, so a project that writes only such files has an unchanged manifest. Every port's
 manifest reader takes `hash` from either form.
 
-The provenance field is named `generatedBy`, not `generator`. In a Java or Kotlin module's
+`generatedBy` is the generator's registry name (`entity`, `filter-allowlist`), the name
+`gen --list` shows, in every port. The provenance field is named `generatedBy`, not `generator`. In a Java or Kotlin module's
 manifest, `generator` means that generator owns the file (ADR-0060), and the orphan sweep acts
 on that ownership, so a JVM entry carries both: `{ "hash", "generator", "outputDir",
 "generatedBy", "sourceNode" }`. The four ports that write provenance write the same entry for the
@@ -158,8 +159,8 @@ malformed leaves its part of the view empty.
   optional, and nothing builds it yet.
 - **Provenance from the Kotlin and Rust generators.** Their manifest entries have no
   `sourceNode` yet, so for those ports a node lists no files.
-- **The docs view in C#, Python and Rust.** TypeScript, Java and Kotlin build it today; the
-  corpus is what the other ports will be held to.
+- **The docs view in Rust.** TypeScript, Java, Kotlin, C# and Python build it today, each held
+  to the corpus byte for byte; Rust will be held to the same corpus.
 
 ## Verified by
 

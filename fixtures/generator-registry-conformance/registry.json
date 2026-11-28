@@ -357,12 +357,12 @@
       "concept": "The browsable HTML site of the model: navigation, search, a page per package and per object, ER diagrams.",
       "tier": "neutral",
       "layer": "docs",
-      "note": "It was `meta docs --site` until 1.1.0 (ADR-0034 Amendment 9). Java and Kotlin write the model explorer app over the docs view, with no Node (both run the JVM DocsSiteGenerator); the classic site and the page-per-screen static export stay TypeScript's.",
+      "note": "It was `meta docs --site` until 1.1.0 (ADR-0034 Amendment 9). C#, Java, Kotlin and Python write the model explorer app over the docs view, with no Node (C# its DocsSiteGenerator, Java and Kotlin the JVM DocsSiteGenerator, Python its docs-site generator); the classic site and the page-per-screen static export stay TypeScript's.",
       "eject": {
         "exempt": "The site builder is engine: it assembles the page data the site's templates read, and what an adopter changes is those templates and the assets beside them, which `meta eject docs-site` copies into codegen/docs-site/ and the generator reads from there.",
         "ruling": "ADR-0034 Amendment 9 (restating Amendment 8, ruling 3)"
       },
-      "ports": ["typescript", "java", "kotlin"]
+      "ports": ["typescript", "csharp", "java", "kotlin", "python"]
     },
     "plantuml": {
       "concept": "PlantUML class diagram of the object model.",

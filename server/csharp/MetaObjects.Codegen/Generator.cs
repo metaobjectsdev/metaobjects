@@ -480,6 +480,14 @@ public sealed class GenContext
     public NameClaims Claims { get; init; } = new();
 
     /// <summary>
+    /// The files this run has generated so far, keyed as the hash manifest keys them (relative to
+    /// the project root), with the generator and node each came from; <c>null</c> when the run has no
+    /// project root to key them by. A generator answering <see cref="IGenerator.ReadsRunOutput"/>
+    /// runs after every other one, so it sees the whole run's output (the docs site lists it).
+    /// </summary>
+    public IReadOnlyDictionary<string, HashManifest.Provenance>? GeneratedFiles { get; init; }
+
+    /// <summary>
     /// Claim <paramref name="name"/> in <paramref name="scope"/> for <paramref name="claimant"/>, as
     /// it is emitted. The first claimant owns the name; another claimant of the same name in the
     /// same scope is refused (<c>ERR_NAME_COLLISION</c>, or <paramref name="code"/> when given), naming both and <paramref name="remedy"/>.
@@ -545,6 +553,7 @@ public sealed class GenContext
             Warn = Warn,
             Claims = Claims,
             Generators = Generators,
+            GeneratedFiles = GeneratedFiles,
             Applicability = Applicability,
             Scope = Scope is null ? include : o => Scope(o) && include(o),
         };
@@ -563,6 +572,7 @@ public sealed class GenContext
             Warn = _ => { },
             Claims = new NameClaims(),
             Generators = Generators,
+            GeneratedFiles = GeneratedFiles,
             Applicability = Applicability,
             Scope = Scope is null ? include : o => Scope(o) && include(o),
         };
@@ -657,6 +667,12 @@ public interface IGenerator
     /// editing one renders again. Empty by default.
     /// </summary>
     IReadOnlyList<string> ExtraInputs => [];
+
+    /// <summary>
+    /// Whether this entry reads the files the run generated (<see cref="GenContext.GeneratedFiles"/>).
+    /// The runner runs every such entry after every other one, keeping their declared order.
+    /// </summary>
+    bool ReadsRunOutput => false;
 }
 
 /// <summary>A generator entry's <c>handEdits</c> setting: what a run does with a hand-edited file.</summary>
@@ -696,6 +712,7 @@ internal sealed class HandEditsGenerator(IGenerator inner, HandEdits handEdits) 
     public bool Cacheable => Inner.Cacheable;
     /// <inheritdoc/>
     public IReadOnlyList<string> ExtraInputs => Inner.ExtraInputs;
+    public bool ReadsRunOutput => Inner.ReadsRunOutput;
     /// <inheritdoc/>
     public IEnumerable<EmittedFile> Generate(GenContext ctx) => Inner.Generate(ctx);
 }

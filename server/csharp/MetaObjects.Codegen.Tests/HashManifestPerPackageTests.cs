@@ -167,7 +167,7 @@ public class HashManifestPerPackageTests : IDisposable
         using var shop = JsonDocument.Parse(File.ReadAllText(Path.Combine(HashesDir, "acme.shop.json")));
         var entry = shop.RootElement.EnumerateObject().Single(p => p.Name.EndsWith("Order.g.cs")).Value;
         Assert.Equal(JsonValueKind.Object, entry.ValueKind);
-        Assert.Equal("entity-generator", entry.GetProperty("generatedBy").GetString());
+        Assert.Equal("entity", entry.GetProperty("generatedBy").GetString());
         Assert.Equal("acme::shop::Order", entry.GetProperty("sourceNode").GetString());
         Assert.True(entry.TryGetProperty("hash", out _));
     }
@@ -213,14 +213,14 @@ public class HashManifestPerPackageTests : IDisposable
                 : "(plain)");
         Assert.Equal(new Dictionary<string, string>
         {
-            ["gen/AuthFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::Auth",
+            ["gen/AuthFilterAllowlist.g.cs"] = "filter-allowlist acme::shop::Auth",
             ["gen/AuthNames.g.cs"] = "names acme::shop::Auth",
-            ["gen/AuthRoutes.g.cs"] = "routes-generator acme::shop::Auth",
-            ["gen/BridgeAuthFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::BridgeAuth",
+            ["gen/AuthRoutes.g.cs"] = "routes acme::shop::Auth",
+            ["gen/BridgeAuthFilterAllowlist.g.cs"] = "filter-allowlist acme::shop::BridgeAuth",
             ["gen/BridgeAuthNames.g.cs"] = "names acme::shop::BridgeAuth",
-            ["gen/OrderFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::Order",
+            ["gen/OrderFilterAllowlist.g.cs"] = "filter-allowlist acme::shop::Order",
             ["gen/OrderNames.g.cs"] = "names acme::shop::Order",
-            ["gen/OrderRoutes.g.cs"] = "routes-generator acme::shop::Order",
+            ["gen/OrderRoutes.g.cs"] = "routes acme::shop::Order",
             ["gen/StampedNames.g.cs"] = "names acme::shop::Stamped",
         }, stamped);
     }

@@ -258,8 +258,12 @@ Kotlin calls the same symbols through `metadata-ktx`. To let the explorer read t
 `file://`, add `Access-Control-Allow-Origin: null` and `Access-Control-Expose-Headers: ETag` to
 that response, or use Spring's CORS configuration.
 
-C#, Python and Rust serve the route once each has its docs view builder, with the
-body that builder writes; their `/_meta` sections above show where each mounts it.
+C# and Python ship the same helper beside their `/_meta` one, and like it, mount it yourself
+under the same guard. C#: `MetaEndpoint.MetaDocs(root)` gives the body, `ETag` and
+`Matches(ifNoneMatch)` (`MetaEndpoint.MetaDocsRoutePath`, `MetaDocsJson(root, routes)`).
+Python: `meta_docs(root)` gives `body`, `etag` and `matches(if_none_match)`
+(`META_DOCS_ROUTE_PATH`, `meta_docs_json(root, routes)`). Each helper's doc comment shows the
+ASP.NET or FastAPI mount. Rust serves the route once it has its docs view builder.
 
 ## Browser consumption
 

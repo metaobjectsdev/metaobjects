@@ -67,3 +67,27 @@ def test_meta_json_inlines_a_member_inherited_via_extends() -> None:
 
     assert "createdAt" in effective_subscriber
     assert "createdAt" not in raw_subscriber
+
+
+def test_docs_route_path_and_body_are_the_cross_port_contract() -> None:
+    from metaobjects import META_DOCS_ROUTE_PATH, meta_docs_json
+    from tests.docs_view_support import corpus, load_case
+
+    assert META_DOCS_ROUTE_PATH == "/_meta/docs"
+    expected = (corpus() / "model-alone" / "expected.json").read_text(encoding="utf-8")
+    assert meta_docs_json(load_case("model-alone")) == expected
+
+
+def test_docs_etag_and_if_none_match() -> None:
+    from metaobjects import meta_docs, meta_docs_etag
+    from tests.docs_view_support import load_case
+
+    # FNV-1a over UTF-16 code units: the empty body hashes to the offset basis.
+    assert meta_docs_etag("") == '"0-811c9dc5"'
+    assert meta_docs_etag("a") == '"1-e40c292c"'
+    assert meta_docs_etag("\U0001f600") == meta_docs_etag("😀".encode("utf-16", "surrogatepass").decode("utf-16"))
+    docs = meta_docs(load_case("model-alone"))
+    assert docs.etag == meta_docs_etag(docs.body)
+    assert docs.matches(docs.etag) and docs.matches("*") and docs.matches("W/" + docs.etag)
+    assert docs.matches('"x", ' + docs.etag)
+    assert not docs.matches('"other"') and not docs.matches(None) and not docs.matches("")

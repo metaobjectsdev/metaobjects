@@ -52,6 +52,10 @@ class GenContext:
     #: run; a per-entity file honours this as well (``per_entity`` applies it). ``None``:
     #: every entity is selected.
     selected: Callable[[MetaObject], bool] | None = None
+    #: For a generator with ``reads_run_output = True`` (the runner runs it after every other
+    #: one): what the others emitted in this run, ``manifest key -> (generated_by,
+    #: source_node)``, keyed as the hash manifest keys it. ``None`` for any other generator.
+    run_provenance: dict[str, tuple[str, str | None]] | None = None
 
     def is_selected(self, entity: MetaObject) -> bool:
         return self.selected is None or self.selected(entity)
@@ -69,6 +73,9 @@ class Generator(Protocol):
 
     - ``cacheable: bool`` (default ``True``). ``False`` means the generator reads something
       nobody can declare; a run that includes it never skips.
+    - ``reads_run_output: bool`` (default ``False``). ``True`` means the generator lists the
+      files the other generators emitted (``GenContext.run_provenance``); the runner runs
+      every such generator after all the others.
     - ``declared_extra_inputs: tuple[str, ...]`` (default ``()``). Project-relative paths
       the generator reads beyond the model, the config and the template roots; their
       content is part of the run's key.

@@ -67,9 +67,11 @@ public class RulesInertTests
     /// <summary>
     /// The layer generators (ADR-0067 §5.2). They act on the rules vocabulary by design, so they are not held
     /// to identical output; the flat generators they sit beside are, and that is what this test guards.
+    /// docs-site is here for the same reason: the model explorer documents every node, the rules
+    /// vocabulary's included (its view is pinned by fixtures/explorer-conformance/).
     /// Pinned by name so a flat generator cannot be excused by being added here.
     /// </summary>
-    private static readonly HashSet<string> LayerGenerators = new(StringComparer.Ordinal) { "rules-names" };
+    private static readonly HashSet<string> LayerGenerators = new(StringComparer.Ordinal) { "rules-names", "docs-site" };
 
     /// <summary>The registry's flat generators: every entry but the layer ones.</summary>
     private static IEnumerable<KeyValuePair<string, GeneratorRegistryEntry>> Flat() =>

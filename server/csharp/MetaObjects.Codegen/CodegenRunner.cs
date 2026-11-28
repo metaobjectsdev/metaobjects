@@ -57,10 +57,17 @@ public static class CodegenRunner
     /// every entry at a temporary tree of its own.</summary>
     internal static RunResult Run(
         GenConfig config, MetaRoot root, IReadOnlyList<IGenerator> generators, Func<IGenerator, string> outRoot,
-        IDictionary<string, string>? capture = null)
+        IDictionary<string, string>? capture = null, CaptureKeys? captureKeys = null)
     {
         config = PackageBindingResolver.WithDerivedHome(config, root);
         var warnings = new List<string>();
+        // The files this run generates, keyed as the manifest keys them: what a generator reading the
+        // run's output (the docs site) lists. A capture run keys each file by the real directory it
+        // stands in for, so the drift gate renders what gen writes. Files this run does not render
+        // (an entry another run writes, an object --entities leaves out) are carried from the manifest.
+        var keyRoot = captureKeys?.ProjectRoot ?? config.ProjectRoot;
+        var generatedFiles = keyRoot is null ? null : CarriedFiles(captureKeys?.GenStateDir ?? config.GenStateDir,
+            generators.Select(g => g.Name).ToHashSet(StringComparer.Ordinal), config.EntitySelection is not null);
         var ctx = new GenContext
         {
             // FR-044: an object.report is never in the entity set. Dropped here, at the set
@@ -82,6 +89,7 @@ public static class CodegenRunner
             Config = config,
             Warn = warnings.Add,
             Generators = generators,
+            GeneratedFiles = generatedFiles,
         };
 
         // No run-wide name-collision check: each generator refuses a name two objects claim in
@@ -122,9 +130,12 @@ public static class CodegenRunner
         // Saved even when a generator throws, so the manifest keeps matching the files already written.
         try
         {
-            foreach (var generator in generators)
+            // An entry that reads the run's output runs after every other one (IGenerator.ReadsRunOutput).
+            foreach (var generator in generators.Where(g => !g.ReadsRunOutput).Concat(generators.Where(g => g.ReadsRunOutput)))
             {
                 var genRoot = outRoot(generator);
+                // The manifest's generatedBy: the stable registry name, as every port records it.
+                var generatedBy = GeneratorRegistry.StableNameOf(generator);
                 // An entry with its own directory reports its files by that directory, so a reader
                 // can tell the api reference's README.md from one under --out.
                 var shown = generator.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : "";
@@ -139,6 +150,9 @@ public static class CodegenRunner
                     if (generator.HandEdits == HandEdits.Overwrite) overwritePaths.Add(full);
                     if (capture is not null)
                     {
+                        if (generatedFiles is not null && captureKeys is not null
+                            && KeyUnder(captureKeys.ProjectRoot, Path.Combine(captureKeys.RealOutRoot(generator), file.Path)) is { } capturedKey)
+                            generatedFiles[capturedKey] = new HashManifest.Provenance(generatedBy, file.SourceNode);
                         capture[full] = file.Content;
                         results.Add(new WriteResult(shown + file.Path, "written"));
                         continue;
@@ -165,6 +179,7 @@ public static class CodegenRunner
                     var outside = config.ProjectRoot is not null
                         && (key.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(key));
                     if (outside) { untracked++; outsidePaths.Add(full); }
+                    else if (generatedFiles is not null) generatedFiles[key] = new HashManifest.Provenance(generatedBy, file.SourceNode);
                     if (HelperRuntimeReference.Imports(file.Content)) helperImports.Add((full, shown + file.Path));
                     else if (HelperRuntimeReference.ImportsFormer(file.Content)) formerImports.Add(shown + file.Path);
                     var status = WriteOne(
@@ -180,7 +195,7 @@ public static class CodegenRunner
                         status = "written";
                     }
                     if (!outside && manifest is not null)
-                        provenance[key] = new HashManifest.Provenance(generator.Name, file.SourceNode);
+                        provenance[key] = new HashManifest.Provenance(generatedBy, file.SourceNode);
                     results.Add(new WriteResult(reported, status));
                     if (status == "refused") refused.Add(reported);
                     else if (status == "adopted") adopted.Add(reported);
@@ -230,6 +245,29 @@ public static class CodegenRunner
             Complete = refused.Count == 0 && adopted.Count == 0 && !sweepRefused,
             OutsidePaths = outsidePaths,
         };
+    }
+
+    /// <summary>How a capture run (the drift gate) keys the files it renders: relative to
+    /// <paramref name="ProjectRoot"/>, each at the real output directory <paramref name="RealOutRoot"/>
+    /// names for its generator, with the committed manifest under <paramref name="GenStateDir"/>.</summary>
+    internal sealed record CaptureKeys(string ProjectRoot, Func<IGenerator, string> RealOutRoot, string? GenStateDir);
+
+    /// <summary>The manifest's files this run does not render, which the docs site still lists: those of
+    /// an entry not in this run, and, when <c>--entities</c> narrows the run, every recorded file.</summary>
+    private static Dictionary<string, HashManifest.Provenance> CarriedFiles(string? genStateDir, HashSet<string> suite, bool narrowed)
+    {
+        var files = new Dictionary<string, HashManifest.Provenance>(StringComparer.Ordinal);
+        if (genStateDir is null || !HashManifest.Exists(genStateDir)) return files;
+        foreach (var (key, prov) in HashManifest.LoadProvenance(genStateDir))
+            if (narrowed || !suite.Contains(prov.GeneratedBy)) files[key] = prov;
+        return files;
+    }
+
+    /// <summary><paramref name="path"/> relative to <paramref name="projectRoot"/>, or null outside it.</summary>
+    private static string? KeyUnder(string projectRoot, string path)
+    {
+        var key = Path.GetRelativePath(Path.GetFullPath(projectRoot), Path.GetFullPath(path));
+        return key.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(key) ? null : key;
     }
 
     /// <summary>

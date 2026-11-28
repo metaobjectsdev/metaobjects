@@ -69,6 +69,12 @@
     <EmbeddedResource Include="ApiDocs/CSharpApiDocsRenderer.cs" />
     <EmbeddedResource Include="ApiDocs/DocsPaths.cs" />
   </ItemGroup>
+  <!-- The model explorer app (synced from explorer-app/ by scripts/sync-explorer-app.sh): the docs-site
+       generator writes these bytes beside the project's own data files, so a C# project needs no Node. -->
+  <ItemGroup>
+    <EmbeddedResource Include="ExplorerApp/index.html" LogicalName="explorer-app/index.html" />
+    <EmbeddedResource Include="ExplorerApp/assets/*" LogicalName="explorer-app/assets/%(Filename)%(Extension)" />
+  </ItemGroup>
   <!-- The shared metamodel-docs templates (synced from templates/metamodel/ by scripts/sync-doc-templates.sh). -->
   <ItemGroup>
     <EmbeddedResource Include="Templates/metamodel/*" LogicalName="MetaObjects.Codegen.Templates.metamodel.%(Filename)%(Extension)" />

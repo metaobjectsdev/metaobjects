@@ -35,7 +35,15 @@ from .meta.core.object.object_extract import (
     extract_schema_for,
 )
 from .meta.core.object.value_object import ValueObject
-from .meta_endpoint import META_ROUTE_PATH, meta_json
+from .meta_endpoint import (
+    META_DOCS_ROUTE_PATH,
+    META_ROUTE_PATH,
+    MetaDocs,
+    meta_docs,
+    meta_docs_etag,
+    meta_docs_json,
+    meta_json,
+)
 from .naming import resolve_column_name
 from .serializer_json import canonical_serialize_effective
 
@@ -65,6 +73,12 @@ __all__ = [
     # UI-1 — the metadata API contract (GET /_meta)
     "META_ROUTE_PATH",
     "meta_json",
+    # The docs view endpoint (GET /_meta/docs) and the docs view the model explorer reads
+    "META_DOCS_ROUTE_PATH",
+    "MetaDocs",
+    "meta_docs",
+    "meta_docs_etag",
+    "meta_docs_json",
     "canonical_serialize_effective",
     # Runtime object model (Phase A)
     "ValueObject",

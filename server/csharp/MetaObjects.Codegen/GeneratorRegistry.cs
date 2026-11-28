@@ -328,6 +328,18 @@ public static class GeneratorRegistry
                 Note = "Reads no model objects. A project's metamodel/<page>.mustache under the template root overrides the shipped template.",
                 SourceFileName = "MetamodelDocsGenerator.cs",
             },
+            // The model explorer over the docs view (no Node). Exempt from eject (registry.json): the site
+            // builder is engine; a project owns the explorer's theme and page templates under codegen/docs-site/.
+            ["docs-site"] = new()
+            {
+                Name = "docs-site",
+                Description = "The model explorer: one browser app over the project's docs view (explorer.json), with the requirement tree, the model map, a page per object, prompt and requirement, the coverage matrix and the generated files the hash manifest records. Needs no Node.",
+                Tier = GeneratorTier.Neutral,
+                Layer = GeneratorLayer.Docs,
+                Factory = _ => new DocsSiteGenerator(),
+                Options = "OutDir, SubDir (default \"site\"), Title, Stamp, Prompts, VerifyFile, RoutesFile (init properties on the entry in codegen/Generators.cs)",
+                Note = "Lists the files the run generated, so it runs after every other entry. A project's codegen/docs-site/assets/explorer.{css,js} and templates/*.mustache override the shipped theme and pages.",
+            },
             ["template"] = new()
             {
                 Name = "template",
@@ -432,6 +444,24 @@ public static class GeneratorRegistry
     /// <summary>Resolve an entry by stable id, or null if unknown.</summary>
     public static GeneratorRegistryEntry? Get(string id) =>
         Entries.TryGetValue(id, out var e) ? e : null;
+
+    // Each registered generator's Name (what a packaged or an owned copy answers), to its stable name.
+    private static readonly Lazy<Dictionary<string, string>> StableByName = new(() =>
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (id, entry) in Entries) map.TryAdd(entry.Factory(new GeneratorBuildContext()).Name, id);
+        return map;
+    });
+
+    /// <summary>
+    /// The stable name of <paramref name="generator"/>, as the hash manifest's <c>generatedBy</c>
+    /// provenance names it in every port (<c>filter-allowlist</c>, not the class-style
+    /// <c>filter-allowlist-generator</c> its <see cref="IGenerator.Name"/> answers). An ejected copy
+    /// keeps the Name it was copied with, so it maps too; a generator the registry does not know
+    /// (a project's own, a template entry) keeps its Name.
+    /// </summary>
+    public static string StableNameOf(IGenerator generator) =>
+        StableByName.Value.TryGetValue(generator.Name, out var id) ? id : generator.Name;
 
     /// <summary>
     /// C1 — the ONE place that decides <see cref="GenConfig.IncludeNames"/> from a

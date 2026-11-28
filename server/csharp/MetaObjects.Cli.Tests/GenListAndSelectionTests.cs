@@ -47,7 +47,7 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void ListLines_prints_all_generators_with_stable_names_and_descriptions()
     {
         var lines = GenCommand.ListLines(_tmp);
-        Assert.Equal(19, lines.Count);
+        Assert.Equal(20, lines.Count);
         foreach (var name in new[]
         {
             "entity", "db-context", "routes", "output-parser", "extractor",
@@ -66,6 +66,8 @@ public sealed class GenListAndSelectionTests : IDisposable
             // ADR-0025 — the api reference, an ordinary entry since ADR-0034 Amendment 9.
             "api-docs",
             "metamodel-docs",
+            // The model explorer, written with no Node.
+            "docs-site",
             // The @expr indexes the EF model cannot carry, as SQL.
             "expression-indexes",
         })

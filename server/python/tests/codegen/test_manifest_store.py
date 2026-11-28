@@ -233,7 +233,7 @@ def test_gen_records_the_generator_and_node_of_each_per_entity_file(tmp_path: Pa
     model = entries["gen/Order.py"]
     assert isinstance(model, dict)
     assert list(model) == ["hash", "generatedBy", "sourceNode"]
-    assert (model["generatedBy"], model["sourceNode"]) == ("entity-model", "acme::shop::Order")
+    assert (model["generatedBy"], model["sourceNode"]) == ("entity", "acme::shop::Order")
     # A file of no one node (a package __init__) stays a plain hash.
     inits = [v for k, v in entries.items() if k.endswith("__init__.py")]
     assert inits and all(isinstance(v, str) for v in inits)

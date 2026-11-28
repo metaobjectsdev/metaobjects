@@ -101,7 +101,10 @@ public static class CodegenDrift
         try
         {
             regen = CodegenRunner.Run(tempConfig, root, generators,
-                g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))], rendered);
+                g => temps[roots.FindIndex(r => r.Committed == Path.GetFullPath(realRootFor(g)))], rendered,
+                // Key the rendered files as gen keys them, so a generator listing the run's output
+                // (the docs site) renders what gen wrote.
+                config.ProjectRoot is { } project ? new CodegenRunner.CaptureKeys(project, realRootFor, config.GenStateDir) : null);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or MetaModelException)
         {
