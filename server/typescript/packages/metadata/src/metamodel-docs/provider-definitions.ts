@@ -35,8 +35,10 @@ import { REQUIREMENT_DEFINITION } from "../core/requirement/requirement-definiti
 
 /**
  * Every embedded provider definition the core metamodel composes from. The
- * order is irrelevant — the provenance builder keys by `(type.subType, attr)`,
- * and the registry is the authority on what is actually registered.
+ * order is part of the contract: the page builder records the FIRST definition
+ * to declare an attr on a type as its provider and default, and every port walks
+ * the definitions in this same order. The registry is the authority on what is
+ * actually registered.
  */
 export const ALL_PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
   FIELD_DEFINITION,
