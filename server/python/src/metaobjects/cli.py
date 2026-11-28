@@ -162,7 +162,7 @@ from metaobjects.codegen.generator_registry import (
     unsatisfied_requires,
 )
 from metaobjects.codegen.project_import import import_project_symbol
-from metaobjects.codegen.orphan_sweep import refused_orphan_message, sweep_orphans
+from metaobjects.codegen.orphan_sweep import refused_orphan_message, sweep_orphans, sweep_scope
 from metaobjects.codegen.runner import run_gen
 from metaobjects.codegen import eject as owned
 from metaobjects.codegen.generators.render_helper_generator import (
@@ -1847,6 +1847,17 @@ def _run_gen_targets(
         skip_info.extra_entries = skip.extras_entries(
             Path(project_root or "."), skip_info.extras)
 
+    # The scope of the orphan sweep `gen` runs after this plan, in the real output directories
+    # (a verify render's slots stand in for them): the committed files a generator reading the
+    # run's output still lists are those it leaves alone.
+    real_dir = (lambda d: capture_for(d).out_dir) if capture_for is not None else (lambda d: d)
+    narrowed = selection is not None or any(t.run_selection is not None for t, *_ in plan)
+    swept = [] if narrowed or baseline == "adopt" else _sweep_dirs(
+        config, {t.name for t, *_ in plan},
+        {real_dir(config.out_dir_for(t)) for t, gens, spec_gens, _o in plan if gens or spec_gens},
+    )
+    record = PlanRecord(swept=sweep_scope(swept, frozenset(config.out_dir_for(t) for t in config.targets)))
+
     # ONE manifest session for the whole run (ADR-0064 decision 1), saved once at the end
     # and only when an entry changed.
     session = HashManifest(gen_state_dir) if gen_state_dir is not None else None
@@ -1854,7 +1865,7 @@ def _run_gen_targets(
         return _run_plan(
             config, plan, root, seen, all_written, errors, session, template_root,
             gen_state_dir, project_root, baseline, refused_out, select, column_naming,
-            targeted_out, overwrite_paths_out, emitted_out, sink, in_ledger, capture_for,
+            targeted_out, overwrite_paths_out, emitted_out, record, sink, in_ledger, capture_for,
         )
     finally:
         if session is not None:
@@ -1879,6 +1890,7 @@ def _run_plan(
     targeted_out: set[str] | None,
     overwrite_paths_out: set[str] | None,
     emitted_out: set[str] | None,
+    record: PlanRecord,
     sink: dict[str, str] | None = None,
     in_ledger: Callable[[str], bool] | None = None,
     capture_for: Callable[[str], CaptureKeys] | None = None,
@@ -1887,7 +1899,6 @@ def _run_plan(
 
     # A target holding a generator that reads the run's output runs after every other target,
     # so it lists the whole plan's files whatever the declared order (the stable sort keeps it).
-    record = PlanRecord()
     plan = sorted(
         plan,
         key=lambda p: any(getattr(g, "reads_run_output", False) for g in (*p[1], *p[2])),
@@ -2309,11 +2320,7 @@ def _sweep_orphans_after_gen(
     """
     if baseline == "adopt":
         return []
-    ran = {t.name for t in targets}
-    out_dirs = sorted(
-        out for out in targeted
-        if all(t.name in ran for t in config.targets if config.out_dir_for(t) == out)
-    )
+    out_dirs = _sweep_dirs(config, {t.name for t in targets}, targeted)
     configured = frozenset(config.out_dir_for(t) for t in config.targets)
     narrowed = selection is not None or _parse_entities(getattr(args, "entities", None)) is not None
     if narrowed:
@@ -2342,6 +2349,15 @@ def _sweep_orphans_after_gen(
         if refused_out is not None:
             refused_out.extend(result.refused)
     return result.removed
+
+
+def _sweep_dirs(config: ProjectConfig, ran: set[str], targeted: set[str]) -> list[str]:
+    """The output directories a run of the targets named ``ran`` sweeps: each of ``targeted``
+    (written into by a declared entry) whose every writing target ran."""
+    return sorted(
+        out for out in targeted
+        if all(t.name in ran for t in config.targets if config.out_dir_for(t) == out)
+    )
 
 
 def _overwrites_hand_edits(config: ProjectConfig, out_dir: str) -> bool:

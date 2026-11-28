@@ -66,8 +66,13 @@ public static class CodegenRunner
         // stands in for, so the drift gate renders what gen writes. Files this run does not render
         // (an entry another run writes, an object --entities leaves out) are carried from the manifest.
         var keyRoot = captureKeys?.ProjectRoot ?? config.ProjectRoot;
-        var generatedFiles = keyRoot is null ? null : CarriedFiles(captureKeys?.GenStateDir ?? config.GenStateDir,
-            generators.Select(GeneratorRegistry.StableNameOf).ToHashSet(StringComparer.Ordinal), config.EntitySelection is not null);
+        var sweeps = config.SweepOrphans && config.GenStateDir is not null && config.ProjectRoot is not null
+            && config.Baseline != "adopt";
+        var sweepDirs = SweepDirs(generators, outRoot, config.OutDir);
+        var generatedFiles = keyRoot is null ? null : CarriedFiles(captureKeys?.GenStateDir ?? config.GenStateDir, keyRoot,
+            captureKeys is { } ck
+                ? (ck.Sweeps ? OrphanSweep.Scope(SweepDirs(generators, ck.RealOutRoot, ck.RealOutDir)) : [])
+                : (sweeps ? OrphanSweep.Scope(sweepDirs) : []));
         var ctx = new GenContext
         {
             // FR-044: an object.report is never in the entity set. Dropped here, at the set
@@ -214,15 +219,9 @@ public static class CodegenRunner
         warnings.AddRange(HelperRuntimeReference.WarningsForImporting(helperImports));
         if (HelperRuntimeReference.FormerImportWarning(formerImports) is { } former) warnings.Add(former);
 
-        if (config.SweepOrphans && config.GenStateDir is { } genState && config.ProjectRoot is { } project
-            && config.Baseline != "adopt")
+        if (sweeps && config.GenStateDir is { } genState && config.ProjectRoot is { } project)
         {
-            // Every directory a generator of this run wrote into, labelled as its files are
-            // reported. The run's own --out is always one of them.
-            var dirs = new List<(string Dir, string Label)> { (config.OutDir, "") };
-            foreach (var g in generators)
-                dirs.Add((outRoot(g), g.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : ""));
-            var swept = OrphanSweep.Sweep(genState, project, dirs, emitted.Keys.ToHashSet(StringComparer.Ordinal),
+            var swept = OrphanSweep.Sweep(genState, project, sweepDirs, emitted.Keys.ToHashSet(StringComparer.Ordinal),
                 OverwriteDirs(generators, outRoot, config.OutDir));
             foreach (var path in swept.Removed) results.Add(new WriteResult(path, "removed"));
             foreach (var path in swept.Discarded)
@@ -250,16 +249,32 @@ public static class CodegenRunner
     /// <summary>How a capture run (the drift gate) keys the files it renders: relative to
     /// <paramref name="ProjectRoot"/>, each at the real output directory <paramref name="RealOutRoot"/>
     /// names for its generator, with the committed manifest under <paramref name="GenStateDir"/>.</summary>
-    internal sealed record CaptureKeys(string ProjectRoot, Func<IGenerator, string> RealOutRoot, string? GenStateDir);
+    /// <para><paramref name="RealOutDir"/> is the run's real <c>--out</c>, and <paramref name="Sweeps"/>
+    /// whether the gen it stands in for sweeps orphans.</para></summary>
+    internal sealed record CaptureKeys(string ProjectRoot, Func<IGenerator, string> RealOutRoot, string? GenStateDir,
+        string RealOutDir, bool Sweeps);
 
-    /// <summary>The manifest's files this run does not render, which the docs site still lists: those of
-    /// an entry not in this run, and, when <c>--entities</c> narrows the run, every recorded file.</summary>
-    private static Dictionary<string, HashManifest.Provenance> CarriedFiles(string? genStateDir, HashSet<string> suite, bool narrowed)
+    /// <summary>Every directory a generator of this run writes into, labelled as its files are reported:
+    /// the directories the orphan sweep walks. The run's own --out is always one of them.</summary>
+    private static List<(string Dir, string Label)> SweepDirs(
+        IReadOnlyList<IGenerator> generators, Func<IGenerator, string> outRoot, string outDir)
+    {
+        var dirs = new List<(string Dir, string Label)> { (outDir, "") };
+        foreach (var g in generators)
+            dirs.Add((outRoot(g), g.OutDir is { Length: > 0 } own ? own.TrimEnd('/', '\\') + "/" : ""));
+        return dirs;
+    }
+
+    /// <summary>The manifest's files the docs site still lists beside this run's: those the run's orphan
+    /// sweep (<paramref name="swept"/>, empty when it sweeps nothing) leaves alone. A recorded file inside
+    /// it is either emitted again, and so listed, or deleted.</summary>
+    private static Dictionary<string, HashManifest.Provenance> CarriedFiles(
+        string? genStateDir, string projectRoot, IReadOnlyList<(string Dir, string Label, List<string> Nested)> swept)
     {
         var files = new Dictionary<string, HashManifest.Provenance>(StringComparer.Ordinal);
         if (genStateDir is null || !HashManifest.Exists(genStateDir)) return files;
         foreach (var (key, prov) in HashManifest.LoadProvenance(genStateDir))
-            if (narrowed || !suite.Contains(prov.GeneratedBy)) files[key] = prov;
+            if (!OrphanSweep.InScope(Path.Combine(projectRoot, key), swept)) files[key] = prov;
         return files;
     }
 

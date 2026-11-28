@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -18,6 +19,7 @@ from .constants import generated_package_init
 from .generator import GenContext, Generator
 from .import_path import OUTPUT_LAYOUT_PACKAGE
 from .name_claims import NameClaims, assert_importable_package_tree
+from .orphan_sweep import in_sweep_scope
 from .instance_artifacts import is_served_report
 from .overwrite_policy import (
     STATUS_OVERWROTE_EDIT,
@@ -88,20 +90,18 @@ def _run_provenance(
     config: GenConfig,
     emitted: dict[str, tuple[str, str]],
     sources: dict[str, str],
-    suite: set[str],
-    narrowed: bool,
 ) -> dict[str, tuple[str, str | None]]:
     """What the generators that ran before this one emitted, in this run and in the earlier runs
-    of its plan, keyed as the manifest keys it, after the committed manifest's files the plan does
-    not render: those of a generator that ran nowhere in the plan and, when ``--entities`` narrows
-    the run, every recorded file. A file a generator of the plan no longer emits is not carried,
-    so the list never names a file the run removes."""
+    of its plan, keyed as the manifest keys it, after the committed manifest's files the plan's
+    orphan sweep leaves alone. A recorded file inside the sweep is either emitted again (and so
+    listed) or deleted, so the list never names a file the run removes."""
     plan = config.plan or PlanRecord()
-    ran = suite | plan.generators
     committed = config.committed_gen_state_dir()
     recorded = read_recorded_provenance(committed) if committed is not None else {}
+    project = Path(config.project_root).resolve() if config.project_root else None
     carried: dict[str, tuple[str, str | None]] = {
-        path: prov for path, prov in recorded.items() if narrowed or prov[0] not in ran
+        path: prov for path, prov in recorded.items()
+        if project is None or not in_sweep_scope((project / path).resolve(), plan.swept)
     }
     carried.update(plan.files)
     for full, (_c, by) in emitted.items():
@@ -255,10 +255,7 @@ def run_gen(
             claims=claims,
             selected=is_selected if narrowed else None,
             run_provenance=(
-                _run_provenance(
-                    config, emitted, sources, {_stable_name(g.name) for g in generators}, narrowed
-                )
-                if reads_output else None
+                _run_provenance(config, emitted, sources) if reads_output else None
             ),
         )
         for f in gen.generate(ctx):
@@ -272,7 +269,6 @@ def run_gen(
             if f.source_node is not None:
                 sources[full] = f.source_node
     if config.plan is not None:
-        config.plan.generators.update(_stable_name(g.name) for g in generators)
         config.plan.files.update(
             (_manifest_key(config, full), (_stable_name(by), sources.get(full)))
             for full, (_c, by) in emitted.items()

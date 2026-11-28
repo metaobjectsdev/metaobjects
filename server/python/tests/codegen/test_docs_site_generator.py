@@ -148,20 +148,29 @@ APP = "  app:\n    outDir: gen\n    generators: [entity]\n"
 DOCS = "  docs:\n    outDir: docs\n    generators: [docs-site]\n"
 TWO_TARGETS = "targets:\n" + APP + DOCS
 DOCS_FIRST = "targets:\n" + DOCS + APP
+WITH_NAMES = "targets:\n  app:\n    outDir: gen\n    generators: [entity, names, docs-site]\n"
+WITHOUT_NAMES = "targets:\n  app:\n    outDir: gen\n    generators: [entity, docs-site]\n"
+SAME_GENERATOR = (
+    "targets:\n  app1:\n    outDir: gen1\n    generators: [entity, docs-site]\n    entities: [Order]\n"
+    "  app2:\n    outDir: gen2\n    generators: [entity]\n    entities: [Telemetry]\n"
+)
 
 
 @pytest.mark.parametrize(
-    "config,site,then",
+    "config,site,then,args,owner",
     [
-        (ONE_TARGET, "gen", None),
-        (TWO_TARGETS, "docs", None),
-        (DOCS_FIRST, "docs", None),
-        (TWO_TARGETS, "docs", "outputLayout: package\n" + TWO_TARGETS),
+        (ONE_TARGET, "gen", None, [], "gen/"),
+        (TWO_TARGETS, "docs", None, [], "gen/"),
+        (DOCS_FIRST, "docs", None, [], "gen/"),
+        (TWO_TARGETS, "docs", "outputLayout: package\n" + TWO_TARGETS, [], "gen/"),
+        (WITH_NAMES, "gen", WITHOUT_NAMES, [], "gen/"),
+        (SAME_GENERATOR, "gen1", None, ["--target", "app1"], "gen2/"),
     ],
-    ids=["one", "two", "docs-first", "removed-file"],
+    ids=["one", "two", "docs-first", "removed-file", "removed-generator", "same-generator"],
 )
 def test_the_drift_gate_renders_what_gen_wrote(
-    config: str, site: str, then: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    config: str, site: str, then: str | None, args: list[str], owner: str,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from metaobjects.cli import main
 
@@ -169,24 +178,35 @@ def test_the_drift_gate_renders_what_gen_wrote(
     (project / "metaobjects").mkdir(parents=True)
     (project / "metaobjects" / "meta.acme.json").write_text(json.dumps({"metadata.root": {
         "package": "acme",
-        "children": [{"object.value": {"name": "Telemetry", "children": [{"field.string": {"name": "reading"}}]}}],
+        "children": [
+            {"object.value": {"name": "Telemetry", "children": [{"field.string": {"name": "reading"}}]}},
+            {"object.entity": {"name": "Order", "children": [
+                {"source.rdb": {"@table": "orders"}},
+                {"field.long": {"name": "id"}},
+                {"identity.primary": {"name": "pk", "@fields": ["id"]}},
+            ]}},
+        ],
     }}), encoding="utf-8")
     (project / "metaobjects.config.yaml").write_text(config, encoding="utf-8")
     monkeypatch.chdir(project)
 
     assert main(["gen"]) == 0
+    before = {p.relative_to(project) for p in project.rglob("*.py")}
+    (project / "metaobjects.config.yaml").write_text(then or config, encoding="utf-8")
+    assert main(["gen", *args]) == 0
     if then is not None:
-        before = set((project / "gen").rglob("*.py"))
-        (project / "metaobjects.config.yaml").write_text(then, encoding="utf-8")
-        assert main(["gen"]) == 0
-        assert set((project / "gen").rglob("*.py")) != before
+        assert {p.relative_to(project) for p in project.rglob("*.py")} != before
     view_file = project / site / "site" / "explorer.json"
     first = view_file.read_text(encoding="utf-8")
-    node = next(n for n in json.loads(first)["nodes"] if n["name"] == "Telemetry")
+    view = json.loads(first)
+    listed = [p for n in view["nodes"] for g in n["files"] for p in g["paths"]]
+    missing = [p for p in listed if not (project / p).is_file()]
+    assert listed and not missing, f"listed files that do not exist: {missing}"
+    node = next(n for n in view["nodes"] if n["name"] == "Telemetry")
     paths = [p for g in node["files"] if g["generatedBy"] == "entity" for p in g["paths"]]
-    assert paths and all(p.startswith("gen/") and (project / p).is_file() for p in paths)
+    assert paths and all(p.startswith(owner) for p in paths)
     assert '"title":"shop"' in (project / site / "site" / "explorer-model.js").read_text(encoding="utf-8")
 
-    assert main(["gen", "--force"]) == 0
+    assert main(["gen", "--force", *args]) == 0
     assert view_file.read_text(encoding="utf-8") == first
     assert main(["verify", "--codegen", "--full"]) == 0

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from metaobjects.naming import DEFAULT_COLUMN_NAMING
 
@@ -24,12 +25,12 @@ class CaptureKeys:
 @dataclass
 class PlanRecord:
     """What the runs of one plan (``gen``'s targets, or ``verify --codegen``'s render of them)
-    have emitted so far, keyed as the manifest keys it, and the stable names of the generators
-    that ran. A generator reading the run's output lists these over the committed files of
-    generators that did not run."""
+    have emitted so far, keyed as the manifest keys it, and the scope of the orphan sweep that
+    follows the plan (``orphan_sweep.sweep_scope``; empty when it sweeps nothing). A generator
+    reading the run's output lists these over the committed files the sweep leaves alone."""
 
     files: dict[str, tuple[str, str | None]] = field(default_factory=dict)
-    generators: set[str] = field(default_factory=set)
+    swept: list[tuple[Path, list[Path]]] = field(default_factory=list)
 
 
 @dataclass

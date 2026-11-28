@@ -102,20 +102,25 @@ public sealed class DocsSiteGeneratorTests : IDisposable
     }
 
     [Fact]
-    public void A_file_a_run_generator_no_longer_emits_is_not_listed()
+    public void A_file_the_run_deletes_is_not_listed()
     {
+        // A generator dropped from the list: the run's orphan sweep deletes its files, so the site
+        // the same run writes must not list them, and the drift gate must render that same site.
         var root = ShopProject();
-        CodegenRunner.Run(Config() with { OutDir = Path.Combine(_project, "old") }, root, [new FilterAllowlistGenerator()]);
-        Assert.Contains(HashManifest.LoadProvenance(Config().GenStateDir!),
-            e => e.Key.StartsWith("old/", StringComparison.Ordinal) && e.Value.GeneratedBy == "filter-allowlist");
-        CodegenRunner.Run(Config(), root, [new FilterAllowlistGenerator(), new DocsSiteGenerator()]);
+        var config = Config() with { SweepOrphans = true };
+        CodegenRunner.Run(config, root, [new EntityGenerator(), new FilterAllowlistGenerator(), new DocsSiteGenerator()]);
+        Assert.Contains(HashManifest.LoadProvenance(config.GenStateDir!), e => e.Value.GeneratedBy == "filter-allowlist");
+        IReadOnlyList<IGenerator> suite = [new EntityGenerator(), new DocsSiteGenerator()];
+        CodegenRunner.Run(config, root, suite);
         var view = (JsonObject)JsonNode.Parse(Site(ExplorerSite.ViewFile))!;
         var listed = view["nodes"]!.AsArray()
             .SelectMany(n => n!["files"]!.AsArray())
             .SelectMany(g => g!["paths"]!.AsArray().Select(p => p!.GetValue<string>()))
             .ToList();
-        Assert.Contains(listed, p => p.StartsWith("gen/", StringComparison.Ordinal));
-        Assert.DoesNotContain(listed, p => p.StartsWith("old/", StringComparison.Ordinal));
+        Assert.NotEmpty(listed);
+        foreach (var p in listed) Assert.True(File.Exists(Path.Combine(_project, p)), $"listed {p}, which the run deleted");
+        var drift = CodegenDrift.Compute(config, root, suite);
+        Assert.True(drift.Clean, string.Join("\n", drift.Lines));
     }
 
     [Fact]
