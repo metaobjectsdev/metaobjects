@@ -50,6 +50,10 @@ import java.util.TreeMap;
  * {@code "<path>": "<hash>"} form, the form the other ports write, reads as recorded with
  * no owner, and so does an entry carrying the execution-id {@code "owner"} field an
  * earlier 8.1.0 build wrote.
+ *
+ * <p>A file a write run rendered from one metadata node also carries {@code "generatedBy"} (the
+ * generator's stable name) and {@code "sourceNode"} (the node's resolution key, {@code pkg::Name}),
+ * after the owner fields; a whole-model file carries neither ({@link Provenance}).
  */
 public final class HashManifest {
 
@@ -63,6 +67,15 @@ public final class HashManifest {
             return generator + " -> " + outputDir;
         }
     }
+
+    /**
+     * What produced one generated file: the generator, and the metadata node (its resolution key,
+     * {@code pkg::Name}) it was rendered from, or {@code null} for a file rendered from the whole
+     * model. Written as {@code generatedBy} and {@code sourceNode}, the fields every port shares;
+     * deliberately NOT the {@code generator} owner field, which is an ownership claim the orphan
+     * sweep acts on.
+     */
+    public record Provenance(String generatedBy, String sourceNode) {}
 
     /** The pre-1.3.0 single manifest, still read (underneath the package files) and removed by the next write. */
     private static final String LEGACY_FILE_NAME = ".hashes.json";
@@ -252,6 +265,18 @@ public final class HashManifest {
         return out;
     }
 
+    /** Load the provenance of every entry that names a generator; a plain entry is absent. */
+    public static Map<String, Provenance> loadProvenance(Path genStateDir) {
+        Map<String, Provenance> out = new LinkedHashMap<>();
+        for (Map.Entry<String, JsonElement> e : entries(genStateDir).entrySet()) {
+            if (!e.getValue().isJsonObject()) continue;
+            JsonObject entry = e.getValue().getAsJsonObject();
+            String generatedBy = stringField(entry, "generatedBy");
+            if (generatedBy != null) out.put(e.getKey(), new Provenance(generatedBy, stringField(entry, "sourceNode")));
+        }
+        return out;
+    }
+
     /** The union of every manifest file: the legacy one underneath, package files in name order on top. */
     private static Map<String, JsonElement> entries(Path genStateDir) {
         Map<String, JsonElement> out = new LinkedHashMap<>();
@@ -309,6 +334,18 @@ public final class HashManifest {
      */
     public static void save(Path genStateDir, Map<String, String> hashes, Map<String, Owner> owners,
                             Placement placement) {
+        save(genStateDir, hashes, owners, placement, Map.of());
+    }
+
+    /**
+     * {@link #save(Path, Map, Map, Placement)} that also writes {@code provenance}. A key with a
+     * source node becomes {@code { "hash", <owner fields and other fields, in order>, "generatedBy",
+     * "sourceNode" }}; a key whose provenance has none returns to the plain hash (or to
+     * {@code { "hash", <other fields> }} when it has owner fields). A key absent from
+     * {@code provenance} keeps whatever it carried, and a provenance key with no hash records nothing.
+     */
+    public static void save(Path genStateDir, Map<String, String> hashes, Map<String, Owner> owners,
+                            Placement placement, Map<String, Provenance> provenance) {
         try {
             Map<String, JsonElement> existing = entries(genStateDir);
             Map<String, String> currentFile = placement == null ? fileOfKeys(genStateDir) : Map.of();
@@ -317,18 +354,21 @@ public final class HashManifest {
                 String key = e.getKey();
                 Owner owner = owners.get(key);
                 JsonElement prior = existing.get(key);
+                Provenance prov = provenance.get(key);
                 JsonObject extras = new JsonObject();
                 if (prior != null && prior.isJsonObject()) {
                     for (Map.Entry<String, JsonElement> f : prior.getAsJsonObject().entrySet()) {
                         String name = f.getKey();
                         if (!name.equals("hash") && !name.equals("generator") && !name.equals("outputDir")
-                                && !name.equals("owner")) {
+                                && !name.equals("owner")
+                                && !(prov != null && (name.equals("generatedBy") || name.equals("sourceNode")))) {
                             extras.add(name, f.getValue());
                         }
                     }
                 }
                 JsonElement value;
-                if (owner == null && extras.size() == 0) {
+                boolean stamped = prov != null && prov.sourceNode() != null;
+                if (owner == null && extras.size() == 0 && !stamped) {
                     value = new com.google.gson.JsonPrimitive(e.getValue());
                 } else {
                     JsonObject entry = new JsonObject();
@@ -338,6 +378,10 @@ public final class HashManifest {
                         entry.addProperty("outputDir", owner.outputDir());
                     }
                     for (Map.Entry<String, JsonElement> f : extras.entrySet()) entry.add(f.getKey(), f.getValue());
+                    if (stamped) {
+                        entry.addProperty("generatedBy", prov.generatedBy());
+                        entry.addProperty("sourceNode", prov.sourceNode());
+                    }
                     value = entry;
                 }
                 String file = placement != null

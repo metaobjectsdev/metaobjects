@@ -8,8 +8,9 @@
 // theme beside it. Cytoscape (`assets/cytoscape.min.js`) is vendored in `explorer-app/` and is
 // not touched here. Run `scripts/sync-explorer-app.sh` afterwards to refresh every port's copy.
 //
-// The committed bundle is minified, and minified output follows the Bun version, so it is built
-// and checked with one Bun only: the version the workflows pin (`bun-version` in
+// The committed bundle is minified (whitespace and syntax only; identifiers keep their names, so
+// the bytes do not depend on the minifier's naming), and minified output follows the Bun version,
+// so it is built and checked with one Bun only: the version the workflows pin (`bun-version` in
 // `.github/workflows/`). Any other Bun refuses rather than reporting a stale bundle.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -50,7 +51,9 @@ export async function buildExplorerApp(): Promise<Map<string, string>> {
     entrypoints: [join(PKG, "app-src/main.ts")],
     target: "browser",
     format: "iife",
-    minify: true,
+    // Identifier renaming is off: Bun's choice of short names is not stable from one build to
+    // the next, so a renamed bundle would fail the committed-bytes check on unchanged sources.
+    minify: { whitespace: true, syntax: true, identifiers: false },
     banner: MUSTACHE_NOTICE,
     // Bundle the workspace packages from their sources (the `bun` export condition), never from
     // a `dist/` that may be stale or missing.

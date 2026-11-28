@@ -45,6 +45,7 @@ def _scope_walk(scope: str, pattern: str) -> Callable[[Any], list[dict]]:
                 {
                     "data": build_entity_template_data(o),
                     "output_path": expand_output_pattern(pattern, bare_name(o), package_of(o)),
+                    "source_node": o.resolution_key(),
                 }
                 for o in concrete
             ]
@@ -90,7 +91,11 @@ class _TemplateGenerator:
                     format=self.format,
                 )
             )
-            files.append(EmittedFile(path=entry["output_path"], content=content))
+            files.append(
+                EmittedFile(
+                    path=entry["output_path"], content=content, source_node=entry.get("source_node")
+                )
+            )
         return files
 
 

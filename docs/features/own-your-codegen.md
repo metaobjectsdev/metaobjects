@@ -533,8 +533,9 @@ overwritten; an edited one is refused by name (`<handEdits>keep</handEdits>`, th
 replaced (`<handEdits>overwrite</handEdits>`). There is **no three-way merge**
 (TypeScript-only). **Commit the manifest.**
 
-A TypeScript entry can also carry the node the file was rendered from,
-`{ "hash", "generatedBy", "sourceNode" }`. That is provenance, not ownership, which is why it
+An entry can also carry the node the file was rendered from,
+`{ "hash", "generatedBy", "sourceNode" }`; the TypeScript, C#, Java and Python runs write it
+(on the JVM after `generator` and `outputDir`). That is provenance, not ownership, which is why it
 does not use the JVM's `generator` field. Every reader takes `hash` from either form. See
 [explorer-data.md](explorer-data.md#node-provenance-in-the-manifest).
 

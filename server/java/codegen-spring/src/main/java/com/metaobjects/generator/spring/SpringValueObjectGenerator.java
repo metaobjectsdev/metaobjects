@@ -218,7 +218,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(recordName + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), vo);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing value object " + recordName + ".java for " + vo.getName() + ": " + e, e);

@@ -32,4 +32,13 @@ public interface Generator {
     default List<String> extraInputs() {
         return List.of();
     }
+
+    /**
+     * Whether this generator reads the files the run generated
+     * ({@link com.metaobjects.generator.util.GeneratedFileWriter.Run#generatedFiles}). The runner
+     * runs every such generator after every other one, so it sees the whole run's output.
+     */
+    default boolean readsRunOutput() {
+        return false;
+    }
 }

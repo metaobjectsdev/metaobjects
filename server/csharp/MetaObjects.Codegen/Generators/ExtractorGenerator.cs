@@ -98,7 +98,7 @@ public class ExtractorGenerator : IGenerator
                 WriteMapper(w, v, ctx);
         }
 
-        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{extractorClass}.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{extractorClass}.cs"), w.ToString()) { SourceNode = tmpl.ResolutionKey() };
     }
 
     // The pieces of the file, one overridable method each (ADR-0063 item 7): a subclass changes the

@@ -24,4 +24,13 @@ class MetaEndpointKtxTest {
             CanonicalJsonSerializer.canonicalSerializeEffective(loader.root),
             MetaEndpoint.metaJson(loader.root))
     }
+
+    @Test fun `the docs view route is reachable from kotlin and tags its body`() {
+        val loader = loadString("meta-docs-endpoint-ktx-test", tinyJson)
+        val docs = MetaEndpoint.docs(loader.root)
+        assertEquals("/_meta/docs", MetaEndpoint.META_DOCS_ROUTE_PATH)
+        assertEquals(MetaEndpoint.metaDocsJson(loader.root), docs.body())
+        assertEquals(MetaEndpoint.metaDocsEtag(docs.body()), docs.etag())
+        kotlin.test.assertTrue(docs.matches(docs.etag()))
+    }
 }

@@ -86,7 +86,7 @@ public abstract class MultiFileDirectGeneratorBase<M extends MetaData> extends D
                 writer.close();
                 writer = null;
 
-                GeneratedFileWriter.write( f.toPath(), buffer.toString() );
+                GeneratedFileWriter.write( f.toPath(), buffer.toString(), md );
 
                 pw = null;
             }

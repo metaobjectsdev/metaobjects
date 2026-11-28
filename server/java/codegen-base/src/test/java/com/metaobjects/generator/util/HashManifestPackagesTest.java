@@ -119,6 +119,101 @@ public class HashManifestPackagesTest {
         assertEquals(split.get("gitignoreAfter").getAsString(), Files.readString(gitignore));
     }
 
+    /**
+     * The vectors' placeholder hashes stand for real files: each path that has one is given
+     * content whose hash replaces it, so a gen run's write path can leave the file unchanged
+     * and record only what it rendered the file from. A record for a path with no recorded
+     * hash is a write the run never makes, so it is not made.
+     */
+    @Test
+    public void provenance() throws Exception {
+        JsonObject v = vectors();
+        JsonObject prov = v.getAsJsonObject("provenance");
+        Path root = tmp.getRoot().toPath();
+        Path gs = genState();
+        Path dir = gs.resolve(".hashes");
+        Files.createDirectories(dir);
+        Map<String, String> realHashes = new LinkedHashMap<>();
+        Map<String, String> contentByPath = new LinkedHashMap<>();
+        Map<String, HashManifest.Owner> ownerByPath = new LinkedHashMap<>();
+        for (Map.Entry<String, JsonElement> f : prov.getAsJsonObject("beforeFiles").entrySet()) {
+            JsonObject entries = f.getValue().deepCopy().getAsJsonObject();
+            for (Map.Entry<String, JsonElement> e : entries.entrySet()) {
+                String path = e.getKey();
+                JsonElement entry = e.getValue();
+                String placeholder = entry.isJsonObject()
+                        ? entry.getAsJsonObject().get("hash").getAsString() : entry.getAsString();
+                String content = "// GENERATED content of " + path + "\n";
+                String hash = HashManifest.contentHash(content);
+                realHashes.put(hash, placeholder);
+                contentByPath.put(path, content);
+                Files.createDirectories(root.resolve(path).getParent());
+                Files.writeString(root.resolve(path), content);
+                if (entry.isJsonObject()) {
+                    JsonObject o = entry.getAsJsonObject();
+                    o.addProperty("hash", hash);
+                    if (o.has("generator")) {
+                        ownerByPath.put(path, new HashManifest.Owner(
+                                o.get("generator").getAsString(), o.get("outputDir").getAsString()));
+                    }
+                } else {
+                    entries.addProperty(path, hash);
+                }
+            }
+            Files.writeString(dir.resolve(f.getKey()), entries.toString());
+        }
+
+        runProvenanceRecords(prov, root, gs, placement(v), contentByPath, ownerByPath);
+
+        Map<String, String> written = placeholdersIn(filesIn(dir), realHashes);
+        JsonObject expected = prov.getAsJsonObject("afterFiles");
+        assertEquals(new TreeSet<>(expected.keySet()), new TreeSet<>(written.keySet()));
+        for (String name : expected.keySet()) {
+            assertEquals(name, expected.get(name), JsonParser.parseString(written.get(name)));
+        }
+        assertEquals(prov.get("goldenText").getAsString(), written.get(prov.get("goldenFile").getAsString()));
+
+        // The same run a second time changes no file.
+        Map<String, String> before = filesIn(dir);
+        for (Path p : Files.list(dir).toList()) Files.setLastModifiedTime(p, LONG_AGO);
+        runProvenanceRecords(prov, root, gs, placement(v), contentByPath, ownerByPath);
+        assertEquals(before, filesIn(dir));
+        for (Path p : Files.list(dir).toList()) {
+            assertEquals(p.toString(), LONG_AGO, Files.getLastModifiedTime(p));
+        }
+    }
+
+    private static void runProvenanceRecords(JsonObject prov, Path root, Path gs, HashManifest.Placement placement,
+                                             Map<String, String> contentByPath,
+                                             Map<String, HashManifest.Owner> ownerByPath) throws IOException {
+        try (GeneratedFileWriter.Run run = GeneratedFileWriter.beginRun()) {
+            run.configureManifest(gs, root).placeBy(placement);
+            for (JsonElement el : prov.getAsJsonArray("records")) {
+                JsonObject r = el.getAsJsonObject();
+                String path = r.get("path").getAsString();
+                String content = contentByPath.get(path);
+                if (content == null) continue;
+                String by = r.get("generatedBy").getAsString();
+                run.attributeTo(by, GeneratedFileWriter.HAND_EDITS_KEEP, ownerByPath.get(path), by);
+                String node = nullable(r.get("sourceNode"));
+                GeneratedFileWriter.Outcome outcome = node == null
+                        ? GeneratedFileWriter.write(root.resolve(path), content)
+                        : GeneratedFileWriter.write(root.resolve(path), content, node);
+                assertEquals(path, GeneratedFileWriter.Outcome.UNCHANGED, outcome);
+            }
+        }
+    }
+
+    private static Map<String, String> placeholdersIn(Map<String, String> files, Map<String, String> realHashes) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, String> f : files.entrySet()) {
+            String text = f.getValue();
+            for (Map.Entry<String, String> h : realHashes.entrySet()) text = text.replace(h.getKey(), h.getValue());
+            out.put(f.getKey(), text);
+        }
+        return out;
+    }
+
     @Test
     public void gitignoreIsTouchedOnlyByAMigratingWrite() throws Exception {
         Path gs = genState();

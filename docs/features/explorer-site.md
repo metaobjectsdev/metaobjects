@@ -62,6 +62,39 @@ opening a link in a new tab work as they do on a static site. The app files are 
 every port; `explorer-app/README.md` at the repository root describes them and the two data
 files a port writes beside them.
 
+### In each port
+
+The explorer app is the same files in every port, and `explorer.json` is the same bytes for the
+same model and inputs: every port that builds the docs view is held to
+`fixtures/explorer-conformance/`. What differs is where each input comes from.
+
+| Port | Generator | The app | Inputs it reads |
+|---|---|---|---|
+| TypeScript | `docsSiteFile()` (`meta gen`) | `output: "app"` (default) or `"static"`; `site: "classic"` for the earlier site | The model, the requirement ledger, the files and routes this run wrote and mounts |
+| Java | `com.metaobjects.generator.DocsSiteGenerator` (`mvn metaobjects:generate`), no Node | The app only | The model, the files generated per node (this execution's, and what the committed hash manifest records for the module's other executions), and a `verify --format json` payload when you name one (`verifyFile`) |
+| Kotlin | the same JVM `DocsSiteGenerator`, through `codegen-kotlin`'s registry | The app only | As Java; the Kotlin generators do not record provenance in the manifest yet, so their files are not listed |
+| C#, Python, Rust | not yet | | |
+
+On the JVM, wire it like any other generator, with its own output directory:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.DocsSiteGenerator</classname>
+  <args>
+    <outputDir>${project.basedir}/docs/generated</outputDir>
+  </args>
+</generator>
+```
+
+It writes `docs/generated/site/`. The JVM build has no requirement gate of its own, so without
+`verifyFile` the requirement tree shows each claim but no verdict. The generator is not told the
+routes the Spring controllers mount, so no node lists its REST routes unless you name them in
+`routesFile` (`[{ node, method, path }]`, `node` a resolution key). The generated-file lists are the
+files this execution generated, beside what the committed hash manifest records for the module's
+other `<execution>`s: the execution builds the site after every other generator it runs, so
+`metaobjects:verify` renders the same lists the write run wrote. The other args are in
+[the Java port's generator table](../ports/java.md#generators).
+
 ### The live view
 
 Leave the explorer open while you work. About once a second it reloads `explorer-stamp.js`,
@@ -264,18 +297,26 @@ a dangling link. `createExplorer` (the page table both outputs draw from) and
 
 - An LLM-written summary, a test-result overlay, zoom levels and lenses on the map, and
   publishing the site.
-- The docs view route in the other ports: the contract is in
+- The docs view route in C#, Python and Rust: the contract is in
   [metadata-api.md](metadata-api.md#the-docs-view-endpoint-get-_metadocs), and each port serves
-  it once it has its docs view builder.
-- The app in the other ports: its files are in each port's package already (see
+  it once it has its docs view builder. Java and Kotlin ship it (`MetaEndpoint.docs(root)`).
+- The app in C#, Python and Rust: its files are in each port's package already (see
   `explorer-app/README.md`), and each port's docs-site generator is still to write them.
+- The static export and the classic site outside TypeScript.
 - "Hand-written code that imports it": the site reads no import graph, so the object pages say
   it was not scanned.
-- Generated-file provenance from the JVM, Python and C# generators (see
+- Generated-file provenance from the Kotlin and Rust generators (see
   [explorer-data.md](explorer-data.md)), so for those ports the generated-file lists are empty.
 
 ## Verified by
 
+- `server/java/metadata/src/test/java/com/metaobjects/docsview/DocsViewConformanceTest.java`:
+  the JVM docs view builder writes every `fixtures/explorer-conformance/` case byte for byte.
+- `server/java/codegen-base/src/test/java/com/metaobjects/docs/explorer/ExplorerSiteTest.java`:
+  the JVM site's app files are the canonical copy, its model script has TypeScript's bytes and
+  stamp, an owned theme wins, and the generator lists the manifest's files.
+- `server/java/metadata/src/test/java/com/metaobjects/io/json/MetaDocsEndpointTest.java`: the
+  JVM docs view route body is the `model-alone` view, and its ETag is TypeScript's.
 - `server/typescript/packages/docs-site/test/explorer-app.test.ts`: the files the app output
   writes, the model and stamp files, owned templates and theme, and the committed bundle, run
   outside a browser, drawing every page the static export writes byte for byte on the shop, crm

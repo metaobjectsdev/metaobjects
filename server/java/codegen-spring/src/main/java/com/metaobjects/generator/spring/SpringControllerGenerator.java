@@ -348,11 +348,11 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
     }
 
     /** Write the finished controller through the shared write path. */
-    protected void writeControllerFile(Path outRoot, String pkg, String controllerName, SpringJavaWriter w,
-                                       String failureContext) {
+    protected void writeControllerFile(MetaObject entity, Path outRoot, String pkg, String controllerName,
+                                       SpringJavaWriter w, String failureContext) {
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), entity);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + failureContext.replace("{file}", controllerName + ".java") + ": " + e, e);
@@ -424,7 +424,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             for (SpringM2mSupport.M2mNav nav : navs) writeM2mHandler(w, entity, nav, pkType);
             writeParseSortHelper(w, repoName);
         }
-        writeControllerFile(outRoot, pkg, controllerName, w, "{file} for entity " + entity.getName());
+        writeControllerFile(entity, outRoot, pkg, controllerName, w, "{file} for entity " + entity.getName());
     }
 
     /**
@@ -811,7 +811,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             writeMethodNotAllowed(w, noun);
             writeParseSortHelper(w, repoName);
         }
-        writeControllerFile(outRoot, pkg, controllerName, w, "{file} for " + noun + " " + entity.getName());
+        writeControllerFile(entity, outRoot, pkg, controllerName, w, "{file} for " + noun + " " + entity.getName());
     }
 
     /**
@@ -1336,7 +1336,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             writeTphNotFound(w);
             writeParseSortHelper(w, repoName);
         }
-        writeControllerFile(outRoot, pkg, controllerName, w, "TPH {file} for entity " + base.getName());
+        writeControllerFile(base, outRoot, pkg, controllerName, w, "TPH {file} for entity " + base.getName());
     }
 
     /** Polymorphic list — the union across all subtypes, each row tagged by its discriminator. */

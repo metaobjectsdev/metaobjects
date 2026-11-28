@@ -38,6 +38,13 @@ vectors in `manifests.json` are run by each port's manifest unit tests, beside t
   is one file's bytes in full), the legacy file is removed, and a second identical write changes no
   file. `gitignoreBefore` becomes `gitignoreAfter`; a file that already holds the new line, or has no
   `.gen-state/*` rule, is left alone.
+- `provenance`: which generator, and which node, each recorded path came from (the docs view's
+  generated files). Seed `beforeFiles` as the `.hashes/` directory, record `records` with `objects`
+  as the loaded model, and the directory must hold exactly `afterFiles` (`goldenText` is one file's
+  bytes in full). A record with a `sourceNode` makes the entry `{ "hash", <other fields kept>,
+  "generatedBy", "sourceNode" }`; one without returns it to the plain hash; a path with no recorded
+  hash is left out. Recording the same records again changes no file. TypeScript, C#, Java and
+  Python run it.
 
 A port's tests also assert what the vectors cannot: two writes that change entries in two packages
 change two files and no third, a save that changes nothing writes nothing, a package that loses its

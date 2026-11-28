@@ -4,6 +4,7 @@ import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorRegistry;
 import com.metaobjects.generator.GeneratorRegistry.GeneratorInfo;
+import com.metaobjects.docsview.DocsSiteInert;
 import com.metaobjects.generator.apidocs.ApiUnit;
 import com.metaobjects.generator.apidocs.DocsPaths;
 import com.metaobjects.generator.apidocs.JavaApiDocsRenderer;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -137,6 +139,8 @@ public class RulesInertTest extends SharedRegistryTestBase {
     public void everyGeneratorEmitsTheSameFiles() throws Exception {
         List<String> leaks = new ArrayList<>();
         for (GeneratorInfo info : GeneratorRegistry.list().values()) {
+            // docs-site documents every node, so it is held to its own line, below.
+            if (DocsSiteInert.GENERATOR.equals(info.stableName())) continue;
             try {
                 assertSame(info.stableName(), emit("without", List.of(info)), emit("with", List.of(info)));
             } catch (AssertionError e) {
@@ -144,6 +148,14 @@ public class RulesInertTest extends SharedRegistryTestBase {
             }
         }
         assertTrue(String.join("\n", leaks), leaks.isEmpty());
+    }
+
+    @Test
+    public void docsSiteDiffersByExactlyTheNewNodes() throws Exception {
+        // The explorer lists every node, so the declared API and each transition are one more; nothing else moves.
+        GeneratorInfo info = GeneratorRegistry.list().get(DocsSiteInert.GENERATOR);
+        List<String> problems = DocsSiteInert.check(emit("without", List.of(info)), emit("with", List.of(info)), Set.of("api", "transition"));
+        assertTrue(String.join("\n", problems), problems.isEmpty());
     }
 
     @Test

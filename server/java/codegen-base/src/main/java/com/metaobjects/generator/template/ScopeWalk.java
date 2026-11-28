@@ -35,7 +35,8 @@ public final class ScopeWalk {
                     for (MetaObject o : concrete) {
                         out.add(new TemplateWalkResult(
                             TemplateData.entity(o),
-                            OutputPattern.expand(outputPattern, TemplateData.bareName(o), TemplateData.packageOf(o))));
+                            OutputPattern.expand(outputPattern, TemplateData.bareName(o), TemplateData.packageOf(o)),
+                            com.metaobjects.generator.util.GeneratedFileWriter.resolutionKey(o)));
                     }
                     return out;
                 case PER_PACKAGE: {

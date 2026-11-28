@@ -107,6 +107,163 @@ public class HashManifestPerPackageTests : IDisposable
         Assert.Equal(split.GetProperty("gitignoreAfter").GetString(), File.ReadAllText(ignore));
     }
 
+    [Fact]
+    public void Provenance_matches_the_vectors()
+    {
+        var v = Vectors();
+        var p = v.GetProperty("provenance");
+        var objects = VectorObjects(v);
+        Directory.CreateDirectory(HashesDir);
+        foreach (var f in p.GetProperty("beforeFiles").EnumerateObject())
+            File.WriteAllText(Path.Combine(HashesDir, f.Name), f.Value.GetRawText());
+        var records = p.GetProperty("records").EnumerateArray().ToDictionary(
+            r => r.GetProperty("path").GetString()!,
+            r => new HashManifest.Provenance(r.GetProperty("generatedBy").GetString()!, Str(r, "sourceNode")));
+
+        void Apply()
+        {
+            using var batch = HashManifest.Batch(StateDir, objects);
+            HashManifest.RecordGeneratedProvenance(StateDir, records);
+            batch.Complete();
+        }
+        Apply();
+
+        var expected = p.GetProperty("afterFiles");
+        Assert.Equal(expected.EnumerateObject().Select(f => f.Name).Order(StringComparer.Ordinal).ToList(),
+            Directory.GetFiles(HashesDir).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList());
+        foreach (var f in expected.EnumerateObject())
+        {
+            using var actual = JsonDocument.Parse(File.ReadAllText(Path.Combine(HashesDir, f.Name)));
+            Assert.Equal(Canon(f.Value), Canon(actual.RootElement));
+        }
+        Assert.Equal(p.GetProperty("goldenText").GetString()!,
+            File.ReadAllText(Path.Combine(HashesDir, p.GetProperty("goldenFile").GetString()!)));
+
+        var stamp = DateTime.UtcNow.AddHours(-2);
+        foreach (var f in Directory.GetFiles(HashesDir)) File.SetLastWriteTimeUtc(f, stamp);
+        Apply();
+        foreach (var f in Directory.GetFiles(HashesDir)) Assert.Equal(stamp, File.GetLastWriteTimeUtc(f));
+    }
+
+    private static string Canon(JsonElement e) => JsonSerializer.Serialize(e);
+
+    [Fact]
+    public void The_real_entity_generator_stamps_its_entity_file_with_provenance()
+    {
+        var src = """
+            { "metadata.root": { "package": "acme::shop", "children": [
+              { "object.entity": { "name": "Order", "children": [
+                { "field.string": { "name": "id" } } ] } }
+            ]}}
+            """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(src, id: "shop.json")]);
+        Assert.Empty(r.Errors);
+        var config = new GenConfig
+        {
+            OutDir = Path.Combine(_root, "gen"), Namespace = "Probe", GenStateDir = StateDir, ProjectRoot = _root,
+        };
+        CodegenRunner.Run(config, r.Root, [new MetaObjects.Codegen.Generators.EntityGenerator()]);
+
+        using var shop = JsonDocument.Parse(File.ReadAllText(Path.Combine(HashesDir, "acme.shop.json")));
+        var entry = shop.RootElement.EnumerateObject().Single(p => p.Name.EndsWith("Order.g.cs")).Value;
+        Assert.Equal(JsonValueKind.Object, entry.ValueKind);
+        Assert.Equal("entity-generator", entry.GetProperty("generatedBy").GetString());
+        Assert.Equal("acme::shop::Order", entry.GetProperty("sourceNode").GetString());
+        Assert.True(entry.TryGetProperty("hash", out _));
+    }
+
+    [Fact]
+    public void The_names_filter_allowlist_and_routes_generators_stamp_each_object_file()
+    {
+        var src = """
+            { "metadata.root": { "package": "acme::shop", "children": [
+              { "object.entity": { "name": "Stamped", "abstract": true, "children": [
+                { "field.long": { "name": "id" } },
+                { "field.timestamp": { "name": "createdAt" } } ] } },
+              { "object.entity": { "name": "Order", "extends": "Stamped", "children": [
+                { "source.rdb": { "@table": "orders" } },
+                { "field.string": { "name": "code", "@filterable": true } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } } ] } },
+              { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+                { "source.rdb": { "@table": "auths" } },
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "type", "@values": ["Bridge"] } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } } ] } },
+              { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+                { "field.int": { "name": "quantity" } } ] } }
+            ]}}
+            """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(src, id: "shop.json")]);
+        Assert.Empty(r.Errors);
+        var config = new GenConfig
+        {
+            OutDir = Path.Combine(_root, "gen"), Namespace = "Probe", GenStateDir = StateDir, ProjectRoot = _root,
+        };
+        CodegenRunner.Run(config, r.Root,
+        [
+            new MetaObjects.Codegen.Generators.NamesGenerator(),
+            new MetaObjects.Codegen.Generators.FilterAllowlistGenerator(),
+            new MetaObjects.Codegen.Generators.RoutesGenerator(),
+        ]);
+
+        using var shop = JsonDocument.Parse(File.ReadAllText(Path.Combine(HashesDir, "acme.shop.json")));
+        var stamped = shop.RootElement.EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value.ValueKind == JsonValueKind.Object
+                ? $"{p.Value.GetProperty("generatedBy").GetString()} {Str(p.Value, "sourceNode")}"
+                : "(plain)");
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["gen/AuthFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::Auth",
+            ["gen/AuthNames.g.cs"] = "names acme::shop::Auth",
+            ["gen/AuthRoutes.g.cs"] = "routes-generator acme::shop::Auth",
+            ["gen/BridgeAuthFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::BridgeAuth",
+            ["gen/BridgeAuthNames.g.cs"] = "names acme::shop::BridgeAuth",
+            ["gen/OrderFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::Order",
+            ["gen/OrderNames.g.cs"] = "names acme::shop::Order",
+            ["gen/OrderRoutes.g.cs"] = "routes-generator acme::shop::Order",
+            ["gen/StampedNames.g.cs"] = "names acme::shop::Stamped",
+        }, stamped);
+    }
+
+    private sealed class WholeModelFile : IGenerator
+    {
+        public string Name => "barrel";
+        public IEnumerable<EmittedFile> Generate(GenContext ctx) => [new EmittedFile("index.g.cs", "// index\n")];
+    }
+
+    private sealed class OneEntity : PerEntityGenerator
+    {
+        public override string Name => "alpha";
+        protected override EmittedFile GenerateOne(MetaObject entity, GenContext ctx) =>
+            new($"{entity.Name}.alpha.cs", "// a\n");
+    }
+
+    [Fact]
+    public void A_run_records_the_generator_and_node_for_a_per_entity_file_only()
+    {
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(Pkg("acme::shop", "Order"), id: "shop.json")]);
+        Assert.Empty(r.Errors);
+        var config = new GenConfig
+        {
+            OutDir = Path.Combine(_root, "gen"), Namespace = "Probe", GenStateDir = StateDir, ProjectRoot = _root,
+        };
+        CodegenRunner.Run(config, r.Root, [new OneEntity(), new WholeModelFile()]);
+
+        using var shop = JsonDocument.Parse(File.ReadAllText(Path.Combine(HashesDir, "acme.shop.json")));
+        var entry = shop.RootElement.GetProperty("gen/Order.alpha.cs");
+        Assert.Equal(["hash", "generatedBy", "sourceNode"], entry.EnumerateObject().Select(x => x.Name).ToArray());
+        Assert.Equal("alpha", entry.GetProperty("generatedBy").GetString());
+        Assert.Equal("acme::shop::Order", entry.GetProperty("sourceNode").GetString());
+        using var rootM = JsonDocument.Parse(File.ReadAllText(Path.Combine(HashesDir, ".root.json")));
+        Assert.Equal(JsonValueKind.String, rootM.RootElement.GetProperty("gen/index.g.cs").ValueKind);
+
+        // A second run changes no manifest file.
+        var stamp = DateTime.UtcNow.AddHours(-2);
+        foreach (var f in Directory.GetFiles(HashesDir)) File.SetLastWriteTimeUtc(f, stamp);
+        CodegenRunner.Run(config, r.Root, [new OneEntity(), new WholeModelFile()]);
+        foreach (var f in Directory.GetFiles(HashesDir)) Assert.Equal(stamp, File.GetLastWriteTimeUtc(f));
+    }
+
     private static readonly List<HashManifest.ManifestObject> Objs =
     [
         new("Order", "acme::shop"), new("Customer", "acme::crm"),

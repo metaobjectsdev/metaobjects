@@ -12,10 +12,12 @@ logic-less template such as Mustache can render it unaided. Every port that buil
 writes the same bytes for the same model, and the shared corpus
 [`fixtures/explorer-conformance/`](../../fixtures/explorer-conformance/) holds them to that.
 
-TypeScript builds it today. `buildDocsView` and `serializeDocsView` are exported from
-`@metaobjectsdev/metadata`, and `docsSiteFile()` writes the result as the site's
-`explorer.json` (see [explorer-site.md](explorer-site.md)). The other ports build it as their
-own step of the same plan. The explorer pages still render their HTML in TypeScript.
+TypeScript builds it today, and so do Java and Kotlin (one JVM builder, `DocsView` in
+`metadata`). `buildDocsView` and `serializeDocsView` are exported from `@metaobjectsdev/metadata`,
+and `docsSiteFile()` writes the result as the site's `explorer.json` (see
+[explorer-site.md](explorer-site.md)). C#, Python and Rust will build it as their own step of the same
+plan ([explorer-data.md](explorer-data.md#not-built-yet)). The explorer pages still render their
+HTML in TypeScript; the JVM copies the app and writes the same `explorer.json`.
 
 A page of your own is a template over the view: the TypeScript `template` generator renders it
 with the `perNode` and `perRequirement` scopes (and `data: "docsView"` on `perModel` and
@@ -268,7 +270,8 @@ Named node sets a map view opens on, all derived, each `{ id, kind, anchor, node
   `expected.json` is the view of its project and committed inputs, byte for byte.
   `server/typescript/packages/metadata/test/docs-view-conformance.test.ts` runs it, and also
   checks inheritance, references, the requirement list, custom vocabulary and a build without
-  the optional inputs.
+  the optional inputs. The JVM runs the same cases in `metadata`'s `DocsViewConformanceTest` and
+  Kotlin in `KotlinDocsSiteConformanceTest` ([CONFORMANCE.md](../CONFORMANCE.md)).
 - `server/typescript/packages/cli/test/explorer-fixture.test.ts`: the committed `verify.json`
   files are what the gate writes today, and a fresh verify payload builds the committed
   `shop/expected.json`.

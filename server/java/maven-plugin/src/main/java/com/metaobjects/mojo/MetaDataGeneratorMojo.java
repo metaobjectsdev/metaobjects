@@ -155,6 +155,7 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             if (genStateDir != null) {
                 run.configureManifest(genStateDir, projectRoot);
                 run.placeBy(placementOf(loader));
+                run.carryCommittedFiles(committedFilesBeside(genStateDir, projectRoot, selected != null));
             }
 
             // Every output dir THIS EXECUTION's generators write to, with the handEdits
@@ -166,14 +167,14 @@ public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
             Set<HashManifest.Owner> runOwners = new HashSet<>();
             List<GeneratorParam> params = getGenerators();
 
-            for (int i = 0; i < generatorImpls.size(); i++) {
+            for (int i : runOrder(generatorImpls)) {
                 Generator gen = generatorImpls.get(i);
                 getLog().info("MetaData Mojo > Executing Generator: " + gen.getClass().getName() );
                 GeneratorParam param = params != null && i < params.size() ? params.get(i) : null;
                 String handEdits = param != null ? param.validatedHandEdits() : GeneratorParam.HAND_EDITS_KEEP;
                 HashManifest.Owner owner = genStateDir != null && param != null ? ownerOf(param) : null;
                 if (owner != null) runOwners.add(owner);
-                run.attributeTo( gen.getClass().getSimpleName(), handEdits, owner );
+                run.attributeTo( gen.getClass().getSimpleName(), handEdits, owner, generatedBy(param, gen) );
                 gen.execute( loader );
 
                 if (genStateDir != null && param != null) {

@@ -1,5 +1,5 @@
 {
-  "$comment": "ADR-0064 Amendment 1. Every port with hash state runs these vectors against its own manifest store: fileNames (a package's manifest file name), placement (which manifest a path is filed under, given the loaded objects) and legacySplit (a legacy .hashes.json becomes these package files, byte for byte, and is removed). 'package': null is the root manifest (.root.json). A manifest file's text is the object with keys sorted, two-space indentation and a trailing newline ('goldenText' is one file in full).",
+  "$comment": "ADR-0064 Amendment 1. Every port with hash state runs these vectors against its own manifest store: fileNames (a package's manifest file name), placement (which manifest a path is filed under, given the loaded objects), legacySplit (a legacy .hashes.json becomes these package files, byte for byte, and is removed) and provenance (which generator and node each recorded path came from). 'package': null is the root manifest (.root.json). A manifest file's text is the object with keys sorted, two-space indentation and a trailing newline ('goldenText' is one file in full).",
   "version": 1,
   "objects": [
     {
@@ -277,5 +277,111 @@
     "goldenText": "{\n  \"gen/Order.ts\": \"h1\",\n  \"gen/OrderDto.java\": {\n    \"hash\": \"h2\",\n    \"generator\": \"java:dto\",\n    \"outputDir\": \"gen\"\n  }\n}\n",
     "gitignoreBefore": ".gen-state/*\n!.gen-state/.hashes.json\n",
     "gitignoreAfter": ".gen-state/*\n!.gen-state/.hashes/\n"
+  },
+  "provenance": {
+    "$comment": "Generated-file provenance (the docs view's 'files'): after a write run, each recorded path's entry names the generator that wrote it and, for a file rendered from one node, that node's resolution key. A port seeds 'beforeFiles' as its .hashes/ directory, records 'records' (with the vectors' 'objects' as the loaded model), and must then hold exactly 'afterFiles'. A record with a sourceNode makes the entry { hash, <other fields kept in order>, generatedBy, sourceNode }; one without returns the entry to the plain hash (or to { hash, <other fields> } when it has owner fields); a path with no recorded hash is left out; the sourceNode then places the entry. 'goldenText' is one file's bytes in full. Recording the same records a second time changes no file.",
+    "beforeFiles": {
+      "acme.shop.json": {
+        "gen/Order.ts": "h1",
+        "gen/OrderDto.java": {
+          "hash": "h2",
+          "generator": "java:dto",
+          "outputDir": "gen"
+        }
+      },
+      "acme.crm.json": {
+        "gen/Customer.ts": {
+          "hash": "h3",
+          "generatedBy": "entity",
+          "sourceNode": "acme::crm::Customer"
+        }
+      },
+      "acme.billing.json": {
+        "gen/Invoice.ts": "h5"
+      },
+      "gone.json": {
+        "gen/index.ts": {
+          "hash": "h4",
+          "generatedBy": "barrel",
+          "sourceNode": "gone::X"
+        }
+      },
+      ".root.json": {
+        "gen/Item.ts": "h6"
+      }
+    },
+    "records": [
+      {
+        "path": "gen/Order.ts",
+        "generatedBy": "entity",
+        "sourceNode": "acme::shop::Order",
+        "why": "a per-object file gains its generator and node"
+      },
+      {
+        "path": "gen/OrderDto.java",
+        "generatedBy": "dto",
+        "sourceNode": "acme::shop::Order",
+        "why": "the JVM owner fields stay, before the provenance"
+      },
+      {
+        "path": "gen/index.ts",
+        "generatedBy": "barrel",
+        "why": "a whole-model file returns to the plain hash and is placed by its stem"
+      },
+      {
+        "path": "gen/Customer.ts",
+        "generatedBy": "entity",
+        "sourceNode": "acme::crm::Customer",
+        "why": "already recorded so: unchanged"
+      },
+      {
+        "path": "gen/Item.ts",
+        "generatedBy": "entity",
+        "sourceNode": "acme::crm::Item",
+        "why": "the sourceNode places a file the stem cannot"
+      },
+      {
+        "path": "gen/Missing.ts",
+        "generatedBy": "entity",
+        "sourceNode": "acme::shop::Missing",
+        "why": "no recorded hash: provenance never records a write"
+      }
+    ],
+    "afterFiles": {
+      "acme.shop.json": {
+        "gen/Order.ts": {
+          "hash": "h1",
+          "generatedBy": "entity",
+          "sourceNode": "acme::shop::Order"
+        },
+        "gen/OrderDto.java": {
+          "hash": "h2",
+          "generator": "java:dto",
+          "outputDir": "gen",
+          "generatedBy": "dto",
+          "sourceNode": "acme::shop::Order"
+        }
+      },
+      "acme.crm.json": {
+        "gen/Customer.ts": {
+          "hash": "h3",
+          "generatedBy": "entity",
+          "sourceNode": "acme::crm::Customer"
+        },
+        "gen/Item.ts": {
+          "hash": "h6",
+          "generatedBy": "entity",
+          "sourceNode": "acme::crm::Item"
+        }
+      },
+      "acme.billing.json": {
+        "gen/Invoice.ts": "h5"
+      },
+      ".root.json": {
+        "gen/index.ts": "h4"
+      }
+    },
+    "goldenFile": "acme.shop.json",
+    "goldenText": "{\n  \"gen/Order.ts\": {\n    \"hash\": \"h1\",\n    \"generatedBy\": \"entity\",\n    \"sourceNode\": \"acme::shop::Order\"\n  },\n  \"gen/OrderDto.java\": {\n    \"hash\": \"h2\",\n    \"generator\": \"java:dto\",\n    \"outputDir\": \"gen\",\n    \"generatedBy\": \"dto\",\n    \"sourceNode\": \"acme::shop::Order\"\n  }\n}\n"
   }
 }

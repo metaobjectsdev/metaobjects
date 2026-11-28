@@ -228,7 +228,7 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
             Path outFile = pkg.isEmpty()
                 ? outRoot.resolve(helperClass + ".java")
                 : outRoot.resolve(pkg.replace('.', '/')).resolve(helperClass + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), entity);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + helperClass + ".java for entity " + entity.getName() + ": " + e, e);

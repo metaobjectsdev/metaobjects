@@ -230,7 +230,7 @@ public class RenderHelperGenerator : IGenerator
                     w.Line($"global::MetaObjects.Render.Renderer.Render(new global::MetaObjects.Render.RenderRequest {{ Ref = {Quote(textRef)}, Payload = payload, Provider = provider, Format = {Quote(format)}, Verify = {ft}{maxCharsArg} }});");
             }
         }
-        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{templateName}.render.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(tmpl, ctx, $"{templateName}.render.cs"), w.ToString()) { SourceNode = tmpl.ResolutionKey() };
     }
 
     // -------------------------------------------------------------------------

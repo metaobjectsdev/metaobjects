@@ -254,6 +254,7 @@ class RenderHelperGenerator:
                         f"{_snake_case(tmpl.name)}_render_helper", tmpl.resolution_key(),
                     ),
                     content=ruff_format(content),
+                    source_node=tmpl.resolution_key(),
                 )
             )
         return files

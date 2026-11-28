@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.docsview.DocsSiteInert
 import com.metaobjects.generator.kotlin.apidocs.DocsPaths
 import com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer
 import com.metaobjects.generator.kotlin.apidocs.KotlinApiModelBuilder
@@ -89,7 +90,18 @@ class RulesInertTest {
     }
 
     // shared-model writes no code: it publishes the model's own metadata files, named by its args.
-    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.name != "api-docs" && it.name != "shared-model" }
+    // docs-site documents every node, so it is held to its own line (DocsSiteInert), below.
+    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter {
+        it.name != "api-docs" && it.name != "shared-model" && it.name != DocsSiteInert.GENERATOR
+    }
+
+    @Test
+    fun `docs-site differs by exactly the new nodes`() {
+        // The explorer lists every node, so the declared API and each transition are one more; nothing else moves.
+        val info = GENERATOR_REGISTRY.getValue(DocsSiteInert.GENERATOR)
+        val problems = DocsSiteInert.check(emit("without", listOf(info)), emit("with", listOf(info)), setOf("api", "transition"))
+        assertTrue(problems.isEmpty(), problems.joinToString("\n"))
+    }
 
     @Test
     fun `the with-model really carries the vocabulary`() {

@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.agentcontext.AgentContextScaffold;
+import com.metaobjects.generator.DocsSiteGenerator;
 import com.metaobjects.generator.Generator;
 import com.metaobjects.generator.GeneratorBase;
 import com.metaobjects.generator.ProjectClassLoaderAware;
@@ -19,6 +20,7 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.generator.EmitsPhysicalNameConstants;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.generator.util.HashManifest;
+import com.metaobjects.generator.util.OrphanSweep;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
 import org.apache.maven.execution.MavenSession;
@@ -618,8 +620,8 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
     /**
-     * Whether the stored fingerprint matches the one just computed and the files the last run
-     * wrote are all still there. With {@code checkHashes}, each file the manifest records must
+     * Whether the stored fingerprint matches the one just computed and the manifest records
+     * exactly the files the last run left, each still on disk as it left it. With {@code checkHashes}, each file the manifest records must
      * also still hash to its record (what a local {@code verify} needs).
      */
     protected boolean fingerprintMatches(Path genStateDir, boolean checkHashes) {
@@ -631,10 +633,12 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             all.addAll(extraInputsOf(stored.get().extras()));
             if ( !GenFingerprint.fold(all).equals(stored.get().key()) ) return false;
             Path root = project.getBasedir().toPath();
+            Map<String, String> manifest = HashManifest.load(genStateDir);
+            if ( !manifest.keySet().equals(stored.get().outputs().keySet()) ) return false;
             // Amendment A: every recorded file must still hash to what the last run left on
             // disk. A hand edit therefore makes gen render, and a hand edit that gen merged and
             // kept does not. Verify also wants each file to match the manifest record.
-            for ( Map.Entry<String, String> e : HashManifest.load(genStateDir).entrySet() ) {
+            for ( Map.Entry<String, String> e : manifest.entrySet() ) {
                 Path file = root.resolve(e.getKey());
                 if ( !Files.isRegularFile(file) ) return false;
                 String onDisk = HashManifest.contentHash(Files.readString(file, StandardCharsets.UTF_8));
@@ -841,6 +845,52 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
 
     /**
+     * The committed files a run of this execution lists beside its own: every manifest entry its
+     * orphan sweep leaves alone ({@link OrphanSweep#isCandidate}), such as another execution's, or
+     * every entry when {@code narrowed}, since a narrowed run sweeps nothing. The generate and
+     * verify goals both read it, so they list the same files.
+     */
+    protected Map<String, HashManifest.Provenance> committedFilesBeside(Path genStateDir, Path projectRoot,
+                                                                        boolean narrowed) {
+        Map<String, HashManifest.Provenance> provenance = HashManifest.loadProvenance(genStateDir);
+        if (narrowed) return provenance;
+        Map<String, HashManifest.Owner> owners = HashManifest.loadOwners(genStateDir);
+        Set<HashManifest.Owner> runOwners = new HashSet<>();
+        List<Path> runDirs = new ArrayList<>();
+        for (GeneratorParam g : getGenerators() != null ? getGenerators() : List.<GeneratorParam>of()) {
+            HashManifest.Owner owner = ownerOf(g);
+            if (owner != null) runOwners.add(owner);
+            String dir = mergeAndOverwriteArgs(g).get(GeneratorBase.ARG_OUTPUTDIR);
+            if (dir != null) runDirs.add(Path.of(dir).toAbsolutePath().normalize());
+        }
+        Path root = projectRoot.toAbsolutePath().normalize();
+        Map<String, HashManifest.Provenance> out = new LinkedHashMap<>();
+        for (Map.Entry<String, HashManifest.Provenance> e : provenance.entrySet()) {
+            Path file = root.resolve(e.getKey()).normalize();
+            boolean inRunDir = runDirs.stream().anyMatch(file::startsWith);
+            if (!OrphanSweep.isCandidate(owners.get(e.getKey()), inRunDir, runOwners, this::configuredOwners)) {
+                out.put(e.getKey(), e.getValue());
+            }
+        }
+        return out;
+    }
+
+    /** The order a run executes {@code generators} in, as indices: declaration order, with every
+     *  generator that reads the run's output ({@link Generator#readsRunOutput}) after every other. */
+    static List<Integer> runOrder(List<Generator> generators) {
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < generators.size(); i++) if (!generators.get(i).readsRunOutput()) order.add(i);
+        for (int i = 0; i < generators.size(); i++) if (generators.get(i).readsRunOutput()) order.add(i);
+        return order;
+    }
+
+    /** What the manifest's {@code generatedBy} names {@code gen}, declared by {@code param} ({@code null}: undeclared). */
+    static String generatedBy(GeneratorParam param, Generator gen) {
+        return param != null && param.getClassname() != null
+                ? RequiresCheck.generatorName(param.getClassname()) : gen.getClass().getSimpleName();
+    }
+
+    /**
      * Reflectively instantiate and configure each declared generator, mirroring the exact
      * mechanism {@code meta:gen} uses. This is the single source of truth for generator
      * wiring so that sibling goals (e.g. {@code meta:verify}) drive identical behavior —
@@ -946,6 +996,9 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         Map<String,String> allargs = mergeArgs(globals, g.getArgs());
         // Maven's project version, as a default a generator's own `version` arg overrides.
         if ( project != null && project.getVersion() != null ) allargs.putIfAbsent(SharedModelGenerator.ARG_VERSION, project.getVersion());
+        // The module directory, as a default: docs-site resolves its project-relative inputs (the
+        // hash manifest, the owned theme, prompts, the verify payload) against it.
+        if ( project != null && project.getBasedir() != null ) allargs.putIfAbsent(DocsSiteGenerator.ARG_PROJECT_ROOT, project.getBasedir().getAbsolutePath());
 
         // Dump the args to debug
         getLog().debug( "-- Generator ["+g.getClass().getSimpleName()+"] merged Args");

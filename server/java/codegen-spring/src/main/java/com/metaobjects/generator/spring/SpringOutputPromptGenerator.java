@@ -153,7 +153,7 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(promptClass + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), template);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + promptClass + ".java for template " + template.getName() + ": " + e, e);

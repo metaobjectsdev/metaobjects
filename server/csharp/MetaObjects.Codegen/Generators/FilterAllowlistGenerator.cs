@@ -113,7 +113,7 @@ public class FilterAllowlistGenerator : PerEntityGenerator
             }
         }
 
-        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}FilterAllowlist.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}FilterAllowlist.g.cs"), w.ToString()) { SourceNode = entity.ResolutionKey() };
     }
 
     // The pieces of the file, one overridable method each (ADR-0063 item 7): a subclass changes the

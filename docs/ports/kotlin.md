@@ -164,7 +164,7 @@ Every generator lays its output out with `KotlinWriter`
 The layout ratchet (`KotlinLayoutRatchetTest`) fails a generator that types its own line breaks
 or indentation, or imports KotlinPoet; its shrink-only allowlist of unconverted emitters is empty.
 
-The 18 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
+The 20 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
@@ -187,6 +187,7 @@ The 18 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinSharedModelGenerator` | `<name>.metaobjects.json` and `metaobjects.pkg.json` — the FR-023 shared-model artifact and manifest a consumer's `meta deps sync` reads. See [Publishing a shared model](#publishing-a-shared-model-shared-model) | once per project (`include` selects the nodes) |
 | `KotlinApiDocsGenerator` | The Kotlin SDK api reference, under `<outputDir>/<apiSubDir>`: `<Unit>.md` per entity, value object, projection, served report and template, a `README.md` index and `AGENT-API.md`. A `<generator>` entry like any other, run by `metaobjects:generate` and checked by `metaobjects:verify`. Args: `outputDir` (required, generated files only), `apiSubDir` (default `api/kotlin`), `layout` (`flat` or `package`), `projectName` and `modelBaseUrl`, as for the Java `api-docs` (with no `modelBaseUrl` the pages carry no `Model / metadata` link). The `metaobjects:docs` goal was removed in 8.1.0 ([migration](../features/migrations/docs-are-generators.md#java-and-kotlin)). Ejectable, with the page model, builder, renderer and path math | the whole model, once |
 | `KotlinMetamodelDocsGenerator` | The reference of the built-in metamodel, under `<outputDir>/<subDir>`: `INDEX.md`, `providers.md` and one `types/<family>.md` per type family, rendered from the shared `templates/metamodel/` Mustache set over the build's own registry, so every port writes the same pages. Args: `outputDir` (required, generated files only), `subDir` (default `metamodel`; empty writes at the root) and `metamodelTemplateDir` (a directory holding `metamodel/<page>.mustache` that win over the packaged ones). Reads no model objects. Ejectable | once per project |
+| `DocsSiteGenerator` (`docs-site`) | The model explorer, with no Node: the JVM `DocsSiteGenerator` itself, so Kotlin and Java write the same bytes. Under `<outputDir>/<subDir>` (default `site`): the explorer app, `explorer.json` (the docs view of the loaded model, byte-identical to TypeScript's, gated by `fixtures/explorer-conformance/`), `explorer-model.js` and `explorer-stamp.js`, with each object's generated files from this execution (built after every other generator it runs) and from the committed hash manifest for the module's other executions. Args as in [the Java table](java.md#generators). Not ejectable: an owned theme under `codegen/docs-site/` wins over the packaged one | once per project |
 
 Maven wiring. The plugin bundles `metaobjects-codegen-kotlin`, so it is not a dependency of your
 project. Keep `<configuration>` at plugin level and bind the goal in `<executions>`: without the
@@ -318,7 +319,7 @@ copies `KotlinSharedModelGenerator.kt` into a `codegen/` module under your packa
 
 ### Declarative template-codegen (`TemplateScopeGenerator`)
 
-The 18 generators above are not the ceiling. When you need a shape
+The 20 generators above are not the ceiling. When you need a shape
 none of them emits, Kotlin has **both** authoring paths — and which to reach for is a
 real decision (tradeoff table: [`codegen-concepts.md` §3](../features/codegen-concepts.md)).
 

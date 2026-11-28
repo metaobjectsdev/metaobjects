@@ -116,6 +116,8 @@ public static class CodegenRunner
             ? names.ToHashSet(StringComparer.Ordinal) : null;
         // ADR-0064 — loaded once, saved once and only when it changed (see HashManifest.Session).
         var manifest = config.GenStateDir is { } stateDir ? new HashManifest.Session(stateDir) : null;
+        // Which generator wrote each recorded path, and from which node (HashManifest.RecordGeneratedProvenance).
+        var provenance = new Dictionary<string, HashManifest.Provenance>(StringComparer.Ordinal);
 
         // Saved even when a generator throws, so the manifest keeps matching the files already written.
         try
@@ -177,13 +179,21 @@ public static class CodegenRunner
                             $"overwrote hand-edited {reported} with fresh output (handEdits: Overwrite on {generator.Name})");
                         status = "written";
                     }
+                    if (!outside && manifest is not null)
+                        provenance[key] = new HashManifest.Provenance(generator.Name, file.SourceNode);
                     results.Add(new WriteResult(reported, status));
                     if (status == "refused") refused.Add(reported);
                     else if (status == "adopted") adopted.Add(reported);
                 }
             }
         }
-        finally { manifest?.Save(); }
+        finally
+        {
+            manifest?.Save();
+            // After the hashes are saved: provenance describes a recorded write, it never records one.
+            if (config.GenStateDir is { } provDir && config.ProjectRoot is not null && provenance.Count > 0)
+                HashManifest.RecordGeneratedProvenance(provDir, provenance);
+        }
 
         // 1.3.0 moved the helper runtime into its own package; say so when the app would not compile.
         warnings.AddRange(HelperRuntimeReference.WarningsForImporting(helperImports));
