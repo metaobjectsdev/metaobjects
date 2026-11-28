@@ -124,7 +124,7 @@ public sealed class DocsSiteGeneratorTests : IDisposable
     }
 
     [Fact]
-    public void A_site_generated_alone_lists_no_files_and_says_so()
+    public void A_site_generated_alone_lists_no_files_but_knows_the_run()
     {
         var root = ShopProject();
         var config = Config() with { SweepOrphans = true };
@@ -132,7 +132,8 @@ public sealed class DocsSiteGeneratorTests : IDisposable
         IReadOnlyList<IGenerator> suite = [new DocsSiteGenerator()];
         CodegenRunner.Run(config, root, suite);
         var view = (JsonObject)JsonNode.Parse(Site(ExplorerSite.ViewFile))!;
-        Assert.False(view["sources"]!["files"]!.GetValue<bool>());
+        // TypeScript's runDocsView: a run always knows its files, so an empty list is still a list.
+        Assert.True(view["sources"]!["files"]!.GetValue<bool>());
         Assert.Empty(view["nodes"]!.AsArray().SelectMany(n => n!["files"]!.AsArray()));
         var drift = CodegenDrift.Compute(config, root, suite);
         Assert.True(drift.Clean, string.Join("\n", drift.Lines));

@@ -89,29 +89,46 @@ def test_prompt_texts_read_below_the_directories_only(tmp_path: Path) -> None:
     assert read_prompt_texts(climbing, [prompts / "shop"]) == {}
 
 
-def _run(name: str, tmp_path: Path, extra: list | None = None, **options: str) -> dict[str, str]:
+def _case(name: str, tmp_path: Path, sink: dict[str, str] | None = None) -> tuple[GenConfig, DocsSiteGenerator]:
+    """A corpus case's project, with its committed manifest, verify and routes files when it has them."""
     case = corpus() / name
     gen_state = tmp_path / "gen-state"
     gen_state.mkdir()
     if (case / "hashes.json").is_file():
         shutil.copy(case / "hashes.json", gen_state / HASHES_FILE)
-    sink: dict[str, str] = {}
+    options: dict[str, str] = {}
+    if (case / "verify.json").is_file():
+        options["verify_file"] = "../verify.json"
+    if (case / "routes.json").is_file():
+        options["routes_file"] = "../routes.json"
     config = GenConfig(
         out_dir=str(case / "project" / "gen"), project_root=str(case / "project"),
         gen_state_dir=str(gen_state), sink=sink,
     )
-    if (case / "verify.json").is_file():
-        options.setdefault("verify_file", "../verify.json")
-    if (case / "routes.json").is_file():
-        options.setdefault("routes_file", "../routes.json")
-    run_gen(config, load_case(name), generators=[DocsSiteGenerator(**options), *(extra or [])])
-    prefix = str(case / "project" / "gen") + os.sep
+    return config, DocsSiteGenerator(**options)
+
+
+def _run(name: str, tmp_path: Path, extra: list) -> dict[str, str]:
+    """The generator in a run beside ``extra``."""
+    sink: dict[str, str] = {}
+    config, docs = _case(name, tmp_path, sink)
+    run_gen(config, load_case(name), generators=[docs, *extra])
+    prefix = config.out_dir + os.sep
     return {k[len(prefix):]: v for k, v in sink.items() if k.startswith(prefix)}
+
+
+def _outside_run(name: str, tmp_path: Path) -> dict[str, str]:
+    """The generator called outside a run (no run list), reading the case's committed manifest
+    when it has one, as Java's corpus test and C#'s conformance test reach the builder."""
+    config, docs = _case(name, tmp_path)
+    ctx = GenContext(entities=[], loaded_root=load_case(name), matches=lambda _o: True, config=config,
+                     warn=lambda _m: None)
+    return {f.path: f.content for f in docs.generate(ctx)}
 
 
 @pytest.mark.parametrize("name", fixtures())
 def test_generator_writes_every_corpus_case_byte_for_byte(name: str, tmp_path: Path) -> None:
-    out = _run(name, tmp_path)
+    out = _outside_run(name, tmp_path)
     assert out["site/explorer.json"] == (corpus() / name / "expected.json").read_text(encoding="utf-8")
     model = out["site/explorer-model.js"]
     assert model.startswith('window.MO_MODEL = {"stamp":')
@@ -138,7 +155,7 @@ def test_generator_lists_this_runs_files_after_every_other_generator(tmp_path: P
 
 
 def test_generator_falls_back_to_the_committed_manifest(tmp_path: Path) -> None:
-    out = _run("shop", tmp_path)
+    out = _outside_run("shop", tmp_path)
     order = next(n for n in json.loads(out["site/explorer.json"])["nodes"] if n["name"] == "Order")
     assert any(g["generatedBy"] == "queries" for g in order["files"])
 
@@ -205,7 +222,8 @@ def test_the_drift_gate_renders_what_gen_wrote(
     missing = [p for p in listed if not (project / p).is_file()]
     assert not missing, f"listed files that do not exist: {missing}"
     if owner is None:
-        assert listed == [] and view["sources"]["files"] is False
+        # TypeScript's runDocsView: a run always knows its files, so an empty list is still a list.
+        assert listed == [] and view["sources"]["files"] is True
     else:
         assert listed
         node = next(n for n in view["nodes"] if n["name"] == "Telemetry")
