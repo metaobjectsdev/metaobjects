@@ -1,5 +1,6 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.docsview.DocsSiteInert
 import com.metaobjects.generator.kotlin.apidocs.DocsPaths
 import com.metaobjects.generator.kotlin.apidocs.KotlinApiDocsRenderer
 import com.metaobjects.generator.kotlin.apidocs.KotlinApiModelBuilder
@@ -118,7 +119,18 @@ class ReportingInertTest {
      */
     // shared-model writes no code: it publishes the model's own metadata files, named by its args,
     // which a bare in-memory model does not have. Its bytes are gated by the shared-model corpus.
-    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter { it.name != "api-docs" && it.name != "shared-model" }
+    // docs-site documents every node, so it is held to its own line (DocsSiteInert), below.
+    private val codeGenerators get() = GENERATOR_REGISTRY.values.filter {
+        it.name != "api-docs" && it.name != "shared-model" && it.name != DocsSiteInert.GENERATOR
+    }
+
+    @Test
+    fun `docs-site differs by exactly the new nodes`() {
+        // The explorer lists every node, so each report and each dimension, measure and segment is one more; nothing else moves.
+        val info = GENERATOR_REGISTRY.getValue(DocsSiteInert.GENERATOR)
+        val problems = DocsSiteInert.check(emit("without", listOf(info)), emit("with", listOf(info)), setOf("object", "dimension", "measure", "segment"))
+        assertTrue(problems.isEmpty(), problems.joinToString("\n"))
+    }
 
     /** What a generator may add for the with-model: one file of the view-backed report, from five generators. */
     private fun allowedFor(info: GeneratorInfo): Set<String> = STORE_TOTALS_FILES[info.name]?.split('|')?.toSet() ?: emptySet()

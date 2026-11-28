@@ -3,7 +3,7 @@ package com.metaobjects.docs.explorer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.metaobjects.docsview.DocsView;
-import com.metaobjects.docsview.DocsViewJson;
+import com.metaobjects.docsview.ExplorerModelScript;
 import com.metaobjects.template.TemplateConstants;
 
 import java.io.IOException;
@@ -12,9 +12,6 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -125,26 +122,18 @@ public final class ExplorerSite {
     public record ModelScript(String script, String stamp) {}
 
     /**
-     * The app's data file: one script setting {@code window.MO_MODEL}. Its {@code stamp} is the
-     * first 16 hex digits of the SHA-256 of the model's compact JSON without the stamp, and the
-     * stamp file repeats it. The same shape and bytes as TypeScript's {@code explorerModelScript}.
+     * The app's data file: one script setting {@code window.MO_MODEL}, whose stamp the stamp file
+     * repeats ({@link ExplorerModelScript}, the same bytes as TypeScript's {@code explorerModelScript}).
      */
     public static ModelScript modelScript(String title, String footer, Map<String, String> texts,
                                           Map<String, String> templates, JsonObject view) {
-        JsonObject rest = new JsonObject();
-        rest.addProperty("title", title);
-        rest.addProperty("footer", footer == null ? "" : footer);
-        rest.add("texts", sortedStrings(texts));
-        rest.add("templates", sortedStrings(templates));
-        rest.add("view", view);
-        String json = DocsViewJson.compact(rest);
-        String stamp = sha256(json).substring(0, 16);
-        return new ModelScript("window.MO_MODEL = {\"stamp\":" + DocsViewJson.quote(stamp) + "," + json.substring(1) + ";\n", stamp);
+        ExplorerModelScript m = ExplorerModelScript.of(title, footer, texts, templates, view);
+        return new ModelScript(m.script(), m.stamp());
     }
 
     /** The file the app polls. */
     public static String stampScript(String stamp) {
-        return "window.MO_STAMP = " + DocsViewJson.quote(stamp) + ";\n";
+        return ExplorerModelScript.stampScript(stamp);
     }
 
     /**
@@ -181,22 +170,6 @@ public final class ExplorerSite {
             }
         }
         return out;
-    }
-
-    private static JsonObject sortedStrings(Map<String, String> m) {
-        JsonObject o = new JsonObject();
-        for (Map.Entry<String, String> e : new TreeMap<>(m == null ? Map.<String, String>of() : m).entrySet()) {
-            o.addProperty(e.getKey(), e.getValue());
-        }
-        return o;
-    }
-
-    private static String sha256(String s) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(s.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     private static String readIfPresent(Path dir, String name) {
