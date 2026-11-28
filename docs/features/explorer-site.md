@@ -73,7 +73,7 @@ same model and inputs: every port that builds the docs view is held to
 | TypeScript | `docsSiteFile()` (`meta gen`) | `output: "app"` (default) or `"static"`; `site: "classic"` for the earlier site | The model, the requirement ledger, the files and routes this run wrote and mounts |
 | Java | `com.metaobjects.generator.DocsSiteGenerator` (`mvn metaobjects:generate`), no Node | The app only | The model, the files generated per node (this execution's, and what the committed hash manifest records for the module's other executions), and a `verify --format json` payload when you name one (`verifyFile`) |
 | Kotlin | the same JVM `DocsSiteGenerator`, through `codegen-kotlin`'s registry | The app only | As Java; the Kotlin generators do not record provenance in the manifest yet, so their files are not listed |
-| C# | `docs-site` (`dotnet meta gen`, `MetaObjects.Codegen.Generators.DocsSiteGenerator`), no Node | The app only | The model, the files generated per node (this run's, and what the committed hash manifest records for generators the run does not include), and a `verify --format json` payload (`VerifyFile`) and a routes file (`RoutesFile`) when you name them |
+| C# | `docs-site` (`dotnet meta gen`, `MetaObjects.Codegen.Generators.DocsSiteGenerator`), no Node | The app only | The model, the files generated per node (this run's, and what the committed hash manifest records outside the directories the run's orphan sweep clears), and a `verify --format json` payload (`VerifyFile`) and a routes file (`RoutesFile`) when you name them |
 | Python | `docs-site` (`metaobjects gen`, `metaobjects.codegen.generators.docs_site_generator`), no Node | The app only | As C# (`verify_file`, `routes_file`) |
 | Rust | not yet | | |
 
