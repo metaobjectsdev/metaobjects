@@ -141,3 +141,38 @@ def test_generator_falls_back_to_the_committed_manifest(tmp_path: Path) -> None:
     out = _run("shop", tmp_path)
     order = next(n for n in json.loads(out["site/explorer.json"])["nodes"] if n["name"] == "Order")
     assert any(g["generatedBy"] == "queries" for g in order["files"])
+
+
+ONE_TARGET = "targets:\n  app:\n    outDir: gen\n    generators: [docs-site, entity]\n"
+TWO_TARGETS = (
+    "targets:\n  app:\n    outDir: gen\n    generators: [entity]\n"
+    "  docs:\n    outDir: docs\n    generators: [docs-site]\n"
+)
+
+
+@pytest.mark.parametrize("config,site", [(ONE_TARGET, "gen"), (TWO_TARGETS, "docs")], ids=["one", "two"])
+def test_the_drift_gate_renders_what_gen_wrote(
+    config: str, site: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metaobjects.cli import main
+
+    project = tmp_path / "shop"
+    (project / "metaobjects").mkdir(parents=True)
+    (project / "metaobjects" / "meta.acme.json").write_text(json.dumps({"metadata.root": {
+        "package": "acme",
+        "children": [{"object.value": {"name": "Telemetry", "children": [{"field.string": {"name": "reading"}}]}}],
+    }}), encoding="utf-8")
+    (project / "metaobjects.config.yaml").write_text(config, encoding="utf-8")
+    monkeypatch.chdir(project)
+
+    assert main(["gen"]) == 0
+    view_file = project / site / "site" / "explorer.json"
+    first = view_file.read_text(encoding="utf-8")
+    node = next(n for n in json.loads(first)["nodes"] if n["name"] == "Telemetry")
+    paths = [p for g in node["files"] if g["generatedBy"] == "entity" for p in g["paths"]]
+    assert paths and all(p.startswith("gen/") and (project / p).is_file() for p in paths)
+    assert '"title":"shop"' in (project / site / "site" / "explorer-model.js").read_text(encoding="utf-8")
+
+    assert main(["gen", "--force"]) == 0
+    assert view_file.read_text(encoding="utf-8") == first
+    assert main(["verify", "--codegen", "--full"]) == 0

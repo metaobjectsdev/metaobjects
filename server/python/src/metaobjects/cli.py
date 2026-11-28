@@ -111,7 +111,7 @@ from metaobjects.requirement_check import (
     scan_requirements,
     summarise_requirements,
 )
-from metaobjects.codegen.config import DEFAULT_API_PREFIX, GenConfig
+from metaobjects.codegen.config import DEFAULT_API_PREFIX, CaptureKeys, GenConfig
 from metaobjects.codegen.overwrite_policy import (
     STATUS_SKIPPED,
     STATUS_UNCHANGED,
@@ -1066,6 +1066,7 @@ def _run_suite(
     entity_scope: list[str] | None = None,
     manifest: HashManifest | None = None,
     sink: dict[str, str] | None = None,
+    capture_keys: CaptureKeys | None = None,
 ) -> list[tuple[str, str]]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -1121,6 +1122,7 @@ def _run_suite(
         overwrite_hand_edits=overwrite_hand_edits,
         manifest=manifest,
         sink=sink,
+        capture_keys=capture_keys,
     )
     # No default suite — see NO_GENERATORS_SELECTED. A caller that names none gets a
     # usage error and an empty out dir, never a shape this CLI picked.
@@ -1717,6 +1719,7 @@ def _run_gen_targets(
     emitted_out: set[str] | None = None,
     skip_info: skip.SkipRunInfo | None = None,
     sink: dict[str, str] | None = None,
+    capture_for: Callable[[str], CaptureKeys] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's declared generators into its ``outDir``. Returns (all_written, errors).
 
@@ -1849,7 +1852,7 @@ def _run_gen_targets(
         return _run_plan(
             config, plan, root, seen, all_written, errors, session, template_root,
             gen_state_dir, project_root, baseline, refused_out, select, column_naming,
-            targeted_out, overwrite_paths_out, emitted_out, sink, in_ledger,
+            targeted_out, overwrite_paths_out, emitted_out, sink, in_ledger, capture_for,
         )
     finally:
         if session is not None:
@@ -1876,6 +1879,7 @@ def _run_plan(
     emitted_out: set[str] | None,
     sink: dict[str, str] | None = None,
     in_ledger: Callable[[str], bool] | None = None,
+    capture_for: Callable[[str], CaptureKeys] | None = None,
 ) -> tuple[list[str], list[str]]:
     from metaobjects.render.renderer import RenderError
 
@@ -1886,6 +1890,7 @@ def _run_plan(
         out_dir = config.out_dir_for(t)
         if targeted_out is not None:
             targeted_out.add(out_dir)
+        capture = capture_for(out_dir) if capture_for is not None else None
         results: list[tuple[str, str]] = []
         try:
             if gens:
@@ -1895,7 +1900,7 @@ def _run_plan(
                     refused_out=refused_out, select=select, in_ledger=in_ledger,
                     api_prefix=config.api_prefix, output_layout=config.output_layout,
                     overwrite_hand_edits=overwrite, overwrite_paths_out=overwrite_paths_out,
-                    manifest=session, sink=sink, entity_scope=t.entities,
+                    manifest=session, sink=sink, entity_scope=t.entities, capture_keys=capture,
                 )
             if spec_gens:
                 results = results + _run_suite(
@@ -1904,7 +1909,7 @@ def _run_plan(
                     project_root=project_root, baseline=baseline, refused_out=refused_out,
                     select=select, in_ledger=in_ledger, api_prefix=config.api_prefix,
                     output_layout=config.output_layout, manifest=session, sink=sink,
-                    entity_scope=t.entities,
+                    entity_scope=t.entities, capture_keys=capture,
                 )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
@@ -2628,6 +2633,13 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         remapped = [
             dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
         ]
+        # Each slot keys its files at the real outDir it stands in for, against the real
+        # project, carrying what it does not render from the committed manifest (read only):
+        # what a generator reading the run's output (docs-site) lists is then what gen listed.
+        real_for = {str(Path(slot).resolve()): real for real, slot in temp_for.items()}
+
+        def capture_for(slot: str) -> CaptureKeys:
+            return CaptureKeys(real_for[slot], gen_state_dir_for(config.metadata_dir()))
 
         # The exact gen pipeline, rendered into the in-memory sink — verify rejects exactly
         # what gen rejects (incl. the cross-target duplicate-output-path guard).
@@ -2645,6 +2657,8 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             # R31: the `names` generator's constants are strategy-dependent, so the regen
             # must use the strategy `gen` wrote with, or every constant reads as drift.
             column_naming=naming,
+            project_root=str(project_root_for(config.metadata_dir())),
+            capture_for=capture_for,
         )
         _written, errors = _run_gen_targets(
             config, remapped, root, selection=selection, targeted_out=targeted,
@@ -2656,6 +2670,7 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             unnarrowed = [t for t in config.targets if config.out_dir_for(t) in temp_for]
             for real in temp_for:
                 declared_for[real] = _temp_slot_for(Path(declared_root), real, config.config_dir)
+                real_for[str(Path(declared_for[real]).resolve())] = real
             _written, errors = _run_gen_targets(
                 config,
                 [dataclasses.replace(t, out_dir=declared_for[config.out_dir_for(t)])

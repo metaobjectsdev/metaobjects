@@ -102,6 +102,23 @@ public sealed class DocsSiteGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void A_file_a_run_generator_no_longer_emits_is_not_listed()
+    {
+        var root = ShopProject();
+        CodegenRunner.Run(Config() with { OutDir = Path.Combine(_project, "old") }, root, [new FilterAllowlistGenerator()]);
+        Assert.Contains(HashManifest.LoadProvenance(Config().GenStateDir!),
+            e => e.Key.StartsWith("old/", StringComparison.Ordinal) && e.Value.GeneratedBy == "filter-allowlist");
+        CodegenRunner.Run(Config(), root, [new FilterAllowlistGenerator(), new DocsSiteGenerator()]);
+        var view = (JsonObject)JsonNode.Parse(Site(ExplorerSite.ViewFile))!;
+        var listed = view["nodes"]!.AsArray()
+            .SelectMany(n => n!["files"]!.AsArray())
+            .SelectMany(g => g!["paths"]!.AsArray().Select(p => p!.GetValue<string>()))
+            .ToList();
+        Assert.Contains(listed, p => p.StartsWith("gen/", StringComparison.Ordinal));
+        Assert.DoesNotContain(listed, p => p.StartsWith("old/", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void An_owned_theme_and_template_replace_the_shipped_ones()
     {
         var root = ShopProject();

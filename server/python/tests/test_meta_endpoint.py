@@ -82,10 +82,11 @@ def test_docs_etag_and_if_none_match() -> None:
     from metaobjects import meta_docs, meta_docs_etag
     from tests.docs_view_support import load_case
 
-    # FNV-1a over UTF-16 code units: the empty body hashes to the offset basis.
+    # metaDocsEtag(...) in @metaobjectsdev/runtime-ts (and the Java and C# ports) gives these for the same strings.
+    assert meta_docs_etag("hello") == '"5-4f9f2cab"'
     assert meta_docs_etag("") == '"0-811c9dc5"'
-    assert meta_docs_etag("a") == '"1-e40c292c"'
-    assert meta_docs_etag("\U0001f600") == meta_docs_etag("😀".encode("utf-16", "surrogatepass").decode("utf-16"))
+    assert meta_docs_etag("h\u00e9llo \u2713") == '"7-0579d2da"'
+    assert meta_docs_etag("\U0001f600") == '"2-cb31c4b8"'
     docs = meta_docs(load_case("model-alone"))
     assert docs.etag == meta_docs_etag(docs.body)
     assert docs.matches(docs.etag) and docs.matches("*") and docs.matches("W/" + docs.etag)

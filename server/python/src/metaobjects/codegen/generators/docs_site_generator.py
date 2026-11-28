@@ -228,7 +228,7 @@ class DocsSiteGenerator:
                 if node is not None:
                     out[path] = {"generatedBy": by, "sourceNode": node}
             return out
-        gen_state = ctx.config.gen_state_dir
+        gen_state = ctx.config.committed_gen_state_dir()
         if gen_state is None:
             return None
         raw, _where = _read_union(gen_state)

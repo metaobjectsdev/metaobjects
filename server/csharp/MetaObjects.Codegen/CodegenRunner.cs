@@ -67,7 +67,7 @@ public static class CodegenRunner
         // (an entry another run writes, an object --entities leaves out) are carried from the manifest.
         var keyRoot = captureKeys?.ProjectRoot ?? config.ProjectRoot;
         var generatedFiles = keyRoot is null ? null : CarriedFiles(captureKeys?.GenStateDir ?? config.GenStateDir,
-            generators.Select(g => g.Name).ToHashSet(StringComparer.Ordinal), config.EntitySelection is not null);
+            generators.Select(GeneratorRegistry.StableNameOf).ToHashSet(StringComparer.Ordinal), config.EntitySelection is not null);
         var ctx = new GenContext
         {
             // FR-044: an object.report is never in the entity set. Dropped here, at the set

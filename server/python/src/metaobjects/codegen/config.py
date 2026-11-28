@@ -11,6 +11,16 @@ from .overwrite_policy import HashManifest
 DEFAULT_API_PREFIX = "/api"
 
 
+@dataclass(frozen=True)
+class CaptureKeys:
+    """How a run that writes nothing (``verify --codegen``) keys what it renders, so it renders
+    what ``gen`` writes: each file at the real ``out_dir`` it stands in for, and the files it
+    does not render carried from the committed manifest under ``gen_state_dir``, read only."""
+
+    out_dir: str
+    gen_state_dir: str | None
+
+
 @dataclass
 class GenConfig:
     out_dir: str
@@ -84,8 +94,15 @@ class GenConfig:
     # ``{path: content}`` instead. ``verify --codegen`` renders into it and compares the bytes
     # with disk in memory, so it creates no temp tree.
     sink: dict[str, str] | None = None
+    capture_keys: CaptureKeys | None = None
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)
+
+    def committed_gen_state_dir(self) -> str | None:
+        """Where the committed manifest is read from: the run's gen-state dir, or a capture run's."""
+        if self.gen_state_dir is not None:
+            return self.gen_state_dir
+        return self.capture_keys.gen_state_dir if self.capture_keys is not None else None
 
     def __post_init__(self) -> None:
         """Refuse a value this port cannot honour, instead of accepting it and ignoring it.

@@ -20,13 +20,13 @@ from .import_path import OUTPUT_LAYOUT_PACKAGE
 from .name_claims import NameClaims, assert_importable_package_tree
 from .instance_artifacts import is_served_report
 from .overwrite_policy import (
-    _read_union,
     STATUS_OVERWROTE_EDIT,
     HashManifest,
     decide_and_write,
     has_hash_manifest,
     manifest_batch,
     objects_of_root,
+    read_recorded_provenance,
     set_placement_objects,
 )
 
@@ -75,7 +75,10 @@ def _warn_collector(name: str, sink: list[str]) -> Callable[[str], None]:
 
 
 def _manifest_key(config: GenConfig, full: str) -> str:
-    """The key the hash manifest records ``full`` under (see ``_write_all``)."""
+    """The key the hash manifest records ``full`` under (see ``_write_all``); a capture run's
+    file is keyed at the real output directory it stands in for."""
+    if config.capture_keys is not None:
+        full = os.path.join(config.capture_keys.out_dir, os.path.relpath(full, config.out_dir))
     if config.project_root:
         return os.path.relpath(os.path.realpath(full), config.project_root).replace(os.sep, "/")
     return os.path.relpath(full, config.out_dir).replace(os.sep, "/")
@@ -93,14 +96,14 @@ def _run_provenance(
     this run and, when ``--entities`` narrows the run, every recorded file. A file a generator of
     this run no longer emits is not carried, so the list never names a file the run removes."""
     carried: dict[str, tuple[str, str | None]] = {}
-    if config.gen_state_dir is not None:
-        raw, _where = _read_union(config.gen_state_dir)
-        for path, entry in raw.items():
-            if not isinstance(entry, dict) or not isinstance(entry.get("sourceNode"), str):
-                continue
-            by = entry.get("generatedBy", "")
-            if narrowed or by not in suite:
-                carried[path] = (by if isinstance(by, str) else "", entry["sourceNode"])
+    committed = config.committed_gen_state_dir()
+    if config.manifest is not None:
+        recorded = config.manifest.recorded_provenance()
+    else:
+        recorded = read_recorded_provenance(committed) if committed is not None else {}
+    for path, (by, node) in recorded.items():
+        if narrowed or by not in suite:
+            carried[path] = (by, node)
     for full, (_c, by) in emitted.items():
         carried[_manifest_key(config, full)] = (_stable_name(by), sources.get(full))
     return carried

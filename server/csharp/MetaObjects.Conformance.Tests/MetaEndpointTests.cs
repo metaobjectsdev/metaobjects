@@ -46,6 +46,7 @@ public class MetaEndpointTests
         Assert.Equal("\"5-4f9f2cab\"", MetaEndpoint.MetaDocsETag("hello"));
         Assert.Equal("\"0-811c9dc5\"", MetaEndpoint.MetaDocsETag(""));
         Assert.Equal("\"7-0579d2da\"", MetaEndpoint.MetaDocsETag("h\u00e9llo \u2713"));
+        Assert.Equal("\"2-cb31c4b8\"", MetaEndpoint.MetaDocsETag("\U0001F600"));
     }
 
     [Fact]

@@ -282,6 +282,20 @@ def _read_manifest_file(gen_state_dir: str) -> dict[str, object]:
     return _read_union(gen_state_dir)[0]
 
 
+def _recorded_provenance(raw: dict[str, object]) -> dict[str, tuple[str, str]]:
+    out: dict[str, tuple[str, str]] = {}
+    for path, entry in raw.items():
+        if isinstance(entry, dict) and isinstance(entry.get("sourceNode"), str):
+            by = entry.get("generatedBy", "")
+            out[path] = (by if isinstance(by, str) else "", entry["sourceNode"])
+    return out
+
+
+def read_recorded_provenance(gen_state_dir: str) -> dict[str, tuple[str, str]]:
+    """``path -> (generatedBy, sourceNode)`` for every committed entry that names its node."""
+    return _recorded_provenance(_read_union(gen_state_dir)[0])
+
+
 def _entry_hash(value: object) -> str | None:
     if isinstance(value, str):
         return value
@@ -470,6 +484,18 @@ class HashManifest:
     def note_provenance(self, rel_path: str, generated_by: str, source_node: str | None) -> None:
         """Record which generator, and which node, produced ``rel_path`` (written on save)."""
         self.provenance[rel_path] = (generated_by, source_node)
+
+    def recorded_provenance(self) -> dict[str, tuple[str, str]]:
+        """What :func:`read_recorded_provenance` reads once this session is saved: the entries
+        it holds a hash for, with the provenance it noted replacing the committed one."""
+        out = {
+            k: v for k, v in _recorded_provenance(_read_raw(self.gen_state_dir)).items()
+            if k in self.hashes and k not in self.provenance
+        }
+        for k, (by, node) in self.provenance.items():
+            if k in self.hashes and node is not None:
+                out[k] = (by, node)
+        return out
 
     def _provenance_changes(self) -> bool:
         raw = _read_raw(self.gen_state_dir)
