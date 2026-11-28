@@ -100,9 +100,9 @@ fn the_generator_writes_the_pages_under_metamodel_and_reads_no_model() {
 }
 
 #[test]
-fn the_dir_option_moves_the_pages_and_a_project_template_wins() {
+fn the_sub_dir_option_moves_the_pages_and_a_project_template_wins() {
     let p = run_gen(
-        r#"{ "generators": [{ "name": "metamodel-docs", "options": { "dir": "" } }] }"#,
+        r#"{ "generators": [{ "name": "metamodel-docs", "options": { "subDir": "" } }] }"#,
         Some((
             "templates/metamodel/index.md.mustache",
             "mine {{{rows.length}}}\n",

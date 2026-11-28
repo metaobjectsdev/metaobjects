@@ -6,7 +6,7 @@
 //! decides what there is to write), and the pages are the shared `templates/metamodel/`
 //! Mustache set rendered over it. A project's own `templates/metamodel/<page>.mustache`
 //! (`index.md`, `providers.md`, `type-page.md`) wins over the shipped one. Writes, under
-//! `metamodel/` (the `dir` option; `""` writes at the output root):
+//! `metamodel/` (the `subDir` option; `""` writes at the output root):
 //!
 //! ```text
 //! INDEX.md  providers.md  types/<family>.md
@@ -28,7 +28,7 @@ const FORMAT: u32 = 1;
 const TEMPLATE_DIR: &str = "templates";
 /// The default sub-directory of the output the pages are written under.
 const DEFAULT_DIR: &str = "metamodel";
-const OPTION_DIR: &str = "dir";
+const OPTION_SUB_DIR: &str = "subDir";
 /// The failure of this generator.
 const ERR_METAMODEL_DOCS: &str = "ERR_METAMODEL_DOCS";
 
@@ -36,7 +36,7 @@ const ERR_METAMODEL_DOCS: &str = "ERR_METAMODEL_DOCS";
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MetamodelDocsGenerator;
 
-/// The generator as a project configured it (`{"name": "metamodel-docs", "options": {"dir": ""}}`).
+/// The generator as a project configured it (`{"name": "metamodel-docs", "options": {"subDir": ""}}`).
 #[derive(Debug, Clone)]
 pub struct ConfiguredMetamodelDocs {
     dir: String,
@@ -56,17 +56,17 @@ impl Generator for MetamodelDocsGenerator {
     }
 
     fn configure(&self, options: &Options) -> Result<Box<dyn Generator>, GenError> {
-        if options.keys().any(|k| k != OPTION_DIR) {
-            return Err(unknown_options(self.name(), options, &[OPTION_DIR]));
+        if options.keys().any(|k| k != OPTION_SUB_DIR) {
+            return Err(unknown_options(self.name(), options, &[OPTION_SUB_DIR]));
         }
-        let dir = match options.get(OPTION_DIR) {
+        let dir = match options.get(OPTION_SUB_DIR) {
             None => DEFAULT_DIR.to_string(),
             Some(serde_json::Value::String(s)) => s.trim_matches('/').to_string(),
             Some(other) => {
                 return Err(GenError::new(
                     ERR_METAMODEL_DOCS,
                     format!(
-                        "the generator metamodel-docs takes \"{OPTION_DIR}\" as a string, got {other}"
+                        "the generator metamodel-docs takes \"{OPTION_SUB_DIR}\" as a string, got {other}"
                     ),
                 ));
             }

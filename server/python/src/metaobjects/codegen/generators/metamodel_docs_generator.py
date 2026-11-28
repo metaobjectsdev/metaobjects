@@ -8,12 +8,11 @@ registers, from the registry vocabulary manifest and the embedded provider defin
 Each page is the shared Mustache template (``templates/metamodel/``, bundled with the package)
 fed the data the builder in ``codegen/runtime/docs_metamodel.py`` computes; the data and the
 pages are pinned by ``fixtures/metamodel-docs/``. A project overrides a page by dropping a
-same-named template (or its own ``provider-descriptions.json``) under its templates directory.
+same-named template under its templates directory.
 """
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
@@ -32,14 +31,9 @@ from ..runtime.docs_metamodel import (
 DEFAULT_SUB_DIR = "metamodel"
 
 
-def _provider_descriptions(template_root: str | None) -> dict[str, str]:
-    """A project's ``metamodel/provider-descriptions.json`` when it has one, else the bundled one."""
-    roots = ([Path(template_root)] if template_root else []) + [BUNDLED_TEMPLATES_DIR]
-    for root in roots:
-        candidate = root / PROVIDER_DESCRIPTIONS_REF
-        if candidate.is_file():
-            return json.loads(candidate.read_text(encoding="utf-8"))
-    return {}
+def _provider_descriptions() -> dict[str, str]:
+    """The bundled ``metamodel/provider-descriptions.json``."""
+    return json.loads((BUNDLED_TEMPLATES_DIR / PROVIDER_DESCRIPTIONS_REF).read_text(encoding="utf-8"))
 
 
 class MetamodelDocsGenerator:
@@ -60,7 +54,7 @@ class MetamodelDocsGenerator:
 
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         manifest = build_registry_manifest(compose_registry(core_providers))
-        pages = metamodel_docs_pages(manifest, embedded_definitions(), _provider_descriptions(self.template_root))
+        pages = metamodel_docs_pages(manifest, embedded_definitions(), _provider_descriptions())
         prefix = f"{self.sub_dir}/" if self.sub_dir else ""
         return [
             EmittedFile(

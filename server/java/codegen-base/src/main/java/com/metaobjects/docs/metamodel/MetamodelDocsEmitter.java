@@ -44,12 +44,6 @@ public final class MetamodelDocsEmitter {
         return out;
     }
 
-    /** Render pages built elsewhere (the corpus test builds from pinned inputs). */
-    public static String render(MetamodelDocsPages.Page page, Provider provider) {
-        return new Renderer().render(new RenderRequest(
-                null, page.template(), page.data(), provider, Escapers.FORMAT_MARKDOWN, null, null));
-    }
-
     public static Provider provider(Path templateDir, ClassLoader classLoader) {
         return ref -> {
             if (ref == null || ref.isEmpty() || ref.contains("..")) return null;
