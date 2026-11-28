@@ -56,7 +56,7 @@ public final class TemplateGenerator {
                 /* verify */ null,
                 /* maxChars */ null);
             String content = renderer.render(req);
-            out.add(new EmittedFile(entry.outputPath(), content));
+            out.add(new EmittedFile(entry.outputPath(), content, entry.sourceNode()));
         }
         return out;
     }

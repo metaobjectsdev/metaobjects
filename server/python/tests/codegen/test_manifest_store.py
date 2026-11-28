@@ -198,18 +198,6 @@ def _assert_provenance_after(directory: Path) -> None:
     assert (directory / vector["goldenFile"]).read_text() == vector["goldenText"]
 
 
-def test_provenance_vectors(tmp_path: Path) -> None:
-    state = _state(tmp_path)
-    directory = _seed_files(state, VECTORS["provenance"]["beforeFiles"])
-    set_placement_objects(str(state), OBJECTS)
-    op.record_generated_provenance(str(state), _provenance_records())
-    _assert_provenance_after(directory)
-
-    before = _snapshot(directory)
-    op.record_generated_provenance(str(state), _provenance_records())
-    assert _snapshot(directory) == before, "the same records a second time change no file"
-
-
 def test_provenance_vectors_through_a_run_session(tmp_path: Path) -> None:
     # The write loop records through the session, whose one save carries the provenance.
     state = _state(tmp_path)

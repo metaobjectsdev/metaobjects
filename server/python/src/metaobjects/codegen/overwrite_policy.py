@@ -353,27 +353,6 @@ def _save_hashes(
     _write_manifest_file(gen_state_dir, ordered)
 
 
-def record_generated_provenance(gen_state_dir: str, provenance: dict[str, Provenance]) -> None:
-    """Record, on each recorded path's manifest entry, the node it was generated from.
-
-    A path with no recorded hash is left alone: this describes what a write recorded, it
-    never records a write. Nothing is written when no entry changes. Mirrors codegen-ts's
-    ``recordGeneratedProvenance``. A run's write loop records through
-    :meth:`HashManifest.note_provenance` instead, so the session's one save carries it.
-    """
-    if not has_hash_manifest(gen_state_dir):
-        return
-    hashes = _load_hashes(gen_state_dir)
-    raw = _read_raw(gen_state_dir)
-    if all(
-        _with_provenance(raw.get(k), hashes[k], prov) == raw.get(k)
-        for k, prov in provenance.items()
-        if k in hashes
-    ):
-        return
-    _save_hashes(gen_state_dir, hashes, provenance)
-
-
 def _manifest_text(entries: dict[str, object]) -> str:
     return json.dumps({k: entries[k] for k in sorted(entries)}, indent=2) + "\n"
 

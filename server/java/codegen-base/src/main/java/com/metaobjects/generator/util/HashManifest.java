@@ -470,22 +470,6 @@ public final class HashManifest {
         save(genStateDir, hashes, owners);
     }
 
-    /**
-     * Record, on each recorded path's entry, the generator that wrote it and the node it was
-     * rendered from ({@link #save(Path, Map, Map, Placement, Map)} states the entry shapes). A path
-     * with no recorded hash is left alone: this describes what a write recorded, it never records
-     * one. Nothing is written when no entry changes.
-     */
-    public static void recordProvenance(Path genStateDir, Map<String, Provenance> provenance, Placement placement) {
-        Map<String, String> hashes = load(genStateDir);
-        Map<String, Provenance> applied = new LinkedHashMap<>();
-        for (Map.Entry<String, Provenance> e : provenance.entrySet()) {
-            if (hashes.containsKey(e.getKey())) applied.put(e.getKey(), e.getValue());
-        }
-        if (applied.isEmpty()) return;
-        save(genStateDir, hashes, loadOwners(genStateDir), placement, applied);
-    }
-
     /** The hash recorded for {@code key}, or {@code null} if never recorded. */
     public static String recordedHash(Path genStateDir, String key) {
         return load(genStateDir).get(key);

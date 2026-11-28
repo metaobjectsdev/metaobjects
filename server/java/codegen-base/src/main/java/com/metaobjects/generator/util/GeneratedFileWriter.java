@@ -465,6 +465,11 @@ public final class GeneratedFileWriter {
         return writeFrom(sourceNode == null ? null : resolutionKey(sourceNode), outFile, content, true);
     }
 
+    /** {@link #writeUnmarked(Path, String, MetaData)} for a caller that holds the node's resolution key, not the node. */
+    public static Outcome writeUnmarked(Path outFile, String content, String sourceNodeKey) throws IOException {
+        return writeFrom(sourceNodeKey, outFile, content, true);
+    }
+
     private static Outcome writeFrom(String sourceNodeKey, Path outFile, String content, boolean unmarked)
             throws IOException {
         Run run = ACTIVE_RUN.get();

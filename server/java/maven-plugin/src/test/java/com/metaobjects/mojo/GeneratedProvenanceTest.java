@@ -109,6 +109,85 @@ public class GeneratedProvenanceTest {
     }
 
     @Test
+    public void theTraceHelperTemplateAndMustacheGeneratorsStampEachPerObjectFile() throws Exception {
+        module = tmp.getRoot().toPath().resolve("module");
+        Files.createDirectories(module.resolve("metaobjects"));
+        Files.writeString(module.resolve("metaobjects/meta.shop.json"), """
+                {"metadata.root": {"package": "acme::shop", "children": [
+                  {"object.value": {"name": "GreetRequest", "children": [ {"field.string": {"name": "name"}} ]}},
+                  {"object.value": {"name": "GreetResponse", "children": [ {"field.string": {"name": "greeting"}} ]}},
+                  {"object.entity": {"name": "GreetingCall", "extends": "metaobjects::ai::LlmCallBase", "children": [
+                    {"source.rdb": {"@table": "greeting_call", "@role": "primary"}},
+                    {"identity.primary": {"name": "pk", "@fields": ["spanId"]}},
+                    {"template.prompt": {"name": "greetingPrompt",
+                      "@payloadRef": "acme::shop::GreetRequest", "@responseRef": "acme::shop::GreetResponse"}} ]}}
+                ]}}
+                """);
+        Files.createDirectories(module.resolve("templates"));
+        Files.writeString(module.resolve("templates/one.mustache"), "{{name}}\n");
+        Files.writeString(module.resolve("templates/all.mustache"), "model\n");
+        Files.writeString(module.resolve("templates/names.mustache.yaml"), """
+                name: "Names"
+                version: "1.0.0"
+                targetLanguage: "java"
+                outputFileExtension: "txt"
+                packagePath: false
+                template: |
+                  {{className}}
+                """);
+        MetaDataGeneratorMojo mojo = new MetaDataGeneratorMojo();
+        MavenProject project = Mockito.mock(MavenProject.class);
+        Mockito.when(project.getBasedir()).thenReturn(module.toFile());
+        mojo.project = project;
+        LoaderParam loader = LoaderParam.builder("per-object")
+                .withClassname("com.metaobjects.loader.MetaDataLoader")
+                .withSourceDir(module.resolve("metaobjects").toString())
+                .build();
+        loader.setLibraries(List.of("ai"));
+        mojo.setLoader(loader);
+        mojo.setGenerators(new ArrayList<>(List.of(
+                GeneratorParam.builder(com.metaobjects.generator.spring.LlmTraceHelperGenerator.class.getName())
+                        .withArg("outputDir", "generated-trace").build(),
+                GeneratorParam.builder(com.metaobjects.generator.template.TemplateScopeGenerator.class.getName())
+                        .withArg("outputDir", "generated-template").withArg("templatesDir", "templates")
+                        .withArg("template", "one").withArg("scope", "perEntity")
+                        .withArg("outputPattern", "{Name}.txt").build(),
+                GeneratorParam.builder(com.metaobjects.generator.template.TemplateScopeGenerator.class.getName())
+                        .withArg("outputDir", "generated-template").withArg("templatesDir", "templates")
+                        .withArg("template", "all").withArg("scope", "perModel")
+                        .withArg("outputPattern", "model.txt").build(),
+                GeneratorParam.builder(com.metaobjects.generator.mustache.MustacheTemplateGenerator.class.getName())
+                        .withArg("outputDir", module.resolve("generated-mustache").toString())
+                        .withArg("templatePath", module.resolve("templates").toString())
+                        .withArg("templateName", "names").build())));
+        mojo.setGlobals(java.util.Collections.emptyMap());
+        mojo.execute();
+
+        assertEquals("acme::shop::GreetingCall",
+                entry("acme.shop.json", "acme/shop/GreetingCallTraceHelper.java").get("sourceNode").getAsString());
+        assertEquals("acme::shop::GreetingCall",
+                entry("acme.shop.json", "generated-template/GreetingCall.txt").get("sourceNode").getAsString());
+        assertEquals("acme::shop::GreetRequest",
+                entry("acme.shop.json", "generated-mustache/GreetRequest.txt").get("sourceNode").getAsString());
+        assertEquals("acme::shop::GreetingCall",
+                entry("acme.shop.json", "generated-mustache/GreetingCall.txt").get("sourceNode").getAsString());
+
+        // The per-model template file is rendered from the whole model: no sourceNode.
+        Path dir = module.resolve(".metaobjects/.gen-state/.hashes");
+        boolean seen = false;
+        for (Path p : Files.list(dir).toList()) {
+            JsonObject all = JsonParser.parseString(Files.readString(p)).getAsJsonObject();
+            for (String key : all.keySet()) {
+                if (key.endsWith("generated-template/model.txt")) {
+                    seen = true;
+                    assertFalse(key, all.get(key).isJsonObject() && all.get(key).getAsJsonObject().has("sourceNode"));
+                }
+            }
+        }
+        assertTrue("the per-model template file is recorded", seen);
+    }
+
+    @Test
     public void aSecondRunWritesNoManifestFile() throws Exception {
         generate().execute();
         Path dir = module.resolve(".metaobjects/.gen-state/.hashes");

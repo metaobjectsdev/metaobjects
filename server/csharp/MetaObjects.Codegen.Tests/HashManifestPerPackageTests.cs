@@ -172,6 +172,59 @@ public class HashManifestPerPackageTests : IDisposable
         Assert.True(entry.TryGetProperty("hash", out _));
     }
 
+    [Fact]
+    public void The_names_filter_allowlist_and_routes_generators_stamp_each_object_file()
+    {
+        var src = """
+            { "metadata.root": { "package": "acme::shop", "children": [
+              { "object.entity": { "name": "Stamped", "abstract": true, "children": [
+                { "field.long": { "name": "id" } },
+                { "field.timestamp": { "name": "createdAt" } } ] } },
+              { "object.entity": { "name": "Order", "extends": "Stamped", "children": [
+                { "source.rdb": { "@table": "orders" } },
+                { "field.string": { "name": "code", "@filterable": true } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } } ] } },
+              { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+                { "source.rdb": { "@table": "auths" } },
+                { "field.long": { "name": "id" } },
+                { "field.enum": { "name": "type", "@values": ["Bridge"] } },
+                { "identity.primary": { "@fields": "id", "@generation": "increment" } } ] } },
+              { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+                { "field.int": { "name": "quantity" } } ] } }
+            ]}}
+            """;
+        var r = new MetaDataLoader().Load([new InMemoryStringSource(src, id: "shop.json")]);
+        Assert.Empty(r.Errors);
+        var config = new GenConfig
+        {
+            OutDir = Path.Combine(_root, "gen"), Namespace = "Probe", GenStateDir = StateDir, ProjectRoot = _root,
+        };
+        CodegenRunner.Run(config, r.Root,
+        [
+            new MetaObjects.Codegen.Generators.NamesGenerator(),
+            new MetaObjects.Codegen.Generators.FilterAllowlistGenerator(),
+            new MetaObjects.Codegen.Generators.RoutesGenerator(),
+        ]);
+
+        using var shop = JsonDocument.Parse(File.ReadAllText(Path.Combine(HashesDir, "acme.shop.json")));
+        var stamped = shop.RootElement.EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value.ValueKind == JsonValueKind.Object
+                ? $"{p.Value.GetProperty("generatedBy").GetString()} {Str(p.Value, "sourceNode")}"
+                : "(plain)");
+        Assert.Equal(new Dictionary<string, string>
+        {
+            ["gen/AuthFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::Auth",
+            ["gen/AuthNames.g.cs"] = "names acme::shop::Auth",
+            ["gen/AuthRoutes.g.cs"] = "routes-generator acme::shop::Auth",
+            ["gen/BridgeAuthFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::BridgeAuth",
+            ["gen/BridgeAuthNames.g.cs"] = "names acme::shop::BridgeAuth",
+            ["gen/OrderFilterAllowlist.g.cs"] = "filter-allowlist-generator acme::shop::Order",
+            ["gen/OrderNames.g.cs"] = "names acme::shop::Order",
+            ["gen/OrderRoutes.g.cs"] = "routes-generator acme::shop::Order",
+            ["gen/StampedNames.g.cs"] = "names acme::shop::Stamped",
+        }, stamped);
+    }
+
     private sealed class WholeModelFile : IGenerator
     {
         public string Name => "barrel";

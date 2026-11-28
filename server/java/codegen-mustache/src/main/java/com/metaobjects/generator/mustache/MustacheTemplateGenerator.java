@@ -298,7 +298,7 @@ public class MustacheTemplateGenerator implements Generator {
             // user template's output, in a format we do not choose.
             Path outputPath = Paths.get(outputDir, packagePath);
             File outputFile = outputPath.resolve(fileName).toFile();
-            com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(outputFile.toPath(), generatedCode);
+            com.metaobjects.generator.util.GeneratedFileWriter.writeUnmarked(outputFile.toPath(), generatedCode, metaObject);
             
             log.debug("Generated file: {}", outputFile.getAbsolutePath());
             

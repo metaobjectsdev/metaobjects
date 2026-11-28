@@ -387,7 +387,7 @@ public class NamesGenerator : PerEntityGenerator
             WriteColumnsByField(w, names, hasBase: superCls is not null);
         }
 
-        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}.g.cs"), w.ToString()) { SourceNode = entity.ResolutionKey() };
     }
 
     // The pieces of the file, one overridable method each (ADR-0063 item 7): a subclass changes the
