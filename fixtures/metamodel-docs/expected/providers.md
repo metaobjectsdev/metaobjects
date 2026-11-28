@@ -1,6 +1,6 @@
 <!-- @generated — DO NOT EDIT.
      Concern-provider ownership index — which provider owns each type and contributes each attribute.
-     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
+     Regenerate with your port's gen command (the metamodel-docs generator) -->
 
 # MetaObjects Metamodel — Providers
 

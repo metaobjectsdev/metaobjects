@@ -1,6 +1,6 @@
 <!-- @generated — DO NOT EDIT.
      Metamodel vocabulary index — every type.subType, its one-line description, and a link to its type page.
-     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
+     Regenerate with your port's gen command (the metamodel-docs generator) -->
 
 # MetaObjects Metamodel — Index
 

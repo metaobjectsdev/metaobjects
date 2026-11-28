@@ -78,7 +78,7 @@ test("every file carries a @generated DO-NOT-EDIT header naming the regen comman
     expect(content.startsWith("<!--")).toBe(true);
     expect(content).toContain("@generated");
     expect(content).toContain("DO NOT EDIT");
-    expect(content).toContain("Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile())");
+    expect(content).toContain("Regenerate with your port's gen command (the metamodel-docs generator)");
     expect(path).toBeTruthy();
   }
 });
