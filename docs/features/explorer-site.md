@@ -71,7 +71,7 @@ same model and inputs: every port that builds the docs view is held to
 | Port | Generator | The app | Inputs it reads |
 |---|---|---|---|
 | TypeScript | `docsSiteFile()` (`meta gen`) | `output: "app"` (default) or `"static"`; `site: "classic"` for the earlier site | The model, the requirement ledger, the files and routes this run wrote and mounts |
-| Java | `com.metaobjects.generator.DocsSiteGenerator` (`mvn metaobjects:generate`), no Node | The app only | The model, the files the committed hash manifest records per node, and a `verify --format json` payload when you name one (`verifyFile`) |
+| Java | `com.metaobjects.generator.DocsSiteGenerator` (`mvn metaobjects:generate`), no Node | The app only | The model, the files the same run generated per node, and a `verify --format json` payload when you name one (`verifyFile`) |
 | Kotlin | the same JVM `DocsSiteGenerator`, through `codegen-kotlin`'s registry | The app only | As Java; the Kotlin generators do not record provenance in the manifest yet, so their files are not listed |
 | C#, Python, Rust | not yet | | |
 
