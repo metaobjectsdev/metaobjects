@@ -238,7 +238,7 @@ function startApp(w: AppWindow): void {
           const first = site === undefined;
           build({
             stamp: res.headers.get("etag") ?? `${text.length}`,
-            title: params.get("title") ?? base?.title ?? url.host,
+            title: base?.title ?? url.host,
             footer: base?.footer ?? "",
             texts: base?.texts ?? {},
             templates: base?.templates ?? {},

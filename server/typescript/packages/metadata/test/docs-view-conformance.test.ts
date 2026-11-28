@@ -73,7 +73,7 @@ async function viewOf(name: string): Promise<DocsView> {
 
 describe("docs view corpus", () => {
   test("the corpus holds the fixtures the README describes", () => {
-    expect(fixtures).toEqual(["crm", "shop"]);
+    expect(fixtures).toEqual(["crm", "model-alone", "shop"]);
   });
 
   for (const name of fixtures) {

@@ -1,0 +1,706 @@
+{
+  "format": "metaobjects-docs-view/1",
+  "sources": {
+    "requirements": false,
+    "files": false,
+    "routes": false
+  },
+  "counts": {
+    "nodes": 3,
+    "packages": 1,
+    "requirements": 0,
+    "functional": 0,
+    "architectural": 0,
+    "byStatus": [
+      {
+        "status": "planned",
+        "count": 0
+      },
+      {
+        "status": "live",
+        "count": 0
+      },
+      {
+        "status": "partial",
+        "count": 0
+      },
+      {
+        "status": "retired",
+        "count": 0
+      }
+    ],
+    "claims": 0,
+    "files": 0,
+    "routes": 0,
+    "undecided": 0,
+    "coverageMeasured": false,
+    "entitiesClaimed": 0,
+    "entitiesTotal": 0
+  },
+  "packages": [
+    {
+      "name": "acme::library",
+      "count": 3,
+      "groups": [
+        {
+          "type": "object",
+          "subType": "entity",
+          "count": 3,
+          "nodes": [
+            {
+              "label": "Author",
+              "id": "acme::library::Author",
+              "path": "model/acme/library/Author.html",
+              "kind": "object.entity",
+              "unresolved": false
+            },
+            {
+              "label": "BaseEntity",
+              "id": "acme::library::BaseEntity",
+              "path": "model/acme/library/BaseEntity.html",
+              "kind": "object.entity",
+              "unresolved": false
+            },
+            {
+              "label": "Book",
+              "id": "acme::library::Book",
+              "path": "model/acme/library/Book.html",
+              "kind": "object.entity",
+              "unresolved": false
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "acme::library::Author",
+      "name": "Author",
+      "package": "acme::library",
+      "type": "object",
+      "subType": "entity",
+      "order": 1,
+      "path": "model/acme/library/Author.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": false,
+      "extends": {
+        "label": "BaseEntity",
+        "id": "acme::library::BaseEntity",
+        "path": "model/acme/library/BaseEntity.html",
+        "kind": "object.entity",
+        "unresolved": false
+      },
+      "attrs": [],
+      "memberGroups": [
+        {
+          "type": "field",
+          "count": 2,
+          "members": [
+            {
+              "id": "acme::library::Author.id",
+              "name": "id",
+              "type": "field",
+              "subType": "uuid",
+              "order": 0,
+              "anchor": "m-id",
+              "path": "model/acme/library/Author.html#m-id",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": {
+                "label": "BaseEntity",
+                "id": "acme::library::BaseEntity",
+                "path": "model/acme/library/BaseEntity.html",
+                "kind": "object.entity",
+                "unresolved": false
+              },
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::library::Author.name",
+              "name": "name",
+              "type": "field",
+              "subType": "string",
+              "order": 2,
+              "anchor": "m-name",
+              "path": "model/acme/library/Author.html#m-name",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "required",
+                  "value": true,
+                  "values": [
+                    {
+                      "text": "true",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "identity",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::library::Author.pk",
+              "name": "pk",
+              "type": "identity",
+              "subType": "primary",
+              "order": 1,
+              "anchor": "m-identity-pk",
+              "path": "model/acme/library/Author.html#m-identity-pk",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": {
+                "label": "BaseEntity",
+                "id": "acme::library::BaseEntity",
+                "path": "model/acme/library/BaseEntity.html",
+                "kind": "object.entity",
+                "unresolved": false
+              },
+              "attrs": [
+                {
+                  "name": "fields",
+                  "value": [
+                    "id"
+                  ],
+                  "values": [
+                    {
+                      "text": "id",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "source",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::library::Author.db",
+              "name": "db",
+              "type": "source",
+              "subType": "rdb",
+              "order": 3,
+              "anchor": "m-source-db",
+              "path": "model/acme/library/Author.html#m-source-db",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "table",
+                  "value": "authors",
+                  "values": [
+                    {
+                      "text": "authors",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [
+        {
+          "attr": "extends",
+          "via": null,
+          "target": {
+            "label": "BaseEntity",
+            "id": "acme::library::BaseEntity",
+            "path": "model/acme/library/BaseEntity.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "referencedBy": [
+        {
+          "attr": "references",
+          "from": {
+            "label": "Book",
+            "id": "acme::library::Book",
+            "path": "model/acme/library/Book.html",
+            "kind": "object.entity",
+            "unresolved": false
+          },
+          "via": {
+            "label": "Book.authorRef",
+            "id": "acme::library::Book.authorRef",
+            "path": "model/acme/library/Book.html#m-identity-authorRef",
+            "kind": "identity.reference",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Author",
+            "id": "acme::library::Author",
+            "path": "model/acme/library/Author.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 4,
+        "refs": 1,
+        "referencedBy": 1,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::library::BaseEntity",
+      "name": "BaseEntity",
+      "package": "acme::library",
+      "type": "object",
+      "subType": "entity",
+      "order": 0,
+      "path": "model/acme/library/BaseEntity.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": true,
+      "extends": null,
+      "attrs": [],
+      "memberGroups": [
+        {
+          "type": "field",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::library::BaseEntity.id",
+              "name": "id",
+              "type": "field",
+              "subType": "uuid",
+              "order": 0,
+              "anchor": "m-id",
+              "path": "model/acme/library/BaseEntity.html#m-id",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "identity",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::library::BaseEntity.pk",
+              "name": "pk",
+              "type": "identity",
+              "subType": "primary",
+              "order": 1,
+              "anchor": "m-identity-pk",
+              "path": "model/acme/library/BaseEntity.html#m-identity-pk",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "fields",
+                  "value": [
+                    "id"
+                  ],
+                  "values": [
+                    {
+                      "text": "id",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [],
+      "referencedBy": [
+        {
+          "attr": "extends",
+          "from": {
+            "label": "Author",
+            "id": "acme::library::Author",
+            "path": "model/acme/library/Author.html",
+            "kind": "object.entity",
+            "unresolved": false
+          },
+          "via": null,
+          "target": {
+            "label": "BaseEntity",
+            "id": "acme::library::BaseEntity",
+            "path": "model/acme/library/BaseEntity.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "extends",
+          "from": {
+            "label": "Book",
+            "id": "acme::library::Book",
+            "path": "model/acme/library/Book.html",
+            "kind": "object.entity",
+            "unresolved": false
+          },
+          "via": null,
+          "target": {
+            "label": "BaseEntity",
+            "id": "acme::library::BaseEntity",
+            "path": "model/acme/library/BaseEntity.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 2,
+        "refs": 0,
+        "referencedBy": 2,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    },
+    {
+      "id": "acme::library::Book",
+      "name": "Book",
+      "package": "acme::library",
+      "type": "object",
+      "subType": "entity",
+      "order": 2,
+      "path": "model/acme/library/Book.html",
+      "title": "",
+      "description": "",
+      "summary": "",
+      "abstract": false,
+      "extends": {
+        "label": "BaseEntity",
+        "id": "acme::library::BaseEntity",
+        "path": "model/acme/library/BaseEntity.html",
+        "kind": "object.entity",
+        "unresolved": false
+      },
+      "attrs": [],
+      "memberGroups": [
+        {
+          "type": "field",
+          "count": 3,
+          "members": [
+            {
+              "id": "acme::library::Book.id",
+              "name": "id",
+              "type": "field",
+              "subType": "uuid",
+              "order": 0,
+              "anchor": "m-id",
+              "path": "model/acme/library/Book.html#m-id",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": {
+                "label": "BaseEntity",
+                "id": "acme::library::BaseEntity",
+                "path": "model/acme/library/BaseEntity.html",
+                "kind": "object.entity",
+                "unresolved": false
+              },
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::library::Book.title",
+              "name": "title",
+              "type": "field",
+              "subType": "string",
+              "order": 2,
+              "anchor": "m-title",
+              "path": "model/acme/library/Book.html#m-title",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "required",
+                  "value": true,
+                  "values": [
+                    {
+                      "text": "true",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::library::Book.authorId",
+              "name": "authorId",
+              "type": "field",
+              "subType": "uuid",
+              "order": 3,
+              "anchor": "m-authorId",
+              "path": "model/acme/library/Book.html#m-authorId",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "identity",
+          "count": 2,
+          "members": [
+            {
+              "id": "acme::library::Book.pk",
+              "name": "pk",
+              "type": "identity",
+              "subType": "primary",
+              "order": 1,
+              "anchor": "m-identity-pk",
+              "path": "model/acme/library/Book.html#m-identity-pk",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": {
+                "label": "BaseEntity",
+                "id": "acme::library::BaseEntity",
+                "path": "model/acme/library/BaseEntity.html",
+                "kind": "object.entity",
+                "unresolved": false
+              },
+              "attrs": [
+                {
+                  "name": "fields",
+                  "value": [
+                    "id"
+                  ],
+                  "values": [
+                    {
+                      "text": "id",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            },
+            {
+              "id": "acme::library::Book.authorRef",
+              "name": "authorRef",
+              "type": "identity",
+              "subType": "reference",
+              "order": 4,
+              "anchor": "m-identity-authorRef",
+              "path": "model/acme/library/Book.html#m-identity-authorRef",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "fields",
+                  "value": [
+                    "authorId"
+                  ],
+                  "values": [
+                    {
+                      "text": "authorId",
+                      "link": null
+                    }
+                  ]
+                },
+                {
+                  "name": "references",
+                  "value": "acme::library::Author",
+                  "values": [
+                    {
+                      "text": "acme::library::Author",
+                      "link": {
+                        "label": "Author",
+                        "id": "acme::library::Author",
+                        "path": "model/acme/library/Author.html",
+                        "kind": "object.entity",
+                        "unresolved": false
+                      }
+                    }
+                  ]
+                }
+              ],
+              "refs": [
+                {
+                  "attr": "references",
+                  "via": {
+                    "label": "Book.authorRef",
+                    "id": "acme::library::Book.authorRef",
+                    "path": "model/acme/library/Book.html#m-identity-authorRef",
+                    "kind": "identity.reference",
+                    "unresolved": false
+                  },
+                  "target": {
+                    "label": "Author",
+                    "id": "acme::library::Author",
+                    "path": "model/acme/library/Author.html",
+                    "kind": "object.entity",
+                    "unresolved": false
+                  }
+                }
+              ],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        },
+        {
+          "type": "source",
+          "count": 1,
+          "members": [
+            {
+              "id": "acme::library::Book.db",
+              "name": "db",
+              "type": "source",
+              "subType": "rdb",
+              "order": 5,
+              "anchor": "m-source-db",
+              "path": "model/acme/library/Book.html#m-source-db",
+              "abstract": false,
+              "isArray": false,
+              "extends": null,
+              "declaredOn": null,
+              "attrs": [
+                {
+                  "name": "table",
+                  "value": "books",
+                  "values": [
+                    {
+                      "text": "books",
+                      "link": null
+                    }
+                  ]
+                }
+              ],
+              "refs": [],
+              "claims": [],
+              "memberGroups": []
+            }
+          ]
+        }
+      ],
+      "refs": [
+        {
+          "attr": "extends",
+          "via": null,
+          "target": {
+            "label": "BaseEntity",
+            "id": "acme::library::BaseEntity",
+            "path": "model/acme/library/BaseEntity.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        },
+        {
+          "attr": "references",
+          "via": {
+            "label": "Book.authorRef",
+            "id": "acme::library::Book.authorRef",
+            "path": "model/acme/library/Book.html#m-identity-authorRef",
+            "kind": "identity.reference",
+            "unresolved": false
+          },
+          "target": {
+            "label": "Author",
+            "id": "acme::library::Author",
+            "path": "model/acme/library/Author.html",
+            "kind": "object.entity",
+            "unresolved": false
+          }
+        }
+      ],
+      "referencedBy": [],
+      "claims": [],
+      "files": [],
+      "routes": [],
+      "unclaimed": false,
+      "counts": {
+        "members": 6,
+        "refs": 2,
+        "referencedBy": 0,
+        "claims": 0,
+        "files": 0,
+        "routes": 0
+      }
+    }
+  ],
+  "requirements": [],
+  "advisories": [],
+  "slices": [
+    {
+      "id": "package:acme::library",
+      "kind": "package",
+      "anchor": "acme::library",
+      "nodes": [
+        "acme::library::Author",
+        "acme::library::BaseEntity",
+        "acme::library::Book"
+      ]
+    }
+  ]
+}

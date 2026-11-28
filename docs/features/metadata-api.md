@@ -181,11 +181,11 @@ This is a cross-port contract, like `/_meta`:
 | Part | Contract |
 | --- | --- |
 | Path | `{apiPrefix}/_meta/docs`; the suffix is not configurable |
-| Body | the docs view of the loaded model, built from the model alone (no verify payload, no generation manifest), written as the port's docs view serializer writes it: the same bytes every port writes for the same model, held by [`fixtures/explorer-conformance/`](../../fixtures/explorer-conformance/). A host that knows its routes may pass them in, and they appear on each node |
-| `ETag` | present, and changes whenever the body does. Its value is the port's choice; a client compares it, never parses it |
-| `If-None-Match` | a request naming the current tag (or `*`) is answered `304` with no body |
+| Body | the docs view of the loaded model, built from the model alone (no verify payload, no generation manifest), written as the port's docs view serializer writes it: the same bytes every port writes for the same model, held by [`fixtures/explorer-conformance/model-alone/`](../../fixtures/explorer-conformance/model-alone/). A host that knows its routes may pass them in, and they appear on each node |
+| `ETag` | optional: a port should send one, and it changes whenever the body does. Its value is the port's choice; a client compares it, never parses it |
+| `If-None-Match` | optional: a port that sends an `ETag` should answer a request naming the current tag (or `*`) with `304` and no body. A client must not depend on the `304`: the explorer compares bodies |
 | `Cache-Control` | `no-cache`: a cache revalidates every read, since the model changes when the application restarts on a new one |
-| Cross-origin | none by default. The host may opt in to an `Access-Control-Allow-Origin` value (with `Access-Control-Expose-Headers: ETag`), which the explorer needs when it is opened from `file://` (origin `null`) or another host |
+| Cross-origin | none by default. The host may opt in to an `Access-Control-Allow-Origin` value (with `Access-Control-Expose-Headers: ETag` when it sends one), which the explorer needs when it is opened from `file://` (origin `null`) or another host |
 
 The view is built on the first read and kept: the model is immutable after load.
 
@@ -256,7 +256,7 @@ consumer's own application code imports things.
 ## What's deferred
 
 Per-entity `/_meta` routes, and ETag / cache-control / versioning on `/_meta`
-itself (the docs view route above has an ETag), are real questions but are not
+itself (the docs view route above may send an ETag), are real questions but are not
 needed to build a runtime grid and are deliberately left open rather than
 answered speculatively. If a large effective payload
 turns out to matter in practice, a per-entity route is the planned answer —

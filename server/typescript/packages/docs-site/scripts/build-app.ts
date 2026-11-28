@@ -7,6 +7,10 @@
 // every explorer template for the browser, as one classic script, and copies the shell and the
 // theme beside it. Cytoscape (`assets/cytoscape.min.js`) is vendored in `explorer-app/` and is
 // not touched here. Run `scripts/sync-explorer-app.sh` afterwards to refresh every port's copy.
+//
+// The committed bundle is minified, and minified output follows the Bun version, so it is built
+// and checked with one Bun only: the version the workflows pin (`bun-version` in
+// `.github/workflows/`). Any other Bun refuses rather than reporting a stale bundle.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -32,8 +36,14 @@ const MUSTACHE_NOTICE = `/*!
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */`;
 
+/** The Bun that builds the committed bundle. */
+export const EXPLORER_APP_BUN = "1.3.14";
+
 /** The bundle's files by path under `explorer-app/`. */
 export async function buildExplorerApp(): Promise<Map<string, string>> {
+  if (Bun.version !== EXPLORER_APP_BUN) {
+    throw new Error(`the explorer app is built with Bun ${EXPLORER_APP_BUN}, the version CI pins; this is Bun ${Bun.version}. Run it with Bun ${EXPLORER_APP_BUN}.`);
+  }
   const templates: Record<string, string> = {};
   for (const name of EXPLORER_TEMPLATE_NAMES) templates[name] = readFileSync(join(PKG, "templates", name), "utf8");
   const result = await Bun.build({

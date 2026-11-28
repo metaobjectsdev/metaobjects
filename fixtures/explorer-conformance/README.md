@@ -61,6 +61,13 @@ the builder nor any page names them.
 - `AccountScore`'s `source.rdb` has no name and carries `@parameterRef`: the member is
   `acme::crm::AccountScore#0`, labelled `AccountScore#0`.
 
+## `model-alone/`
+
+A model and no optional input: an abstract `BaseEntity` two entities extend, and a reference
+from `Book` to `Author`. No `verify.json`, `hashes.json` or `routes.json`, so `expected.json` is
+the view a running application serves from `GET {apiPrefix}/_meta/docs` when it is given no
+routes (docs/features/metadata-api.md).
+
 ## Regenerating
 
 After a deliberate change to the builder, from `server/typescript/packages/metadata`:
@@ -92,3 +99,5 @@ Then review the diff: every changed line is a change to what a docs page can sho
   case reproduces `expected.json`.
 - `server/typescript/packages/cli/test/explorer-fixture.test.ts`: the gate still writes each
   committed `verify.json`, and a fresh shop payload still builds `shop/expected.json`.
+- `server/typescript/packages/runtime-ts/test/meta-docs-route.test.ts`: the docs view route
+  serves `model-alone/expected.json` for that case's model.

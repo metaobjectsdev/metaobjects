@@ -73,7 +73,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l` for directory-shaped corpor
 | [`fixtures/cube-model/`](../fixtures/cube-model/) (FR-044 Plan 4 — the `cube-model` generator's golden Cube files, plus the canonical model's golden) | 46 cases (36 trees + 10 errors) + 1 canonical golden | ✓ (the exporter is TypeScript-only, spec R6; its `cube` lane also loads the files into a real Cube) | — | — | — | — | — |
 | [`fixtures/writer-conformance/`](../fixtures/writer-conformance/) (ADR-0063 — the code writer generators write through) | 88 cases (31 core + 10 TypeScript + 9 Java + 12 Kotlin + 6 C# + 12 Python + 8 Rust) | ✓ (the first writer; core and TypeScript dialect) | ✓ (core and Java dialect; `JavaWriter` in `codegen-base`) | ✓ (core and Kotlin dialect; `KotlinWriter` in `codegen-kotlin`) | ✓ (core and C# dialect) | ✓ (core and Python dialect) | ✓ (core and Rust dialect) |
 | [`fixtures/contract-conformance/`](../fixtures/contract-conformance/) (FR-022 — the `contract-schema` and `openapi` generators' golden trees and refusals) | 22 cases (17 trees + 5 errors) | ✓ (one neutral engine, ADR-0034 Amendment 10; the generated API lanes also hold real traffic to the documents) | — | — | — | — | — |
-| [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the docs view: a loaded project + the verify payload, manifest and routes in, one `explorer.json` out) | 2 cases (`shop`, `crm`) | ✓ | — | — | — | — | — |
+| [`fixtures/explorer-conformance/`](../fixtures/explorer-conformance/) (the docs view: a loaded project + the verify payload, manifest and routes in, one `explorer.json` out) | 3 cases (`shop`, `crm`, `model-alone`) | ✓ | — | — | — | — | — |
 
 **Rust (ADR-0065)** joined the table with its service stack. Its ledgers (the metamodel
 corpus's `server/rust/metaobjects/tests/conformance-expected-failures.json`, empty; the YAML
@@ -897,7 +897,7 @@ message. The case list, with the rule each pins, is the
 (`server/typescript/packages/integration-tests/cube-live/cube-model.live.ts`) loads the same
 files into a real Cube.
 
-### `fixtures/explorer-conformance/` (2 cases)
+### `fixtures/explorer-conformance/` (3 cases)
 
 The docs view → [features/docs-view.md](features/docs-view.md). Each case is a `project/` and
 its optional committed inputs (`verify.json`, what `meta verify --format json` writes for it;
@@ -910,12 +910,14 @@ data-driven provider for vocabulary the core does not register (`page.list`, `bl
 `capability.module`): its members and references must appear with no docs code that names them.
 It also pins three id rules: a page declared before the entity it shares a name with leaves the
 entity its claims, a reference and a claim naming an inherited member land on the owner's row,
-and a nameless member keeps its index in its label.
+and a nameless member keeps its index in its label. `model-alone` carries no optional input:
+its `expected.json` is the body the running application's `GET {apiPrefix}/_meta/docs` serves.
 
 **One port runs it:** TypeScript, in
 `server/typescript/packages/metadata/test/docs-view-conformance.test.ts` (the view) and
 `server/typescript/packages/cli/test/explorer-fixture.test.ts` (the committed `verify.json` files
-are what the gate writes today). A port loads the project with the provider applied, builds its
+are what the gate writes today) and `server/typescript/packages/runtime-ts/test/meta-docs-route.test.ts`
+(the docs view route serves `model-alone/expected.json`). A port loads the project with the provider applied, builds its
 own view and compares; the view reads the port's own loaded model, so it is a port's step, not a
 shared input.
 

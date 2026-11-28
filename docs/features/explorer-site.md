@@ -95,8 +95,8 @@ docs/generated/site/index.html?source=http://localhost:3000/api/_meta/docs
 The app reads the route once a second and draws the page you are on again when the view
 changes, as it does for the model file: restart the application on a changed model and the
 open page follows it. While the application is down the page stays as it was and a note in
-the corner says the route cannot be read. A `title=` parameter names the project; without one
-the app uses the generated site's title, else the application's host.
+the corner says the route cannot be read. The title is the generated site's, else the
+application's host.
 
 A running application's view is built from the model alone, so it has no gate verdicts and no
 generated-file lists, and prompt text comes from the generated site's `explorer-model.js` when
