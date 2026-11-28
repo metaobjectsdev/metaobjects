@@ -9,7 +9,13 @@ import {
   placeEntry,
   readManifestState,
 } from "../src/hash-manifest-store.js";
-import { forgetGeneratedPaths, listGeneratedPaths, withManifestBatch, writeManifestFiles } from "../src/overwrite-policy.js";
+import {
+  forgetGeneratedPaths,
+  listGeneratedPaths,
+  recordGeneratedProvenance,
+  withManifestBatch,
+  writeManifestFiles,
+} from "../src/overwrite-policy.js";
 import { makeScratchDir, removeTree } from "../src/scratch-dir.js";
 
 interface Vectors {
@@ -23,6 +29,13 @@ interface Vectors {
     goldenText: string;
     gitignoreBefore: string;
     gitignoreAfter: string;
+  };
+  provenance: {
+    beforeFiles: Record<string, Record<string, unknown>>;
+    records: { path: string; generatedBy: string; sourceNode?: string }[];
+    afterFiles: Record<string, Record<string, unknown>>;
+    goldenFile: string;
+    goldenText: string;
   };
 }
 
@@ -74,6 +87,31 @@ describe("shared vectors", () => {
     const before = files().map((f) => statSync(join(dirOf(), f)).mtimeMs);
     withManifestBatch(state, () => {}, VECTORS.objects);
     expect(files().map((f) => statSync(join(dirOf(), f)).mtimeMs)).toEqual(before);
+  });
+
+  test("provenance: each recorded path names its generator and node, and is placed by it", () => {
+    const { beforeFiles, records, afterFiles, goldenFile, goldenText } = VECTORS.provenance;
+    mkdirSync(dirOf(), { recursive: true });
+    for (const [name, entries] of Object.entries(beforeFiles)) {
+      writeFileSync(join(dirOf(), name), JSON.stringify(entries, null, 2) + "\n");
+    }
+    const record = (): void => withManifestBatch(state, () => {
+      recordGeneratedProvenance(state, new Map(records.map((r) => [r.path, {
+        generatedBy: r.generatedBy,
+        ...(r.sourceNode !== undefined && { sourceNode: r.sourceNode }),
+      }])));
+    }, VECTORS.objects);
+    record();
+    expect(files()).toEqual(Object.keys(afterFiles).sort());
+    for (const [name, entries] of Object.entries(afterFiles)) expect(read(name)).toEqual(entries);
+    expect(readFileSync(join(dirOf(), goldenFile), "utf-8")).toBe(goldenText);
+
+    // The same records a second time change no file.
+    const before = files().map((f) => readFileSync(join(dirOf(), f), "utf-8"));
+    const stamps = files().map((f) => statSync(join(dirOf(), f)).mtimeMs);
+    record();
+    expect(files().map((f) => readFileSync(join(dirOf(), f), "utf-8"))).toEqual(before);
+    expect(files().map((f) => statSync(join(dirOf(), f)).mtimeMs)).toEqual(stamps);
   });
 
   test("the gitignore rewrite replaces the legacy negation, or adds one after .gen-state/*", () => {

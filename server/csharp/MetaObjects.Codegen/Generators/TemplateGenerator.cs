@@ -12,7 +12,7 @@ using MetaObjects.Render;
 
 namespace MetaObjects.Codegen.Generators;
 
-public record TemplateWalkResult(object Data, string OutputPath);
+public record TemplateWalkResult(object Data, string OutputPath, string? SourceNode = null);
 
 public static class TemplateGenerator
 {
@@ -59,7 +59,7 @@ public static class TemplateGenerator
                     Format = _format,
                 };
                 var content = Renderer.Render(request);
-                yield return new EmittedFile(entry.OutputPath, content);
+                yield return new EmittedFile(entry.OutputPath, content) { SourceNode = entry.SourceNode };
             }
         }
     }

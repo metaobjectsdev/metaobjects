@@ -71,9 +71,9 @@ def test_manifest_is_saved_once_per_run_and_only_when_it_changed(
     saves: list[int] = []
     real = overwrite_policy._save_hashes
 
-    def counting(gen_state_dir: str, hashes: dict[str, str]) -> None:
+    def counting(gen_state_dir: str, hashes: dict[str, str], provenance: object = None) -> None:
         saves.append(len(hashes))
-        real(gen_state_dir, hashes)
+        real(gen_state_dir, hashes, provenance)  # type: ignore[arg-type]
 
     monkeypatch.setattr(overwrite_policy, "_save_hashes", counting)
     assert main(["gen"]) == 0
@@ -131,9 +131,9 @@ def test_non_prompt_targets_rewrite_nothing_and_save_no_manifest_when_unchanged(
     saves: list[int] = []
     real = overwrite_policy._save_hashes
 
-    def counting(gen_state_dir: str, hashes: dict[str, str]) -> None:
+    def counting(gen_state_dir: str, hashes: dict[str, str], provenance: object = None) -> None:
         saves.append(len(hashes))
-        real(gen_state_dir, hashes)
+        real(gen_state_dir, hashes, provenance)  # type: ignore[arg-type]
 
     monkeypatch.setattr(overwrite_policy, "_save_hashes", counting)
     assert main(["gen"]) == 0

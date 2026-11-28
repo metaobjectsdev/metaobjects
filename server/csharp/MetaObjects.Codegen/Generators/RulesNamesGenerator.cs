@@ -109,7 +109,7 @@ public class RulesNamesGenerator : IGenerator
                 WriteLifecycle(w, entity, l, commands, lifecycleClasses.Add(Ident(l.Field.Name), $"field \"{l.Field.Name}\""));
             }
         }
-        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(entity, ctx, $"{cls}.g.cs"), w.ToString()) { SourceNode = entity.ResolutionKey() };
     }
 
     /// <summary>One lifecycle field as a nested class.</summary>
@@ -181,7 +181,7 @@ public class RulesNamesGenerator : IGenerator
                 WriteOperation(w, op, members.Add(Ident(op.Name), $"operation \"{op.Name}\""));
             }
         }
-        return new EmittedFile(OutputPaths.Of(api, ctx, $"{cls}.g.cs"), w.ToString());
+        return new EmittedFile(OutputPaths.Of(api, ctx, $"{cls}.g.cs"), w.ToString()) { SourceNode = api.ResolutionKey() };
     }
 
     /// <summary>One operation as a nested class.</summary>

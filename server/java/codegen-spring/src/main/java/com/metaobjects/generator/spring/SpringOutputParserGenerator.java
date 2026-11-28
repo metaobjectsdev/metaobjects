@@ -240,7 +240,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(parserClass + ".java");
-            GeneratedFileWriter.write(outFile, w.toString());
+            GeneratedFileWriter.write(outFile, w.toString(), template);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + parserClass + ".java for template " + template.getName() + ": " + e, e);

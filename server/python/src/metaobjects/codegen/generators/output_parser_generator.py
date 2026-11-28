@@ -339,6 +339,7 @@ class OutputParserGenerator:
                         f"{_snake_case(tmpl.name)}_response_parser", tmpl.resolution_key(),
                     ),
                     content=ruff_format(content),
+                    source_node=tmpl.resolution_key(),
                 )
             )
         return files

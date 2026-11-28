@@ -270,6 +270,7 @@ class ExtractorGenerator:
                         f"{_snake_case(tmpl.name)}_extractor", tmpl.resolution_key(),
                     ),
                     content=ruff_format(content),
+                    source_node=tmpl.resolution_key(),
                 )
             )
         return files

@@ -120,6 +120,42 @@ public class HashManifestPackagesTest {
     }
 
     @Test
+    public void provenance() throws Exception {
+        JsonObject v = vectors();
+        JsonObject prov = v.getAsJsonObject("provenance");
+        Path gs = genState();
+        Path dir = gs.resolve(".hashes");
+        Files.createDirectories(dir);
+        for (Map.Entry<String, JsonElement> f : prov.getAsJsonObject("beforeFiles").entrySet()) {
+            Files.writeString(dir.resolve(f.getKey()), f.getValue().toString());
+        }
+        Map<String, HashManifest.Provenance> records = new LinkedHashMap<>();
+        for (JsonElement el : prov.getAsJsonArray("records")) {
+            JsonObject r = el.getAsJsonObject();
+            records.put(r.get("path").getAsString(),
+                    new HashManifest.Provenance(r.get("generatedBy").getAsString(), nullable(r.get("sourceNode"))));
+        }
+
+        HashManifest.recordProvenance(gs, records, placement(v));
+
+        Map<String, String> written = filesIn(dir);
+        JsonObject expected = prov.getAsJsonObject("afterFiles");
+        assertEquals(new TreeSet<>(expected.keySet()), new TreeSet<>(written.keySet()));
+        for (String name : expected.keySet()) {
+            assertEquals(name, expected.get(name), JsonParser.parseString(written.get(name)));
+        }
+        assertEquals(prov.get("goldenText").getAsString(), written.get(prov.get("goldenFile").getAsString()));
+
+        // Recording the same records a second time changes no file.
+        for (Path p : Files.list(dir).toList()) Files.setLastModifiedTime(p, LONG_AGO);
+        HashManifest.recordProvenance(gs, records, placement(v));
+        assertEquals(written, filesIn(dir));
+        for (Path p : Files.list(dir).toList()) {
+            assertEquals(p.toString(), LONG_AGO, Files.getLastModifiedTime(p));
+        }
+    }
+
+    @Test
     public void gitignoreIsTouchedOnlyByAMigratingWrite() throws Exception {
         Path gs = genState();
         Files.createDirectories(gs);

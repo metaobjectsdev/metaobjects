@@ -640,6 +640,7 @@ class NamesGenerator:
                         f"{_snake_case(entity.name)}_names", entity.resolution_key(),
                     ),
                     content=ruff_format(source),
+                    source_node=entity.resolution_key(),
                 )
             ]
 

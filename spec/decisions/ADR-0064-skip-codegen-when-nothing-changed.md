@@ -153,7 +153,7 @@ replace), one JSON file per model package:
 - A file holds exactly what the single manifest held for its paths, unchanged: one JSON object keyed
   by project-relative path, keys sorted, two-space indentation, a trailing newline, each value a
   SHA-256 hex string or an object carrying `hash` and any owner or provenance fields the port keeps
-  (`generator` and `outputDir` on the JVM, `generatedBy` and `sourceNode` in TypeScript). Nothing
+  (`generator` and `outputDir` on the JVM, `generatedBy` and `sourceNode` in TypeScript, C#, Java and Python). Nothing
   about a value changes, so no reader of one entry changes.
 
 **2. Reading is a union.** A reader merges every `*.json` file in `.hashes/`, in file-name order, with
@@ -166,7 +166,7 @@ entry costs a merge conflict that could have been avoided and nothing else.
 
 **3. Placement is a pure function, so it is stable.** A writer files each entry under:
 
-1. **Its recorded `sourceNode`**, when it has one (TypeScript records it). The package is the
+1. **Its recorded `sourceNode`**, when it has one (TypeScript, C#, Java and Python record it). The package is the
    `sourceNode` up to its first `.`, minus its last `::` segment (`acme::shop::Order.id` files under
    `acme::shop`). A `sourceNode` with no `::` names an object in no package: the root manifest.
 2. **Else the object whose name the file's stem begins with, word by word.** The stem is the file's

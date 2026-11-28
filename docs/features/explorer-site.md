@@ -167,7 +167,7 @@ dangling link. `buildDocsView` also takes the verify payload, the manifest and t
   the running application, and publishing the site.
 - "Hand-written code that imports it": the site reads no import graph, so the object pages say
   it was not scanned.
-- Generated-file provenance from the JVM, Python and C# generators (see
+- Generated-file provenance from the Kotlin and Rust generators (see
   [explorer-data.md](explorer-data.md)), so for those ports the generated-file lists are empty.
 
 ## Verified by

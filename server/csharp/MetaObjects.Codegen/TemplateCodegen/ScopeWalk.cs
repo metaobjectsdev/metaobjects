@@ -34,7 +34,8 @@ public static class ScopeWalk
                 case PerEntity:
                     return concrete.Select(o => new TemplateWalkResult(
                         TemplateData.Entity(o),
-                        OutputPattern.Expand(outputPattern, TemplateData.BareName(o), TemplateData.PackageOf(o))))
+                        OutputPattern.Expand(outputPattern, TemplateData.BareName(o), TemplateData.PackageOf(o)),
+                        o.ResolutionKey()))
                         .ToList();
                 case PerPackage:
                     var byPkg = new SortedDictionary<string, List<MetaObject>>(StringComparer.Ordinal);

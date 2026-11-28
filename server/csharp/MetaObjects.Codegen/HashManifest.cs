@@ -450,6 +450,54 @@ public static class HashManifest
     public static bool IsRecorded(string genStateDir, string relPath, string? legacyRelPath = null) =>
         Recorded(genStateDir, relPath, legacyRelPath) is not null;
 
+    /// <summary>What produced one generated file: the generator, and the node it was rendered from (if one).</summary>
+    public readonly record struct Provenance(string GeneratedBy, string? SourceNode);
+
+    private static readonly string[] ProvenanceFields = ["generatedBy", "sourceNode"];
+
+    /// <summary>
+    /// Record, on each recorded path's entry, the generator and node it came from. An entry with a
+    /// source node becomes <c>{ hash, ...other fields, generatedBy, sourceNode }</c>; one without
+    /// returns to the plain hash (or <c>{ hash, ...other fields }</c>). A path with no recorded hash is
+    /// left alone: this never records a write. Nothing is written when no entry changes.
+    /// </summary>
+    public static void RecordGeneratedProvenance(string genStateDir, IReadOnlyDictionary<string, Provenance> provenance)
+    {
+        if (!Exists(genStateDir)) return;
+        var batch = BatchFor(genStateDir);
+        var loaded = batch is null ? ReadAll(genStateDir) : null;
+        var raw = batch?.Raw ?? loaded!.Raw;
+        var changed = false;
+        foreach (var (key, prov) in provenance)
+        {
+            if (!raw.TryGetValue(key, out var existing) || EntryHash(existing) is not { } hash) continue;
+            var rest = new List<KeyValuePair<string, JsonElement>>();
+            if (existing.ValueKind == JsonValueKind.Object)
+                foreach (var prop in existing.EnumerateObject())
+                    if (prop.Name != "hash" && !ProvenanceFields.Contains(prop.Name))
+                        rest.Add(new(prop.Name, prop.Value));
+            JsonElement next;
+            if (prov.SourceNode is null && rest.Count == 0) next = JsonSerializer.SerializeToElement(hash);
+            else
+            {
+                var entry = new Dictionary<string, object?>(StringComparer.Ordinal) { ["hash"] = hash };
+                foreach (var (k, v) in rest) entry[k] = v;
+                if (prov.SourceNode is not null)
+                {
+                    entry["generatedBy"] = prov.GeneratedBy;
+                    entry["sourceNode"] = prov.SourceNode;
+                }
+                next = JsonSerializer.SerializeToElement(entry);
+            }
+            if (JsonSerializer.Serialize(next) == JsonSerializer.Serialize(existing)) continue;
+            raw[key] = next;
+            changed = true;
+        }
+        if (!changed) return;
+        if (batch is not null) batch.Dirty = true;
+        else WriteAll(genStateDir, raw, loaded!.Origin, null);
+    }
+
     /// <summary>
     /// ADR-0064 — one run's view of the manifest: loaded ONCE, updated in memory, saved ONCE and
     /// only when an entry was added, changed or removed. A run that changes nothing leaves the

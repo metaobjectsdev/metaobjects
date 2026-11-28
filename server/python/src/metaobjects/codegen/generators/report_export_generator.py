@@ -257,6 +257,7 @@ class ReportExportGenerator:
                     content=self.render_report(
                         report, ModuleScope(ctx.config.output_layout, pkg_of(report))
                     ),
+                    source_node=report.resolution_key(),
                 )
             )
         return files

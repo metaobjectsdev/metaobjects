@@ -16,6 +16,13 @@ public sealed record EmittedFile(string Path, string Content)
     /// it. <c>false</c>, the default, is a per-object file the selection narrows.
     /// </summary>
     public bool WholeModel { get; init; }
+
+    /// <summary>
+    /// The resolution key (<c>acme::shop::Order</c>) of the one metadata node this file was rendered
+    /// from; <c>null</c> for a file built from the whole model or a package. Recorded in the hash
+    /// manifest as provenance. <see cref="PerEntityGenerator"/> stamps it unless the generator set one.
+    /// </summary>
+    public string? SourceNode { get; init; }
 }
 
 /// <summary>Resolved generation config.</summary>
@@ -713,7 +720,11 @@ public abstract class PerEntityGenerator : IGenerator
     protected abstract EmittedFile GenerateOne(MetaObject entity, GenContext ctx);
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx) =>
-        ctx.Narrow(Include).Entities.Where(Filter).Select(e => GenerateOne(e, ctx));
+        ctx.Narrow(Include).Entities.Where(Filter).Select(e =>
+        {
+            var file = GenerateOne(e, ctx);
+            return file.SourceNode is null ? file with { SourceNode = e.ResolutionKey() } : file;
+        });
 
     /// <summary>
     /// Scope this entry to some objects: only those it accepts are generated for. Set on the

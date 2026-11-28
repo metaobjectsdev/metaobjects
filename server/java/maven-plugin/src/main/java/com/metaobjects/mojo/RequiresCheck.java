@@ -66,6 +66,13 @@ final class RequiresCheck {
         return k != null ? k.port() + ":" + k.stableName() : classname;
     }
 
+    /** What the manifest's {@code generatedBy} calls {@code classname}: its registry stable name
+     *  ({@code dto}), or its simple class name for a generator of your own. */
+    static String generatorName(String classname) {
+        Known k = resolve(known(), classname);
+        return k != null ? k.stableName() : EjectSupport.simpleNameOf(classname);
+    }
+
     /** The registry entry {@code classname} is, or {@code null}: by class name, then by simple name. */
     private static Known resolve(List<Known> known, String classname) {
         for (Known k : known) if (k.classname().equals(classname)) return k;

@@ -167,12 +167,12 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
 
         String writerPackage = getArg(ARG_WRITER_PACKAGE, sharedPackage(served));
         boolean decimalsAsString = loader.getRoot().getWireFormat().decimalsAsString();
-        write(outRoot, writerPackage, WRITER_NAME,
+        write(null, outRoot, writerPackage, WRITER_NAME,
             writerSource(writerPackage, xmlNulls, csvBom, decimalsAsString, usesDurationCell(served)));
         for (MetaObject entity : served) {
             if (!inEntitySelection(entity)) continue;
             String[] split = SpringNaming.splitFqn(entity.getName());
-            write(outRoot, split[0], split[1] + "Export",
+            write(entity, outRoot, split[0], split[1] + "Export",
                 exportSource(entity, split[0], split[1], writerPackage, maxRows));
         }
     }
@@ -194,10 +194,10 @@ public class SpringReportExportGenerator extends MultiFileDirectGeneratorBase<Me
         return prefix == null || prefix.length == 0 ? "export" : String.join(".", prefix);
     }
 
-    private static void write(Path outRoot, String pkg, String className, String source) {
+    private static void write(MetaObject node, Path outRoot, String pkg, String className, String source) {
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(className + ".java");
-            GeneratedFileWriter.write(outFile, source);
+            GeneratedFileWriter.write(outFile, source, node);
         } catch (IOException e) {
             throw new GeneratorException("failed writing " + className + ".java: " + e, e);
         }
