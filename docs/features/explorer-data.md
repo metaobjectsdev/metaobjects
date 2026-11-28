@@ -158,8 +158,8 @@ malformed leaves its part of the view empty.
   optional, and nothing builds it yet.
 - **Provenance from the Kotlin and Rust generators.** Their manifest entries have no
   `sourceNode` yet, so for those ports a node lists no files.
-- **The docs view in the other ports.** TypeScript builds it today; the corpus is what the
-  other ports will be held to.
+- **The docs view in C#, Python and Rust.** TypeScript, Java and Kotlin build it today; the
+  corpus is what the other ports will be held to.
 
 ## Verified by
 

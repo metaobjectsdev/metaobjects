@@ -916,7 +916,7 @@ Java (`metadata`'s `DocsViewConformanceTest`, and `codegen-base`'s `ExplorerSite
 generator) and Kotlin (`KotlinDocsSiteConformanceTest`, through its registry's `docs-site`) build
 every case byte for byte; the JVM has one builder, which Kotlin calls rather than re-implements.
 
-**One port runs it:** TypeScript, in
+**TypeScript runs it** in
 `server/typescript/packages/metadata/test/docs-view-conformance.test.ts` (the view) and
 `server/typescript/packages/cli/test/explorer-fixture.test.ts` (the committed `verify.json` files
 are what the gate writes today) and `server/typescript/packages/runtime-ts/test/meta-docs-route.test.ts`
