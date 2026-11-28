@@ -7,7 +7,7 @@
 // `type.subType`s it registers (owns), and its `extends[]` say which attrs it
 // contributes to types another provider owns. This module re-exports every
 // embedded definition as one list so the provenance builder can walk them
-// without each consumer re-importing all fifteen.
+// without each consumer re-importing every one.
 
 import type { ProviderDefinition } from "../provider-data.js";
 import { FIELD_DEFINITION } from "../core/field/field-definition.embedded.js";
@@ -15,6 +15,7 @@ import { OBJECT_DEFINITION } from "../core/object/object-definition.embedded.js"
 import { ATTR_DEFINITION } from "../core/attr/attr-definition.embedded.js";
 import { VALIDATOR_DEFINITION } from "../core/validator/validator-definition.embedded.js";
 import { IDENTITY_DEFINITION } from "../core/identity/identity-definition.embedded.js";
+import { INDEX_DEFINITION } from "../core/index/index-definition.embedded.js";
 import { RELATIONSHIP_DEFINITION } from "../core/relationship/relationship-definition.embedded.js";
 import { DOCUMENTATION_DEFINITION } from "../core/documentation/documentation-definition.embedded.js";
 import { ORIGIN_DEFINITION } from "../persistence/origin/origin-definition.embedded.js";
@@ -43,6 +44,7 @@ export const ALL_PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
   ATTR_DEFINITION,
   VALIDATOR_DEFINITION,
   IDENTITY_DEFINITION,
+  INDEX_DEFINITION,
   RELATIONSHIP_DEFINITION,
   DOCUMENTATION_DEFINITION,
   ORIGIN_DEFINITION,

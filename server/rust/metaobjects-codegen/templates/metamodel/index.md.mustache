@@ -1,0 +1,20 @@
+<!-- @generated — DO NOT EDIT.
+     Metamodel vocabulary index — every type.subType, its one-line description, and a link to its type page.
+     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
+
+# MetaObjects Metamodel — Index
+
+This page documents the **metamodel itself**: the type, subtype and attribute
+vocabulary the loader accepts, generated from the strict registry. Your own
+entities are documented by the `docs` generator (`docsFile()`).
+
+Each row links to its type page, which has the full attribute table, the allowed
+children and the cardinality of that subtype. Documentation attributes
+(`@description`, `@title` and the rest) apply to every node and are listed once in
+[providers.md](providers.md) under `metaobjects-documentation`.
+
+| Type.subType | Description | Page |
+| --- | --- | --- |
+{{#rows}}
+| `{{{typeSubType}}}` | {{{description}}} | [{{{page}}}]({{{page}}}) |
+{{/rows}}

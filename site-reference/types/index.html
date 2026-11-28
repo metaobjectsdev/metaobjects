@@ -52,6 +52,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 (<code>min..max</code>, <code>*</code> = unbounded).</p>
 <h3>index.lookup</h3>
 <p>A non-unique lookup index on one or more fields. Use for query-performance indexes that do NOT enforce uniqueness — declare identity.secondary for unique constraints instead.</p>
+<p><strong>Owning provider:</strong> metaobjects-core-types</p>
 <p><strong>When to use:</strong> You need a DB index for query performance (fast lookups/sorts) but NOT uniqueness enforcement. @fields names the indexed columns; the db provider adds @orders / @expr / @where / @using for physical tuning.</p>
 <p><strong>Attributes</strong></p>
 <table>
@@ -81,7 +82,7 @@ documentation attributes are omitted here (see <a href="../providers.html">provi
 <td>no</td>
 <td></td>
 <td></td>
-<td>—</td>
+<td>metaobjects-core-types</td>
 <td>The field name(s) this index covers. Required UNLESS @expr is present — an index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX.</td>
 </tr>
 <tr>

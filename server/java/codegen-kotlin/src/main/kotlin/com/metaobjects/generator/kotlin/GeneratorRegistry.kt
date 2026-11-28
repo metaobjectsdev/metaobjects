@@ -302,6 +302,16 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         ejectResourcePath = ejectPath("KotlinApiDocsGenerator"),
         ejectWith = API_DOCS_EMIT,
     ),
+    "metamodel-docs" to GeneratorInfo(
+        name = "metamodel-docs",
+        description = "Reference of the built-in metamodel: every type, subtype and attribute the build registers, " +
+            "by provider, rendered from the shared templates/metamodel/ Mustache set (INDEX.md, providers.md, " +
+            "one types/<family>.md per type family). Reads no model objects.",
+        tier = GeneratorTier.NEUTRAL,
+        layer = GeneratorLayer.DOCS,
+        factory = ::KotlinMetamodelDocsGenerator,
+        ejectResourcePath = ejectPath("KotlinMetamodelDocsGenerator"),
+    ),
     "report-export" to GeneratorInfo(
         name = "report-export",
         description = "Per-served-report export module (<Report>Export: columns, wire-form cells, CSV and XML " +

@@ -180,12 +180,30 @@ pub fn cargo(dir: &Path, args: &[&str]) -> std::process::Output {
         .expect("cargo runs")
 }
 
+/// The shipped generators that write crates: every one but `metamodel-docs`, whose Markdown
+/// pages are not a crate and are held to their own corpus (`tests/metamodel_docs.rs`).
+pub fn crate_generators() -> Vec<Box<dyn metaobjects_codegen::Generator>> {
+    shipped_generators()
+        .into_iter()
+        .filter(|g| g.name() != "metamodel-docs")
+        .collect()
+}
+
+/// A generator list naming [`crate_generators`], the opt-in transport included.
+pub fn crate_generator_list() -> String {
+    let names: Vec<String> = crate_generators()
+        .iter()
+        .map(|g| format!("\"{}\"", g.name()))
+        .collect();
+    format!("{{ \"generators\": [{}] }}\n", names.join(", "))
+}
+
 /// Run every shipped generator over the project, into `generated/`, through the run engine.
 pub fn generate_all(project: &Scratch, entities: &[&str]) {
     let mut opts = RunOptions::new(project.path());
     opts.out_dir = PathBuf::from("generated");
     opts.entities = entities.iter().map(|e| e.to_string()).collect();
-    run(&opts, &shipped_generators()).unwrap_or_else(|e| panic!("gen failed: {e}"));
+    run(&opts, &crate_generators()).unwrap_or_else(|e| panic!("gen failed: {e}"));
 }
 
 pub fn copy_tree(from: &Path, to: &Path) {

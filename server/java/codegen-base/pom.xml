@@ -144,6 +144,7 @@
                                     <directory>src/main/java/com/metaobjects/generator</directory>
                                     <includes>
                                         <include>SharedModelGenerator.java</include>
+                                        <include>MetamodelDocsGenerator.java</include>
                                     </includes>
                                 </resource>
                                 <!-- "html-docs", "ai-docs" and "json-schema": each a generator and

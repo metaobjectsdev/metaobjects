@@ -35,7 +35,7 @@ The loader is the `metaobjects` crate, and the workspace at `server/rust/` adds 
 | Frozen tree | The loader freezes the tree when it finishes. A frozen tree memoizes its resolved reads (effective children, attributes and array-ness), so many readers can share one. |
 | Timings | Every load records how long each phase and each validation pass took (`LoadResult::timings`). |
 | Report shapes | `metaobjects::report_shape::report_shape` derives an `object.report`'s fields (FR-044 Table B, with Table C's `required`): each dimension and measure, its subtype, and the `@of` field it takes its type from. It byte-matches `fixtures/persistence-conformance/report-shapes.json`, as every port does. |
-| Code generation (`cargo meta`) | The run engine, eleven generators (`entity`, `rules-names`, `contract-types`, `repository`, `service`, `service-routes`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
+| Code generation (`cargo meta`) | The run engine, twelve generators (`entity`, `rules-names`, `contract-types`, `repository`, `service`, `service-routes`, `client`, `commands`, `render-helper`, `output-parser`, `output-prompt`, and the opt-in `metamodel-docs`, the metamodel reference pages rendered from the shared Mustache set), the codegen and template drift gates and `eject`. See [The command](#the-command-cargo-meta) and [What `gen` writes](#what-gen-writes) below. |
 
 ## The command: `cargo meta`
 

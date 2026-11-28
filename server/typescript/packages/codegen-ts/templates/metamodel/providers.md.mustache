@@ -1,0 +1,35 @@
+<!-- @generated — DO NOT EDIT.
+     Concern-provider ownership index — which provider owns each type and contributes each attribute.
+     Regenerate with: meta gen (the metamodel-docs generator, metamodelDocsFile()) -->
+
+# MetaObjects Metamodel — Providers
+
+The metamodel is composed from concern providers. Each **owns** the
+type/subtypes it registers and may **contribute** attributes to types another
+provider owns. This is the ownership lens over the same vocabulary
+[INDEX.md](INDEX.md) lists by type.
+
+{{#providers}}
+## {{{id}}}
+
+{{#hasDescription}}
+{{{description}}}
+
+{{/hasDescription}}
+{{#hasOwns}}
+**Owns (registers):** {{{owns}}}
+
+{{/hasOwns}}
+{{#hasUniversal}}
+**Universal attributes (every node):** {{{universal}}}
+
+{{/hasUniversal}}
+{{#hasContributes}}
+**Contributes attributes:**
+
+{{#contributes}}
+- `{{{typeSubType}}}`: {{{attrs}}}
+{{/contributes}}
+
+{{/hasContributes}}
+{{/providers}}

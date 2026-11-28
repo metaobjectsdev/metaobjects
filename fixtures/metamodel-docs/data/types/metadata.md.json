@@ -1,0 +1,26 @@
+{
+  "family": "metadata",
+  "sections": [
+    {
+      "typeSubType": "metadata.root",
+      "description": "Root metadata document",
+      "hasOwner": false,
+      "hasImplementedIn": false,
+      "hasRules": false,
+      "hasWhenToUse": false,
+      "hasExample": false,
+      "hasAttrs": false,
+      "attrs": [],
+      "hasChildren": true,
+      "children": [
+        "`api.*` — 0..*",
+        "`field.*` — 0..*",
+        "`object.*` — 0..*",
+        "`requirement.*` — 0..*",
+        "`template.*` — 0..*",
+        "`validator.*` — 0..*"
+      ],
+      "hasParents": false
+    }
+  ]
+}

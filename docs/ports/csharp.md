@@ -355,7 +355,9 @@ a shell around the package's; the naming and type-mapping tables (`CSharpNaming`
 `ValueObjectNames`) stay in the package as the engine. Eject writes the three `codegen/` files
 when they are missing, with the copy already listed as `new Codegen.Generators.<Name>()`;
 when `codegen/Generators.cs` exists it prints that entry for you to add in place of the
-packaged one. `dotnet meta eject api-docs` does the same for the api reference. Ejecting into
+packaged one. `dotnet meta eject api-docs` does the same for the api reference. The `metamodel-docs` generator writes the metamodel vocabulary reference
+(`metamodel/INDEX.md`, `providers.md`, `types/<family>.md`) from the shared `templates/metamodel/`
+Mustache set; a `metamodel/<page>.mustache` under its `TemplateRoot` overrides a shipped page. Ejecting into
 a project whose `codegen/Codegen.csproj` pins an older `MetaObjects.Codegen` than the tool
 prints a warning naming the line to change. See
 [Own your codegen → C#](../features/own-your-codegen.md#c-dotnet-meta-eject).

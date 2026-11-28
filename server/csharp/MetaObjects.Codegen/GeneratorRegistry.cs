@@ -316,6 +316,18 @@ public static class GeneratorRegistry
                     "Generators/Fr010FieldMapping.cs", "Generators/M2MNavigation.cs",
                 ],
             },
+            // The metamodel reference: the shared templates/metamodel/ Mustache set over this port's registry.
+            ["metamodel-docs"] = new()
+            {
+                Name = "metamodel-docs",
+                Description = "The reference of the built-in metamodel: every type, subtype and attribute the build registers, by provider.",
+                Tier = GeneratorTier.Neutral,
+                Layer = GeneratorLayer.Docs,
+                Factory = ctx => new MetamodelDocsGenerator { TemplateRoot = ctx.TemplateRoot },
+                Options = "OutDir, SubDir (default \"metamodel\"), TemplateRoot (init properties on the entry in codegen/Generators.cs)",
+                Note = "Reads no model objects. A project's metamodel/<page>.mustache under the template root overrides the shipped template.",
+                SourceFileName = "MetamodelDocsGenerator.cs",
+            },
             ["template"] = new()
             {
                 Name = "template",

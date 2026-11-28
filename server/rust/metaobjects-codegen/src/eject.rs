@@ -222,6 +222,19 @@ pub const REFERENCES: &[Reference] = &[
                   fragment that tells a model how to shape its answer",
         source: include_str!("output_prompt.rs"),
     },
+    Reference {
+        name: "metamodel-docs",
+        tier: "neutral",
+        opt_in: true,
+        layer: "docs",
+        module: "metamodel_docs",
+        type_name: "MetamodelDocsGenerator",
+        needs: &[],
+        summary: "metamodel reference pages: every type, subtype and attribute the build \
+                  registers, by type family and by provider, from the shared Mustache set \
+                  (reads no model; templates/metamodel/ in the project wins)",
+        source: include_str!("metamodel_docs.rs"),
+    },
 ];
 
 /// The shipped generator of that name.

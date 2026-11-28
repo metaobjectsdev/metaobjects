@@ -1,0 +1,90 @@
+{
+  "family": "layout",
+  "sections": [
+    {
+      "typeSubType": "layout.base",
+      "description": "Abstract base layout — the shared root subtype for object-level UI surfaces. A layout attaches a presentation concern (grids, forms, tabs, cards) to an object. The base carries no attrs of its own; concrete subtypes add their presentation attrs. Not authored directly: a `layout.base` node fails to load (ERR_ABSTRACT_SUBTYPE_AUTHORED) — this subtype is a registry anchor concrete subtypes inherit from, never a node in a document.",
+      "hasOwner": true,
+      "owner": "metaobjects-core-types",
+      "hasImplementedIn": false,
+      "hasRules": false,
+      "hasWhenToUse": false,
+      "hasExample": false,
+      "hasAttrs": false,
+      "attrs": [],
+      "hasChildren": false,
+      "children": [],
+      "hasParents": false
+    },
+    {
+      "typeSubType": "layout.dataGrid",
+      "description": "A metadata-driven data grid attached to an object: declares the displayed columns, page size, default sort, and an optional preset filter the generated grid renders.",
+      "hasOwner": true,
+      "owner": "metaobjects-core-types",
+      "hasImplementedIn": false,
+      "hasRules": false,
+      "hasWhenToUse": false,
+      "hasExample": false,
+      "hasAttrs": true,
+      "attrs": [
+        {
+          "name": "columns",
+          "type": "string[]",
+          "required": "no",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-ui",
+          "description": "Flat ordered list of field names to display as grid columns."
+        },
+        {
+          "name": "defaultSortField",
+          "type": "string",
+          "required": "no",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-ui",
+          "description": "Field name the grid is sorted by on initial render. Must reference an actual field on the entity."
+        },
+        {
+          "name": "defaultSortOrder",
+          "type": "string",
+          "required": "no",
+          "default": "",
+          "allowed": "`asc`, `desc`",
+          "provider": "metaobjects-ui",
+          "description": "Initial sort direction for the default sort field: 'asc' or 'desc'. When omitted, the named field's @sortableDefaultOrder applies."
+        },
+        {
+          "name": "filter",
+          "type": "filter",
+          "required": "no",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-ui",
+          "description": "Structured preset filter object applied to the grid at the metadata level. Desugared to canonical { field: { op: value } } form at parse time."
+        },
+        {
+          "name": "filterable",
+          "type": "boolean",
+          "required": "no",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-ui",
+          "description": "When true, the generated grid exposes column filtering UI."
+        },
+        {
+          "name": "pageSize",
+          "type": "int",
+          "required": "no",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-ui",
+          "description": "Number of rows per page in the generated data grid."
+        }
+      ],
+      "hasChildren": false,
+      "children": [],
+      "hasParents": false
+    }
+  ]
+}

@@ -124,7 +124,7 @@ export interface ManifestType {
 export const METAMODEL_VERSION = "1.3";
 
 /** The full canonical manifest. All collections are sorted for byte-stability. */
-interface RegistryManifest {
+export interface RegistryManifest {
   /** The Metamodel spec version (first key — a header). See {@link METAMODEL_VERSION}. */
   metamodelVersion: string;
   types: ManifestType[];

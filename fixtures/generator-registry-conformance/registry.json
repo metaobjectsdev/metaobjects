@@ -349,9 +349,9 @@
       "concept": "The reference of the built-in metamodel: every type, subtype and attribute the build registers, by provider.",
       "tier": "neutral",
       "layer": "docs",
-      "note": "TYPESCRIPT ONLY: it was `meta docs --metamodel` until 1.1.0 (ADR-0034 Amendment 9).",
+      "note": "Every port renders the shared templates/metamodel/ Mustache set over its own registry manifest and provider definitions, gated by fixtures/metamodel-docs/. In TypeScript it was `meta docs --metamodel` until 1.1.0 (ADR-0034 Amendment 9).",
       "eject": "full",
-      "ports": ["typescript"]
+      "ports": ["typescript", "csharp", "java", "kotlin", "python", "rust"]
     },
     "docs-site": {
       "concept": "The browsable HTML site of the model: navigation, search, a page per package and per object, ER diagrams.",

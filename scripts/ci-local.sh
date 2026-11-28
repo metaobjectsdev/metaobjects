@@ -1107,6 +1107,9 @@ gate_doc_template_drift() {
     server/typescript/packages/codegen-ts/templates
     server/typescript/packages/codegen-ts/src/render-engine/embedded-templates.generated.ts
     server/python/src/metaobjects/render/bundled_templates
+    server/csharp/MetaObjects.Codegen/Templates/metamodel
+    server/java/codegen-base/src/main/resources/metaobjects/templates/metamodel
+    server/rust/metaobjects-codegen/templates/metamodel
   )
   bash scripts/sync-doc-templates.sh || return 1
   git diff --exit-code -- "${copies[@]}" || return 1

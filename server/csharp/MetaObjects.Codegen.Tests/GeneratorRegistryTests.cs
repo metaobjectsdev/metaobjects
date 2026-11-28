@@ -34,6 +34,8 @@ public sealed class GeneratorRegistryTests
         "report-export",
         // ADR-0025 — the api reference, an entry in codegen/Generators.cs a project can own.
         "api-docs",
+        // The metamodel reference — the shared Mustache set over this port's registry.
+        "metamodel-docs",
     ];
 
     [Fact]

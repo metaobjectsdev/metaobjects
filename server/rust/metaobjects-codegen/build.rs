@@ -20,7 +20,10 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     for p in entries {
         if p.is_dir() {
             collect(&p, out);
-        } else if p.extension().is_some_and(|e| e == "rs" || e == "toml") {
+        } else if p
+            .extension()
+            .is_some_and(|e| e == "rs" || e == "toml" || e == "mustache" || e == "json")
+        {
             out.push(p);
         }
     }
@@ -33,6 +36,9 @@ fn main() {
         manifest.join("Cargo.toml"),
         manifest.join("../metaobjects/src"),
         manifest.join("../metaobjects/Cargo.toml"),
+        // The shipped Mustache templates and the embedded metamodel provider definitions.
+        manifest.join("templates"),
+        manifest.join("../metaobjects/data"),
     ];
     let mut hasher = sha256::Sha256::new();
     for root in &roots {

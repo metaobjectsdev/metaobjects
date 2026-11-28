@@ -103,6 +103,34 @@ const PROMPT_SPEC: (&str, &str) = spec!("prompt");
 const UI_SPEC: (&str, &str) = spec!("ui");
 const UI_WEB_SPEC: (&str, &str) = spec!("ui-web");
 
+/// Every embedded provider definition as `(file stem, JSON text)`, in the order the
+/// metamodel reference builder walks them (first declarer of an attr wins, so the order
+/// is part of the contract: `metamodel_docs::build_pages`).
+pub const DEFINITION_SOURCES: &[(&str, &str)] = &[
+    spec!("field"),
+    spec!("object"),
+    spec!("attr"),
+    spec!("validator"),
+    spec!("identity"),
+    spec!("index"),
+    spec!("relationship"),
+    spec!("documentation"),
+    spec!("origin"),
+    spec!("source"),
+    spec!("db"),
+    spec!("view"),
+    spec!("layout"),
+    spec!("ui"),
+    spec!("ui-web"),
+    spec!("template"),
+    spec!("prompt"),
+    spec!("api"),
+    spec!("transition"),
+    spec!("view-expressions"),
+    spec!("reporting"),
+    spec!("requirement"),
+];
+
 /// One child entry of a provider definition: an attr, or a structural child rule.
 #[derive(Debug, Clone)]
 struct ChildDef {

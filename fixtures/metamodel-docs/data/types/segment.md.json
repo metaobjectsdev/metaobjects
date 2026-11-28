@@ -1,0 +1,31 @@
+{
+  "family": "segment",
+  "sections": [
+    {
+      "typeSubType": "segment.filter",
+      "description": "A named, reusable row filter on the declaring entity (FR-044). Measures and reports reference it by name; exporters emit it as a named segment.",
+      "hasOwner": true,
+      "owner": "metaobjects-reporting",
+      "hasImplementedIn": false,
+      "hasRules": false,
+      "hasWhenToUse": true,
+      "whenToUse": "The same filter (e.g. 'active purchase') would otherwise be repeated in several measures or reports.",
+      "hasExample": false,
+      "hasAttrs": true,
+      "attrs": [
+        {
+          "name": "filter",
+          "type": "filter",
+          "required": "yes",
+          "default": "",
+          "allowed": "",
+          "provider": "metaobjects-reporting",
+          "description": "The row scope: a portable attr.filter over the declaring entity's fields. May use relative-date values."
+        }
+      ],
+      "hasChildren": false,
+      "children": [],
+      "hasParents": false
+    }
+  ]
+}
