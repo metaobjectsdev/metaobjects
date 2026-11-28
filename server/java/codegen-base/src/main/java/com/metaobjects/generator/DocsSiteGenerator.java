@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.metaobjects.docs.explorer.ExplorerSite;
 import com.metaobjects.docsview.DocsView;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 import com.metaobjects.generator.util.HashManifest;
 import com.metaobjects.loader.MetaDataLoader;
 
@@ -27,10 +28,12 @@ import java.util.Set;
  * write the same bytes.
  *
  * <p>It builds the docs view from the model this run loaded ({@link DocsView#build}), lists the
- * generated files the committed hash manifest records for each node ({@code generatedBy} and
- * {@code sourceNode}), and writes the app, its data script, its stamp and {@code explorer.json}
- * through {@link ExplorerSite}. The files it lists are the ones the last write run recorded: the
- * manifest is saved after every generator has run.</p>
+ * files this run generated for each node ({@code generatedBy} and {@code sourceNode}, from the open
+ * {@link GeneratedFileWriter.Run}), and writes the app, its data script, its stamp and
+ * {@code explorer.json} through {@link ExplorerSite}. The runner runs it after every other
+ * generator ({@link #readsRunOutput}), so a write run and {@code metaobjects:verify} list the same
+ * files. With no run open (a test or an embedder driving it alone) it lists what the hash manifest
+ * in {@code genStateDir} records.</p>
  *
  * <p>Args: {@code outputDir} (required); {@code subDir} (default {@code site}; empty writes at the
  * root); {@code title} (default: the project directory's name); {@code stamp} (footer text, default
@@ -65,8 +68,8 @@ public class DocsSiteGenerator extends FileEmittingGenerator {
 
     /**
      * The owned theme, the prompts directory and the verify payload are read beside the model
-     * (ADR-0064): editing one regenerates. The hash manifest is not an input: it changes only
-     * when a run writes, and that run regenerates anyway.
+     * (ADR-0064): editing one regenerates. The hash manifest is not an input: the files the site
+     * lists are the ones this run generates, which follow from the model and these inputs.
      */
     @Override
     public List<String> extraInputs() {
@@ -80,6 +83,11 @@ public class DocsSiteGenerator extends FileEmittingGenerator {
     }
 
     @Override
+    public boolean readsRunOutput() {
+        return true;
+    }
+
+    @Override
     protected List<EmittedFile> generate(MetaDataLoader loader) {
         Path project = Path.of(getArg(ARG_PROJECT_ROOT, System.getProperty("user.dir"))).toAbsolutePath().normalize();
         String dir = getArg(ARG_SUB_DIR, DEFAULT_SUB_DIR).replaceAll("/+$", "");
@@ -88,7 +96,11 @@ public class DocsSiteGenerator extends FileEmittingGenerator {
         JsonElement verify = hasArg(ARG_VERIFY_FILE) ? readJson(project.resolve(getArg(ARG_VERIFY_FILE))) : null;
         Path genState = project.resolve(getArg(ARG_GEN_STATE_DIR, DEFAULT_GEN_STATE_DIR));
         JsonElement routes = hasArg(ARG_ROUTES_FILE) ? readJson(project.resolve(getArg(ARG_ROUTES_FILE))) : null;
-        JsonObject view = DocsView.build(loader.getRoot(), verify, manifest(genState), routes);
+        GeneratedFileWriter.Run run = GeneratedFileWriter.currentRun();
+        Map<String, HashManifest.Provenance> runFiles = run == null ? null : run.generatedFiles();
+        JsonObject generated = runFiles != null ? provenanceJson(runFiles)
+            : HashManifest.exists(genState) ? provenanceJson(HashManifest.loadProvenance(genState)) : null;
+        JsonObject view = DocsView.build(loader.getRoot(), verify, generated, routes);
 
         Path owned = project.resolve(OWNED_DOCS_SITE_DIR);
         Path assets = owned.resolve("assets");
@@ -105,11 +117,10 @@ public class DocsSiteGenerator extends FileEmittingGenerator {
         return out;
     }
 
-    /** The manifest's provenance as the docs view reads it: {@code path → { generatedBy, sourceNode }}. */
-    static JsonObject manifest(Path genStateDir) {
-        if (!HashManifest.exists(genStateDir)) return null;
+    /** Provenance as the docs view reads it: {@code path → { generatedBy, sourceNode }}. */
+    private static JsonObject provenanceJson(Map<String, HashManifest.Provenance> provenance) {
         JsonObject out = new JsonObject();
-        for (Map.Entry<String, HashManifest.Provenance> e : HashManifest.loadProvenance(genStateDir).entrySet()) {
+        for (Map.Entry<String, HashManifest.Provenance> e : provenance.entrySet()) {
             JsonObject entry = new JsonObject();
             entry.addProperty("generatedBy", e.getValue().generatedBy());
             if (e.getValue().sourceNode() != null) entry.addProperty("sourceNode", e.getValue().sourceNode());

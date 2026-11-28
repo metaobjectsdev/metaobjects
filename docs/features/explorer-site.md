@@ -89,9 +89,9 @@ On the JVM, wire it like any other generator, with its own output directory:
 It writes `docs/generated/site/`. The JVM build has no requirement gate of its own, so without
 `verifyFile` the requirement tree shows each claim but no verdict. The generator is not told the
 routes the Spring controllers mount, so no node lists its REST routes unless you name them in
-`routesFile` (`[{ node, method, path }]`, `node` a resolution key). The generated-file lists come
-from the hash manifest, which a write run saves after every generator has run: they show the
-files the previous write run recorded. The other args are in
+`routesFile` (`[{ node, method, path }]`, `node` a resolution key). The generated-file lists are the
+files the same run generated: the run builds the site after every other generator, so
+`metaobjects:verify` renders the same lists the write run wrote. The other args are in
 [the Java port's generator table](../ports/java.md#generators).
 
 ### The live view

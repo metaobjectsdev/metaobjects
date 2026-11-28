@@ -179,8 +179,53 @@ public final class GeneratedFileWriter {
         // Non-null for a capture run (verify, ADR-0064 §4): every write lands here, keyed by the
         // normalized absolute path, and nothing is written to disk.
         private Map<Path, byte[]> captured;
+        // This run's generated files, keyed as the manifest keys them, with the provenance each was
+        // recorded with: what the docs view lists. A capture run keys a rendered path by the real
+        // output directory it stands in for.
+        private final Map<String, HashManifest.Provenance> generated = new LinkedHashMap<>();
+        private Map<Path, Path> realDirByRendered = Map.of();
 
         private Run() {}
+
+        /**
+         * The files this run has generated so far, {@code path → provenance}, keyed as the manifest
+         * keys them; {@code null} when the run has no project root to key them by. A narrowed run
+         * also lists what the committed manifest records ({@link #carryCommittedFiles}).
+         */
+        public Map<String, HashManifest.Provenance> generatedFiles() {
+            return projectRoot == null ? null : Collections.unmodifiableMap(generated);
+        }
+
+        /** List the committed manifest's files beside this run's, for a run that renders only some
+         *  objects. Called by the runner after {@link #configureManifest}. */
+        public Run carryCommittedFiles() {
+            if (provenance != null) generated.putAll(provenance);
+            return this;
+        }
+
+        /**
+         * Key a capture run's files as the write run keys them: {@code projectRoot} is what keys
+         * are relative to, and {@code realDirByRendered} maps each directory the capture renders
+         * into to the output directory it stands in for.
+         */
+        public Run keyCapturesAs(Path projectRoot, Map<Path, Path> realDirByRendered) {
+            this.projectRoot = projectRoot;
+            this.realDirByRendered = realDirByRendered;
+            return this;
+        }
+
+        private void noteCaptured(Path outFile) {
+            Path real = outFile.toAbsolutePath().normalize();
+            for (Map.Entry<Path, Path> e : realDirByRendered.entrySet()) {
+                Path rendered = e.getKey().toAbsolutePath().normalize();
+                if (real.startsWith(rendered)) {
+                    real = e.getValue().toAbsolutePath().normalize().resolve(rendered.relativize(real));
+                    break;
+                }
+            }
+            String key = OrphanSweep.keyFor(projectRoot, real);
+            if (key != null) generated.put(key, new HashManifest.Provenance(currentGeneratedBy, currentSourceNode));
+        }
 
         /** The bytes a capture run's generators emitted, by normalized absolute path; {@code null}
          *  for an ordinary run. Read-only view. */
@@ -265,6 +310,7 @@ public final class GeneratedFileWriter {
             // with no node, written by a generator the manifest names nothing for, stays plain.
             HashManifest.Provenance now = new HashManifest.Provenance(currentGeneratedBy, currentSourceNode);
             HashManifest.Provenance before = provenance.get(key);
+            generated.put(key, now);
             if (currentSourceNode != null) {
                 if (!now.equals(provenance.put(key, now))) dirty = true;
             } else if (before != null && before.sourceNode() != null) {
@@ -583,6 +629,7 @@ public final class GeneratedFileWriter {
             return Outcome.REFUSED;
         }
         performWrite(outFile, content, run);
+        if (run != null && run.captured != null && run.projectRoot != null) run.noteCaptured(outFile);
         return Outcome.WRITTEN;
     }
 

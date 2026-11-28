@@ -630,13 +630,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         // Build + run generators with the temp-dir overrides applied.
         List<Generator> generatorImpls = buildGenerators(projectClassLoader, overrides);
         try {
-            try (GeneratedFileWriter.Run capture = GeneratedFileWriter.beginCaptureRun()) {
-                for (Generator gen : generatorImpls) {
-                    getLog().info("MetaData Verify Mojo > Regenerating (in memory): " + gen.getClass().getName());
-                    gen.execute(loader);
-                }
-                rendered = new HashMap<>(capture.captured());
-            }
+            rendered = renderInMemory(loader, generatorImpls, targets, projectRoot, true);
 
             // Compare each output directory's temp tree against its committed tree.
             Map<String, String> ownHashes = hashes == null ? null
@@ -694,6 +688,32 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
     }
 
     /**
+     * Run {@code generatorImpls} as the generate goal does (the same order and attribution) through
+     * a capture run, and return what they rendered. Files are keyed by the committed output
+     * directory each render directory stands in for, so the docs site lists what generate lists.
+     */
+    private Map<Path, byte[]> renderInMemory(MetaDataLoader loader, List<Generator> generatorImpls,
+                                             List<GenTarget> targets, Path projectRoot, boolean announce) {
+        List<GeneratorParam> params = getGenerators();
+        try (GeneratedFileWriter.Run capture = GeneratedFileWriter.beginCaptureRun()) {
+            if (projectRoot != null) {
+                Map<Path, Path> realDirByRendered = new LinkedHashMap<>();
+                for (GenTarget t : targets) realDirByRendered.put(t.tempDir, t.realDir);
+                capture.keyCapturesAs(projectRoot, realDirByRendered);
+            }
+            for (int i : runOrder(generatorImpls)) {
+                Generator gen = generatorImpls.get(i);
+                if (announce) getLog().info("MetaData Verify Mojo > Regenerating (in memory): " + gen.getClass().getName());
+                GeneratorParam param = params != null && i < params.size() ? params.get(i) : null;
+                capture.attributeTo(gen.getClass().getSimpleName(), GeneratorParam.HAND_EDITS_KEEP, null,
+                        generatedBy(param, gen));
+                gen.execute(loader);
+            }
+            return new HashMap<>(capture.captured());
+        }
+    }
+
+    /**
      * ADR-0019 Amendment 2: the other {@code wire} setting under which the generators reproduce the
      * committed output exactly, or {@code null} when none does. Probes decimals {native, string} x
      * nullMembers {native, omit} x durations {native, iso} ({@code emit} writes what {@code native} writes on the JVM), skipping
@@ -713,9 +733,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                   for (WireFormat.Durations u : WireFormat.Durations.values()) {
                     if (d == used.decimals() && n == usedNulls && u == used.durations()) continue;
                     loader.getRoot().setWireFormat(new WireFormat(d, n, u));
-                    try (GeneratedFileWriter.Run capture = GeneratedFileWriter.beginCaptureRun()) {
-                        for (Generator gen : buildGenerators(projectClassLoader, overrides)) gen.execute(loader);
-                        rendered = new HashMap<>(capture.captured());
+                    try {
+                        rendered = renderInMemory(loader, buildGenerators(projectClassLoader, overrides),
+                                targets, projectRoot, false);
                     } catch (RuntimeException e) {
                         getLog().debug("MetaData Verify Mojo > wire probe failed: " + e);
                         return null;

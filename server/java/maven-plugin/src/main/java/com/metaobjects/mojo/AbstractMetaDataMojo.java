@@ -841,6 +841,21 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
     }
 
 
+    /** The order a run executes {@code generators} in, as indices: declaration order, with every
+     *  generator that reads the run's output ({@link Generator#readsRunOutput}) after every other. */
+    static List<Integer> runOrder(List<Generator> generators) {
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < generators.size(); i++) if (!generators.get(i).readsRunOutput()) order.add(i);
+        for (int i = 0; i < generators.size(); i++) if (generators.get(i).readsRunOutput()) order.add(i);
+        return order;
+    }
+
+    /** What the manifest's {@code generatedBy} names {@code gen}, declared by {@code param} ({@code null}: undeclared). */
+    static String generatedBy(GeneratorParam param, Generator gen) {
+        return param != null && param.getClassname() != null
+                ? RequiresCheck.generatorName(param.getClassname()) : gen.getClass().getSimpleName();
+    }
+
     /**
      * Reflectively instantiate and configure each declared generator, mirroring the exact
      * mechanism {@code meta:gen} uses. This is the single source of truth for generator

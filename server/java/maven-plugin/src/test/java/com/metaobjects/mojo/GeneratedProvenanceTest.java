@@ -198,4 +198,75 @@ public class GeneratedProvenanceTest {
             assertEquals(p.toString(), 1_000_000_000_000L, Files.getLastModifiedTime(p).toMillis());
         }
     }
+
+    /** The node {@code acme::shop::Order}'s generated files in the explorer's data, {@code generatedBy → paths}. */
+    private static JsonObject orderFiles(JsonElement e) {
+        if (e.isJsonObject()) {
+            JsonObject o = e.getAsJsonObject();
+            if (o.has("files") && o.has("name") && "Order".equals(o.get("name").getAsString())
+                    && "acme::shop".equals(o.get("package").getAsString())) {
+                JsonObject out = new JsonObject();
+                for (JsonElement g : o.getAsJsonArray("files")) {
+                    out.add(g.getAsJsonObject().get("generatedBy").getAsString(), g.getAsJsonObject().get("paths"));
+                }
+                return out;
+            }
+            for (String k : o.keySet()) {
+                JsonObject found = orderFiles(o.get(k));
+                if (found != null) return found;
+            }
+        } else if (e.isJsonArray()) {
+            for (JsonElement c : e.getAsJsonArray()) {
+                JsonObject found = orderFiles(c);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    @Test
+    public void theFirstRunWithDocsSiteListsWhatItWroteAndVerifyRendersTheSameSite() throws Exception {
+        MetaDataGeneratorMojo mojo = generate();
+        // Declared first, so the run itself must hold it back until the files exist.
+        List<GeneratorParam> gens = new ArrayList<>();
+        gens.add(GeneratorParam.builder(com.metaobjects.generator.DocsSiteGenerator.class.getName())
+                .withArg("outputDir", module.resolve("docs").toString()).withArg("title", "Shop").build());
+        gens.addAll(mojo.getGenerators());
+        mojo.setGenerators(gens);
+        assertFalse(Files.exists(module.resolve(".metaobjects/.gen-state/.hashes")));
+        mojo.execute();
+
+        // The oracle is the hash manifest the same run saved: the Order files it records.
+        JsonObject expected = new JsonObject();
+        for (String key : JsonParser.parseString(Files.readString(
+                module.resolve(".metaobjects/.gen-state/.hashes/acme.shop.json"))).getAsJsonObject().keySet()) {
+            JsonObject e = entry("acme.shop.json", key);
+            if (!e.has("sourceNode") || !"acme::shop::Order".equals(e.get("sourceNode").getAsString())) continue;
+            String by = e.get("generatedBy").getAsString();
+            if (!expected.has(by)) expected.add(by, new com.google.gson.JsonArray());
+            expected.getAsJsonArray(by).add(key);
+        }
+        assertTrue("the run records Order's files: " + expected, expected.size() >= 2);
+        JsonObject listed = orderFiles(JsonParser.parseString(Files.readString(module.resolve("docs/site/explorer.json"))));
+        assertEquals(expected.keySet(), listed.keySet());
+        for (String by : expected.keySet()) {
+            TreeSet<String> want = new TreeSet<>();
+            expected.getAsJsonArray(by).forEach(p -> want.add(p.getAsString()));
+            TreeSet<String> got = new TreeSet<>();
+            listed.getAsJsonArray(by).forEach(p -> got.add(p.getAsString()));
+            assertEquals(by, want, got);
+        }
+
+        // A full verify renders the site again, in memory, and finds it as committed.
+        MetaDataVerifyMojo verify = new MetaDataVerifyMojo();
+        verify.project = mojo.project;
+        verify.setLoader(LoaderParam.builder("per-package")
+                .withClassname("com.metaobjects.loader.MetaDataLoader")
+                .withSourceDir(module.resolve("metaobjects").toString())
+                .build());
+        verify.setGenerators(gens);
+        verify.setGlobals(java.util.Collections.emptyMap());
+        verify.setFull(true);
+        verify.execute();
+    }
 }
